@@ -141,6 +141,20 @@ cannot substitute for the committed bilateral or Factory Vault.
 
 ## Script Boundary
 
+### Current Asset Boundary
+
+The host model already represents multiple xUDT types through `AssetRegistry`,
+per-type conservation maps, and asset-qualified Factory rights. The deployed
+script profile is narrower: descriptor v2 names one xUDT type, and bilateral
+and Factory provenance bind one physical Vault Cell. Splice and Factory Vault
+descriptors have two asset slots, with physical paths limited to CKB plus one
+xUDT type. Descriptor v3 conditional batches are CKB-only.
+
+Multiple xUDT types in one channel require a versioned multi-Vault profile,
+including whole-set activation, retirement, and capacity accounting. The
+[multi-asset channel design](multi-asset-channels.md) records the proposed
+extension and its acceptance gates; it is not supported by current scripts.
+
 ```mermaid
 flowchart LR
     subgraph State["Channel scripts"]

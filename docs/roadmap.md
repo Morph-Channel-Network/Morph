@@ -1,7 +1,7 @@
 # Roadmap
 
-This roadmap tracks Morph Channel's maturity from executable protocol model to
-devnet evidence and, eventually, externally reviewed production readiness.
+This roadmap tracks Morph Channel's production implementation, protocol
+extensions, and release evidence.
 
 ## Maturity Picture
 
@@ -14,11 +14,13 @@ flowchart LR
     M4 --> M5["M5<br/>Watchtower + stateful audit"]
     M5 --> M6["M6<br/>External readiness work"]
     M5 --> M8["M8<br/>Conditional batches"]
+    M8 --> M9["M9<br/>Multi-asset channels"]
 ```
 
-The current repository sits at the devnet research implementation stage:
-protocol objects, package tooling, CKB scripts, smoke tests, and stateful
-acceptance gates exist locally. Production work remains open.
+The repository is entering production implementation work. Protocol objects,
+package tooling, CKB scripts, smoke tests, and stateful acceptance gates exist
+locally. The next asset extension is multiple xUDT types in one channel;
+external review and operational release evidence remain open.
 
 ## Milestone Status
 
@@ -33,6 +35,7 @@ acceptance gates exist locally. Production work remains open.
 | M6: Production readiness | Controlled-devnet candidate; production open | Factory has a checked manifest/envelope and runbooks. Publication now has bounded node-informed fees, CKB RBF, least-privilege two-operator local evidence, and induced-reorg recovery. External review, independent rebuild/operators, and repeated public-network measurements remain open. |
 | M7: Factory 2.0 surface (v2.0) | Implemented locally | Multi-right reduced updates (envelope kind 8), compact variable-depth sparse-Merkle proofs, and the operator value-limit policy with runbook; see `docs/v2.0-plan.md`. Devnet save/publication plumbing for kind 8 packages is the remaining follow-up. |
 | M8: Conditional batch surface (v3.0) | Implemented locally | Descriptor v3, bounded preimage/absolute-refund leaves, cooperative consolidation, Vault-to-Batch materialisation, Batch CKB-VM enforcement, canonical CLI package, and durable Hub import; see `docs/v3.0-plan.md`. |
+| M9: Multi-asset channels | Proposed; implementation pending | Multiple xUDT types per channel through a versioned bounded Vault set, per-asset settlement, complete-set retirement, and recovery packages; see [multi-asset channels](multi-asset-channels.md). |
 
 ## Current Factory Witness Baseline
 
@@ -53,6 +56,7 @@ authorisation boundary.
 
 | Area | Deferred item | Why it is deferred |
 | --- | --- | --- |
+| Multi-asset channels | Multiple xUDT types in one physical channel funding context. | Next protocol extension (M9): host/right models already represent multiple assets; single-Vault provenance and fixed settlement/splice paths need a versioned replacement. |
 | Factory proofs | ~~Multi-right reduced updates.~~ | Delivered in 2.0 as envelope kind 8; see `docs/v2.0-plan.md`. |
 | Factory proofs | ~~Variable-depth or dynamic proof profiles.~~ | Delivered in 2.0 as compact bounded sparse-Merkle proofs on kind 8. |
 | Factory 2.0 tooling | Devnet save/publication command for kind 8 state-cell packages. | Host validation, fixtures, and on-chain evidence exist; the live-node publication flow mirrors `save-factory-merkle-update-package` and needs a devnet rehearsal. |
@@ -67,22 +71,29 @@ authorisation boundary.
 
 ```mermaid
 flowchart LR
-    A["Repeatable external review"] --> B["Release CI"]
-    B --> C["Mainnet-like fee/reorg evidence"]
-    C --> D["Operator runbooks"]
-    D --> E["Value-limit policy"]
+    A["Multi-Vault wire + invariants"] --> B["Bilateral multi-asset settlement"]
+    B --> C["Splice + Factory materialisation"]
+    C --> D["Recovery + release evidence"]
 ```
 
-The next slice should not add protocol surface area merely because it is
-interesting. The more valuable work is to harden evidence around the current
-surface:
+The next protocol slice closes the single-xUDT limitation:
 
-1. run devnet/stateful suites repeatedly from clean release artefacts;
-2. record reviewable transaction and budget evidence;
-3. test watchtower behaviour under delayed observation and stale packages;
-4. document operational procedures for key handling, package retention, and
-   alert response;
-5. define conservative value limits tied to evidence, not optimism.
+1. specify bounded multi-Vault commitments, exact provenance, canonical
+   settlement outputs, and capacity lanes;
+2. implement bilateral multi-xUDT funding, activation, publication, supersede,
+   and full-set finalisation, with negative CKB-VM tests;
+3. extend signed splice and Factory materialisation without weakening
+   non-interference or leaving reserve value behind;
+4. carry complete recovery packages through CLI, SDK, Hub, and watchtower
+   persistence, including restart and reorg recovery;
+5. measure transaction bytes, cycles, occupied capacity, and publication costs
+   at the chosen limits before freezing the profile.
+
+The detailed sequence is in [multi-asset channels](multi-asset-channels.md).
+Independent review, clean release artefacts, repeated public-network fee/reorg
+measurements, independent operators, runbook rehearsals, and conservative
+value limits continue as production release requirements. Conditional xUDT
+batches follow ordinary multi-asset settlement as a separate extension.
 
 ## How To Read Older Milestone Documents
 

@@ -151,7 +151,7 @@ validation, fixtures, and on-chain CKB-VM evidence exist today.
 ## v1.10.0 — 2026-08-15
 
 Publication Reliability Hardening for the controlled-devnet Morph Channel
-prototype.
+implementation.
 
 ### Security and reliability
 
@@ -201,7 +201,7 @@ the release build now remaps machine-specific source paths and rejects
 restored-target contamination. The resulting hashes are stable across local and
 GitHub runners.
 
-v1.10.0 remains controlled-devnet research software. It is not approved for
+v1.10.0 remains a controlled-devnet release. It is not approved for
 mainnet or real assets. Trusted public-network measurements, independently
 administered operator infrastructure, external review, and a dated value-limit
 decision remain mandatory production gates.

@@ -4,9 +4,9 @@ Guidance for LLM/AI agents working in this repository. Focus on non-obvious know
 
 ## Project Snapshot
 
-- Morph Channel is a CKB-native off-chain channel + factory prototype. Host-side protocol semantics live in `morph-core`; the on-chain boundary is a set of `no_std` CKB scripts built for `riscv64imac-unknown-none-elf`.
+- Morph Channel is a CKB-native off-chain channel + factory implementation being developed for production deployment. Host-side protocol semantics live in `morph-core`; the on-chain boundary is a set of `no_std` CKB scripts built for `riscv64imac-unknown-none-elf`.
 - Workspace members: four Rust crates (`crates/morph-core`, `crates/morph-cli`, `crates/morph-agent`, `crates/morph-fiber-adapter`) and nine contract crates under `contracts/` (including the shared script crate). Plus a TypeScript SDK (`sdk/typescript`), a React UI (`ui/morph-hub`), and a small Molecule schema draft (`schemas/morph.mol`).
-- This is devnet research code. README explicitly disclaims mainnet, real-assets, and production-readiness claims.
+- Production implementation is the development focus; current deployment evidence is from controlled devnet. Mainnet and real-asset releases require the gates in `docs/mainnet-readiness.md`. The multi-asset channel design in `docs/multi-asset-channels.md` is proposed work, not an implemented wire profile.
 
 ## Build, Test, Lint
 
@@ -161,7 +161,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - **Both domain-string locations must change together.** `morph-core/src/hash.rs` and `contracts/morph-script-common/src/lib.rs` declare duplicate domain constants for use across the host/script boundary. `hash_parity.rs` enforces equality at test time.
 - **`vault_materialisation_root` is the only accepted JSON name.** Do not reintroduce unpublished aliases.
 - **Boundary versions are not free.** Bumping `WITNESS_ENVELOPE_FORMAT`, any `FACTORY_*_WITNESS_VERSION`, the `STATE_HEADER_LEN`, or any `*_LEN` constant is a wire-format break and breaks every dependency on it (parsers, fixtures, contract tests, devnet smoke). Check fixtures and security audits first.
-- **Reduced-rights factories only support the documented proof shapes.** Signer membership is dynamic from 2–16, but multi-right or variable-depth Merkle proofs remain future work and must be rejected.
+- **Reduced-rights factories only support the documented proof shapes.** Signer membership is dynamic from 2–16; kind 8 supports bounded multi-right compact proofs. Additional proof shapes must remain rejected. Multi-asset rights do not imply that the physical Vault or child-settlement paths support multiple xUDT types.
 - **Devnet-only `morph-devnet-xudt`.** It is not safe for non-devnet use. The contract name and the README both call this out.
 - **`new_deploy` feature on `morph-cli` only.** The `devnet` feature gates RPC client, fixture-server utilities, `watch_*`, and the entire `devnet` subcommand. A default build will silently lack these.
 - **Hub auth tokens are scoped.** `read,write,restore,sign:<secret>` is the documented scope syntax; an unprefixed token is all-scope. Don't log the secret.

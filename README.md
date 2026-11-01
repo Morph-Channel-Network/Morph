@@ -1,7 +1,8 @@
 # Morph Channel
 
-Morph Channel is a CKB-native channel prototype. It shows how two people, or a
-small factory of people, can move channel state off chain while CKB keeps the
+Morph Channel is a CKB-native off-chain channel and factory implementation
+being developed for production deployment. Two participants, or a small
+factory of participants, move channel state off chain while CKB keeps the
 enforceable evidence on chain.
 
 Current source release: **v3.0.0 — Conditional Batch Settlement**.
@@ -16,10 +17,11 @@ The short version is:
 - a signed state can carry up to eight hash/time-locked CKB transfers, with a
   cooperative consolidation path and a script-enforced Batch Cell fallback.
 
-This is devnet software and a research implementation, not mainnet
-infrastructure. The useful claim today is narrower: the repository contains
-executable protocol checks, CKB script tests, local devnet flows, and stateful
-acceptance reports for the channel and factory paths it implements.
+Production engineering is the current development focus. The current release
+has executable protocol checks, CKB script tests, local devnet flows, and
+stateful acceptance reports. Production deployment requires closing the
+[release gates](docs/mainnet-readiness.md), including independent review and
+operational evidence.
 
 ## Why This Exists
 
@@ -56,7 +58,9 @@ Implemented locally:
 
 - bilateral CKB channels: open, publish, supersede, finalise, and sponsored
   publication;
-- CKB and xUDT settlement through the same state/vault authority model;
+- CKB and single-xUDT settlement through the same state/vault authority model;
+  multiple xUDT types in one channel are the next planned asset extension
+  ([design](docs/multi-asset-channels.md));
 - splice-in and splice-out, so a channel can be resized without starting over;
 - watchtower-style package publication with cursor persistence, policy checks,
   canonical block-hash reorg recovery, JSONL alerts, and optional webhook alerts;
@@ -82,7 +86,7 @@ Implemented locally:
   conservation, so fee-payer signatures do not become Factory authority;
 - devnet smoke and stateful acceptance reports that bind scenarios to real
   transactions, cycle estimates, and expected negative-path failures;
-- experimental Morph-owned RGB++/x402 Agent, native bilateral
+- Morph-owned RGB++/x402 Agent, native bilateral
   `ChannelBackend`, Factory-right edge registry, and isolated Fiber-hook
   adapter. The Agent x402/credential/fair-exchange flow is exercised over a
   real three-node Fiber devnet route; a real Fiber external-edge hook routing
@@ -107,9 +111,9 @@ make release-readiness
 make package-contract-release
 ```
 
-This closes repository-side pre-production mechanics only; it does not change
-the mainnet disclaimer. Factory signer membership is bounded to 2–16, while
-reduced proofs retain their fixed count and depth limits.
+This closes repository-side pre-production mechanics; production deployment
+remains subject to the release gates. Factory signer membership is bounded to
+2–16, while reduced proofs retain their fixed count and depth limits.
 
 ## Main Business Flows
 
@@ -263,7 +267,7 @@ events; token-protected sessions use authenticated short polling so the bearer
 token is never placed in an event-stream URL. When the API requires a token, the
 UI accepts it at runtime and stores it only in the browser session.
 
-The experimental `morph-agent` also defaults to a local-only trust boundary.
+The `morph-agent` also defaults to a local-only trust boundary.
 Plain HTTP is accepted only for loopback Agent, Fiber RPC, callback, and fixed
 Gateway endpoints; remote endpoints must use HTTPS. A non-loopback Agent
 listener additionally requires `--api-bearer-token` or
@@ -381,6 +385,8 @@ cargo run -p morph-cli -- devnet-smoke-compare \
 - [Implementation notes](docs/implementation.md): protocol objects, script
   boundaries, and invariant coverage.
 - [Roadmap](docs/roadmap.md): milestone status and deferred work.
+- [Multi-asset channels](docs/multi-asset-channels.md): the paper-to-code gap
+  and proposed multi-Vault settlement path for multiple xUDT types per channel.
 - [2.0 plan](docs/v2.0-plan.md): scope, wire format, and test matrix of the
   multi-right factory update and value-limit-policy release.
 - [Mainnet readiness](docs/mainnet-readiness.md): what remains before any
@@ -399,12 +405,13 @@ cargo run -p morph-cli -- devnet-smoke-compare \
 - [Chinese tutorial](docs/morph-channel-tutorial.zh.md): Chinese-language
   walkthrough.
 
-## Maturity
+## Production Implementation
 
-Morph Channel should be read as a serious devnet research implementation. It is
-not production infrastructure yet.
+Morph Channel is moving toward production deployment. The next protocol
+extension is multi-asset channels: one signed state controlling a bounded set
+of Vault Cells, with separate conservation for CKB and each xUDT type.
 
-The bar for that claim is concrete: independent review, repeated devnet and
+The release bar is concrete: independent review, repeated devnet and
 testnet runs under realistic fees and reorg conditions, CI-backed release
 artefacts, operator runbooks, multi-operator watchtower evidence, and explicit
 value limits.

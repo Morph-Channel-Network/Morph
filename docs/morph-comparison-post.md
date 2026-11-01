@@ -56,13 +56,13 @@ The structure of this post is:
 | Required Bitcoin opcode            | `SIGHASH_ANYPREVOUT` (NOINPUT/ANYONECANPAY) | None (Turing-complete smart contract) | None (UTXO + scripts)                  | None (UTXO + scripts)                  |
 | Script footprint                  | One sighash flag change         | Smart contracts; CKB port in Rust       | One lock script (GPC lock)              | Type + lock + sponsor lock + envelope |
 | Funding anchor                    | The funding outpoint            | Contract reference                     | Funding outpoint                         | Type-ID-style derivation OR live Fund Cell |
-| Multi-asset                       | Single asset                    | Multi-asset (EVM tokens)              | Native (any UDT/SUDT/CKB)                | Native (CKB + any xUDT)                |
+| Multi-asset                       | Single asset                    | Multi-asset (EVM tokens)              | Native (any UDT/SUDT/CKB)                | Current settlement: CKB + one xUDT type; multi-xUDT Vault sets planned |
 | Sponsor / fee model                | Channel pays fees                | Channel pays fees                      | Channel pays fees                        | Sponsor partition (channel never pays fees) |
 | Splice / resize                    | Not in paper                     | Re-fund / new channel                   | Not in paper                              | Resize/re-anchor (`SPLICE` on wire) with exact old/new Vault binding |
 | Channel factory                   | Not in paper                     | Layered virtual channels               | Not in paper                              | Bounded devnet implementation (2–16 participants) |
-| Reduced signing set               | Not in paper                     | Not in paper                            | Not in paper                              | Fixed single-participant proof families; general multi-right deferred |
-| Composability with L1 assets      | Low (Bitcoin only)               | Medium (token interface)               | High (any UDT/CKB)                       | High (any xUDT/CKB)                    |
-| Has a deployed Bitcoin/CKB impl?  | No (SIGHASH_ANYPREVOUT not deployed) | Yes (Ethereum, CKB via perun-ckb-contract) | Talk only — no impl                      | Yes, for devnet/research evidence; exact counts are snapshot-specific |
+| Reduced signing set               | Not in paper                     | Not in paper                            | Not in paper                              | Bounded single-participant proof families, including up to four value rights with compact proofs |
+| Composability with L1 assets      | Low (Bitcoin only)               | Medium (token interface)               | High (any UDT/CKB)                       | CKB + one xUDT type per current settlement profile |
+| Has a deployed Bitcoin/CKB impl?  | No (SIGHASH_ANYPREVOUT not deployed) | Yes (Ethereum, CKB via perun-ckb-contract) | Talk only — no impl                      | Yes, with controlled-devnet evidence; exact counts are snapshot-specific |
 | Maturity for bilateral profile     | Academic                         | Production (Ethereum); experimental (CKB) | Spec only                                | Devnet-evidenced                        |
 
 The next four sections explain why each row looks the way it does.
@@ -318,7 +318,7 @@ domain is bigger but follows the same idea.
 | eltoo         | No — requires `SIGHASH_ANYPREVOUT`, which CKB does not have and which Morph does not need. The Ademan reference implementation is a Rust bench, not a wire-level implementation. |
 | Perun         | The cited repositories provide CKB contracts and a Go backend. Current deployment availability and maintenance status must be checked against fresh upstream evidence before publication. |
 | GPC           | The reviewed Nervos Talk post specifies the construction; this comparison did not identify a maintained implementation artifact. |
-| Morph Channel | The repository implements bilateral and bounded Factory profiles for controlled devnet research, including exact Vault provenance, sponsor policy, resize, full/reduced Factory paths, release artefacts, and negative CKB-VM tests. It prohibits production/real-asset claims pending the readiness gates. |
+| Morph Channel | The repository implements bilateral and bounded Factory profiles, including exact Vault provenance, sponsor policy, resize, full/reduced Factory paths, release artefacts, and negative CKB-VM tests. Production implementation is the development focus; current evidence is controlled-devnet, with production release subject to the readiness gates. |
 
 The "what would it take" reading is:
 
@@ -329,8 +329,8 @@ The "what would it take" reading is:
   deployment still needs an implementation and independent review.
 - If you want a CKB-native channel with sponsor partitioning, splice,
   and bounded Factory paths, Morph supplies executable devnet evidence. It also
-  has the largest local script surface here and explicitly remains no-real-assets
-  research software.
+  has the largest local script surface here. Its production implementation
+  work is subject to the documented release and value-limit gates.
 - If you want eltoo on Bitcoin, the answer is "wait for
   `SIGHASH_ANYPREVOUT`" plus "there is no testnet deployment today".
 
@@ -440,13 +440,16 @@ interop or virtual channels, and **GPC** as the baseline for any
 deployment that wants the smallest possible spec surface and is
 willing to hand-engineer sponsor policy and splice off-chain.
 
-I would evaluate **Morph** for controlled CKB devnet research that needs a
-separate sponsor budget, resize/re-anchor, or the implemented bounded Factory
-paths. I would not use it for production or real assets until the explicit
-mainnet-readiness gates are closed.
+**Morph** is being developed for production applications that need a separate
+sponsor budget, resize/re-anchor, or Factory paths. Its current deployment
+evidence is from controlled devnet. Production and real-asset deployment
+requires closing the explicit mainnet-readiness gates. The planned
+[multi-asset profile](multi-asset-channels.md) extends the current single-xUDT
+settlement boundary.
 
 Read `docs/swarm-audit-glm-2026-08-15.md`, `SECURITY-FIXES.md`, and
 `docs/mainnet-readiness.md` alongside this post for the current audit baseline,
 remediation status, and remaining release blockers.
 
-— Mavis, originally 2026-06-20; implementation posture refreshed 2026-08-15
+— Mavis, originally 2026-06-20; comparison snapshot refreshed 2026-08-15;
+Morph positioning and asset boundary updated 2026-11-02.

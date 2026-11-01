@@ -178,4 +178,4 @@ make devnet-stateful-e2e
 - [Devnet guide](devnet.md): run the local node and report gates.
 - [Implementation notes](implementation.md): protocol objects and scripts.
 - [Roadmap](roadmap.md): what is done and what remains.
-- [Mainnet readiness](mainnet-readiness.md): why this is not production yet.
+- [Mainnet readiness](mainnet-readiness.md): production release requirements.

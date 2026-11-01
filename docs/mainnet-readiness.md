@@ -1,7 +1,8 @@
 # Mainnet Readiness
 
-Morph Channel is not mainnet-ready and is not production real-assets software.
-This document explains what remains before any responsible production claim.
+Morph Channel is being developed for production deployment. This document
+tracks the evidence required to authorise a mainnet or real-asset release;
+the current release remains approved only for controlled devnet use.
 
 ## Current Position
 
@@ -25,6 +26,7 @@ is necessary evidence, but it is not enough for mainnet.
 | --- | --- | --- |
 | Independent protocol review | External review of state, vault, sponsor, splice, and factory rules. | Open. |
 | Independent script review | Review of no-std CKB parsing, cell selection, since handling, and error paths. | Open. |
+| Multi-asset channel profile | Versioned multi-Vault authority, complete-set retirement, per-type conservation, capacity accounting, and end-to-end recovery for multiple xUDT types in one channel. | Proposed; current settlement supports at most one xUDT type. See [multi-asset channels](multi-asset-channels.md). Required before releasing that profile. |
 | Exact Vault provenance | Activation/rotation binds every bilateral and Factory Vault to its exact CKB OutPoint; clone/substitution negatives pass. | Implemented and locally verified; independent review remains open. |
 | Factory state sovereignty | FactoryState uses the type-bound Morph StateLock; participant/reduced proofs, rather than a fee payer's secp lock, authorise state transitions. | Implemented for the sole unpublished Factory shape; independent review remains open. |
 | Factory child provenance | A FactoryProof child StateType commits and verifies the exact input FactoryType script hash that authorises materialisation. | Implemented with a CKB-VM negative test; independent review remains open. |
@@ -129,7 +131,7 @@ prohibits real assets.
 
 | Question | Go condition |
 | --- | --- |
-| Can the current repo be used for local research? | Yes. |
+| Can the current repo be used for production implementation work? | Yes; release approval follows the gates above. |
 | Can it be used for devnet evidence generation? | Yes. |
 | Can it be used for mainnet real assets today? | No. |
 | What is the next readiness step? | External review, independent-host/operator rehearsal, at least 1000 fresh public-network latency samples, and repeated public-network reorg/fee evidence. |

@@ -1,6 +1,6 @@
 # CKB Contracts
 
-This directory contains the CKB script boundary for the devnet prototype.
+This directory contains the CKB script boundary for Morph Channel.
 
 The repository implements host-side protocol semantics in `morph-core` and the
 current no-std CKB script boundary: fixed-layout body parsers where schemas are
