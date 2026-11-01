@@ -194,6 +194,21 @@ export interface WatchtowerState {
   provenance: RecordProvenance;
 }
 
+export interface MultiAssetRecoverySummary {
+  package_id: Hex32;
+  channel_id: Hex32;
+  funding_context_id: Hex32;
+  state_number: string;
+  phase: 'active' | 'settling';
+  vaults_bound: boolean;
+  vault_count: number;
+  witness_bytes: number;
+  dependency_count: number;
+  state_carrier_capacity: string;
+  signer_pubkeys: [string, string];
+  assets: Array<{ type_hash: Hex32 | null; reserve: string; business_ckb: string; amount: string }>;
+}
+
 export interface NodeState {
   pubkey: Pubkey;
   node_id: Hex32;
@@ -209,6 +224,8 @@ export interface NodeState {
   invoices: InvoiceRecord[];
   factories: FactoryRecord[];
   conditional_batches: ConditionalBatchPackage[];
+  multi_asset_packages?: MultiAssetRecoverySummary[];
+  multi_asset_package_count?: number;
   events: HubEvent[];
   required_flows: FlowKey[];
   completed_flows: FlowKey[];
@@ -274,6 +291,8 @@ export const emptyState: NodeState = {
   invoices: [],
   factories: [],
   conditional_batches: [],
+  multi_asset_packages: [],
+  multi_asset_package_count: 0,
   events: [],
   required_flows: [],
   completed_flows: [],

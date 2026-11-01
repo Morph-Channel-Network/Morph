@@ -94,6 +94,8 @@ use crate::watch_policy::{WatchPolicyRun, read_watchtower_policy};
 
 const DEFAULT_SECP_TYPE_HASH: &str =
     "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8";
+#[cfg(feature = "devnet")]
+pub mod multi_asset;
 pub const DEFAULT_SPONSOR_MIN_STATE_NUMBER: u64 = 1;
 pub const DEFAULT_SPONSOR_MAX_STATE_NUMBER: u64 = 1 << 20;
 const CONTRACTS: [(&str, &str); 8] = [
@@ -14857,6 +14859,19 @@ fn morph_script_error_name(code: i16) -> Option<&'static str> {
             Some("SponsorPolicyUnsupported")
         }
         value if value == ScriptError::StateCarrierMismatch as i16 => Some("StateCarrierMismatch"),
+        value if value == ScriptError::MultiAssetEncoding as i16 => Some("MultiAssetEncoding"),
+        value if value == ScriptError::MultiAssetCommitmentMismatch as i16 => {
+            Some("MultiAssetCommitmentMismatch")
+        }
+        value if value == ScriptError::MultiAssetConservationMismatch as i16 => {
+            Some("MultiAssetConservationMismatch")
+        }
+        value if value == ScriptError::MultiAssetCapacityMismatch as i16 => {
+            Some("MultiAssetCapacityMismatch")
+        }
+        value if value == ScriptError::MultiAssetVaultSetIncomplete as i16 => {
+            Some("MultiAssetVaultSetIncomplete")
+        }
         _ => None,
     }
 }

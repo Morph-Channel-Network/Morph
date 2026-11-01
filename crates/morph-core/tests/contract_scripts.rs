@@ -64,6 +64,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
+#[path = "contract_scripts/multi_asset.rs"]
+mod multi_asset;
+
 const MAX_CYCLES: u64 = 50_000_000;
 const CELL_CAPACITY: u64 = 100_000_000_000;
 const ALICE_CAPACITY: u64 = 60_000_000_000;

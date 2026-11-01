@@ -88,6 +88,7 @@ ui/morph-hub                   React + Vite + TypeScript operator console.
 ### State header and witness formats
 
 - `StateHeader` has a fixed encoded length of 346 bytes (`STATE_HEADER_LEN` in `morph-script-common`). `encode_state_header` / `StateHeader::parse` are the only legal encoders; treat the byte order as load-bearing.
+- The multi-asset candidate uses the separate `multi_asset::MultiAssetStateHeader` parser and encoder: 414 bytes, State layout 2, descriptor 4, and domain-separated content/OutPoint set commitments. Its legacy materialisation/OutPoint fields are zero. Legacy `StateHeader::parse` still rejects that shape. See `docs/multi-asset-wire.md`; do not feed candidate packages through legacy single-Vault helpers.
 - `pub vault_materialisation_root: Bytes32` in `crates/morph-core/src/types.rs` is the sole JSON and Rust field name; unpublished aliases are intentionally unsupported.
 - Factory state headers (`FACTORY_STATE_HEADER_LEN = 302`), splice headers (`SPLICE_HEADER_LEN = 485`, `FACTORY_SPLICE_HEADER_LEN = 469`), and witness envelopes (`WITNESS_ENVELOPE_LEN = 8 + 2 + 2 + 2 + 4 + 32`, magic `b"MORPHW!!"`) are likewise fixed-layout. Splice-out headers sign the exact `withdrawal_lock_hash`; splice-in headers require it to be zero.
 

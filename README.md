@@ -58,9 +58,10 @@ Implemented locally:
 
 - bilateral CKB channels: open, publish, supersede, finalise, and sponsored
   publication;
-- CKB and single-xUDT settlement through the same state/vault authority model;
-  multiple xUDT types in one channel are the next planned asset extension
-  ([design](docs/multi-asset-channels.md));
+- CKB and single-xUDT settlement in the released profiles, plus a candidate
+  bilateral multi-asset profile with up to eight Vaults, exact whole-set
+  activation/retirement, CLI/SDK recovery, and durable Hub import/export
+  ([candidate encoding](docs/multi-asset-wire.md));
 - splice-in and splice-out, so a channel can be resized without starting over;
 - watchtower-style package publication with cursor persistence, policy checks,
   canonical block-hash reorg recovery, JSONL alerts, and optional webhook alerts;

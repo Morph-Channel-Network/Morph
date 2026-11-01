@@ -2,7 +2,7 @@ import { Activity, BadgeCheck, Factory, FileJson, GitBranch, Network, Plus, Radi
 import type { LucideIcon } from 'lucide-react';
 import type React from 'react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { connectPeer, getStateFile, postAction, previewStateFile, replaceStateFile, type RestorePreview } from './api';
+import { connectPeer, getMultiAssetRecoveryPackage, getStateFile, postAction, previewStateFile, replaceStateFile, type RestorePreview } from './api';
 import { ConfirmActionDialog, ValidatedInput, ValidatedTextarea } from './components';
 import {
   Asset,
@@ -920,6 +920,28 @@ export function StateActions({ state, runAction, busy }: { state: NodeState; run
   const [restoreCandidate, setRestoreCandidate] = useState<{ payload: unknown; preview: RestorePreview } | null>(null);
   const canRestore = hasHubScope(state.security, 'restore');
   const restoreAvailable = state.security.state_restore_enabled && canRestore;
+  const [recoveryJson, setRecoveryJson] = useState('');
+  const [recoveryStatus, setRecoveryStatus] = useState('');
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const canWrite = hasHubScope(state.security, 'write');
+
+  const loadRecovery = async (id: string) => {
+    setRecoveryBusy(true);
+    setRecoveryStatus('');
+    try { setRecoveryJson(JSON.stringify(await getMultiAssetRecoveryPackage(id), null, 2)); }
+    catch (error) { setRecoveryStatus((error as Error).message); }
+    finally { setRecoveryBusy(false); }
+  };
+
+  const importRecovery = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canWrite) return;
+    void runAction('Retain multi-asset recovery', () => {
+      if (recoveryJson.length > 128 * 1024) throw new Error('Recovery JSON exceeds 128 KiB');
+      const packageValue: unknown = JSON.parse(requiredText(recoveryJson, 'Recovery package JSON'));
+      return postAction('/api/multi-asset-packages', packageValue);
+    });
+  };
 
   const exportState = async () => {
     if (!canRestore) return;
@@ -967,6 +989,22 @@ export function StateActions({ state, runAction, busy }: { state: NodeState; run
 
   return (
     <div className="drawer-section">
+      <h2>Multi-asset recovery</h2>
+      <p>Retain signed withdrawal evidence for the current channel state.</p>
+      <form className="form-grid" onSubmit={importRecovery}>
+        <label>Recovery package JSON
+          <textarea className="mono" data-testid="multi-asset-recovery-json" maxLength={128 * 1024} value={recoveryJson} onChange={event => setRecoveryJson(event.target.value)} />
+        </label>
+        <button data-testid="multi-asset-recovery-import" disabled={busy || recoveryBusy || !canWrite || !recoveryJson.trim()}><Upload size={15} /> Validate and retain</button>
+      </form>
+      {recoveryStatus && <small className="inline-error">{recoveryStatus}</small>}
+      <div className="stack-list">
+        {(state.multi_asset_packages ?? []).map(packageValue => (
+          <button type="button" className="copy-button" key={packageValue.package_id} disabled={busy || recoveryBusy} onClick={() => { void loadRecovery(packageValue.package_id); }}>
+            <FileJson size={15} /> {shortHex(packageValue.channel_id)} · state {packageValue.state_number} · {packageValue.vault_count} assets
+          </button>
+        ))}
+      </div>
       <h2>State File</h2>
       <div className="state-path">
         <strong>{state.state_path || 'not loaded'}</strong>

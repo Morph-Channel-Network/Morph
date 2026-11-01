@@ -14,3 +14,6 @@ publish = false
 ckb-hash.workspace = true
 k256.workspace = true
 sha2.workspace = true
+
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+ckb-std.workspace = true

@@ -74,30 +74,29 @@ fn validate_sponsored_state(policy: &SponsorPolicy) -> Result<()> {
     loop {
         match load_cell_data(index, Source::Output) {
             Ok(data) => {
-                if let Ok(header) = StateHeader::parse(&data) {
-                    if header.channel_id() == policy.channel_id() {
-                        header.validate_profile()?;
-                        if sponsored_state.is_some() {
-                            return Err(ScriptError::StateCellAmbiguous);
-                        }
-                        if header.phase() != PHASE_SETTLING {
-                            return Err(ScriptError::NewStateNotSettling);
-                        }
-                        if header.state_number() < policy.min_state_number()
-                            || header.state_number() > policy.max_state_number()
-                        {
-                            return Err(ScriptError::SponsorStateOutOfRange);
-                        }
-                        let type_hash = load_cell_type_hash(index, Source::Output)
-                            .map_err(|_| ScriptError::Encoding)?
-                            .ok_or(ScriptError::StateTypeMismatch)?;
-                        if type_hash.as_slice() != policy.publication_state_type_hash() {
-                            return Err(ScriptError::StateTypeMismatch);
-                        }
-                        let mut funding_anchor = [0u8; BYTE32_LEN];
-                        funding_anchor.copy_from_slice(header.funding_anchor());
-                        sponsored_state = Some((header.state_number(), funding_anchor));
+                if let Ok(header) = publication_state_header(&data)
+                    && header.channel_id() == policy.channel_id()
+                {
+                    if sponsored_state.is_some() {
+                        return Err(ScriptError::StateCellAmbiguous);
                     }
+                    if header.phase() != PHASE_SETTLING {
+                        return Err(ScriptError::NewStateNotSettling);
+                    }
+                    if header.state_number() < policy.min_state_number()
+                        || header.state_number() > policy.max_state_number()
+                    {
+                        return Err(ScriptError::SponsorStateOutOfRange);
+                    }
+                    let type_hash = load_cell_type_hash(index, Source::Output)
+                        .map_err(|_| ScriptError::Encoding)?
+                        .ok_or(ScriptError::StateTypeMismatch)?;
+                    if type_hash.as_slice() != policy.publication_state_type_hash() {
+                        return Err(ScriptError::StateTypeMismatch);
+                    }
+                    let mut funding_anchor = [0u8; BYTE32_LEN];
+                    funding_anchor.copy_from_slice(header.funding_anchor());
+                    sponsored_state = Some((header.state_number(), funding_anchor));
                 }
                 index += 1;
             }
@@ -125,8 +124,7 @@ fn ensure_publication_backed_by_state_type_input(
                 if type_hash.as_slice() == policy.publication_state_type_hash() {
                     let data =
                         load_cell_data(index, Source::Input).map_err(|_| ScriptError::Encoding)?;
-                    let header = StateHeader::parse(&data)?;
-                    header.validate_profile()?;
+                    let header = publication_state_header(&data)?;
                     if header.funding_anchor() != output_funding_anchor {
                         return Err(ScriptError::FundingAnchorMismatch);
                     }
@@ -140,6 +138,18 @@ fn ensure_publication_backed_by_state_type_input(
         }
     }
     Err(ScriptError::SponsorStateOutOfRange)
+}
+
+#[cfg(target_arch = "riscv64")]
+fn publication_state_header(data: &[u8]) -> Result<StateHeader<'_>> {
+    use morph_script_common::multi_asset::{MULTI_ASSET_STATE_HEADER_LEN, MultiAssetStateHeader};
+    if data.len() == MULTI_ASSET_STATE_HEADER_LEN {
+        MultiAssetStateHeader::parse(data)?.base()
+    } else {
+        let header = StateHeader::parse(data)?;
+        header.validate_profile()?;
+        Ok(header)
+    }
 }
 
 #[cfg(target_arch = "riscv64")]

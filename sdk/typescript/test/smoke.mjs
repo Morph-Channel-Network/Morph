@@ -1,12 +1,69 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
   createSignedPaymentPayload,
   deriveMorphAccountId,
   MorphAgentClient,
   MorphHubClient,
+  inspectMultiAssetPackage,
   verifySignedPaymentPayload,
 } from "../dist/index.js";
+
+const multiAsset = JSON.parse(await readFile(new URL("./fixtures/multi-asset.json", import.meta.url), "utf8"));
+const multiAssetSummary = JSON.parse(await readFile(new URL("./fixtures/multi-asset-summary.json", import.meta.url), "utf8"));
+assert.deepEqual(inspectMultiAssetPackage(multiAsset), multiAssetSummary);
+assert.equal(multiAssetSummary.assets[0].amount, ((1n << 127n) - 1n).toString());
+assert.throws(() => inspectMultiAssetPackage({ ...multiAsset, state_carrier_capacity: "0100000000000" }), /carrier capacity/);
+assert.throws(() => inspectMultiAssetPackage({ ...multiAsset, witness_hex: `${multiAsset.witness_hex}00` }), /truncated recovery evidence/);
+assert.throws(() => inspectMultiAssetPackage({ ...multiAsset, cell_deps: [] }), /incomplete code dependencies/);
+assert.throws(() => inspectMultiAssetPackage({ ...multiAsset, cell_deps: [...multiAsset.cell_deps, multiAsset.cell_deps[0]] }), /duplicate or unordered code dependencies/);
+const badSignature = Buffer.from(multiAsset.signature_witness_hex.slice(2), "hex");
+badSignature[40] ^= 1;
+assert.throws(() => inspectMultiAssetPackage({ ...multiAsset, signature_witness_hex: `0x${badSignature.toString("hex")}` }), /signature/);
+
+// Re-sign a descriptor that burns type B to mint type A. Signature validity
+// must never replace separate conservation for the two xUDT domains.
+const forged = { ...multiAsset };
+const forgedHeader = Buffer.from(forged.header_hex.slice(2), "hex");
+const forgedWitness = Buffer.from(forged.witness_hex.slice(2), "hex");
+const descriptorStart = 28 + forgedWitness.readUInt32LE(12);
+const descriptorLength = forgedWitness.readUInt32LE(16);
+for (const [assetIndex, delta] of [[0, 1n], [1, -1n]]) {
+  const offset = descriptorStart + 100 + assetIndex * 97 + 33 + 16;
+  const amount = forgedWitness.readBigUInt64LE(offset) + (forgedWitness.readBigUInt64LE(offset + 8) << 64n) + delta;
+  forgedWitness.writeBigUInt64LE(amount & ((1n << 64n) - 1n), offset);
+  forgedWitness.writeBigUInt64LE(amount >> 64n, offset + 8);
+}
+const ckbHash = (...parts) => blake2b(Buffer.concat(parts.map((part) => Buffer.from(part))), {
+  dkLen: 32, personalization: Buffer.from("ckb-default-hash"),
+});
+forgedHeader.set(ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1"), forgedWitness.subarray(descriptorStart, descriptorStart + descriptorLength)), 214);
+const forgedDigest = ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_STATE_V1"), forgedHeader);
+const fixtureKeys = [Buffer.alloc(32, 1), Buffer.alloc(32, 2)]
+  .sort((a, b) => Buffer.compare(Buffer.from(secp256k1.getPublicKey(a, true)), Buffer.from(secp256k1.getPublicKey(b, true))));
+const forgedSignatures = Buffer.from(multiAsset.signature_witness_hex.slice(2), "hex");
+fixtureKeys.forEach((key, index) => {
+  const signature = secp256k1.sign(forgedDigest, key, { prehash: false, format: "compact" });
+  assert.equal(secp256k1.verify(signature, forgedDigest, secp256k1.getPublicKey(key, true), { prehash: false, format: "compact" }), true);
+  forgedSignatures.set(signature, 37 + index * 97);
+});
+forged.header_hex = `0x${forgedHeader.toString("hex")}`;
+forged.witness_hex = `0x${forgedWitness.toString("hex")}`;
+forged.signature_witness_hex = `0x${forgedSignatures.toString("hex")}`;
+assert.throws(() => inspectMultiAssetPackage(forged), /per-asset conservation mismatch/);
+
+const largeState = { ...multiAsset };
+const largeHeader = Buffer.from(largeState.header_hex.slice(2), "hex");
+largeHeader.writeBigUInt64LE((1n << 64n) - 1n, 140);
+const largeDigest = ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_STATE_V1"), largeHeader);
+const largeSignatures = Buffer.from(multiAsset.signature_witness_hex.slice(2), "hex");
+fixtureKeys.forEach((key, index) => largeSignatures.set(secp256k1.sign(largeDigest, key, { prehash: false, format: "compact" }), 37 + index * 97));
+largeState.header_hex = `0x${largeHeader.toString("hex")}`;
+largeState.signature_witness_hex = `0x${largeSignatures.toString("hex")}`;
+assert.equal(inspectMultiAssetPackage(largeState).state_number, ((1n << 64n) - 1n).toString());
 
 const requirements = {
   requirement_id: `0x${"11".repeat(32)}`,
@@ -63,6 +120,25 @@ globalThis.fetch = async (_url, init) => {
 try {
   const client = new MorphAgentClient("https://agent.example.com", { apiBearerToken });
   assert.deepEqual(await client.supported(), { network: "morph-ckb" });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+globalThis.fetch = async (url, init) => {
+  assert.equal(init.headers.authorization, `Bearer ${apiBearerToken}`);
+  assert.equal(new URL(url).search, "");
+  if (init.method === "POST") {
+    assert.equal(new URL(url).pathname, "/api/multi-asset-packages");
+    assert.deepEqual(JSON.parse(init.body), multiAsset);
+    return new Response(JSON.stringify({ multi_asset_package_count: 1 }), { status: 200 });
+  }
+  assert.equal(new URL(url).pathname, `/api/multi-asset-packages/${multiAssetSummary.package_id}`);
+  return new Response(JSON.stringify(multiAsset), { status: 200 });
+};
+try {
+  const client = new MorphHubClient("https://hub.example.com", apiBearerToken);
+  assert.deepEqual(await client.importMultiAssetPackage(multiAsset), { multi_asset_package_count: 1 });
+  assert.deepEqual(await client.multiAssetPackage(multiAssetSummary.package_id), multiAsset);
 } finally {
   globalThis.fetch = originalFetch;
 }

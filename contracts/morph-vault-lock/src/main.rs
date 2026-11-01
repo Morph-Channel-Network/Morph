@@ -3,6 +3,9 @@
 #![forbid(unsafe_code)]
 
 #[cfg(target_arch = "riscv64")]
+mod multi_asset;
+
+#[cfg(target_arch = "riscv64")]
 use ckb_std::ckb_constants::Source;
 #[cfg(target_arch = "riscv64")]
 use ckb_std::ckb_types::prelude::*;
@@ -54,6 +57,12 @@ fn main() {}
 fn main() -> Result<()> {
     let script = load_script().map_err(|_| ScriptError::Encoding)?;
     let args = script.args().raw_data();
+    if args
+        .as_ref()
+        .starts_with(morph_script_common::multi_asset::MULTI_ASSET_VAULT_ARGS_MAGIC)
+    {
+        return multi_asset::validate(args.as_ref());
+    }
     if args.len() != VAULT_ARGS_LEN && args.len() != VAULT_ARGS_V2_LEN {
         return Err(ScriptError::WrongArgsLength);
     }
@@ -438,10 +447,8 @@ fn find_unique_state_input(
                         Source::Input,
                         expected_funding_anchor,
                         expected_min_since,
-                        expected_type_code_hash,
-                        expected_type_hash_type,
-                        expected_lock_code_hash,
-                        expected_lock_hash_type,
+                        (expected_type_code_hash, expected_type_hash_type),
+                        (expected_lock_code_hash, expected_lock_hash_type),
                     )?
                 {
                     if found.is_some() {
@@ -644,11 +651,11 @@ fn state_cell_scripts_match(
     source: Source,
     expected_funding_anchor: &[u8],
     expected_min_since: u64,
-    expected_type_code_hash: &[u8],
-    expected_type_hash_type: u8,
-    expected_lock_code_hash: &[u8],
-    expected_lock_hash_type: u8,
+    expected_type: (&[u8], u8),
+    expected_lock: (&[u8], u8),
 ) -> Result<bool> {
+    let (expected_type_code_hash, expected_type_hash_type) = expected_type;
+    let (expected_lock_code_hash, expected_lock_hash_type) = expected_lock;
     let Some(state_type) = load_cell_type(index, source).map_err(|_| ScriptError::Encoding)? else {
         return Ok(false);
     };

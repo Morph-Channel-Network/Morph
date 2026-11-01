@@ -12,6 +12,13 @@
 // part of the audited transaction shape:
 //
 // - StateHeader: 346 bytes
+// - MultiAssetStateHeader: 414 bytes
+// - MultiAssetVaultEntry: 97 bytes
+// - MultiAssetPayoutEntry: 97 bytes
+// - MultiAssetVaultManifestPrefix: 4 bytes
+// - MultiAssetSettlementDescriptorPrefix: 100 bytes
+// - MultiAssetRecoveryWitnessPrefix: 28 bytes
+// - MultiAssetVaultLockArgs: 116 bytes
 // - SpliceHeader: 485 bytes
 // - SpliceSignatureWitness: 198 bytes
 // - SpliceVaultAssetAmount: 49 bytes
@@ -98,6 +105,81 @@ struct StateHeader {
     state_layout_version: uint16,
     vault_outpoint_commitment: Byte32,
 }
+
+// Candidate multi-asset profile. This State prefix has layout version 2 and
+// descriptor version 4; its legacy single-Vault fields are zero. It is parsed
+// and signed separately, never reinterpreted by the legacy StateHeader parser.
+struct MultiAssetStateHeader {
+    state_prefix: StateHeader,
+    vault_content_set_root: Byte32,
+    vault_outpoint_set_root: Byte32,
+    vault_count: uint16,
+    reserved: uint16,
+}
+
+struct MultiAssetId {
+    kind: byte,
+    type_hash: Byte32,
+}
+
+struct MultiAssetAllocation {
+    reserve: uint64,
+    business_ckb: uint64,
+    amount: uint128,
+}
+
+struct MultiAssetVaultEntry {
+    asset: MultiAssetId,
+    lock_hash: Byte32,
+    allocation: MultiAssetAllocation,
+}
+
+struct MultiAssetPayoutEntry {
+    asset: MultiAssetId,
+    payout_0: MultiAssetAllocation,
+    payout_1: MultiAssetAllocation,
+}
+
+struct MultiAssetVaultManifestPrefix {
+    version: uint16,
+    count: byte,
+    reserved: byte,
+}
+
+struct MultiAssetSettlementDescriptorPrefix {
+    version: uint16,
+    count: byte,
+    reserved: byte,
+    payout_lock_0: Byte32,
+    payout_lock_1: Byte32,
+    carrier_refund_lock: Byte32,
+}
+
+struct MultiAssetRecoveryWitnessPrefix {
+    magic: WitnessEnvelopeMagic,
+    version: uint16,
+    flags: uint16,
+    manifest_len: uint32,
+    descriptor_len: uint32,
+    outpoint_count: uint16,
+    reserved: uint16,
+    scripts_len: uint32,
+}
+
+struct MultiAssetVaultLockArgs {
+    magic: WitnessEnvelopeMagic,
+    version: uint16,
+    reserved: uint16,
+    funding_anchor: Byte32,
+    finalise_since: uint64,
+    state_type_hash: Byte32,
+    state_lock_hash: Byte32,
+}
+
+// Arrays following the multi-asset prefixes are raw fixed-entry arrays with
+// explicit bounded counts, not Molecule vector encodings. Script evidence is
+// canonical full CKB Scripts, each prefixed by a u32 length. The live encoders
+// in morph-script-common::multi_asset remain authoritative.
 
 struct SpliceHeader {
     protocol_version: uint16,

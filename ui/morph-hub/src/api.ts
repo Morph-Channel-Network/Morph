@@ -13,6 +13,7 @@ export interface RestoreStateSummary {
   peers: number;
   channels: number;
   factories: number;
+  multi_asset_packages?: number;
   invoices: number;
   completed_flows: number;
   events: number;
@@ -94,6 +95,11 @@ export async function postAction(path: string, body?: unknown): Promise<NodeStat
     method: 'POST',
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+export async function getMultiAssetRecoveryPackage(packageId: string): Promise<Record<string, unknown>> {
+  if (!/^0x[0-9a-f]{64}$/.test(packageId)) throw new Error('Invalid recovery package id');
+  return request<Record<string, unknown>>(`/api/multi-asset-packages/${packageId}`);
 }
 
 export async function connectPeer(pubkey: string, alias: string): Promise<NodeState> {

@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::conditional_packages::StoredConditionalBatchPackage;
+use crate::multi_asset_packages::{MultiAssetPackageSummary, StoredMultiAssetPackage};
 use crate::rpc::CkbRpcClient;
 use crate::watch_alert::{WatchAlertEvent, WatchAlertSeverity, WatchtowerAlert};
 
@@ -38,6 +39,8 @@ const MAX_CONCURRENT_SSE_STREAMS: usize = 8;
 const MUTATION_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const MAX_MUTATIONS_PER_WINDOW: u32 = 120;
 const MAX_INVOICE_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
+const MAX_MULTI_ASSET_RECOVERY_PACKAGES: usize = 4096;
+const MAX_MULTI_ASSET_PACKAGE_VIEWS: usize = 32;
 
 pub struct HubServeOptions {
     pub listen: String,
@@ -86,7 +89,14 @@ struct HubRuntimeState {
     peer_pubkeys: BTreeMap<Bytes32, String>,
     node: MorphNodeState,
     conditional_batches: BTreeMap<Bytes32, StoredConditionalBatchPackage>,
+    multi_asset_packages: BTreeMap<(Bytes32, Bytes32, u64), HubMultiAssetPackage>,
     events: Vec<HubEvent>,
+}
+
+#[derive(Clone)]
+struct HubMultiAssetPackage {
+    package: StoredMultiAssetPackage,
+    summary: MultiAssetPackageSummary,
 }
 
 #[derive(Default)]
@@ -157,6 +167,8 @@ struct PersistedHubState {
     factories: Vec<PersistedFactory>,
     #[serde(default)]
     conditional_batches: Vec<StoredConditionalBatchPackage>,
+    #[serde(default)]
+    multi_asset_packages: Vec<StoredMultiAssetPackage>,
     invoices: Vec<StoredMorphInvoice>,
     completed_flows: Vec<MorphBusinessFlow>,
     events: Vec<HubEvent>,
@@ -246,6 +258,7 @@ struct RestoreStateSummary {
     channels: usize,
     factories: usize,
     conditional_batches: usize,
+    multi_asset_packages: usize,
     invoices: usize,
     completed_flows: usize,
     events: usize,
@@ -259,6 +272,7 @@ impl RestoreStateSummary {
             channels: state.node.channels.len(),
             factories: state.node.factories.len(),
             conditional_batches: state.conditional_batches.len(),
+            multi_asset_packages: state.multi_asset_packages.len(),
             invoices: state.node.invoices.records().count(),
             completed_flows: state.node.completed_flows.len(),
             events: state.events.len(),
@@ -387,6 +401,8 @@ struct HubView {
     invoices: Vec<InvoiceView>,
     factories: Vec<FactoryView>,
     conditional_batches: Vec<StoredConditionalBatchPackage>,
+    multi_asset_packages: Vec<MultiAssetPackageSummary>,
+    multi_asset_package_count: usize,
     events: Vec<EventView>,
     required_flows: Vec<&'static str>,
     completed_flows: Vec<&'static str>,
@@ -865,6 +881,7 @@ impl HubStore {
                 peer_pubkeys: BTreeMap::new(),
                 node: MorphNodeState::new(node_id, network)?,
                 conditional_batches: BTreeMap::new(),
+                multi_asset_packages: BTreeMap::new(),
                 events: Vec::new(),
             }
         };
@@ -1100,6 +1117,15 @@ impl HubStore {
                 })
                 .collect::<Result<Vec<_>>>()?,
             conditional_batches: self.state.conditional_batches.values().cloned().collect(),
+            multi_asset_packages: self
+                .state
+                .multi_asset_packages
+                .values()
+                .rev()
+                .take(MAX_MULTI_ASSET_PACKAGE_VIEWS)
+                .map(|entry| entry.summary.clone())
+                .collect(),
+            multi_asset_package_count: self.state.multi_asset_packages.len(),
             events: self.state.events.iter().map(event_view).collect(),
             required_flows: MorphNodeState::required_business_flows()
                 .iter()
@@ -1158,6 +1184,12 @@ impl HubStore {
                 })
                 .collect::<Result<Vec<_>>>()?,
             conditional_batches: self.state.conditional_batches.values().cloned().collect(),
+            multi_asset_packages: self
+                .state
+                .multi_asset_packages
+                .values()
+                .map(|entry| entry.package.clone())
+                .collect(),
             invoices: self.state.node.invoices.records().cloned().collect(),
             completed_flows: self.state.node.completed_flows.iter().copied().collect(),
             events: self.state.events.clone(),
@@ -1297,12 +1329,32 @@ impl HubRuntimeState {
         for invoice in persisted.invoices {
             node.invoices.insert_stored(invoice)?;
         }
+        let mut multi_asset_packages = BTreeMap::new();
+        ensure!(
+            persisted.multi_asset_packages.len() <= MAX_MULTI_ASSET_RECOVERY_PACKAGES,
+            "too many multi-asset recovery packages"
+        );
+        for package in persisted.multi_asset_packages {
+            let summary = package.validate()?;
+            let key = (
+                parse_bytes32("channel_id", &summary.channel_id)?,
+                parse_bytes32("funding_context_id", &summary.funding_context_id)?,
+                summary.state_number.parse::<u64>()?,
+            );
+            ensure!(
+                multi_asset_packages
+                    .insert(key, HubMultiAssetPackage { package, summary })
+                    .is_none(),
+                "multi-asset funding-context state numbers must be unique"
+            );
+        }
         node.completed_flows = persisted.completed_flows.into_iter().collect();
         Ok(Self {
             pubkey,
             peer_pubkeys,
             node,
             conditional_batches,
+            multi_asset_packages,
             events: persisted.events,
         })
     }
@@ -1395,6 +1447,15 @@ impl HubServer {
         }
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/api/health") | ("GET", "/api/state") => self.state_response(),
+            ("GET", path) if path.starts_with("/api/multi-asset-packages/") => {
+                let requested = path.trim_start_matches("/api/multi-asset-packages/");
+                let id = parse_bytes32("package_id", requested)?;
+                let id = hex_prefixed(&id);
+                let store = self.store_lock()?;
+                let entry = store.state.multi_asset_packages.values().find(|entry| entry.summary.package_id == id)
+                    .ok_or_else(|| anyhow!("multi-asset recovery package not found"))?;
+                Ok(json_response(200, "OK", &entry.package))
+            }
             ("GET", "/api/state-file") => {
                 let store = self.store_lock()?;
                 let persisted = store.persisted()?;
@@ -1603,6 +1664,32 @@ impl HubServer {
                     Some(batch_id),
                     "Validated conditional force-resolution package stored for watchtower recovery",
                 )?;
+                Ok(())
+            }),
+            ("POST", "/api/multi-asset-packages") => self.mutate(request_id, |store| {
+                let package: StoredMultiAssetPackage = parse_body(&request.body)?;
+                let summary = package.validate()?;
+                let channel_id = parse_bytes32("channel_id", &summary.channel_id)?;
+                let funding_context_id = parse_bytes32("funding_context_id", &summary.funding_context_id)?;
+                let state_number = summary.state_number.parse::<u64>()?;
+                let channel = store.state.node.channels.get(&channel_id).ok_or_else(|| anyhow!("multi-asset package channel is not open"))?;
+                ensure!(summary.vaults_bound && summary.phase == "settling", "recovery import requires a bound settling state");
+                ensure!(channel.funding_context_id == funding_context_id, "multi-asset package funding context is stale or unknown");
+                ensure!(channel.state_number == state_number, "multi-asset package state must match the current channel state");
+                let peer = store.state.peer_pubkeys.get(&channel.counterparty_node_id).ok_or_else(|| anyhow!("multi-asset counterparty public key is missing"))?;
+                let mut expected_signers = [canonical_pubkey(&store.state.pubkey)?, canonical_pubkey(peer)?];
+                expected_signers.sort();
+                let mut actual_signers = [canonical_pubkey(summary.signer_pubkeys[0].trim_start_matches("0x"))?, canonical_pubkey(summary.signer_pubkeys[1].trim_start_matches("0x"))?];
+                actual_signers.sort();
+                ensure!(expected_signers == actual_signers, "multi-asset package signers do not match the channel participants");
+                let key = (channel_id, funding_context_id, state_number);
+                if let Some(existing) = store.state.multi_asset_packages.get(&key) {
+                    ensure!(existing.package == package, "conflicting signed multi-asset states share a funding context and state number");
+                    return Ok(());
+                }
+                ensure!(store.state.multi_asset_packages.len() < MAX_MULTI_ASSET_RECOVERY_PACKAGES, "multi-asset recovery store is full; archive retained packages before importing more");
+                store.state.multi_asset_packages.insert(key, HubMultiAssetPackage { package, summary });
+                store.push_event(EventSeverity::Warning, "multi_asset_recovery_imported", Some(channel_id), "Validated multi-asset unilateral recovery package stored")?;
                 Ok(())
             }),
             ("POST", "/api/factories") => self.mutate(request_id, |store| {
@@ -2317,6 +2404,8 @@ fn hub_state_has_operational_records(state: &HubRuntimeState) -> bool {
     !state.node.peers.is_empty()
         || !state.node.channels.is_empty()
         || !state.node.factories.is_empty()
+        || !state.conditional_batches.is_empty()
+        || !state.multi_asset_packages.is_empty()
         || state.node.invoices.records().next().is_some()
         || !state.node.completed_flows.is_empty()
 }
@@ -3468,6 +3557,160 @@ mod tests {
         let reloaded =
             HubStore::load_or_create(path, &persisted_pubkey, MorphNetwork::Devnet).unwrap();
         assert_eq!(reloaded.state.conditional_batches.len(), 1);
+    }
+
+    #[test]
+    fn multi_asset_recovery_is_bound_to_participants_and_survives_restart() {
+        let package = crate::multi_asset_packages::fixture_package().unwrap();
+        let summary = package.validate().unwrap();
+        let local = summary.signer_pubkeys[0].trim_start_matches("0x");
+        let peer = summary.signer_pubkeys[1].trim_start_matches("0x");
+        let server = test_server(local);
+        let opened = route_json(
+            &server,
+            "POST",
+            "/api/channels",
+            json!({
+                "channel_id": summary.channel_id, "counterparty_pubkey": peer, "counterparty_alias": "multi-asset-peer",
+                "funding_context_id": summary.funding_context_id, "local": "500", "remote": "500", "sponsor_budget": 1000000,
+                "asset": { "kind": "xudt", "type_hash": summary.assets[0].type_hash }
+            }),
+        );
+        assert_eq!(opened.status, 200);
+        let published = route_json(
+            &server,
+            "POST",
+            format!("/api/channels/{}/publish", summary.channel_id),
+            json!({
+                "funding_context_id": summary.funding_context_id, "state_number": summary.state_number.parse::<u64>().unwrap()
+            }),
+        );
+        assert_eq!(published.status, 200);
+        let imported = route_json(
+            &server,
+            "POST",
+            "/api/multi-asset-packages",
+            serde_json::to_value(&package).unwrap(),
+        );
+        assert_eq!(
+            imported.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&imported.body)
+        );
+        let view: serde_json::Value = serde_json::from_slice(&imported.body).unwrap();
+        assert_eq!(view["multi_asset_package_count"], 1);
+        assert_eq!(
+            view["multi_asset_packages"][0]["package_id"],
+            summary.package_id
+        );
+        assert!(view["multi_asset_packages"][0].get("witness_hex").is_none());
+        let exported = route_empty(
+            &server,
+            "GET",
+            format!("/api/multi-asset-packages/{}", summary.package_id),
+        );
+        assert_eq!(exported.status, 200);
+        assert_eq!(
+            serde_json::from_slice::<StoredMultiAssetPackage>(&exported.body).unwrap(),
+            package
+        );
+        let duplicate = route_json(
+            &server,
+            "POST",
+            "/api/multi-asset-packages",
+            serde_json::to_value(&package).unwrap(),
+        );
+        assert_eq!(duplicate.status, 200);
+        let (path, pubkey) = {
+            let store = server.store.lock().unwrap();
+            (store.path.clone(), store.state.pubkey.clone())
+        };
+        let reloaded = HubStore::load_or_create(path, &pubkey, MorphNetwork::Devnet).unwrap();
+        assert_eq!(reloaded.state.multi_asset_packages.len(), 1);
+        let retained = reloaded.state.multi_asset_packages.values().next().unwrap();
+        assert_eq!(retained.package, package);
+        assert_eq!(retained.summary, summary);
+        let advanced = route_json(
+            &server,
+            "POST",
+            format!("/api/channels/{}/publish", summary.channel_id),
+            json!({
+                "funding_context_id": summary.funding_context_id, "state_number": 10
+            }),
+        );
+        assert_eq!(advanced.status, 200);
+        let stale = route_json(
+            &server,
+            "POST",
+            "/api/multi-asset-packages",
+            serde_json::to_value(&package).unwrap(),
+        );
+        assert_eq!(stale.status, 400);
+        assert_eq!(
+            server
+                .store
+                .lock()
+                .unwrap()
+                .state
+                .multi_asset_packages
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn multi_asset_recovery_rejects_foreign_participants_and_malformed_restore() {
+        let package = crate::multi_asset_packages::fixture_package().unwrap();
+        let summary = package.validate().unwrap();
+        let server = test_server(&pubkey_from_scalar(41));
+        let opened = route_json(
+            &server,
+            "POST",
+            "/api/channels",
+            json!({
+                "channel_id": summary.channel_id, "counterparty_pubkey": pubkey_from_scalar(42), "counterparty_alias": "foreign-peer",
+                "funding_context_id": summary.funding_context_id, "local": "500", "remote": "500", "sponsor_budget": 1000000,
+                "asset": { "kind": "xudt", "type_hash": summary.assets[0].type_hash }
+            }),
+        );
+        assert_eq!(opened.status, 200);
+        let published = route_json(
+            &server,
+            "POST",
+            format!("/api/channels/{}/publish", summary.channel_id),
+            json!({
+                "funding_context_id": summary.funding_context_id, "state_number": 9
+            }),
+        );
+        assert_eq!(published.status, 200);
+        let imported = route_json(
+            &server,
+            "POST",
+            "/api/multi-asset-packages",
+            serde_json::to_value(&package).unwrap(),
+        );
+        assert_eq!(imported.status, 400);
+        assert!(String::from_utf8_lossy(&imported.body).contains("signers do not match"));
+        let store = server.store.lock().unwrap();
+        let mut persisted = store.persisted().unwrap();
+        let mut malformed = package;
+        malformed.witness_hex.push_str("00");
+        persisted.multi_asset_packages.push(malformed);
+        assert!(HubRuntimeState::from_persisted(persisted).is_err());
+    }
+
+    #[test]
+    fn multi_asset_recovery_alone_is_operational_restore_state() {
+        let server = test_server(&pubkey_from_scalar(41));
+        let store = server.store.lock().unwrap();
+        let mut persisted = store.persisted().unwrap();
+        persisted
+            .multi_asset_packages
+            .push(crate::multi_asset_packages::fixture_package().unwrap());
+        let preview = store.restore_preview(persisted).unwrap();
+        assert!(!preview.allowed);
+        assert_eq!(preview.candidate.multi_asset_packages, 1);
     }
 
     #[test]

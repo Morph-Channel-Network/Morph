@@ -44,6 +44,7 @@ mod devnet;
 mod devnet_dispatch;
 mod factory_packages;
 mod hub;
+mod multi_asset_packages;
 mod packages;
 mod preproduction;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
@@ -226,6 +227,8 @@ enum Command {
     PrintFactoryFixture,
     /// Print a bounded CKB conditional-batch force-resolution package fixture.
     PrintConditionalBatchFixture,
+    /// Print a complete signed two-xUDT recovery package fixture.
+    PrintMultiAssetFixture,
     /// Print a conservative all-participant signed factory state package fixture.
     PrintFactoryStateFixture,
     /// Print a host-side authorised-participant signed factory state package fixture.
@@ -295,6 +298,18 @@ enum Command {
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
+    },
+    /// Validate complete multi-asset unilateral recovery evidence.
+    ValidateMultiAssetPackage {
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate and atomically retain a multi-asset recovery package.
+    StoreMultiAssetPackage {
+        path: PathBuf,
+        #[arg(long)]
+        store_dir: PathBuf,
     },
     /// Validate a conservative all-participant signed factory state package.
     ValidateFactoryStatePackage {
@@ -578,6 +593,29 @@ enum HubCommand {
 #[cfg(feature = "devnet")]
 #[derive(Debug, Subcommand)]
 enum DevnetCommand {
+    /// Exercise a complete multi-xUDT channel lifecycle on an isolated devnet.
+    MultiAssetSmoke {
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
+        private_key: String,
+        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
+        alice_private_key: String,
+        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
+        bob_private_key: String,
+        #[arg(long, default_value_t = 2)]
+        asset_count: usize,
+        #[arg(long, default_value_t = 100_000_000)]
+        fee: u64,
+        #[arg(long, default_value_t = 4)]
+        finalise_since: u64,
+        #[arg(long, default_value_t = 4)]
+        mine_blocks: u64,
+        #[arg(long, default_value = "target/multi-asset-devnet/packages")]
+        store_dir: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
     /// Print chain, node, and tip status.
     Check {
         /// Emit machine-readable JSON.
@@ -3045,6 +3083,13 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&package)?);
             Ok(())
         }
+        Command::PrintMultiAssetFixture => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&multi_asset_packages::fixture_package()?)?
+            );
+            Ok(())
+        }
         Command::PrintFactoryStateFixture => {
             let package = factory_packages::fixture_state_package()?;
             println!("{}", serde_json::to_string_pretty(&package)?);
@@ -3230,6 +3275,24 @@ fn main() -> Result<()> {
                     summary.resolved_capacities[0], summary.resolved_capacities[1]
                 );
             }
+            Ok(())
+        }
+        Command::ValidateMultiAssetPackage { path, json } => {
+            let summary = multi_asset_packages::read_package(&path)?.validate()?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&summary)?);
+            } else {
+                println!(
+                    "multi-asset package ok: channel={} state={} vaults={}",
+                    summary.channel_id, summary.state_number, summary.vault_count
+                );
+            }
+            Ok(())
+        }
+        Command::StoreMultiAssetPackage { path, store_dir } => {
+            let package = multi_asset_packages::read_package(&path)?;
+            let stored_path = multi_asset_packages::write_package(&store_dir, &package)?;
+            println!("{}", stored_path.display());
             Ok(())
         }
         Command::ValidateFactoryStatePackage { path, json } => {

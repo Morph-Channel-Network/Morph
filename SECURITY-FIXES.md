@@ -432,3 +432,49 @@ refunds, exact capacity conservation, and exactly two plain settlement outputs.
 Negative CKB-VM coverage rejects wrong preimages, premature refunds, descriptor
 substitution, wrong Batch Lock identity/args, and capacity loss. Conditional
 xUDT remains rejected by design.
+
+## Multi-asset bilateral candidate boundary
+
+The candidate adds a separate 414-byte State layout and descriptor version 4.
+Legacy encodings are unchanged. Both StateType and Vault Lock validate the
+entire bounded content/OutPoint set; exact canonical payout positions and a
+complete carrier refund conserve reserve, business CKB, and every xUDT type
+independently. Script preimages in recovery evidence prove occupied capacity
+before signing. Activation preserves the complete carrier capacity, with fees
+funded externally. Plain external fee change may share a refund address without
+being counted toward the canonical channel outputs.
+
+Named CKB-VM boundaries include:
+
+- `multi_asset_rejects_partial_set_retirement` and
+  `multi_asset_rejects_extra_vault_input`;
+- `multi_asset_rejects_byte_identical_vault_substitution` and
+  `multi_asset_rejects_activation_with_reordered_direct_dependencies`;
+- `multi_asset_rejects_fake_state_authority` and
+  `multi_asset_rejects_premature_finalise`;
+- `multi_asset_rejects_payout_reallocation_not_in_signed_descriptor`;
+- `multi_asset_rejects_missing_carrier_refund` and
+  `multi_asset_rejects_activation_carrier_fee_leakage`;
+- `multi_asset_rejects_signed_publication_in_changed_chain_context`.
+
+The host suite separately rejects cross-asset minting, reserve reclassification,
+overflow, noncanonical asset sets, missing scripts, inadequate capacity, and
+incomplete/exchanged OutPoints. Rust and TypeScript share a signed recovery
+fixture with quantities above JavaScript's safe integer range; the SDK also
+rejects a freshly signed cross-asset mint and preserves a u64-max state number.
+Hub import binds the two signers to the actual local channel participants and
+retains validated evidence across restart. Recovery packages count as
+operational records for the bootstrap-only restore boundary. Value-limit
+extraction counts every Vault, every xUDT type, and the State carrier.
+
+Whole-lifecycle CKB-VM evidence includes balanced, one-sided, plain-CKB plus
+two-xUDT, maximum-eight-Vault, and Sponsor-funded publication paths. Isolated
+real-node acceptance has committed two- and eight-xUDT funding, activation,
+publication, supersede, and finalisation, with initial signed exit evidence
+durably retained before funding broadcast. Candidate implementation details
+and commands are in [multi-asset-wire.md](docs/multi-asset-wire.md).
+
+This section does not close multi-asset splice, Factory reserve/child paths,
+typed conditions, publication/reorg automation, reviewed release manifests,
+or independent review. The v3 release manifest must not be relabelled as
+qualification for those pending surfaces.

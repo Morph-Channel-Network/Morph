@@ -11,6 +11,7 @@ pub mod backend;
 pub mod bridge;
 pub mod conditional;
 pub mod hash;
+pub mod multi_asset;
 pub mod node;
 pub mod policy;
 pub mod rgbpp;
@@ -26,6 +27,7 @@ pub use hash::{
     factory_vault_descriptor_commitment, funding_context_id, participants_commitment,
     splice_asset_delta_commitment, vault_descriptor_commitment, vault_outpoint_commitment,
 };
+pub use multi_asset::*;
 pub use node::*;
 pub use policy::*;
 pub use rgbpp::*;

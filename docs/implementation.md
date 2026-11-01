@@ -143,17 +143,19 @@ cannot substitute for the committed bilateral or Factory Vault.
 
 ### Current Asset Boundary
 
-The host model already represents multiple xUDT types through `AssetRegistry`,
-per-type conservation maps, and asset-qualified Factory rights. The deployed
+The host model represents multiple xUDT types through `AssetRegistry`,
+per-type conservation maps, and asset-qualified Factory rights. The legacy
 script profile is narrower: descriptor v2 names one xUDT type, and bilateral
 and Factory provenance bind one physical Vault Cell. Splice and Factory Vault
 descriptors have two asset slots, with physical paths limited to CKB plus one
 xUDT type. Descriptor v3 conditional batches are CKB-only.
 
-Multiple xUDT types in one channel require a versioned multi-Vault profile,
-including whole-set activation, retirement, and capacity accounting. The
-[multi-asset channel design](multi-asset-channels.md) records the proposed
-extension and its acceptance gates; it is not supported by current scripts.
+The [candidate multi-asset profile](multi-asset-wire.md) now implements a
+separate 414-byte State layout, 1–8 Vaults, whole-set activation and retirement,
+per-asset settlement, occupied-capacity evidence, CLI/SDK recovery, and durable
+Hub import/export. Multi-asset splice, Factory custody, conditional xUDT, and
+publication/reorg automation remain implementation work tracked by the
+[multi-asset channel design](multi-asset-channels.md).
 
 ```mermaid
 flowchart LR

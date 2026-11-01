@@ -1,9 +1,12 @@
 # Multi-Asset Channels
 
-Status: proposed production implementation direction, 2026-11-02. This document
-records the paper-to-code gap and recommended implementation sequence. It does
-not define an accepted wire encoding or claim that current scripts support
-multiple xUDT types in one channel.
+Status: implementation in progress, 2026-11-02. The candidate bilateral profile
+now has host validation, versioned State/Vault script paths, CKB-VM lifecycle
+evidence, lossless CLI/SDK recovery packages, and durable Hub import/export.
+The source release remains v3.0.0; multi-asset splice, Factory custody, typed
+conditions, and full publication/reorg automation are still implementation
+work. See [candidate wire profile](multi-asset-wire.md) for the implemented
+encoding and verification commands.
 
 ## Decision
 
@@ -28,10 +31,10 @@ implementation or a ready-made production asset profile.
 
 | Layer | Current code | Gap |
 | --- | --- | --- |
-| Host registry and accounting | `AssetRegistry.xudt_types` is a set; `PartitionTotals` uses maps keyed by Type hash. | Reuse the model, but make its accepted shape agree with the new script profile. |
+| Host registry and accounting | `AssetRegistry.xudt_types` is a set; `PartitionTotals` uses maps keyed by Type hash. | Candidate manifest/descriptor validation now agrees with the new bounded script profile. |
 | Factory rights | `FactoryRightId.asset_type` identifies the asset; kind 8 checks non-increase separately for each asset. | Rights express multiple assets, but do not establish custody or multi-asset child settlement. |
-| Bilateral settlement | `BilateralCkbXudtSettlementDescriptor` v2 has one `xudt_type_hash` and two participant outputs. | Add a canonical multi-asset output descriptor. |
-| Vault authority | `validate_current_vault_commitment` rejects a second group input and binds one content hash and exact OutPoint; State retirement finds one matching Vault. | Bind and verify the entire Vault set in both Vault and State scripts. |
+| Bilateral settlement | Legacy `BilateralCkbXudtSettlementDescriptor` v2 has one `xudt_type_hash` and two participant outputs. | Candidate descriptor 4 now supports per-asset canonical payouts. |
+| Vault authority | Legacy `validate_current_vault_commitment` rejects a second group input and binds one content hash and exact OutPoint. | Candidate State/Vault branches now independently verify whole-set activation and retirement. |
 | Splice and Factory reserve | Fixed descriptors have two asset slots; physical Vault paths admit CKB plus at most one xUDT type. | Version the descriptor, delta, reserve, and materialisation paths together. |
 | Conditional settlement | Descriptor v3 and Batch Lock settle only CKB. | Add typed conditions after ordinary multi-asset settlement has complete recovery evidence. |
 
@@ -125,6 +128,21 @@ after restart and canonical-chain reorganisation for the entire set.
 | 3 | Multi-asset splice and Factory custody/materialisation. | Signed asset admission/removal and deltas, full-authority Factory exits, then separately evidenced reduced paths. Unsupported combinations remain rejected. |
 | 4 | Recovery tooling and release candidate. | CLI/SDK/Hub/watchtower round trips, durable packages, restart/reorg recovery, devnet/stateful reports, reviewed ELFs, and independent review. |
 | 5 | Conditional xUDT extension. | Asset-bound preimage/refund leaves, typed Batch custody and payouts, capacity budgets, and independent force-resolution evidence. |
+
+Current evidence: steps 1–2 have bilateral host and CKB-VM coverage, and real
+two/eight-xUDT node lifecycles. Step 4 has CLI/SDK/Hub persistence and lossless
+cross-language fixtures. Steps 3 and 5, watchtower publication/reorg
+automation, reviewed release artifacts, and independent review remain open.
+
+Remaining integration work includes the native channel backend's proposal and
+signing lifecycle, ordinary production transaction commands that consume the
+stored recovery package and validate live code dependencies, and reuse of the
+existing bounded fee/RBF publication controller. The current live-node entry
+point is an acceptance harness, not the completed operator/backend integration.
+Multi-asset watchtower work must preserve canonical block-hash cursor checks,
+clear orphanable funding/observation state after a reorg, and rescan from the
+configured channel-creation `from_block`; stored packages remain retained
+across funding contexts.
 
 Required negative cases include missing or extra Vaults; substituted
 byte-identical Vaults with different OutPoints; duplicate manifest entries;

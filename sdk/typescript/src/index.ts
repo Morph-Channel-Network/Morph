@@ -1,6 +1,8 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { inspectMultiAssetPackage, type MultiAssetRecoveryPackage } from "./multi-asset.js";
+export * from "./multi-asset.js";
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
@@ -139,6 +141,20 @@ export class MorphHubClient {
       throw new TypeError("unsupported conditional batch package schema");
     }
     return this.request("api/conditional-batches", value);
+  }
+
+  importMultiAssetPackage(value: MultiAssetRecoveryPackage): Promise<Record<string, unknown>> {
+    inspectMultiAssetPackage(value);
+    return this.request("api/multi-asset-packages", value);
+  }
+
+  async multiAssetPackage(packageId: string): Promise<MultiAssetRecoveryPackage> {
+    if (!/^0x[0-9a-f]{64}$/.test(packageId)) throw new TypeError("invalid multi-asset package id");
+    const value = await this.request(`api/multi-asset-packages/${packageId}`);
+    const result = value as unknown as MultiAssetRecoveryPackage;
+    const summary = inspectMultiAssetPackage(result);
+    if (summary.package_id !== packageId) throw new Error("Morph Hub returned a different multi-asset package");
+    return result;
   }
 
   private async request(path: string, body?: unknown): Promise<Record<string, unknown>> {

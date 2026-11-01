@@ -35,7 +35,7 @@ external review and operational release evidence remain open.
 | M6: Production readiness | Controlled-devnet candidate; production open | Factory has a checked manifest/envelope and runbooks. Publication now has bounded node-informed fees, CKB RBF, least-privilege two-operator local evidence, and induced-reorg recovery. External review, independent rebuild/operators, and repeated public-network measurements remain open. |
 | M7: Factory 2.0 surface (v2.0) | Implemented locally | Multi-right reduced updates (envelope kind 8), compact variable-depth sparse-Merkle proofs, and the operator value-limit policy with runbook; see `docs/v2.0-plan.md`. Devnet save/publication plumbing for kind 8 packages is the remaining follow-up. |
 | M8: Conditional batch surface (v3.0) | Implemented locally | Descriptor v3, bounded preimage/absolute-refund leaves, cooperative consolidation, Vault-to-Batch materialisation, Batch CKB-VM enforcement, canonical CLI package, and durable Hub import; see `docs/v3.0-plan.md`. |
-| M9: Multi-asset channels | Proposed; implementation pending | Multiple xUDT types per channel through a versioned bounded Vault set, per-asset settlement, complete-set retirement, and recovery packages; see [multi-asset channels](multi-asset-channels.md). |
+| M9: Multi-asset channels | Implementation in progress | Bilateral layout 2 / descriptor 4 supports 1–8 Vaults with host, CKB-VM, CLI/SDK, durable Hub recovery, and real-node two/eight-xUDT lifecycle evidence. Multi-asset splice, Factory custody, typed conditions, publication/reorg automation and release qualification remain open; see [candidate profile](multi-asset-wire.md). |
 
 ## Current Factory Witness Baseline
 

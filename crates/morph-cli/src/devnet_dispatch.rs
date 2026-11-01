@@ -4,6 +4,34 @@ use crate::packages::canonical_hex32;
 pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
     let rpc = CkbRpcClient::new(rpc_url)?;
     match command {
+        DevnetCommand::MultiAssetSmoke {
+            contracts_dir,
+            private_key,
+            alice_private_key,
+            bob_private_key,
+            asset_count,
+            fee,
+            finalise_since,
+            mine_blocks,
+            store_dir,
+            json: _,
+        } => {
+            let report = devnet::multi_asset::smoke(
+                &rpc,
+                devnet::multi_asset::MultiAssetSmokeOptions {
+                    contracts_dir,
+                    private_key,
+                    alice_private_key,
+                    bob_private_key,
+                    asset_count,
+                    fee,
+                    finalise_since,
+                    mine_blocks,
+                    store_dir,
+                },
+            )?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
         DevnetCommand::Check { json } => {
             let status = rpc.status()?;
             if json {

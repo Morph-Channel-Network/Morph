@@ -6,6 +6,12 @@ use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
 
+pub mod multi_asset;
+#[cfg(target_arch = "riscv64")]
+extern crate alloc;
+#[cfg(target_arch = "riscv64")]
+pub mod multi_asset_runtime;
+
 pub const BYTE32_LEN: usize = 32;
 pub const STATE_HEADER_LEN: usize = 346;
 pub const WITNESS_ENVELOPE_MAGIC: &[u8; 8] = b"MORPHW!!";
@@ -336,6 +342,11 @@ pub enum ScriptError {
     ConditionalRefundNotMature = 59,
     ConditionalBatchLockMismatch = 60,
     ConditionalValueMismatch = 61,
+    MultiAssetEncoding = 62,
+    MultiAssetCommitmentMismatch = 63,
+    MultiAssetConservationMismatch = 64,
+    MultiAssetCapacityMismatch = 65,
+    MultiAssetVaultSetIncomplete = 66,
 }
 
 pub type Result<T> = core::result::Result<T, ScriptError>;
@@ -7702,6 +7713,31 @@ mod tests {
         }
 
         for (name, len) in [
+            (
+                "MultiAssetStateHeader",
+                multi_asset::MULTI_ASSET_STATE_HEADER_LEN,
+            ),
+            (
+                "MultiAssetVaultEntry",
+                multi_asset::MULTI_ASSET_VAULT_ENTRY_LEN,
+            ),
+            (
+                "MultiAssetPayoutEntry",
+                multi_asset::MULTI_ASSET_PAYOUT_ENTRY_LEN,
+            ),
+            ("MultiAssetVaultManifestPrefix", 4),
+            (
+                "MultiAssetSettlementDescriptorPrefix",
+                multi_asset::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN,
+            ),
+            (
+                "MultiAssetRecoveryWitnessPrefix",
+                multi_asset::MULTI_ASSET_WITNESS_PREFIX_LEN,
+            ),
+            (
+                "MultiAssetVaultLockArgs",
+                multi_asset::MULTI_ASSET_VAULT_ARGS_LEN,
+            ),
             ("StateHeader", STATE_HEADER_LEN),
             ("SpliceHeader", SPLICE_HEADER_LEN),
             ("SpliceSignatureWitness", SPLICE_SIGNATURE_WITNESS_LEN),
