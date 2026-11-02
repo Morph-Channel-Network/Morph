@@ -1213,3 +1213,6 @@ fn multi_asset_splice_funding_votes_survive_restart_and_gate_bridge_signing() {
     *byte = serde_json::json!(byte.as_u64().unwrap() ^ 1);
     assert!(serde_json::from_value::<MultiAssetChannelBackend>(corrupt).is_err());
 }
+
+#[path = "multi_asset_cases/factory.rs"]
+mod factory_materialisation;

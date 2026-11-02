@@ -106,6 +106,44 @@ for untouched rights and reserve. Existing kind-8 quantity non-increase is
 per asset and single participant; it does not authorise arbitrary cross-party
 trades or mint one asset by burning another.
 
+The shared `factory_multi_asset` partition validator and host
+`FactoryMultiAssetMaterialisation` now check the complete source reserve,
+optional retained reserve and 1–4 bilateral children, each with 1–8 Vaults.
+Reserve, business CKB and every Type's token quantity must conserve separately.
+The source/retained Factory Script and Type preimages are complete and reserve
+must cover occupied capacity. Children need distinct authorities and output
+positions, exact transaction-bound creation signatures and complete initial
+Settling/1 recovery packages. Both child signers must belong to the approving
+2–16 member Factory. Child State carriers require an explicit external
+contribution; retained Factory carrier capacity stays separate, or refunds in
+full at output zero when no reserve remains.
+
+`morph-cli validate-factory-multi-asset-materialisation plan.json` verifies
+`morph.factory_multi_asset_materialisation.v1` public evidence and emits a
+lossless JSON review with stage `offline_plan`. Manifests and Scripts are
+canonical hex; capacities are decimal strings. Required fields have no aliases
+or defaults. Factory N-of-N signatures use
+`CKB_MORPH_FACTORY_MULTI_ASSET_MATERIALISATION_V1` and commit the source
+OutPoints, Factory identity and complete membership commitment, exact transaction hash, retained allocation,
+carrier budget and complete child terms. Child creation and exit signatures
+are prerequisites, not replaceable by Factory signatures.
+
+The public package includes `chain_id`, `factory_id`, `old_state`,
+`transaction_hash`, `source_manifest_hex`, `source_outpoints`,
+`factory_vault_lock_hex`, `type_scripts_hex`, `retained_manifest_hex`,
+`factory_carrier_capacity`, `external_carrier_contribution`,
+`carrier_refund_lock_hex`, `children`, `factory_participants_commitment` and
+`factory_signature_witness_hex`. An empty `retained_manifest_hex` is `0x`;
+the refund Script is empty only when custody is retained. Each child contains
+`state_output_index`, its complete `recovery_package` and
+`creation_signature_witness_hex`.
+
+This planning boundary does not yet admit a new Factory spending witness.
+Existing Factory contracts still enforce single-Vault custody. Binding the
+new plan to an authentic Factory State, actual complete input/output sets,
+activation, reduced rights and durable Factory signer history remains required
+before multi-Vault Factory funding/submission can be enabled.
+
 ### Versions and Recovery
 
 Introduce explicit descriptor, State-layout, Vault-args, and witness versions

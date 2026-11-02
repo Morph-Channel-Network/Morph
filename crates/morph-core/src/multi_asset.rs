@@ -97,6 +97,28 @@ pub(crate) fn host_commitment(domain: &[u8], encoded: &[u8]) -> Bytes32 {
 }
 
 impl MultiAssetManifest {
+    pub fn decode(raw: &[u8]) -> MultiAssetResult<Self> {
+        let manifest = wire::MultiAssetVaultManifest::parse(raw)?;
+        let vaults = (0..manifest.count())
+            .map(|index| {
+                let entry = manifest.entry(index)?;
+                Ok(MultiAssetVault {
+                    asset: if entry.asset.kind == 0 {
+                        VaultAsset::Ckb
+                    } else {
+                        VaultAsset::Xudt(entry.asset.type_hash)
+                    },
+                    lock_hash: entry.lock_hash,
+                    value: MultiAssetValue {
+                        reserve: entry.allocation.reserve,
+                        business_ckb: entry.allocation.business_ckb,
+                        amount: entry.allocation.amount,
+                    },
+                })
+            })
+            .collect::<MultiAssetResult<Vec<_>>>()?;
+        Ok(Self { vaults })
+    }
     pub fn encode(&self) -> MultiAssetResult<Vec<u8>> {
         check_count(self.vaults.len())?;
         let mut raw = vec![0; 4 + self.vaults.len() * wire::MULTI_ASSET_VAULT_ENTRY_LEN];
@@ -623,24 +645,7 @@ impl MultiAssetRecoveryPackage {
         let base = state;
         let evidence = wire::MultiAssetWitness::parse(witness)?;
         evidence.validate_header(&state)?;
-        let vaults = (0..evidence.manifest().count())
-            .map(|index| {
-                let entry = evidence.manifest().entry(index)?;
-                Ok(MultiAssetVault {
-                    asset: if entry.asset.kind == 0 {
-                        VaultAsset::Ckb
-                    } else {
-                        VaultAsset::Xudt(entry.asset.type_hash)
-                    },
-                    lock_hash: entry.lock_hash,
-                    value: MultiAssetValue {
-                        reserve: entry.allocation.reserve,
-                        business_ckb: entry.allocation.business_ckb,
-                        amount: entry.allocation.amount,
-                    },
-                })
-            })
-            .collect::<MultiAssetResult<Vec<_>>>()?;
+        let vaults = MultiAssetManifest::decode(evidence.manifest().as_bytes())?.vaults;
         let mut type_index = 6;
         let type_scripts = vaults
             .iter()

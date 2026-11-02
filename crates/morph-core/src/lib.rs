@@ -10,6 +10,7 @@ pub mod agent;
 pub mod backend;
 pub mod bridge;
 pub mod conditional;
+pub mod factory_multi_asset;
 pub mod hash;
 pub mod multi_asset;
 pub mod multi_asset_backend;
@@ -24,6 +25,7 @@ pub use agent::*;
 pub use backend::*;
 pub use bridge::*;
 pub use conditional::*;
+pub use factory_multi_asset::*;
 pub use hash::{
     SigningBytes, asset_registry_commitment, blake2b256, factory_vault_delta_commitment,
     factory_vault_descriptor_commitment, funding_context_id, participants_commitment,

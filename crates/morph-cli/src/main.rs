@@ -42,6 +42,7 @@ mod conditional_packages;
 mod devnet;
 #[cfg(feature = "devnet")]
 mod devnet_dispatch;
+mod factory_multi_asset_packages;
 mod factory_packages;
 mod hub;
 mod multi_asset_funding;
@@ -363,6 +364,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Verify an offline multi-asset Factory partition and all-participant approval.
+    ValidateFactoryMultiAssetMaterialisation { path: PathBuf },
     /// Validate and atomically retain a multi-asset recovery package.
     StoreMultiAssetPackage {
         path: PathBuf,
@@ -3544,6 +3547,13 @@ fn main() -> Result<()> {
                     summary.resolved_capacities[0], summary.resolved_capacities[1]
                 );
             }
+            Ok(())
+        }
+        Command::ValidateFactoryMultiAssetMaterialisation { path } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&factory_multi_asset_packages::validate(&path)?)?
+            );
             Ok(())
         }
         Command::ValidateMultiAssetPackage { path, json } => {
