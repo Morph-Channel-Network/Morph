@@ -23,6 +23,40 @@ pub struct SpliceDraft {
     pub flows_hex: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpliceFundingExport {
+    pub schema: String,
+    pub transaction_hex: String,
+    pub recovery_package: crate::multi_asset_packages::StoredMultiAssetPackage,
+}
+
+pub fn import_splice_funding(
+    bundle: &std::path::Path,
+    old_package: &std::path::Path,
+    store_dir: &std::path::Path,
+) -> Result<serde_json::Value> {
+    let funding: SpliceFundingExport =
+        crate::multi_asset_packages::read_bounded_json(bundle, 768 * 1024)?;
+    ensure!(
+        funding.schema == "morph.multi_asset_splice_funding.v1",
+        "unsupported splice export schema"
+    );
+    let current = crate::multi_asset_packages::read_package(old_package)?.recovery()?;
+    let recovery = funding.recovery_package.recovery()?;
+    let transaction = packed::Transaction::from_slice(&decode_hex(
+        &funding.transaction_hex,
+        MAX_TRANSACTION_BYTES,
+    )?)?;
+    SpliceDraft::from_signed_transaction(&current, &recovery, &transaction)?;
+    crate::multi_asset_packages::write_received_funding(
+        store_dir,
+        &funding.recovery_package,
+        &transaction,
+        TransactionKind::Splice,
+    )
+}
+
 /// Unsigned value intent. Vault totals and authority scripts are derived;
 /// quantities live only in canonical binary descriptor/flow encodings.
 #[cfg(any(feature = "devnet", test))]
@@ -205,7 +239,6 @@ impl SpliceDraft {
     }
     /// Reconstruct and verify every protocol authorization from an exported
     /// transaction, retaining the separately signed exact future exit package.
-    #[cfg(any(feature = "devnet", test))]
     pub fn from_signed_transaction(
         current: &MultiAssetRecoveryPackage,
         recovery: &MultiAssetRecoveryPackage,
@@ -696,6 +729,185 @@ pub(crate) fn fixture_draft(current: &MultiAssetRecoveryPackage) -> SpliceDraft 
 mod tests {
     use super::*;
     use ckb_types::bytes::Bytes;
+
+    fn sdk_splice_fixture() -> serde_json::Value {
+        use crate::multi_asset_funding::root_collection_tests::signed_receipts;
+        use crate::multi_asset_packages::StoredMultiAssetPackage;
+        let stored = crate::multi_asset_packages::fixture_package().unwrap();
+        let current = stored.recovery().unwrap();
+        let draft = fixture_draft(&current);
+        let mut plan = draft.proposal(&current).unwrap();
+        let participants = stored.validate().unwrap().signer_pubkeys;
+        let creation_digest = plan.new_state.signing_digest().unwrap();
+        let creation = signed_receipts(&creation_digest);
+        let authorization =
+            |digest: &Bytes32, receipts: &[crate::multi_asset_signatures::SignatureMessage]| {
+                StateAuthorization {
+                    threshold: 2,
+                    signatures: receipts
+                        .iter()
+                        .map(|receipt| receipt.verify(digest, &participants).unwrap())
+                        .collect(),
+                }
+            };
+        plan.new_state_authorization = authorization(&creation_digest, &creation);
+        let points = (0..plan.new_manifest.vaults.len())
+            .map(|i| MultiAssetOutPoint {
+                tx_hash: plan.transaction_hash,
+                index: i as u32 + 1,
+            })
+            .collect::<Vec<_>>();
+        let mut state = plan.new_state.clone();
+        state.header.phase = Phase::Settling;
+        state.header.state_number = 1;
+        state.vault_outpoint_set_root =
+            multi_asset_outpoint_commitment(&plan.new_manifest, &points).unwrap();
+        let recovery_digest = state.signing_digest().unwrap();
+        let recovery = signed_receipts(&recovery_digest);
+        plan.initial_recovery_authorization = authorization(&recovery_digest, &recovery);
+        let bridge_digest = plan.signing_digest(&current).unwrap();
+        let bridge = signed_receipts(&bridge_digest);
+        let witness = packed::WitnessArgs::new_builder()
+            .input_type(
+                Some(Bytes::from(
+                    encode_multi_asset_signatures(&plan.new_state_authorization)
+                        .unwrap()
+                        .to_vec(),
+                ))
+                .pack(),
+            )
+            .output_type(
+                Some(Bytes::from(
+                    plan.encode_witness(&current, &authorization(&bridge_digest, &bridge))
+                        .unwrap(),
+                ))
+                .pack(),
+            )
+            .build();
+        let transaction = draft
+            .transaction()
+            .unwrap()
+            .as_builder()
+            .witnesses(vec![witness.as_bytes().pack()].pack())
+            .build();
+        let exit = plan.initial_recovery(&current).unwrap();
+        let recovery_package = StoredMultiAssetPackage::from_recovery(
+            &exit,
+            &transaction
+                .raw()
+                .cell_deps()
+                .into_iter()
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        serde_json::json!({"current":stored,"draft":draft,"creation_digest":canonical_hex(&creation_digest),"recovery_digest":canonical_hex(&recovery_digest),"bridge_digest":canonical_hex(&bridge_digest),"creation_receipts":creation,"recovery_receipts":recovery,"bridge_receipts":bridge,"funding":{"schema":"morph.multi_asset_splice_funding.v1","transaction_hex":canonical_hex(transaction.as_slice()),"recovery_package":recovery_package}})
+    }
+
+    #[test]
+    fn sdk_splice_fixture_matches_all_three_domains_and_exact_transaction() {
+        let expected: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../sdk/typescript/test/fixtures/multi-asset-splice.json"
+        ))
+        .unwrap();
+        assert_eq!(sdk_splice_fixture(), expected);
+        // Recorded node transactions cover actual asset admission/removal and
+        // withdrawal custody; revalidate their public evidence without RPC.
+        let transitions: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../sdk/typescript/test/fixtures/multi-asset-splice-transitions.json"
+        ))
+        .unwrap();
+        for transition in transitions {
+            let dir = std::env::temp_dir().join(format!(
+                "morph-splice-import-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            let bundle_path = dir.join("funding.json");
+            let old_path = dir.join("old.json");
+            std::fs::write(
+                &bundle_path,
+                serde_json::to_vec(&transition["funding"]).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(
+                &old_path,
+                serde_json::to_vec(&transition["current"]).unwrap(),
+            )
+            .unwrap();
+            let current: crate::multi_asset_packages::StoredMultiAssetPackage =
+                serde_json::from_value(transition["current"].clone()).unwrap();
+            let recovery: crate::multi_asset_packages::StoredMultiAssetPackage =
+                serde_json::from_value(transition["funding"]["recovery_package"].clone()).unwrap();
+            let draft: SpliceDraft = serde_json::from_value(transition["draft"].clone()).unwrap();
+            let tx = packed::Transaction::from_slice(
+                &decode_hex(
+                    transition["funding"]["transaction_hex"].as_str().unwrap(),
+                    MAX_TRANSACTION_BYTES,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            let current = current.recovery().unwrap();
+            let recovery = recovery.recovery().unwrap();
+            let (reconstructed, plan) =
+                SpliceDraft::from_signed_transaction(&current, &recovery, &tx).unwrap();
+            assert_eq!(
+                reconstructed.transaction().unwrap().raw().as_slice(),
+                draft.transaction().unwrap().raw().as_slice()
+            );
+            assert_eq!(reconstructed.new_witness_hex, draft.new_witness_hex);
+            assert_eq!(reconstructed.flows_hex, draft.flows_hex);
+            let participants = current
+                .authorization
+                .signatures
+                .iter()
+                .map(|signature| canonical_hex(&signature.pubkey_sec1))
+                .collect::<Vec<_>>();
+            let participants = [participants[0].clone(), participants[1].clone()];
+            for (role, digest) in [
+                ("creation", plan.new_state.signing_digest().unwrap()),
+                ("recovery", recovery.state.signing_digest().unwrap()),
+                ("bridge", plan.signing_digest(&current).unwrap()),
+            ] {
+                let receipts: Vec<crate::multi_asset_signatures::SignatureMessage> =
+                    serde_json::from_value(transition[format!("{role}_receipts")].clone()).unwrap();
+                assert_eq!(receipts.len(), 2);
+                for receipt in receipts {
+                    receipt.verify(&digest, &participants).unwrap();
+                }
+            }
+            let store = dir.join("received");
+            let imported = import_splice_funding(&bundle_path, &old_path, &store).unwrap();
+            assert_eq!(
+                std::fs::read(imported["transaction"].as_str().unwrap()).unwrap(),
+                tx.as_slice()
+            );
+            assert_eq!(
+                crate::multi_asset_packages::read_package(std::path::Path::new(
+                    imported["recovery_package"].as_str().unwrap()
+                ))
+                .unwrap()
+                .recovery()
+                .unwrap(),
+                recovery
+            );
+            assert_eq!(
+                import_splice_funding(&bundle_path, &old_path, &store).unwrap(),
+                imported
+            );
+            let mut invalid = transition["funding"].clone();
+            invalid["recovery_package"] = transition["current"].clone();
+            std::fs::write(&bundle_path, serde_json::to_vec(&invalid).unwrap()).unwrap();
+            let rejected = dir.join("rejected");
+            assert!(import_splice_funding(&bundle_path, &old_path, &rejected).is_err());
+            assert!(!rejected.exists());
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
 
     #[test]
     fn exact_draft_rejects_authority_value_input_and_witness_tampering() {

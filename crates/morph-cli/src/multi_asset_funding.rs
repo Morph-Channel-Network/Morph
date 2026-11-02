@@ -1078,13 +1078,16 @@ pub(crate) mod root_collection_tests {
         target: RootFundingTarget,
     ) -> Vec<SignatureMessage> {
         let digest = target.digest(draft).unwrap();
+        signed_receipts(&digest)
+    }
+    pub(crate) fn signed_receipts(digest: &Bytes32) -> Vec<SignatureMessage> {
         let mut result = [1u8, 2]
             .into_iter()
             .map(|seed| {
                 let key = SigningKey::from_slice(&[seed; 32]).unwrap();
-                let signature: Signature = key.sign_prehash(&digest).unwrap();
+                let signature: Signature = key.sign_prehash(digest).unwrap();
                 SignatureMessage::new(
-                    &digest,
+                    digest,
                     &ParticipantSignature {
                         pubkey_sec1: key
                             .verifying_key()
@@ -1262,31 +1265,15 @@ pub fn import_root_funding(
     path: &std::path::Path,
     store_dir: &std::path::Path,
 ) -> Result<serde_json::Value> {
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)?
-        .take(768 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    ensure!(
-        bytes.len() <= 768 * 1024,
-        "root funding export exceeds byte limit"
-    );
-    let funding: RootFundingExport = serde_json::from_slice(&bytes)?;
-    let inspection = funding.inspection()?;
-    // A complete independently verified exit is durable before exporting the
-    // funding binary. Import never creates or resets a signing authority.
-    let recovery =
-        crate::multi_asset_packages::write_package(store_dir, &funding.recovery_package)?;
+    let funding: RootFundingExport =
+        crate::multi_asset_packages::read_bounded_json(path, 768 * 1024)?;
+    funding.inspection()?;
     let raw = crate::multi_asset_packages::decode_hex(&funding.transaction_hex, MAX_FUNDING_BYTES)?;
     let tx = packed::Transaction::from_slice(&raw)?;
-    let transaction = crate::multi_asset_splice_transaction::write_transaction(
-        &store_dir
-            .join("received-funding")
-            .join(hex::encode(blake2b256(&raw))),
+    crate::multi_asset_packages::write_received_funding(
+        store_dir,
+        &funding.recovery_package,
         &tx,
         crate::multi_asset_splice_transaction::TransactionKind::Root,
-    )?;
-    Ok(
-        serde_json::json!({"transaction":transaction,"recovery_package":recovery,"transaction_hash":inspection.transaction_hash}),
     )
 }

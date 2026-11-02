@@ -14,6 +14,10 @@ import {
   assembleMultiAssetRootFunding,
   inspectMultiAssetRootFunding,
   inspectMultiAssetRootCollection,
+  inspectMultiAssetSpliceDraft,
+  inspectMultiAssetSpliceSignature,
+  assembleMultiAssetSpliceFunding,
+  inspectMultiAssetSpliceFunding,
   createMultiAssetProposal,
   inspectMultiAssetProposal,
   inspectMultiAssetProposalSignature,
@@ -162,6 +166,80 @@ const duplicateInput=changeRoot(rootFixture.draft.transaction_hex, body=>{
 assert.throws(()=>inspectMultiAssetRootDraft({...rootFixture.draft,transaction_hex:duplicateInput}),/duplicate or invalid funding input/);
 const zeroExit={...multiAsset};const zeroHeader=Buffer.from(zeroExit.header_hex.slice(2),'hex');zeroHeader.writeBigUInt64LE(0n,108);zeroExit.header_hex=`0x${zeroHeader.toString('hex')}`;
 assert.throws(()=>inspectMultiAssetPackage(zeroExit),/positive state number/);
+
+const spliceFixture = JSON.parse(await readFile(new URL("./fixtures/multi-asset-splice.json", import.meta.url), "utf8"));
+const spliceInfo=inspectMultiAssetSpliceDraft(spliceFixture.current,spliceFixture.draft);
+for(const target of ["creation","recovery","bridge"]) {
+  assert.equal(spliceInfo[`${target}_digest`],spliceFixture[`${target}_digest`]);
+  for(const receipt of spliceFixture[`${target}_receipts`])assert.equal(inspectMultiAssetSpliceSignature(spliceFixture.current,spliceFixture.draft,`splice-${target}`,receipt).signer_pubkey,receipt.pubkey);
+}
+assert.equal(spliceInfo.assets.length,2);
+assert.equal(spliceInfo.assets[0].amount,((1n<<127n)-1n).toString());
+assert.deepEqual(spliceInfo.flows.map(flow=>flow.deposit.amount),["0","0"]);
+const spliceAssembled=assembleMultiAssetSpliceFunding(spliceFixture.current,spliceFixture.draft,spliceFixture.recovery_receipts,spliceFixture.creation_receipts,spliceFixture.bridge_receipts);
+assert.deepEqual(spliceAssembled,spliceFixture.funding);
+assert.deepEqual(inspectMultiAssetSpliceFunding(spliceFixture.current,spliceAssembled),spliceInfo);
+assert.equal(spliceInfo.new_funding_context_id,inspectMultiAssetPackage(spliceAssembled.recovery_package).funding_context_id);
+assert.equal(inspectMultiAssetPackage(spliceAssembled.recovery_package).package_id,spliceInfo.recovery_digest);
+assert.throws(()=>assembleMultiAssetSpliceFunding(spliceFixture.current,spliceFixture.draft,[],spliceFixture.creation_receipts,spliceFixture.bridge_receipts),/both participant/);
+assert.throws(()=>assembleMultiAssetSpliceFunding(spliceFixture.current,spliceFixture.draft,spliceFixture.recovery_receipts,spliceFixture.creation_receipts,[spliceFixture.bridge_receipts[0],spliceFixture.bridge_receipts[0]]),/duplicate/);
+assert.throws(()=>inspectMultiAssetSpliceSignature(spliceFixture.current,spliceFixture.draft,"splice-bridge",spliceFixture.creation_receipts[0]),/context/);
+assert.throws(()=>inspectMultiAssetSpliceDraft(spliceFixture.current,{...spliceFixture.draft,extra:true}),/base state/);
+assert.throws(()=>inspectMultiAssetSpliceDraft(spliceFixture.current,{...spliceFixture.draft,base_state_digest:`0x${"00".repeat(32)}`}),/base state/);
+assert.throws(()=>inspectMultiAssetSpliceDraft(spliceFixture.current,{...spliceFixture.draft,transaction_hex:spliceAssembled.transaction_hex}),/Morph witness/);
+const swappedOldVaults=changeRoot(spliceFixture.draft.transaction_hex,body=>{
+ const first=Buffer.from(body[3].subarray(48,92));const second=Buffer.from(body[3].subarray(92,136));body[3].set(second,48);body[3].set(first,92);
+});
+assert.throws(()=>inspectMultiAssetSpliceDraft(spliceFixture.current,{...spliceFixture.draft,transaction_hex:swappedOldVaults}),/Vault order/);
+const changedSpliceVault=changeRoot(spliceFixture.draft.transaction_hex,body=>{
+ const outputs=fieldSlices(body[4]);const vault=fieldSlices(outputs[1]).map(field=>Buffer.from(field));vault[0].writeBigUInt64LE(vault[0].readBigUInt64LE()+1n);outputs[1]=packedTable(vault);body[4]=packedTable(outputs);
+});
+assert.throws(()=>inspectMultiAssetSpliceDraft(spliceFixture.current,{...spliceFixture.draft,transaction_hex:changedSpliceVault}),/physical output/);
+const changedSpliceFlow=Buffer.from(spliceFixture.draft.flows_hex.slice(2),'hex');changedSpliceFlow[37]=1;
+assert.throws(()=>inspectMultiAssetSpliceDraft(spliceFixture.current,{...spliceFixture.draft,flows_hex:`0x${changedSpliceFlow.toString('hex')}`}),/conservation/);
+const changedSpliceDep=changeRoot(spliceFixture.draft.transaction_hex,body=>{body[1][4]^=1;});
+const changedSplice={...spliceFixture.draft,transaction_hex:changedSpliceDep};
+const changedSpliceInfo=inspectMultiAssetSpliceDraft(spliceFixture.current,changedSplice);
+assert.equal(changedSpliceInfo.creation_digest,spliceInfo.creation_digest);
+assert.notEqual(changedSpliceInfo.recovery_digest,spliceInfo.recovery_digest);
+assert.notEqual(changedSpliceInfo.bridge_digest,spliceInfo.bridge_digest);
+assert.throws(()=>assembleMultiAssetSpliceFunding(spliceFixture.current,changedSplice,spliceFixture.recovery_receipts,spliceFixture.creation_receipts,spliceFixture.bridge_receipts),/context/);
+
+// A top-up is a delta into an already funded Vault, so its token amount
+// can be positive with zero deposited reserve and business capacity.
+const topupWitness=Buffer.from(spliceFixture.draft.new_witness_hex.slice(2),'hex');
+const topupManifestEnd=28+topupWitness.readUInt32LE(12);
+const topupDescriptorEnd=topupManifestEnd+topupWitness.readUInt32LE(16);
+const read128=(raw,offset)=>raw.readBigUInt64LE(offset)+(raw.readBigUInt64LE(offset+8)<<64n);
+const write128=(raw,offset,value)=>{raw.writeBigUInt64LE(value&((1n<<64n)-1n),offset);raw.writeBigUInt64LE(value>>64n,offset+8);};
+const topupAmount=read128(topupWitness,28+4+65+16)+1n;
+write128(topupWitness,28+4+65+16,topupAmount);
+const topupPayout=topupManifestEnd+100+33+16;write128(topupWitness,topupPayout,read128(topupWitness,topupPayout)+1n);
+const topupFlows=Buffer.from(spliceFixture.draft.flows_hex.slice(2),'hex');write128(topupFlows,4+33+16,1n);
+const topupTransaction=changeRoot(spliceFixture.draft.transaction_hex,body=>{
+ const data=fieldSlices(body[5]).map(field=>Buffer.from(field));const header=data[0].subarray(4);
+ header.set(ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_VAULT_SET_V1"),topupWitness.subarray(28,topupManifestEnd)),250);
+ header.set(ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1"),topupWitness.subarray(topupManifestEnd,topupDescriptorEnd)),182);
+ write128(data[1],4,topupAmount);body[5]=packedTable(data);
+});
+const topupInfo=inspectMultiAssetSpliceDraft(spliceFixture.current,{...spliceFixture.draft,transaction_hex:topupTransaction,new_witness_hex:`0x${topupWitness.toString('hex')}`,flows_hex:`0x${topupFlows.toString('hex')}`});
+assert.deepEqual(topupInfo.flows[0].deposit,{reserve:"0",business_ckb:"0",amount:"1"});
+assert.equal(topupInfo.assets[0].amount,topupAmount.toString());
+
+const spliceTransitions = JSON.parse(await readFile(new URL("./fixtures/multi-asset-splice-transitions.json", import.meta.url), "utf8"));
+for(const transition of spliceTransitions) {
+ const info=inspectMultiAssetSpliceDraft(transition.current,transition.draft);
+ const assembled=assembleMultiAssetSpliceFunding(transition.current,transition.draft,transition.recovery_receipts,transition.creation_receipts,transition.bridge_receipts);
+ assert.deepEqual(assembled,transition.funding);
+ assert.deepEqual(inspectMultiAssetSpliceFunding(transition.current,assembled),info);
+ assert.equal(info.new_funding_context_id,inspectMultiAssetPackage(assembled.recovery_package).funding_context_id);
+ assert.notEqual(info.new_funding_context_id,info.old_funding_context_id);
+ assert.equal(info.assets.length,transition.name==="remove"?1:2);
+ assert.ok(info.flows.some(flow=>BigInt((transition.name==="remove"?flow.withdrawal:flow.deposit).amount)>0n));
+ const damaged=Buffer.from(assembled.transaction_hex.slice(2),'hex');damaged[damaged.length-1]^=1;
+ assert.throws(()=>inspectMultiAssetSpliceFunding(transition.current,{...assembled,transaction_hex:`0x${damaged.toString('hex')}`}));
+ assert.throws(()=>inspectMultiAssetSpliceFunding(transition.current,{...assembled,recovery_package:transition.current}));
+}
 
 const requirements = {
   requirement_id: `0x${"11".repeat(32)}`,

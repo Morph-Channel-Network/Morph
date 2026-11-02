@@ -3,9 +3,10 @@
 Status: implementation in progress, 2026-11-02. The candidate bilateral profile
 now has host validation, versioned State/Vault script paths, CKB-VM lifecycle
 evidence, lossless CLI/SDK recovery packages, and durable Hub import/export.
-The source release remains v3.0.0; multi-asset splice, Factory custody, typed
-conditions, and full multi-channel watch orchestration are still implementation
-work. See [candidate wire profile](multi-asset-wire.md) for the implemented
+The source release remains v3.0.0. Bilateral splice has native construction,
+durable signing and SDK verification; Factory custody, typed conditions, and
+full multi-channel watch orchestration remain implementation work.
+See [candidate wire profile](multi-asset-wire.md) for the implemented
 encoding and verification commands.
 
 ## Decision
@@ -131,7 +132,10 @@ same-session switching, root binding, exact keyless funding replay, explicit
 reorg refresh and bounded signer supervision are verified. Independent initial
 exit-before-creation signing and confirmed same-path handoff are implemented;
 see [initial funding](runbooks/initial-funding.md). Public root construction and
-per-wallet signing have real-node three-funder evidence. Failover, pooled
+per-wallet signing have real-node three-funder evidence, including exact
+SDK/HTTP Hub export parity and restart recovery for eight assets. SDK splice
+review and assembly verify all three authorisations against Rust fixtures and
+recorded asset admission/removal transactions. Failover, pooled
 publication and terminal abort tracking remain open.
 
 ## Delivery Sequence and Acceptance
@@ -147,7 +151,8 @@ publication and terminal abort tracking remain open.
 Current evidence: steps 1–2 have bilateral host and CKB-VM coverage, and real
 two/eight-xUDT node lifecycles. Step 4 has CLI/SDK/Hub persistence and lossless
 cross-language fixtures. Canonical multi-asset dispute watch passes now have
-late-package and real reorg/republication evidence. Steps 3 and 5, full service
+late-package and real reorg/republication evidence. Factory custody in step 3,
+step 5, full service
 orchestration, reviewed release artifacts and independent review remain open.
 
 Standalone package-based activation/publication/finalisation now validates canonical live

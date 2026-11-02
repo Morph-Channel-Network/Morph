@@ -38,6 +38,17 @@ Export inspection can accept a newer positive settling recovery state for the
 same funding context; its initial payout summary always describes the original
 root draft. The supplied recovery package retains its own state and descriptor.
 
+The eight-asset SDK/HTTP Hub acceptance run on 2026-11-02 used separate
+participant signing processes and three independent wallet signers. SDK, Hub
+and CLI exports matched byte-for-byte; scoped read/write access and Hub restart
+preserved the public receipts without creating an operating channel. The exact
+7,673-byte transaction used 12,315,278 VM cycles, completed canonical activation,
+same-path signer handoff and final unilateral settlement. Local evidence:
+`target/multi-asset-devnet/hub-sdk-root-eight/report.json`; funding transaction
+`0xdd412860b0502999ee698e6a1539ae0cad137e1aa06d86b6ab029b776a4e71ef`, finalisation
+`0x9f3c53f72bccae6d88a2b9919a3d0741feb889da766eee58ccf400b735702383`.
+This is isolated devnet acceptance, not release qualification.
+
 `devnet multi-asset-funding-prepare` builds a draft from explicit
 `morph.multi_asset_root_terms.v1` terms. It takes no keys and performs no
 issuance, automatic input selection, signing or broadcast. The terms contain:

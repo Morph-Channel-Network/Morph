@@ -148,6 +148,41 @@ The draft verifier checks input order, complete new Vaults, withdrawal outputs,
 carrier capacity and authority boundaries. Live input values, canonical history,
 approved executable code and dep-group members require online verification.
 
+The TypeScript SDK independently checks this same draft with
+`inspectMultiAssetSpliceDraft(currentPackage, draft)`. Its summary includes the
+exact creation, recovery and bridge digests, old State input, future Vault
+OutPoints, bound new funding-context ID, per-participant payouts and per-asset
+deposit/withdrawal lanes. All amounts remain decimal strings. Asset admission
+may change the registry; channel identity, participant/refund Scripts, authority
+code, challenge policy and State carrier stay fixed. Token-only deposits into
+an existing asset need no extra reserve when its existing reserve suffices.
+
+`inspectMultiAssetSpliceSignature` verifies a public receipt against one of
+`splice-creation`, `splice-recovery` and `splice-bridge`.
+`assembleMultiAssetSpliceFunding(current, draft, recoveryReceipts,
+creationReceipts, bridgeReceipts)` requires all three complete pairs, verifies
+the future exit first and returns `morph.multi_asset_splice_funding.v1` containing
+both the packed transaction and full recovery package.
+`inspectMultiAssetSpliceFunding` independently verifies a completed export,
+including the exact initial exit and the canonical bridge envelope. Repricing
+an external input, dependency or change output changes the future exit and
+bridge digests even when the new allocation stays the same.
+
+Import the SDK export with `morph-cli import-splice-funding funding.json
+--old-package old-recovery.json --store-dir recovery`. This default-build
+command verifies both complete contexts and all three authorisations before
+writing anything, persists the future recovery package before the transaction,
+and returns their paths for the native submission flow. It never initialises
+or replaces signer history. Fee-wallet authorisation, live-input checking,
+submission and confirmed same-path handoff still use the session/native steps
+below.
+
+The SDK shares bounded CKB transaction parsing and public receipt verification
+with root funding. Rust/SDK fixtures check exact transaction and recovery bytes
+for unchanged asset sets, actual 2→1 withdrawals and 1→2 admission. These
+stateless checks do not replace the session's durable reservations, freeze or
+canonical handoff; assembly neither spends inputs nor broadcasts.
+
 ```sh
 morph-cli multi-asset-session --session alice.json prepare-splice --draft splice.json
 morph-cli multi-asset-session --session alice.json sign --target splice-creation > alice-creation.json

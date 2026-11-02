@@ -298,17 +298,45 @@ impl StoredMultiAssetPackage {
 }
 
 pub fn read_package(path: &Path) -> Result<StoredMultiAssetPackage> {
-    let mut bytes = Vec::new();
-    File::open(path)?
-        .take(MAX_PACKAGE_JSON_BYTES as u64 + 1)
-        .read_to_end(&mut bytes)?;
-    ensure!(
-        bytes.len() <= MAX_PACKAGE_JSON_BYTES,
-        "multi-asset JSON package exceeds size limit"
-    );
-    let package: StoredMultiAssetPackage = serde_json::from_slice(&bytes)?;
+    let package: StoredMultiAssetPackage = read_bounded_json(path, MAX_PACKAGE_JSON_BYTES)?;
     package.validate()?;
     Ok(package)
+}
+
+pub(crate) fn read_bounded_json<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    limit: usize,
+) -> Result<T> {
+    let mut bytes = Vec::new();
+    File::open(path)?
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() <= limit,
+        "multi-asset JSON package exceeds size limit"
+    );
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+/// Call only after verifying the complete root/splice transaction against its
+/// recovery evidence. Never creates or changes a participant signing journal.
+pub(crate) fn write_received_funding(
+    store_dir: &Path,
+    package: &StoredMultiAssetPackage,
+    tx: &ckb_types::packed::Transaction,
+    kind: crate::multi_asset_splice_transaction::TransactionKind,
+) -> Result<serde_json::Value> {
+    let recovery = write_package(store_dir, package)?;
+    let transaction = crate::multi_asset_splice_transaction::write_transaction(
+        &store_dir
+            .join("received-funding")
+            .join(hex::encode(blake2b256(tx.as_slice()))),
+        tx,
+        kind,
+    )?;
+    Ok(
+        serde_json::json!({"transaction":transaction,"recovery_package":recovery,"transaction_hash":canonical_hex(tx.calc_tx_hash().as_slice())}),
+    )
 }
 
 pub fn write_package(dir: &Path, package: &StoredMultiAssetPackage) -> Result<std::path::PathBuf> {

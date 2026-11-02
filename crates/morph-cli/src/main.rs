@@ -139,6 +139,14 @@ enum Command {
         #[arg(long)]
         store_dir: PathBuf,
     },
+    /// Verify a complete splice export against the old context and retain its exit before the binary.
+    ImportSpliceFunding {
+        bundle: PathBuf,
+        #[arg(long)]
+        old_package: PathBuf,
+        #[arg(long)]
+        store_dir: PathBuf,
+    },
     /// Independently collect an initial exit before authorising exact root funding.
     MultiAssetFundingSession {
         #[arg(long)]
@@ -3172,6 +3180,19 @@ fn main() -> Result<()> {
     match cli.command {
         Command::ImportRootFunding { bundle, store_dir } => {
             let result = multi_asset_funding::import_root_funding(&bundle, &store_dir)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        Command::ImportSpliceFunding {
+            bundle,
+            old_package,
+            store_dir,
+        } => {
+            let result = multi_asset_splice_transaction::import_splice_funding(
+                &bundle,
+                &old_package,
+                &store_dir,
+            )?;
             println!("{}", serde_json::to_string_pretty(&result)?);
             Ok(())
         }
