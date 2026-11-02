@@ -4,6 +4,7 @@ use super::*;
 use crate::multi_asset_packages::{StoredMultiAssetPackage, read_package, write_package};
 use morph_script_common::multi_asset as wire;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum Operation {
@@ -447,6 +448,17 @@ fn validate_sponsor_fee(policy: &WireSponsorPolicy<'_>, fee: u64) -> Result<()> 
     Ok(())
 }
 
+pub(super) fn verify_chain_id(rpc: &CkbRpcClient, expected: &[u8]) -> Result<()> {
+    let genesis = rpc
+        .genesis_block_hash()?
+        .ok_or_else(|| anyhow!("canonical genesis hash unavailable"))?;
+    ensure!(
+        genesis.as_bytes() == expected,
+        "funding chain ID differs from RPC genesis"
+    );
+    Ok(())
+}
+
 pub fn transact(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
     ensure!(
         !matches!(options.fee_authorization, FeeAuthorization::Sponsor { .. })
@@ -473,6 +485,7 @@ pub fn transact(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
     );
     let decoded = stored.decode()?;
     let header = wire::MultiAssetStateHeader::parse(&decoded.header).map_err(invalid)?;
+    verify_chain_id(rpc, header.chain_id())?;
     let witness = wire::MultiAssetWitness::parse(&decoded.witness).map_err(invalid)?;
     let (fee_lock, key) = options.fee_authorization.identity()?;
     let state_point = parse_out_point(&options.state_out_point)?;
@@ -1150,4 +1163,70 @@ mod activation_tests {
                 .is_activation_to(&wire::MultiAssetStateHeader::parse(&recovered.header).unwrap())
         );
     }
+}
+
+/// Complete registered-Type and CKB accounting shared by root/splice funding.
+pub(super) fn validate_funding_balances(
+    transaction: &ckb_types::packed::Transaction,
+    inputs: &[LiveCellDetails],
+    registered: &BTreeSet<[u8; 32]>,
+    max_fee: u64,
+) -> Result<u64> {
+    let mut before = BTreeMap::new();
+    let mut after = BTreeMap::new();
+    fn add(
+        amounts: &mut BTreeMap<[u8; 32], u128>,
+        registered: &BTreeSet<[u8; 32]>,
+        output: &CellOutput,
+        data: &[u8],
+    ) -> Result<()> {
+        if let Some(ty) = output.type_().to_opt() {
+            let hash: [u8; 32] = ty.calc_script_hash().unpack();
+            if registered.contains(&hash) {
+                let amount = u128::from_le_bytes(
+                    data.try_into()
+                        .map_err(|_| anyhow!("registered token data must be 16 bytes"))?,
+                );
+                let sum = amounts.entry(hash).or_default();
+                *sum = sum
+                    .checked_add(amount)
+                    .ok_or_else(|| anyhow!("token total overflow"))?;
+            }
+        }
+        Ok(())
+    }
+    let mut input_capacity = 0u64;
+    for cell in inputs {
+        input_capacity = input_capacity
+            .checked_add(cell.capacity)
+            .ok_or_else(|| anyhow!("input capacity overflow"))?;
+        add(&mut before, registered, &cell.output, &cell.data)?;
+    }
+    let mut output_capacity = 0u64;
+    for (index, output) in transaction.raw().outputs().into_iter().enumerate() {
+        output_capacity = output_capacity
+            .checked_add(output.capacity().unpack())
+            .ok_or_else(|| anyhow!("output capacity overflow"))?;
+        let data = transaction
+            .raw()
+            .outputs_data()
+            .get(index)
+            .ok_or_else(|| anyhow!("missing output data"))?
+            .raw_data();
+        add(&mut after, registered, &output, &data)?;
+    }
+    for hash in registered {
+        ensure!(
+            before.get(hash).copied().unwrap_or(0) == after.get(hash).copied().unwrap_or(0),
+            "registered token is not conserved"
+        );
+    }
+    let fee = input_capacity
+        .checked_sub(output_capacity)
+        .ok_or_else(|| anyhow!("funding creates CKB capacity"))?;
+    ensure!(
+        fee > 0 && fee <= max_fee,
+        "funding fee is zero or exceeds max_fee"
+    );
+    Ok(fee)
 }

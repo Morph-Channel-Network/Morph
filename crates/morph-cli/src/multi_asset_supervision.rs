@@ -669,21 +669,14 @@ mod tests {
     }
     #[test]
     fn busy_and_unmanaged_root_journals_never_report_verified() {
-        use crate::multi_asset_session::{SessionCommand, run as session};
+        use crate::multi_asset_session::test_session;
         let dir = directory();
         let package = crate::multi_asset_packages::fixture_package().unwrap();
         let package_path = dir.join("package.json");
         let signer = dir.join("signer.json");
         std::fs::write(&package_path, serde_json::to_vec(&package).unwrap()).unwrap();
         let pubkey = package.validate().unwrap().signer_pubkeys[0].clone();
-        session(
-            &signer,
-            SessionCommand::Init {
-                package: package_path,
-                local_pubkey: pubkey,
-            },
-        )
-        .unwrap();
+        test_session(&signer, &package_path, &pubkey).unwrap();
         let config_path = dir.join("config.json");
         let health_path = dir.join("health.json");
         let alerts = dir.join("alerts.jsonl");

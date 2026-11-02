@@ -129,7 +129,9 @@ submission are implemented. Isolated-node acceptance covers 2→1→2 assets, ex
 keyless replay after reorg and final unilateral settlement. Confirmed
 same-session switching, root binding, exact keyless funding replay, explicit
 reorg refresh and bounded signer supervision are verified. Independent initial
-signing, failover, pooled publication and terminal abort tracking remain open.
+exit-before-creation signing and confirmed same-path handoff are implemented;
+see [initial funding](runbooks/initial-funding.md). Public root transaction
+construction, failover, pooled publication and terminal abort tracking remain open.
 
 ## Delivery Sequence and Acceptance
 

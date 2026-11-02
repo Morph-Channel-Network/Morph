@@ -591,3 +591,18 @@ creation. Splice retains its transaction-bound bridge. Host funding validation
 and activation enforce the same distinction. Negative coverage:
 `multi_asset_root_creation_rejects_transaction_replacement` and
 `root_authorization_rejects_replaced_raw_body_even_with_fresh_exit_signatures`.
+
+## Independent initial funding votes
+
+Root creation cannot be released until both exact initial-exit signatures are
+persisted. Initial reservations and receipts use the same locked/fsynced journal
+path that later becomes the confirmed operational session; the initial journal
+is sealed before handoff and State 1 retains its exact exit vote. Direct
+operational `init`/`bind-root` and null-lineage operational snapshots are rejected.
+Signed exports remain available after artifact or RPC loss. Native funding and
+context checks also compare the signed chain ID to the RPC genesis before
+fee signing, persisting network artifacts or broadcasting. Negative coverage:
+`initial_ceremony_requires_full_exit_before_creation_and_exports_exact_custody`,
+`initial_reservations_survive_restart_and_reject_forged_local_receipts_and_artifact_drift`,
+`operational_commands_reject_unconfirmed_recovery_bootstrap`, and
+`recovery_package_cannot_bypass_initial_funding_ceremony`.

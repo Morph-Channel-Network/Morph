@@ -18,6 +18,37 @@ pub fn validate_root_funding(
     transaction: &packed::Transaction,
 ) -> Result<()> {
     current.validate()?;
+    validate_root_funding_contents(current, transaction)?;
+    let witness = transaction
+        .witnesses()
+        .get(0)
+        .ok_or_else(|| anyhow!("missing funding witness"))?
+        .raw_data();
+    let witness = packed::WitnessArgs::from_slice(&witness)?;
+    let signatures = witness
+        .input_type()
+        .to_opt()
+        .ok_or_else(|| anyhow!("missing creation signatures"))?
+        .raw_data();
+    let (creation, _) = creation_contents(transaction)?;
+    let header = creation.state.encode()?;
+    wire::MultiAssetStateHeader::parse(&header)
+        .map_err(|error| anyhow!("invalid creation: {error:?}"))?
+        .verify_root_funding_signatures(
+            &transaction.calc_tx_hash().unpack(),
+            &morph_script_common::BilateralSignatureWitness::parse(&signatures)
+                .map_err(|error| anyhow!("invalid root signatures: {error:?}"))?,
+        )
+        .map_err(|error| anyhow!("invalid root funding authorization: {error:?}"))?;
+    Ok(())
+}
+
+/// Explicit unsigned review. This does not authorise creation or broadcast.
+pub fn validate_root_funding_contents(
+    current: &MultiAssetRecoveryPackage,
+    transaction: &packed::Transaction,
+) -> Result<()> {
+    current.validate_contents()?;
     ensure!(
         current.state.header.funding_epoch == 0
             && current.state.header.phase == Phase::Settling
@@ -91,24 +122,11 @@ pub fn validate_root_funding(
         .to_opt()
         .ok_or_else(|| anyhow!("missing creation evidence"))?
         .raw_data();
-    let signatures = witness
-        .input_type()
-        .to_opt()
-        .ok_or_else(|| anyhow!("missing creation signatures"))?
-        .raw_data();
     let mut creation = MultiAssetRecoveryPackage::decode_contents(
         &creation_data,
         &evidence,
         current.state_carrier_capacity,
     )?;
-    wire::MultiAssetStateHeader::parse(&creation_data)
-        .map_err(|error| anyhow!("invalid creation: {error:?}"))?
-        .verify_root_funding_signatures(
-            &hash,
-            &morph_script_common::BilateralSignatureWitness::parse(&signatures)
-                .map_err(|error| anyhow!("invalid root signatures: {error:?}"))?,
-        )
-        .map_err(|error| anyhow!("invalid root funding authorization: {error:?}"))?;
     ensure!(
         creation.state.header.funding_epoch == 0
             && creation.state.header.phase == Phase::Active
@@ -179,6 +197,10 @@ pub fn validate_root_funding(
     }
     for (index, output) in raw.outputs().into_iter().enumerate() {
         ensure!(
+            output.lock() != script(&current.scripts.state_lock)? || index == states[0].0,
+            "unlisted StateLock in root funding transaction"
+        );
+        ensure!(
             output.lock() != vault_lock || selected.contains(&index),
             "unlisted Vault in root funding transaction"
         );
@@ -186,8 +208,177 @@ pub fn validate_root_funding(
     Ok(())
 }
 
+fn creation_contents(
+    transaction: &packed::Transaction,
+) -> Result<(MultiAssetRecoveryPackage, usize)> {
+    ensure!(
+        transaction.as_slice().len() <= MAX_FUNDING_BYTES,
+        "root funding exceeds byte limit"
+    );
+    let witness = transaction
+        .witnesses()
+        .get(0)
+        .ok_or_else(|| anyhow!("missing funding witness zero"))?
+        .raw_data();
+    let witness = packed::WitnessArgs::from_slice(&witness)?;
+    let evidence = witness
+        .output_type()
+        .to_opt()
+        .ok_or_else(|| anyhow!("missing creation evidence"))?
+        .raw_data();
+    let parsed = wire::MultiAssetWitness::parse(&evidence)
+        .map_err(|error| anyhow!("invalid creation evidence: {error:?}"))?;
+    let ty = script(
+        parsed
+            .scripts()
+            .script(4)
+            .map_err(|error| anyhow!("missing StateType: {error:?}"))?,
+    )?;
+    let raw = transaction.raw();
+    let indices = raw
+        .outputs()
+        .into_iter()
+        .enumerate()
+        .filter(|(_, output)| output.type_().to_opt() == Some(ty.clone()))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    ensure!(
+        indices.len() == 1,
+        "funding requires one authentic creation State"
+    );
+    let index = indices[0];
+    let carrier = u64::from(
+        raw.outputs()
+            .get(index)
+            .ok_or_else(|| anyhow!("missing State"))?
+            .capacity(),
+    );
+    let header = raw
+        .outputs_data()
+        .get(index)
+        .ok_or_else(|| anyhow!("missing creation header"))?
+        .raw_data();
+    Ok((
+        MultiAssetRecoveryPackage::decode_contents(&header, &evidence, carrier)?,
+        index,
+    ))
+}
+
+/// Public immutable funding proposal. Every amount and the initial exit are
+/// derived from the packed transaction; no duplicate roots or amounts exist.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RootFundingDraft {
+    pub schema: String,
+    pub transaction_hex: String,
+    pub participants: [String; 2],
+}
+impl RootFundingDraft {
+    pub fn transaction(&self) -> Result<packed::Transaction> {
+        ensure!(
+            self.schema == "morph.multi_asset_root_draft.v1",
+            "unsupported root draft schema"
+        );
+        let bytes =
+            crate::multi_asset_packages::decode_hex(&self.transaction_hex, MAX_FUNDING_BYTES)?;
+        let tx = packed::Transaction::from_slice(&bytes)?;
+        let raw = tx
+            .witnesses()
+            .get(0)
+            .ok_or_else(|| anyhow!("missing draft witness"))?
+            .raw_data();
+        let args = packed::WitnessArgs::from_slice(&raw)?;
+        ensure!(
+            args.input_type().to_opt().is_none() && args.lock().to_opt().is_none(),
+            "root draft must contain no creation or wallet signature in witness zero"
+        );
+        Ok(tx)
+    }
+    pub fn evidence(&self) -> Result<(MultiAssetRecoveryPackage, MultiAssetRecoveryPackage)> {
+        let tx = self.transaction()?;
+        let (creation, _) = creation_contents(&tx)?;
+        let public = self
+            .participants
+            .each_ref()
+            .map(|key| crate::multi_asset_packages::decode_hex(key, 33));
+        let public = [
+            public[0].as_ref().map_err(|error| anyhow!("{error}"))?,
+            public[1].as_ref().map_err(|error| anyhow!("{error}"))?,
+        ];
+        ensure!(
+            public[0].len() == 33 && public[1].len() == 33 && public[0] < public[1],
+            "root participants must be sorted distinct compressed keys"
+        );
+        for key in public {
+            k256::ecdsa::VerifyingKey::from_sec1_bytes(key)
+                .map_err(|_| anyhow!("invalid compressed participant key"))?;
+        }
+        ensure!(
+            participants_commitment(2, &[public[0], public[1]])
+                == creation.state.header.participants_commitment,
+            "root participant commitment mismatch"
+        );
+        let mut exit = creation.clone();
+        let lock = script(&creation.scripts.vault_lock)?;
+        let hash = tx.calc_tx_hash().unpack();
+        for vault in &creation.manifest.vaults {
+            let matches = tx
+                .raw()
+                .outputs()
+                .into_iter()
+                .enumerate()
+                .filter(|(_, output)| {
+                    output.lock() == lock
+                        && match vault.asset {
+                            VaultAsset::Ckb => output.type_().to_opt().is_none(),
+                            VaultAsset::Xudt(hash) => output
+                                .type_()
+                                .to_opt()
+                                .is_some_and(|ty| ty.calc_script_hash().as_slice() == hash),
+                        }
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            ensure!(matches.len() == 1, "missing or duplicated root Vault");
+            exit.outpoints.push(MultiAssetOutPoint {
+                tx_hash: hash,
+                index: matches[0] as u32,
+            });
+        }
+        exit.state.vault_outpoint_set_root =
+            multi_asset_outpoint_commitment(&exit.manifest, &exit.outpoints)?;
+        exit.state.header.phase = Phase::Settling;
+        exit.state.header.state_number = 1;
+        validate_root_funding_contents(&exit, &tx)?;
+        // Validate code-dependency shape without pretending unsigned evidence
+        // is a recoverable package.
+        let deps = tx.raw().cell_deps();
+        let mut points = BTreeSet::new();
+        for dep in deps {
+            ensure!(
+                dep.dep_type().as_slice() == [0] || dep.dep_type().as_slice() == [1],
+                "invalid dependency type"
+            );
+            ensure!(
+                points.insert(dep.out_point().as_slice().to_vec()),
+                "duplicate funding dependency"
+            );
+        }
+        Ok((creation, exit))
+    }
+    pub fn digests(&self) -> Result<([u8; 32], [u8; 32])> {
+        let (creation, exit) = self.evidence()?;
+        Ok((
+            creation
+                .state
+                .root_funding_signing_digest(&self.transaction()?.calc_tx_hash().unpack())?,
+            exit.state.signing_digest()?,
+        ))
+    }
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use ckb_types::{bytes::Bytes, core::TransactionBuilder};
     use k256::ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner};
@@ -227,6 +418,29 @@ mod tests {
     fn fixture() -> (MultiAssetRecoveryPackage, packed::Transaction) {
         let stored = crate::multi_asset_packages::fixture_package().unwrap();
         let mut current = stored.recovery().unwrap();
+        for (raw, binary) in [
+            (
+                &mut current.scripts.state_type,
+                b"root-test-state-type".as_slice(),
+            ),
+            (
+                &mut current.scripts.state_lock,
+                b"root-test-state-lock".as_slice(),
+            ),
+            (
+                &mut current.scripts.vault_lock,
+                b"root-test-vault-lock".as_slice(),
+            ),
+        ] {
+            *raw = script(raw)
+                .unwrap()
+                .as_builder()
+                .code_hash(blake2b256(binary).pack())
+                .hash_type(2u8)
+                .build()
+                .as_slice()
+                .to_vec();
+        }
         let input = packed::CellInput::new_builder()
             .previous_output(
                 packed::OutPoint::new_builder()
@@ -370,6 +584,32 @@ mod tests {
         bind_hash(&mut current, &transaction);
         (current, transaction)
     }
+    pub(crate) fn draft_fixture() -> RootFundingDraft {
+        let (current, tx) = fixture();
+        let raw = tx.witnesses().get(0).unwrap().raw_data();
+        let witness = packed::WitnessArgs::from_slice(&raw)
+            .unwrap()
+            .as_builder()
+            .input_type(None::<Bytes>.pack())
+            .lock(None::<Bytes>.pack())
+            .build();
+        let tx = tx
+            .as_builder()
+            .witnesses(vec![witness.as_bytes().pack()].pack())
+            .build();
+        RootFundingDraft {
+            schema: "morph.multi_asset_root_draft.v1".to_string(),
+            transaction_hex: crate::multi_asset_packages::canonical_hex(tx.as_slice()),
+            participants: current
+                .authorization
+                .signatures
+                .iter()
+                .map(|signature| crate::multi_asset_packages::canonical_hex(&signature.pubkey_sec1))
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        }
+    }
     fn authorize_transaction(
         transaction: packed::Transaction,
         carrier: u64,
@@ -477,7 +717,7 @@ mod tests {
     #[test]
     fn root_proof_rejects_validly_authorized_references_to_wrong_physical_custody() {
         let (current, transaction) = fixture();
-        for mutation in 0..6 {
+        for mutation in 0..7 {
             let mut outputs = transaction.raw().outputs().into_iter().collect::<Vec<_>>();
             let mut data = transaction
                 .raw()
@@ -508,6 +748,16 @@ mod tests {
                         .build()
                 }
                 4 => data[2] = Bytes::from(vec![0; 16]).pack(),
+                6 => {
+                    outputs.push(
+                        outputs[1]
+                            .clone()
+                            .as_builder()
+                            .type_(None::<packed::Script>.pack())
+                            .build(),
+                    );
+                    data.push(Bytes::new().pack());
+                }
                 _ => {}
             }
             let raw = transaction

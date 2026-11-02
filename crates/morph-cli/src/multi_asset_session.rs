@@ -24,7 +24,7 @@ use crate::multi_asset_packages::{
 
 const SESSION_SCHEMA: &str = "morph.multi_asset_session.v1";
 const PROPOSAL_SCHEMA: &str = "morph.multi_asset_proposal.v1";
-const SIGNATURE_SCHEMA: &str = "morph.multi_asset_signature.v1";
+pub(crate) const SIGNATURE_SCHEMA: &str = "morph.multi_asset_signature.v1";
 const RETIRED_SCHEMA: &str = "morph.multi_asset_retired_session.v1";
 const MAX_SESSION_BYTES: u64 = 512 * 1024;
 const MAX_DESCRIPTOR_BYTES: usize = wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
@@ -32,13 +32,6 @@ const MAX_DESCRIPTOR_BYTES: usize = wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
 
 #[derive(Debug, Subcommand)]
 pub enum SessionCommand {
-    /// Initialise once from complete signed recovery evidence.
-    Init {
-        #[arg(long)]
-        package: PathBuf,
-        #[arg(long)]
-        local_pubkey: String,
-    },
     /// Review the current state, pending proposal, and signing reservation.
     Inspect,
     /// Propose a canonical settlement descriptor; no key is invoked.
@@ -86,18 +79,6 @@ pub enum SessionCommand {
     ExportSplice {
         #[arg(long)]
         store_dir: PathBuf,
-    },
-    /// Bind epoch-0 funding provenance and canonical State evidence without resetting votes.
-    #[cfg(feature = "devnet")]
-    BindRoot {
-        #[arg(long)]
-        rpc_url: String,
-        #[arg(long)]
-        state_out_point: String,
-        #[arg(long)]
-        min_confirmations: u64,
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: PathBuf,
     },
     /// Export the complete signed epoch-0 funding body and current unilateral exit.
     ExportRootFunding {
@@ -232,11 +213,22 @@ struct ProposalMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SignatureMessage {
-    schema: String,
-    signing_digest: String,
-    pubkey: String,
-    signature: String,
+pub(crate) struct SignatureMessage {
+    pub(crate) schema: String,
+    pub(crate) signing_digest: String,
+    pub(crate) pubkey: String,
+    pub(crate) signature: String,
+}
+
+pub(crate) fn channel_signing_key(private_key: &str, expected: &[u8]) -> Result<SigningKey> {
+    let raw = hex::decode(private_key.strip_prefix("0x").unwrap_or(private_key))
+        .map_err(|_| anyhow!("invalid channel signing key"))?;
+    let key = SigningKey::from_slice(&raw).map_err(|_| anyhow!("invalid channel signing key"))?;
+    ensure!(
+        key.verifying_key().to_encoded_point(true).as_bytes() == expected,
+        "key does not match session's local signer"
+    );
+    Ok(key)
 }
 
 fn read_limited(path: &Path) -> Result<Vec<u8>> {
@@ -304,7 +296,7 @@ fn asset_summary(asset: &VaultAsset) -> Option<String> {
 fn value_summary(value: MultiAssetValue) -> Value {
     json!({"reserve":value.reserve.to_string(), "business_ckb":value.business_ckb.to_string(), "amount":value.amount.to_string()})
 }
-fn payout_summary(settlement: &MultiAssetSettlement) -> Vec<Value> {
+pub(crate) fn payout_summary(settlement: &MultiAssetSettlement) -> Vec<Value> {
     settlement.payouts.iter().map(|payout| json!({"type_hash":asset_summary(&payout.asset), "allocations":payout.values.map(value_summary)})).collect()
 }
 
@@ -471,9 +463,9 @@ impl StoredSession {
         Ok(())
     }
     fn verify_chain(&self) -> Result<()> {
-        let Some(lineage) = &self.lineage else {
-            return Ok(());
-        };
+        let lineage = self.lineage.as_ref().ok_or_else(|| {
+            anyhow!("operational signer requires confirmed initial funding lineage")
+        })?;
         #[cfg(feature = "devnet")]
         {
             let rpc = crate::rpc::CkbRpcClient::new(&lineage.rpc_url)?;
@@ -567,35 +559,35 @@ fn save(path: &Path, session: &StoredSession) -> Result<()> {
     crate::packages::write_private_atomic(path, &bytes)
 }
 
+#[cfg(test)]
+pub(crate) fn test_session(path: &Path, package: &Path, local_pubkey: &str) -> Result<()> {
+    let package = packages::read_package(package)?;
+    let session = StoredSession {
+        schema: SESSION_SCHEMA.to_string(),
+        backend: MultiAssetChannelBackend::new(package.recovery()?, decode_hex(local_pubkey, 33)?)?,
+        cell_deps: package.cell_deps,
+        splice_draft: None,
+        lineage: None,
+    };
+    save(path, &session)
+}
+
 pub fn run(path: &Path, command: SessionCommand) -> Result<Value> {
     let _lock = lock_private_path(path)?;
-    if let SessionCommand::Init {
-        package,
-        local_pubkey,
-    } = command
-    {
-        ensure!(
-            !path.exists(),
-            "signing session already exists; never reset signing history"
-        );
-        let package = packages::read_package(&package)?;
-        let recovery = package.recovery()?;
-        ensure!(
-            recovery.state.header.funding_epoch == 0,
-            "post-splice contexts require confirm-splice on the existing signer journal"
-        );
-        let local = decode_hex(&local_pubkey, 33)?;
-        let session = StoredSession {
-            schema: SESSION_SCHEMA.to_string(),
-            backend: MultiAssetChannelBackend::new(recovery, local)?,
-            cell_deps: package.cell_deps,
-            splice_draft: None,
-            lineage: None,
-        };
-        save(path, &session)?;
-        return session.summary();
-    }
-    let mut session: StoredSession = serde_json::from_slice(&read_limited(path)?)?;
+    let session: StoredSession = serde_json::from_slice(&read_limited(path)?)?;
+    ensure!(
+        session.lineage.is_some(),
+        "operational signer requires confirmed initial funding lineage"
+    );
+    run_loaded(path, command, session, StoredSession::verify_chain)
+}
+
+fn run_loaded(
+    path: &Path,
+    command: SessionCommand,
+    mut session: StoredSession,
+    verify: fn(&StoredSession) -> Result<()>,
+) -> Result<Value> {
     session.package()?;
     let requires_chain = match &command {
         SessionCommand::Inspect
@@ -604,16 +596,13 @@ pub fn run(path: &Path, command: SessionCommand) -> Result<Value> {
         | SessionCommand::Cancel
         | SessionCommand::CancelSplice => false,
         #[cfg(feature = "devnet")]
-        SessionCommand::ConfirmSplice { .. }
-        | SessionCommand::RefreshChain { .. }
-        | SessionCommand::BindRoot { .. } => false,
+        SessionCommand::ConfirmSplice { .. } | SessionCommand::RefreshChain { .. } => false,
         _ => true,
     };
     if requires_chain {
-        session.verify_chain()?;
+        verify(&session)?;
     }
     match command {
-        SessionCommand::Init { .. } => Err(anyhow!("signing session is already initialized")),
         SessionCommand::Inspect => session.summary(),
         SessionCommand::Propose { descriptor_hex } => {
             let descriptor = decode_hex(&descriptor_hex, MAX_DESCRIPTOR_BYTES)?;
@@ -637,19 +626,8 @@ pub fn run(path: &Path, command: SessionCommand) -> Result<Value> {
             target,
             private_key,
         } => {
-            let raw = hex::decode(private_key.strip_prefix("0x").unwrap_or(&private_key))
-                .map_err(|_| anyhow!("invalid channel signing key"))?;
-            let key =
-                SigningKey::from_slice(&raw).map_err(|_| anyhow!("invalid channel signing key"))?;
-            let pubkey = key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .to_vec();
-            ensure!(
-                pubkey == session.backend.local_pubkey(),
-                "key does not match session's local signer"
-            );
+            let key = channel_signing_key(&private_key, session.backend.local_pubkey())?;
+            let pubkey = session.backend.local_pubkey().to_vec();
             let signing_digest = target.digest(&session.backend)?;
             if let Some(signature) = target
                 .signatures(&session.backend)
@@ -671,7 +649,7 @@ pub fn run(path: &Path, command: SessionCommand) -> Result<Value> {
             // Crash after this write can only retry the same digest or move to
             // a greater state number, even if no signature was returned yet.
             save(path, &session)?;
-            session.verify_chain()?;
+            verify(&session)?;
             let signature: Signature = key
                 .sign_prehash(&reserved_digest)
                 .map_err(|_| anyhow!("channel signature generation failed"))?;
@@ -681,7 +659,7 @@ pub fn run(path: &Path, command: SessionCommand) -> Result<Value> {
             };
             target.record(&mut session.backend, signature.clone())?;
             save(path, &session)?;
-            session.verify_chain()?;
+            verify(&session)?;
             Ok(serde_json::to_value(SignatureMessage {
                 schema: SIGNATURE_SCHEMA.to_string(),
                 signing_digest: canonical_hex(&reserved_digest),
@@ -793,20 +771,6 @@ pub fn run(path: &Path, command: SessionCommand) -> Result<Value> {
                 json!({"funding_transaction":transaction_path,"recovery_package":recovery_path,"tx_hash":canonical_hex(transaction.calc_tx_hash().as_slice())}),
             )
         }
-        #[cfg(feature = "devnet")]
-        SessionCommand::BindRoot {
-            rpc_url,
-            state_out_point,
-            min_confirmations,
-            contracts_dir,
-        } => bind_root(
-            path,
-            session,
-            &rpc_url,
-            &state_out_point,
-            min_confirmations,
-            &contracts_dir,
-        ),
         #[cfg(feature = "devnet")]
         SessionCommand::ConfirmSplice {
             rpc_url,
@@ -934,6 +898,34 @@ fn bind_root(
     session.verify_chain()?;
     save(path, &session)?;
     session.summary()
+}
+
+/// Called only while the root funding session holds this path's stable lock.
+#[cfg(feature = "devnet")]
+pub(crate) fn confirm_initial_funding(
+    path: &Path,
+    package: StoredMultiAssetPackage,
+    local_pubkey: Vec<u8>,
+    rpc_url: &str,
+    state_out_point: &str,
+    min_confirmations: u64,
+    contracts_dir: &Path,
+) -> Result<Value> {
+    let session = StoredSession {
+        schema: SESSION_SCHEMA.to_string(),
+        backend: MultiAssetChannelBackend::new(package.recovery()?, local_pubkey)?,
+        cell_deps: package.cell_deps,
+        splice_draft: None,
+        lineage: None,
+    };
+    bind_root(
+        path,
+        session,
+        rpc_url,
+        state_out_point,
+        min_confirmations,
+        contracts_dir,
+    )
 }
 
 #[cfg(feature = "devnet")]
@@ -1104,6 +1096,27 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
 
+    // These unit tests exercise persistence/crypto without a chain. Guarded
+    // command verification is covered by the isolated-node acceptance flow.
+    fn run(path: &Path, command: SessionCommand) -> Result<Value> {
+        let _lock = lock_private_path(path)?;
+        let session = serde_json::from_slice(&read_limited(path)?)?;
+        run_loaded(path, command, session, |_| Ok(()))
+    }
+    #[test]
+    fn operational_commands_reject_unconfirmed_recovery_bootstrap() {
+        let (dir, path, package, _) = fixture();
+        test_session(&path, &package, &public(1)).unwrap();
+        let before = fs::read(&path).unwrap();
+        assert!(
+            super::run(&path, SessionCommand::Inspect)
+                .unwrap_err()
+                .to_string()
+                .contains("confirmed initial funding")
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+        fs::remove_dir_all(dir).unwrap();
+    }
     fn fixture() -> (PathBuf, PathBuf, PathBuf, StoredMultiAssetPackage) {
         let dir = std::env::temp_dir().join(format!(
             "morph-session-{}-{}",
@@ -1126,14 +1139,7 @@ mod tests {
         )
     }
     fn init(path: &Path, package: &Path, key: u8) {
-        run(
-            path,
-            SessionCommand::Init {
-                package: package.to_path_buf(),
-                local_pubkey: public(key),
-            },
-        )
-        .unwrap();
+        test_session(path, package, &public(key)).unwrap();
     }
     fn propose(path: &Path, package: &StoredMultiAssetPackage) -> Value {
         let mut settlement = package.recovery().unwrap().settlement;
@@ -1156,16 +1162,6 @@ mod tests {
         let bob = dir.join("bob.json");
         init(&alice, &original_path, 1);
         init(&bob, &original_path, 2);
-        assert!(
-            run(
-                &alice,
-                SessionCommand::Init {
-                    package: original_path,
-                    local_pubkey: public(1)
-                }
-            )
-            .is_err()
-        );
         let proposal = propose(&alice, &package);
         let proposal_path = dir.join("proposal.json");
         fs::write(&proposal_path, serde_json::to_vec(&proposal).unwrap()).unwrap();
@@ -1365,20 +1361,6 @@ mod tests {
         let exit = packages::read_package(Path::new(result["recovery_package"].as_str().unwrap()))
             .unwrap();
         let recovery = exit.recovery().unwrap();
-        let duplicate = dir.join("duplicate-post-splice.json");
-        assert!(
-            run(
-                &duplicate,
-                SessionCommand::Init {
-                    package: PathBuf::from(result["recovery_package"].as_str().unwrap()),
-                    local_pubkey: public(1)
-                }
-            )
-            .unwrap_err()
-            .to_string()
-            .contains("post-splice contexts require confirm-splice")
-        );
-        assert!(!duplicate.exists());
         assert_eq!(recovery.state.header.state_number, 1);
         let bytes = fs::read(result["transaction"].as_str().unwrap()).unwrap();
         let tx = packed::Transaction::from_slice(&bytes).unwrap();

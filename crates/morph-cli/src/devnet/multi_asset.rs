@@ -2,13 +2,19 @@
 //! issuance belongs only to the devnet acceptance harness.
 
 use super::*;
-use crate::multi_asset_packages::{StoredMultiAssetPackage, write_package};
+use crate::multi_asset_funding::RootFundingDraft;
+use crate::multi_asset_funding_session::{
+    FundingSessionCommand, FundingTarget, run as funding_run,
+};
+use crate::multi_asset_packages::{
+    StoredMultiAssetPackage, canonical_hex as canonical_root_hex, write_package,
+};
 use crate::multi_asset_session::{SessionCommand, run};
 use morph_core::{
     MultiAssetHeader, MultiAssetManifest, MultiAssetOutPoint, MultiAssetPayout,
     MultiAssetRecoveryPackage, MultiAssetRecoveryScripts, MultiAssetSettlement, MultiAssetState,
     MultiAssetTypeScript, MultiAssetValue, MultiAssetVault, StateAuthorization,
-    encode_multi_asset_signatures, encode_multi_asset_witness, multi_asset_outpoint_commitment,
+    encode_multi_asset_witness, multi_asset_outpoint_commitment,
 };
 use morph_script_common::multi_asset as wire;
 use serde_json::{Value, json};
@@ -34,22 +40,14 @@ fn report(sent: &SentTransactionReport) -> Value {
         "block_hash": sent.block_hash, "metrics": sent.metrics, "mined_blocks": sent.mined_blocks})
 }
 
-fn proof(package: &MultiAssetRecoveryPackage) -> Result<Bytes> {
+fn unsigned_creation_witness(package: &MultiAssetRecoveryPackage) -> Result<Bytes> {
     let evidence = encode_multi_asset_witness(
         &package.manifest,
         &package.settlement,
         &package.outpoints,
         &package.scripts,
     )?;
-    let signatures = if package.authorization.signatures.is_empty() {
-        None
-    } else {
-        Some(Bytes::from(
-            encode_multi_asset_signatures(&package.authorization)?.to_vec(),
-        ))
-    };
     Ok(WitnessArgs::new_builder()
-        .input_type(signatures.pack())
         .output_type(Some(Bytes::from(evidence)).pack())
         .build()
         .as_bytes())
@@ -458,57 +456,105 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             &owner_lock,
         )?)
         .output_data(Bytes::new().pack())
-        .witness(proof(&package)?);
+        .witness(unsigned_creation_witness(&package)?);
     let funding_transaction = tx.build();
-    let digest = package
-        .state
-        .root_funding_signing_digest(&funding_transaction.hash().unpack())?;
-    package.authorization.signatures = root_keys
-        .iter()
-        .map(|key| {
-            Ok(ParticipantSignature {
-                pubkey_sec1: k256_pubkey(key).to_vec(),
-                signature: ecdsa_signature(key, &digest)?.to_vec(),
-            })
-        })
-        .collect::<Result<_>>()?;
-    let funding_transaction = funding_transaction
-        .as_advanced_builder()
-        .set_witnesses(vec![proof(&package)?.pack()])
-        .build();
-    // CKB transaction identity excludes witnesses. Retain a signed unilateral
-    // exit against the exact future Vault OutPoints before funding is sent.
     let predicted_funding_hash = funding_transaction.hash();
-    let mut initial_recovery = package.clone();
-    initial_recovery.outpoints = (0..assets.len())
-        .map(|i| MultiAssetOutPoint {
-            tx_hash: predicted_funding_hash.unpack(),
-            index: i as u32 + 1,
-        })
-        .collect();
-    initial_recovery.state.vault_outpoint_set_root =
-        multi_asset_outpoint_commitment(&initial_recovery.manifest, &initial_recovery.outpoints)?;
-    initial_recovery.state.header.phase = Phase::Settling;
-    initial_recovery.state.header.state_number = 1;
-    authorize(
-        &mut initial_recovery,
-        &options.alice_private_key,
-        &options.bob_private_key,
+    let draft = RootFundingDraft {
+        schema: "morph.multi_asset_root_draft.v1".to_string(),
+        transaction_hex: canonical_root_hex(funding_transaction.data().as_slice()),
+        participants: public.map(|key| canonical_root_hex(&key)),
+    };
+    let (_, unsigned_exit) = draft.evidence()?;
+    let draft_path = options.store_dir.join("root-funding-draft.json");
+    ensure!(!draft_path.exists(), "root funding draft already exists");
+    crate::packages::write_private_atomic(&draft_path, &serde_json::to_vec_pretty(&draft)?)?;
+    let session_dir = options
+        .store_dir
+        .join("signers")
+        .join(hex::encode(channel_id))
+        .join(hex::encode(unsigned_exit.state.funding_context_id()?));
+    let alice_session = session_dir.join("alice.json");
+    let bob_session = session_dir.join("bob.json");
+    for (session, secret) in [
+        (&alice_session, &options.alice_private_key),
+        (&bob_session, &options.bob_private_key),
+    ] {
+        funding_run(
+            session,
+            FundingSessionCommand::Init {
+                draft: draft_path.clone(),
+                local_pubkey: canonical_root_hex(&k256_pubkey(&k256_signing_key(secret)?)),
+                contracts_dir: options.contracts_dir.clone(),
+            },
+        )?;
+        let before = fs::read(session)?;
+        ensure!(
+            funding_run(
+                session,
+                FundingSessionCommand::Sign {
+                    target: FundingTarget::Creation,
+                    private_key: secret.clone()
+                }
+            )
+            .is_err(),
+            "root creation authorized before complete initial exit"
+        );
+        ensure!(
+            fs::read(session)? == before,
+            "premature root signing changed journal"
+        );
+    }
+    for (target, label) in [
+        (FundingTarget::Exit, "exit"),
+        (FundingTarget::Creation, "creation"),
+    ] {
+        for (index, (session, secret)) in [
+            (&alice_session, &options.alice_private_key),
+            (&bob_session, &options.bob_private_key),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let receipt = funding_run(
+                session,
+                FundingSessionCommand::Sign {
+                    target,
+                    private_key: secret.clone(),
+                },
+            )?;
+            crate::packages::write_private_atomic(
+                &session_dir.join(format!("root-{label}-{index}.json")),
+                &serde_json::to_vec(&receipt)?,
+            )?;
+        }
+        for (index, session) in [&alice_session, &bob_session].into_iter().enumerate() {
+            funding_run(
+                session,
+                FundingSessionCommand::AddSignature {
+                    target,
+                    signature: session_dir.join(format!("root-{label}-{}.json", 1 - index)),
+                },
+            )?;
+        }
+    }
+    let exported = funding_run(
+        &alice_session,
+        FundingSessionCommand::Export {
+            store_dir: options.store_dir.clone(),
+        },
     )?;
-    let pre_funding_recovery = write_package(
-        &options.store_dir,
-        &StoredMultiAssetPackage::from_recovery(&initial_recovery, &recovery_deps)?,
-    )?;
-    let signed = sign_group(
-        funding_transaction,
-        &owner,
-        &(0..=assets.len()).collect::<Vec<_>>(),
-    )?;
-    let intent = crate::multi_asset_splice_transaction::write_transaction(
-        &options.store_dir.join("funding-intents"),
-        &signed.data(),
-        crate::multi_asset_splice_transaction::TransactionKind::Root,
-    )?;
+    let intent = PathBuf::from(
+        exported["transaction"]
+            .as_str()
+            .ok_or_else(|| anyhow!("missing root transaction"))?,
+    );
+    let pre_funding_recovery = PathBuf::from(
+        exported["recovery_package"]
+            .as_str()
+            .ok_or_else(|| anyhow!("missing initial exit"))?,
+    );
+    let initial_recovery =
+        crate::multi_asset_packages::read_package(&pre_funding_recovery)?.recovery()?;
     let fund = super::multi_asset_funding_operator::submit(
         rpc,
         super::multi_asset_funding_operator::Options {
@@ -519,6 +565,9 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             max_fee: options.fee,
             mine_blocks: options.mine_blocks,
             dry_run: false,
+            fee_authorization: super::multi_asset_splice_operator::FeeAuthorization::Wallet {
+                private_key: options.private_key.clone(),
+            },
         },
     )?;
     let funding_hash = parse_h256(
@@ -586,32 +635,16 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         // processing catches up. Observe depth instead of assuming RPC count.
         std::thread::sleep(Duration::from_millis(50));
     }
-    let session_dir = options
-        .store_dir
-        .join("signers")
-        .join(hex::encode(channel_id))
-        .join(hex::encode(initial_recovery.state.funding_context_id()?));
-    let alice_session = session_dir.join("alice.json");
-    let bob_session = session_dir.join("bob.json");
-    for (session, secret) in [
-        (&alice_session, &options.alice_private_key),
-        (&bob_session, &options.bob_private_key),
-    ] {
-        run(
-            session,
-            SessionCommand::Init {
-                package: pre_funding_recovery.clone(),
-                local_pubkey: format!("0x{}", hex::encode(k256_pubkey(&k256_signing_key(secret)?))),
-            },
-        )?;
+    for session in [&alice_session, &bob_session] {
         let before = fs::read(session)?;
         ensure!(
-            run(
+            funding_run(
                 session,
-                SessionCommand::BindRoot {
+                FundingSessionCommand::Confirm {
                     rpc_url: rpc.endpoint().to_string(),
                     state_out_point: format_out_point(&state_point),
                     min_confirmations: u64::MAX,
+                    archive_dir: options.store_dir.join("initial-journals"),
                     contracts_dir: options.contracts_dir.clone()
                 }
             )
@@ -624,12 +657,13 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         );
         let wrong_point = OutPoint::new(state_point.tx_hash(), 1);
         ensure!(
-            run(
+            funding_run(
                 session,
-                SessionCommand::BindRoot {
+                FundingSessionCommand::Confirm {
                     rpc_url: rpc.endpoint().to_string(),
                     state_out_point: format_out_point(&wrong_point),
                     min_confirmations: 4,
+                    archive_dir: options.store_dir.join("initial-journals"),
                     contracts_dir: options.contracts_dir.clone()
                 }
             )
@@ -640,17 +674,19 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             fs::read(session)? == before,
             "failed root binding changed the signer journal"
         );
-        run(
+        funding_run(
             session,
-            SessionCommand::BindRoot {
+            FundingSessionCommand::Confirm {
                 rpc_url: rpc.endpoint().to_string(),
                 state_out_point: format_out_point(&state_point),
                 min_confirmations: 4,
+                archive_dir: options.store_dir.join("initial-journals"),
                 contracts_dir: options.contracts_dir.clone(),
             },
         )?;
     }
     operator_checks.push("root_creation_bound_without_resetting_votes");
+    operator_checks.push("independent_initial_exit_before_creation_and_same_path_confirmation");
     if options.watch_publication {
         let fee_cell = find_largest_live_cell(rpc, &owner_lock, rpc.tip_header()?.number_value()?)?;
         let pass = super::multi_asset_watch::watch(

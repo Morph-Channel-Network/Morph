@@ -14,34 +14,24 @@ Retain all referenced retired journals and approved contract artifacts.
 
 ## Root funding provenance
 
-Initialise each signer from a complete signed epoch-0 exit, then bind its
-existing journal to a confirmed root State without resetting any votes:
+Complete the [independent initial funding ceremony](initial-funding.md) on each
+signer's stable path. Its `confirm` command seals the initial votes and checks
+canonical funding and bound State inclusion before switching the same path to
+a guarded operational session. Register it here only after that handoff. The
+old operational `init` and `bind-root` entry points are removed.
 
-```sh
-morph-cli multi-asset-session --session /srv/morph/signers/alice.json bind-root \
-  --rpc-url http://127.0.0.1:8114 --state-out-point 0xFUNDING_OR_ACTIVATION_HASH:0 \
-  --min-confirmations 4 --contracts-dir /srv/morph/contracts
-```
-
-The original funding transaction, its transaction-bound two-party creation
-signatures, exact physical Vaults, approved scripts and current canonical State
-are checked. The journal retains the full funding transaction and confirmation
-checkpoints. `bind-root` cannot replace an existing guard; `refresh-chain`
-requires an explicit State OutPoint and complete recovery package and preserves
-reserved votes, endpoint and depth. Root and splice origins have distinct
-required shapes; there is no migration or fallback parser.
+`refresh-chain` requires an explicit State OutPoint and complete recovery
+package and preserves reserved votes, endpoint and depth. Root and splice
+origins have distinct required shapes; there is no migration or fallback parser.
 
 `export-root-funding --store-dir /srv/morph/recovery` exports the retained
 funding transaction and current exit even while the chain is unavailable or
 orphaned. `devnet multi-asset-funding-submit --transaction ... --package ...
---store-dir ... --max-fee ...` validates, preflights and durably saves both before
+--store-dir ... --max-fee ... presigned` validates, preflights and durably saves both before
 broadcast; it needs no participant or funding key because the original binary
 is already signed. Re-mining it never silently refreshes a signer checkpoint.
 After confirming canonical custody, use `refresh-chain` explicitly. Splice
 confirmation seals the old root journal and switches the same active path.
-
-Independent collection of the initial creation and exit signatures remains an
-open signing-ceremony task; the smoke harness currently collects both locally.
 
 ## Configuration
 

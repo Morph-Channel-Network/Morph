@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add independent root funding sessions with durable initial-exit reservations,
+  two-party exit-before-creation signing, approved local artifact checks and
+  confirmed same-path handoff. Remove direct operational `init`/`bind-root`.
+  Add explicit wallet/presigned funding roles and share complete registered-Type
+  and CKB accounting with splice submission. Signed recovery exports remain
+  available without RPC or installed artifacts.
+
 - Add multi-asset splice intent validation and durable old-context signing
   freeze, requiring exact transaction identity and a complete future exit.
   Add State/Vault splice execution, whole-transaction per-type conservation

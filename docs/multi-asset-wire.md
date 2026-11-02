@@ -132,12 +132,18 @@ must use a greater number. A delayed complete peer update can be recovered
 without clearing a newer reservation. An unknown future local signature is
 rejected as inconsistent with this signer's journal.
 
-The default-build `multi-asset-session` command implements those persistence
-requirements without RPC or participant co-location. Its current session
+`multi-asset-funding-session` implements independent offline initial signing;
+[initial funding](runbooks/initial-funding.md) describes its exit-before-creation
+ordering and confirmed handoff. Operational `multi-asset-session` commands
+retain these persistence requirements and canonical lineage checks. Its current session
 schema is `morph.multi_asset_session.v1`; snapshots contain public recovery and
 signature data, never a private key. The CLI holds an OS file lock on a stable
 sidecar inode across read, reservation, signing and atomic snapshot replacement.
 Private snapshots are mode 0600 on Unix; writes fsync the file and directories.
+Operational commands reject snapshots without confirmed lineage. The RPC
+genesis must match the signed chain ID for funding, native state operations,
+splice and context verification.
+
 The reservation is persisted before calling the signer and the signature is
 persisted before stdout returns its receipt. A crashed process releases the OS
 lock. Initialization refuses an existing session rather than resetting history.
@@ -148,10 +154,6 @@ canonical `0x`-prefixed compressed 33-byte key. Review `inspect` output, includi
 all proposed per-asset allocations and payout-lock identities, before `sign`.
 
 ```sh
-morph-cli multi-asset-session --session alice.json init \
-  --package recovery.json --local-pubkey "$LOCAL_PUBKEY"
-morph-cli multi-asset-session --session bob.json init \
-  --package recovery.json --local-pubkey "$PEER_LOCAL_PUBKEY"
 morph-cli multi-asset-session --session alice.json propose \
   --descriptor-hex "$DESCRIPTOR_HEX" > proposal.json
 morph-cli multi-asset-session --session bob.json accept --proposal proposal.json
@@ -162,8 +164,9 @@ morph-cli multi-asset-session --session alice.json add-signature --target update
 morph-cli multi-asset-session --session alice.json commit --store-dir recovery
 ```
 
-Bob initializes his own session and returns his signature by the same procedure.
-`init` accepts epoch 0 only. Post-splice epochs use `confirm-splice` on the same
+Both paths must first complete the independent initial funding ceremony. The
+old recovery-package `init` and `bind-root` commands are removed; packages cannot
+replace signing history. Post-splice epochs use `confirm-splice` on the same
 authoritative session path and retain canonical lineage guards; see
 [multi-asset splice](multi-asset-splice.md).
 `cancel` discards a pending proposal; `recover --package PATH` imports an

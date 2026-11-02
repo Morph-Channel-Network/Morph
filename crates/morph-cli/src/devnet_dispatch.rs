@@ -86,6 +86,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             max_fee,
             mine_blocks,
             dry_run,
+            fee_authorization,
         } => {
             let report = devnet::multi_asset_funding_operator::submit(
                 &rpc,
@@ -97,6 +98,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                     max_fee,
                     mine_blocks,
                     dry_run,
+                    fee_authorization,
                 },
             )?;
             println!("{}", serde_json::to_string_pretty(&report)?);

@@ -213,6 +213,10 @@ impl CkbRpcClient {
             )
     }
 
+    pub fn genesis_block_hash(&self) -> Result<Option<H256>> {
+        self.call_nullable("get_block_hash", json!(["0x0"]))
+    }
+
     pub fn block_by_number(&self, number: u64) -> Result<Option<BlockView>> {
         self.call_nullable(
             "get_block_by_number",

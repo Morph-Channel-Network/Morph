@@ -59,6 +59,7 @@ pub fn submit(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
     let old_stored = read_package(&options.old_package)?;
     let new_stored = read_package(&options.new_package)?;
     let current = old_stored.recovery()?;
+    operator::verify_chain_id(rpc, &current.state.header.chain_id)?;
     let recovery = new_stored.recovery()?;
     let (_, plan) = SpliceDraft::from_signed_transaction(&current, &recovery, &transaction)?;
     let expected_package = crate::multi_asset_packages::StoredMultiAssetPackage::from_recovery(
@@ -276,65 +277,14 @@ fn validate_balances(
     plan: &MultiAssetSpliceProposal,
     max_fee: u64,
 ) -> Result<u64> {
-    let registered = registered_assets(current, plan);
-    let mut before = BTreeMap::new();
-    let mut after = BTreeMap::new();
-    fn add(
-        amounts: &mut BTreeMap<[u8; 32], u128>,
-        registered: &BTreeSet<[u8; 32]>,
-        output: &CellOutput,
-        data: &[u8],
-    ) -> Result<()> {
-        if let Some(ty) = output.type_().to_opt() {
-            let hash: [u8; 32] = ty.calc_script_hash().unpack();
-            if registered.contains(&hash) {
-                let amount = u128::from_le_bytes(
-                    data.try_into()
-                        .map_err(|_| anyhow!("registered token data must be 16 bytes"))?,
-                );
-                let sum = amounts.entry(hash).or_default();
-                *sum = sum
-                    .checked_add(amount)
-                    .ok_or_else(|| anyhow!("token total overflow"))?;
-            }
-        }
-        Ok(())
-    }
-    let mut input_capacity = 0u64;
-    for cell in inputs {
-        input_capacity = input_capacity
-            .checked_add(cell.capacity)
-            .ok_or_else(|| anyhow!("input capacity overflow"))?;
-        add(&mut before, &registered, &cell.output, &cell.data)?;
-    }
-    let mut output_capacity = 0u64;
-    for (index, output) in transaction.raw().outputs().into_iter().enumerate() {
-        output_capacity = output_capacity
-            .checked_add(output.capacity().unpack())
-            .ok_or_else(|| anyhow!("output capacity overflow"))?;
-        let data = transaction
-            .raw()
-            .outputs_data()
-            .get(index)
-            .ok_or_else(|| anyhow!("missing output data"))?
-            .raw_data();
-        add(&mut after, &registered, &output, &data)?;
-    }
-    for hash in registered {
-        ensure!(
-            before.get(&hash).copied().unwrap_or(0) == after.get(&hash).copied().unwrap_or(0),
-            "registered token is not conserved"
-        );
-    }
-    let fee = input_capacity
-        .checked_sub(output_capacity)
-        .ok_or_else(|| anyhow!("splice creates CKB capacity"))?;
-    ensure!(
-        fee > 0 && fee <= max_fee,
-        "splice fee is zero or exceeds max_fee"
-    );
-    Ok(fee)
+    operator::validate_funding_balances(
+        transaction,
+        inputs,
+        &registered_assets(current, plan),
+        max_fee,
+    )
 }
+
 fn validate_wallet(
     transaction: &ckb_types::packed::Transaction,
     inputs: &[LiveCellDetails],
@@ -421,6 +371,7 @@ pub fn prepare(rpc: &CkbRpcClient, options: PrepareOptions) -> Result<Value> {
     );
     let old_stored = read_package(&options.old_package)?;
     let current = old_stored.recovery()?;
+    operator::verify_chain_id(rpc, &current.state.header.chain_id)?;
     let checkpoint = rpc.tip_header()?;
     let old_point = parse_out_point(&options.state_out_point)?;
     let state = load_canonical_live_cell(rpc, old_point.clone())?;
@@ -887,6 +838,8 @@ pub fn verify_context_guard(
     current: &crate::multi_asset_packages::StoredMultiAssetPackage,
     contracts_dir: &Path,
 ) -> Result<()> {
+    let recovery = current.recovery()?;
+    operator::verify_chain_id(rpc, &recovery.state.header.chain_id)?;
     fn check(
         rpc: &CkbRpcClient,
         saved: &crate::multi_asset_session_chain::CanonicalInclusion,
@@ -924,7 +877,7 @@ pub fn verify_context_guard(
         output,
         data,
     };
-    validate_state(&state, &current.recovery()?)?;
+    validate_state(&state, &recovery)?;
 
     let decoded = current.decode()?;
     let witness = wire::MultiAssetWitness::parse(&decoded.witness).map_err(invalid)?;

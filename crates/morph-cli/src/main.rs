@@ -45,6 +45,7 @@ mod devnet_dispatch;
 mod factory_packages;
 mod hub;
 mod multi_asset_funding;
+mod multi_asset_funding_session;
 mod multi_asset_packages;
 mod multi_asset_session;
 mod multi_asset_session_chain;
@@ -129,6 +130,13 @@ enum InvoiceAssetArg {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Independently collect an initial exit before authorising exact root funding.
+    MultiAssetFundingSession {
+        #[arg(long)]
+        session: PathBuf,
+        #[command(subcommand)]
+        command: multi_asset_funding_session::FundingSessionCommand,
+    },
     /// Negotiate signed multi-asset updates using a durable local signing journal.
     MultiAssetSession {
         #[arg(long)]
@@ -704,6 +712,8 @@ enum DevnetCommand {
         mine_blocks: u64,
         #[arg(long)]
         dry_run: bool,
+        #[command(subcommand)]
+        fee_authorization: devnet::multi_asset_splice_operator::FeeAuthorization,
     },
     /// Construct an exact unsigned splice draft from explicit funding inputs and value terms.
     MultiAssetSplicePrepare {
@@ -3122,6 +3132,11 @@ enum DevnetCommand {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::MultiAssetFundingSession { session, command } => {
+            let result = multi_asset_funding_session::run(&session, command)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
         Command::MultiAssetSession { session, command } => {
             let result = multi_asset_session::run(&session, command)?;
             println!("{}", serde_json::to_string_pretty(&result)?);

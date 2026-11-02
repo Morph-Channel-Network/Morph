@@ -8,7 +8,7 @@ construction and submission support asset admission/removal. Isolated-node
 acceptance covers a 2→1→2 asset roundtrip, exact signed replay after reorg and
 final unilateral settlement. Confirmed session switching and explicit reorg
 reconciliation are implemented. Root binding, exact keyless funding replay and
-bounded session supervision are implemented. Independent initial signing,
+bounded session supervision are implemented. Public root transaction construction,
 failover, pooled publication and terminal abort tracking remain open. Host
 checks do not establish that a proposed State input is currently live.
 
@@ -222,9 +222,10 @@ does not switch or unfreeze either participant journal.
 
 ## Confirmed signer switching
 
-`init` accepts only epoch-0 recovery. Later epochs must pass through
-`confirm-splice`; they cannot initialise an independent journal and bypass the
-lineage guard. Keep the same authoritative session path across funding epochs. After the new
+The initial [funding ceremony](runbooks/initial-funding.md) confirms the root
+on the same signer path; operational `init`/`bind-root` have been removed.
+Later epochs must pass through `confirm-splice`; they cannot initialise an
+independent journal and bypass the lineage guard. Keep the same authoritative session path across funding epochs. After the new
 State has been activated and both the splice and State transactions have the
 explicit required confirmation depth:
 
