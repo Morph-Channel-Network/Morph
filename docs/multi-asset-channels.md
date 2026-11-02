@@ -130,8 +130,9 @@ keyless replay after reorg and final unilateral settlement. Confirmed
 same-session switching, root binding, exact keyless funding replay, explicit
 reorg refresh and bounded signer supervision are verified. Independent initial
 exit-before-creation signing and confirmed same-path handoff are implemented;
-see [initial funding](runbooks/initial-funding.md). Public root transaction
-construction, failover, pooled publication and terminal abort tracking remain open.
+see [initial funding](runbooks/initial-funding.md). Public root construction and
+per-wallet signing have real-node three-funder evidence. Failover, pooled
+publication and terminal abort tracking remain open.
 
 ## Delivery Sequence and Acceptance
 

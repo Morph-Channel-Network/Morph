@@ -8,8 +8,8 @@ construction and submission support asset admission/removal. Isolated-node
 acceptance covers a 2→1→2 asset roundtrip, exact signed replay after reorg and
 final unilateral settlement. Confirmed session switching and explicit reorg
 reconciliation are implemented. Root binding, exact keyless funding replay and
-bounded session supervision are implemented. Public root transaction construction,
-failover, pooled publication and terminal abort tracking remain open. Host
+bounded session supervision are implemented. Public root construction and
+per-wallet contribution signing are implemented. Failover, pooled publication and terminal abort tracking remain open. Host
 checks do not establish that a proposed State input is currently live.
 
 ## Authorization and transaction identity

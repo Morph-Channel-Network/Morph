@@ -606,3 +606,21 @@ fee signing, persisting network artifacts or broadcasting. Negative coverage:
 `initial_reservations_survive_restart_and_reject_forged_local_receipts_and_artifact_drift`,
 `operational_commands_reject_unconfirmed_recovery_bootstrap`, and
 `recovery_package_cannot_bypass_initial_funding_ceremony`.
+
+## Per-wallet root funding authority
+
+Root construction derives State/Vault outputs from the descriptor and takes
+explicit CKB, fee and per-Type contributions from each declared wallet. Every
+input must belong to its funder, and all change remains with that wallet. A
+shortfall cannot consume another wallet's change; token quantities never cross
+Type domains. Tiny residual CKB stays in that wallet's token change or rejects
+when no occupied change output can carry it. Wallet signing reconstructs the
+exact raw body and requires complete root/initial-exit authorization. The former
+signing modes on funding submission have been removed.
+
+Submission performs full VM preflight before writing its immutable binary,
+so an attempt missing wallet signatures cannot occupy the later valid
+transaction's path. The synthetic shared-funding harness retains that negative
+and completes submission through the same store. Unit negatives:
+`root_builder_rejects_cross_wallet_subsidies_ownership_and_cross_type_quantity_changes`
+and `root_builder_keeps_tiny_change_with_the_owner_without_changing_fee`.

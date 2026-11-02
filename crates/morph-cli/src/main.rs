@@ -47,6 +47,8 @@ mod hub;
 mod multi_asset_funding;
 mod multi_asset_funding_session;
 mod multi_asset_packages;
+#[cfg(any(feature = "devnet", test))]
+mod multi_asset_root_transaction;
 mod multi_asset_session;
 mod multi_asset_session_chain;
 mod multi_asset_splice_transaction;
@@ -696,6 +698,34 @@ enum DevnetCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Construct exact root funding with explicit per-wallet CKB/token/fee contributions.
+    MultiAssetFundingPrepare {
+        #[arg(long)]
+        terms: PathBuf,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Sign only the declared wallet's group after reviewing exact funding terms and exit.
+    MultiAssetFundingWalletSign {
+        #[arg(long)]
+        terms: PathBuf,
+        #[arg(long)]
+        transaction: PathBuf,
+        #[arg(long)]
+        package: PathBuf,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value = "target/multi-asset/packages")]
+        store_dir: PathBuf,
+        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
+        private_key: String,
+    },
     /// Submit a fully signed epoch-0 funding transaction or replay its exact bytes.
     MultiAssetFundingSubmit {
         #[arg(long)]
@@ -712,8 +742,6 @@ enum DevnetCommand {
         mine_blocks: u64,
         #[arg(long)]
         dry_run: bool,
-        #[command(subcommand)]
-        fee_authorization: devnet::multi_asset_splice_operator::FeeAuthorization,
     },
     /// Construct an exact unsigned splice draft from explicit funding inputs and value terms.
     MultiAssetSplicePrepare {
@@ -767,6 +795,9 @@ enum DevnetCommand {
         bob_private_key: String,
         #[arg(long, default_value_t = 2)]
         asset_count: usize,
+        /// Fund assets from both participants and use a third fee/carrier wallet.
+        #[arg(long)]
+        shared_funding: bool,
         #[arg(long, default_value_t = 100_000_000)]
         fee: u64,
         #[arg(long, default_value_t = 4)]

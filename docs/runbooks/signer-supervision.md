@@ -27,7 +27,7 @@ origins have distinct required shapes; there is no migration or fallback parser.
 `export-root-funding --store-dir /srv/morph/recovery` exports the retained
 funding transaction and current exit even while the chain is unavailable or
 orphaned. `devnet multi-asset-funding-submit --transaction ... --package ...
---store-dir ... --max-fee ... presigned` validates, preflights and durably saves both before
+--store-dir ... --max-fee ...` validates, preflights and durably saves both before
 broadcast; it needs no participant or funding key because the original binary
 is already signed. Re-mining it never silently refreshes a signer checkpoint.
 After confirming canonical custody, use `refresh-chain` explicitly. Splice

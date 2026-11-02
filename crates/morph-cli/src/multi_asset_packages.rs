@@ -97,6 +97,63 @@ fn wire_error(error: morph_script_common::ScriptError) -> anyhow::Error {
     anyhow!("invalid multi-asset evidence: {error:?}")
 }
 
+pub(crate) fn dependency_records(cell_deps: &[CellDep]) -> Result<Vec<StoredMultiAssetCellDep>> {
+    let mut records = cell_deps
+        .iter()
+        .map(|dep| {
+            Ok(StoredMultiAssetCellDep {
+                tx_hash: canonical_hex(dep.out_point().tx_hash().as_slice()),
+                index: dep.out_point().index().unpack(),
+                dep_type: match dep.dep_type().as_slice()[0] {
+                    0 => "code",
+                    1 => "dep_group",
+                    _ => return Err(anyhow!("unsupported dependency type")),
+                }
+                .to_string(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    records.sort_by(|a, b| (&a.tx_hash, a.index).cmp(&(&b.tx_hash, b.index)));
+    Ok(records)
+}
+
+pub(crate) fn decode_dependency_records(
+    records: &[StoredMultiAssetCellDep],
+) -> Result<Vec<CellDep>> {
+    ensure!(
+        (1..=64).contains(&records.len()),
+        "recovery requires 1..=64 code dependencies"
+    );
+    ensure!(
+        records
+            .windows(2)
+            .all(|pair| (&pair[0].tx_hash, pair[0].index) < (&pair[1].tx_hash, pair[1].index)),
+        "dependency OutPoints must be unique and ordered"
+    );
+    let cell_deps = records
+        .iter()
+        .map(|dep| {
+            let raw = decode_hex(&dep.tx_hash, 32)?;
+            ensure!(
+                raw.len() == 32 && raw.iter().any(|byte| *byte != 0),
+                "invalid dependency transaction hash"
+            );
+            let mut hash = [0; 32];
+            hash.copy_from_slice(&raw);
+            let dep_type = match dep.dep_type.as_str() {
+                "code" => DepType::Code,
+                "dep_group" => DepType::DepGroup,
+                _ => return Err(anyhow!("unsupported dependency type")),
+            };
+            Ok(CellDep::new_builder()
+                .out_point(OutPoint::new(hash.pack(), dep.index))
+                .dep_type(dep_type)
+                .build())
+        })
+        .collect::<Result<_>>()?;
+    Ok(cell_deps)
+}
+
 impl StoredMultiAssetPackage {
     pub fn recovery(&self) -> Result<MultiAssetRecoveryPackage> {
         let decoded = self.decode()?;
@@ -125,22 +182,7 @@ impl StoredMultiAssetPackage {
         package: &MultiAssetRecoveryPackage,
         cell_deps: &[CellDep],
     ) -> Result<Self> {
-        let mut cell_deps = cell_deps
-            .iter()
-            .map(|dep| {
-                Ok(StoredMultiAssetCellDep {
-                    tx_hash: canonical_hex(dep.out_point().tx_hash().as_slice()),
-                    index: dep.out_point().index().unpack(),
-                    dep_type: match dep.dep_type().as_slice()[0] {
-                        0 => "code",
-                        1 => "dep_group",
-                        _ => return Err(anyhow!("unsupported dependency type")),
-                    }
-                    .to_string(),
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-        cell_deps.sort_by(|a, b| (&a.tx_hash, a.index).cmp(&(&b.tx_hash, b.index)));
+        let cell_deps = dependency_records(cell_deps)?;
         Self::with_dependency_records(package, cell_deps)
     }
 
@@ -184,38 +226,7 @@ impl StoredMultiAssetPackage {
         let header = decode_hex(&self.header_hex, wire::MULTI_ASSET_STATE_HEADER_LEN)?;
         let witness = decode_hex(&self.witness_hex, wire::MULTI_ASSET_MAX_WITNESS_LEN)?;
         let signatures = decode_hex(&self.signature_witness_hex, BILATERAL_SIGNATURE_WITNESS_LEN)?;
-        ensure!(
-            (1..=64).contains(&self.cell_deps.len()),
-            "recovery requires 1..=64 code dependencies"
-        );
-        ensure!(
-            self.cell_deps
-                .windows(2)
-                .all(|pair| (&pair[0].tx_hash, pair[0].index) < (&pair[1].tx_hash, pair[1].index)),
-            "dependency OutPoints must be unique and ordered"
-        );
-        let cell_deps = self
-            .cell_deps
-            .iter()
-            .map(|dep| {
-                let raw = decode_hex(&dep.tx_hash, 32)?;
-                ensure!(
-                    raw.len() == 32 && raw.iter().any(|byte| *byte != 0),
-                    "invalid dependency transaction hash"
-                );
-                let mut hash = [0; 32];
-                hash.copy_from_slice(&raw);
-                let dep_type = match dep.dep_type.as_str() {
-                    "code" => DepType::Code,
-                    "dep_group" => DepType::DepGroup,
-                    _ => return Err(anyhow!("unsupported dependency type")),
-                };
-                Ok(CellDep::new_builder()
-                    .out_point(OutPoint::new(hash.pack(), dep.index))
-                    .dep_type(dep_type)
-                    .build())
-            })
-            .collect::<Result<_>>()?;
+        let cell_deps = decode_dependency_records(&self.cell_deps)?;
         Ok(DecodedMultiAssetPackage {
             header,
             witness,

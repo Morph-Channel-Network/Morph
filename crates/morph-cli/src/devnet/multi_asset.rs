@@ -9,12 +9,13 @@ use crate::multi_asset_funding_session::{
 use crate::multi_asset_packages::{
     StoredMultiAssetPackage, canonical_hex as canonical_root_hex, write_package,
 };
+use crate::multi_asset_root_transaction::{
+    RootAuthorityHashes, RootFunder, RootFundingTerms, RootInput, RootTokenContribution,
+};
 use crate::multi_asset_session::{SessionCommand, run};
 use morph_core::{
-    MultiAssetHeader, MultiAssetManifest, MultiAssetOutPoint, MultiAssetPayout,
-    MultiAssetRecoveryPackage, MultiAssetRecoveryScripts, MultiAssetSettlement, MultiAssetState,
-    MultiAssetTypeScript, MultiAssetValue, MultiAssetVault, StateAuthorization,
-    encode_multi_asset_witness, multi_asset_outpoint_commitment,
+    MultiAssetOutPoint, MultiAssetPayout, MultiAssetRecoveryPackage, MultiAssetSettlement,
+    MultiAssetValue, StateAuthorization, multi_asset_outpoint_commitment,
 };
 use morph_script_common::multi_asset as wire;
 use serde_json::{Value, json};
@@ -25,6 +26,7 @@ pub struct MultiAssetSmokeOptions {
     pub alice_private_key: String,
     pub bob_private_key: String,
     pub asset_count: usize,
+    pub shared_funding: bool,
     pub fee: u64,
     pub finalise_since: u64,
     pub mine_blocks: u64,
@@ -38,19 +40,6 @@ pub struct MultiAssetSmokeOptions {
 fn report(sent: &SentTransactionReport) -> Value {
     json!({"tx_hash": sent.tx_hash, "status": sent.status, "block_number": sent.block_number,
         "block_hash": sent.block_hash, "metrics": sent.metrics, "mined_blocks": sent.mined_blocks})
-}
-
-fn unsigned_creation_witness(package: &MultiAssetRecoveryPackage) -> Result<Bytes> {
-    let evidence = encode_multi_asset_witness(
-        &package.manifest,
-        &package.settlement,
-        &package.outpoints,
-        &package.scripts,
-    )?;
-    Ok(WitnessArgs::new_builder()
-        .output_type(Some(Bytes::from(evidence)).pack())
-        .build()
-        .as_bytes())
 }
 
 fn authorize(package: &mut MultiAssetRecoveryPackage, alice: &str, bob: &str) -> Result<()> {
@@ -141,7 +130,7 @@ fn wallet_change(capacity: u64, spent: u64, fee: u64, lock: &Script) -> Result<C
 
 struct AssetInput {
     script: Script,
-    point: OutPoint,
+    points: Vec<OutPoint>,
     reserve: [u64; 2],
 }
 
@@ -185,6 +174,12 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         locks[0] != locks[1],
         "channel participants must be distinct"
     );
+    if options.shared_funding {
+        ensure!(
+            owner_lock != locks[0] && owner_lock != locks[1],
+            "shared-funding acceptance requires a distinct fee/carrier wallet"
+        );
+    }
     let tip = rpc.tip_header()?.number_value()?;
     let contracts = find_deployed_contracts(rpc, &options.contracts_dir, tip)?;
     let state_code = contract_by_name(&contracts, "morph-state-type")?;
@@ -199,7 +194,6 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         xudt_code.cell_dep.clone(),
         secp.clone(),
     ];
-    let since = relative_block_since_arg(options.finalise_since)?;
     let seed = hex::decode(options.private_key.trim_start_matches("0x"))
         .context("invalid devnet funding key")?;
     let mut assets = Vec::new();
@@ -272,65 +266,54 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             .build();
         let funded = send_and_mine(rpc, sign_group(tx, &owner, &[0])?, options.mine_blocks)?;
         let issuer_point = OutPoint::new(parse_h256(&funded.tx_hash)?.pack(), 0);
-        let mint = TransactionBuilder::default()
+        let mut mint = TransactionBuilder::default()
             .cell_dep(secp.clone())
             .cell_dep(xudt_code.cell_dep.clone())
-            .input(CellInput::new(issuer_point, 0))
-            .output(
-                CellOutput::new_builder()
-                    .capacity(vault_capacity)
-                    .lock(owner_lock.clone())
-                    .type_(Some(script.clone()).pack())
-                    .build(),
-            )
-            .output_data(Bytes::from(1000u128.to_le_bytes().to_vec()).pack())
-            .build();
-        let minted = send_and_mine(rpc, sign_group(mint, &issuer, &[0])?, options.mine_blocks)?;
-        let point = OutPoint::new(parse_h256(&minted.tx_hash)?.pack(), 0);
+            .input(CellInput::new(issuer_point, 0));
+        let funding_locks = if options.shared_funding {
+            vec![&locks[0], &locks[1]]
+        } else {
+            vec![&owner_lock]
+        };
+        for (i, lock) in funding_locks.iter().enumerate() {
+            let capacity = if options.shared_funding {
+                reserve[i] + if i == 0 { 6_000_000_000 } else { 4_000_000_000 }
+            } else {
+                vault_capacity
+            };
+            let amount = if options.shared_funding {
+                if i == 0 { 700u128 } else { 300u128 }
+            } else {
+                1000u128
+            };
+            mint = mint
+                .output(
+                    CellOutput::new_builder()
+                        .capacity(capacity)
+                        .lock((*lock).clone())
+                        .type_(Some(script.clone()).pack())
+                        .build(),
+                )
+                .output_data(Bytes::from(amount.to_le_bytes().to_vec()).pack());
+        }
+        let minted = send_and_mine(
+            rpc,
+            sign_group(mint.build(), &issuer, &[0])?,
+            options.mine_blocks,
+        )?;
+        let mint_hash = parse_h256(&minted.tx_hash)?;
+        let points = (0..funding_locks.len())
+            .map(|i| OutPoint::new(mint_hash.pack(), i as u32))
+            .collect();
         issuance.push(json!({"type_hash": format!("{:#x}", H256::from(script.calc_script_hash())), "fund": report(&funded), "mint": report(&minted)}));
         assets.push(AssetInput {
             script,
-            point,
+            points,
             reserve,
         });
     }
     assets.sort_by_key(|asset| asset.script.calc_script_hash());
     let funding = find_largest_live_cell(rpc, &owner_lock, rpc.tip_header()?.number_value()?)?;
-    let first_input = CellInput::new(funding.out_point.clone(), 0);
-    let anchor = derive_funding_anchor(&first_input, 0);
-    let state_type = data1_script(
-        state_code.data_hash.clone(),
-        state_type_args(&anchor, since),
-    );
-    let state_lock = data1_script(
-        lock_code.data_hash.clone(),
-        Bytes::copy_from_slice(state_type.calc_script_hash().as_slice()),
-    );
-    let vault_args = wire::encode_multi_asset_vault_args(
-        &anchor,
-        since,
-        &state_type.calc_script_hash().unpack(),
-        &state_lock.calc_script_hash().unpack(),
-    )
-    .map_err(|error| anyhow!("invalid Vault args: {error:?}"))?;
-    let vault_lock = data1_script(
-        vault_code.data_hash.clone(),
-        Bytes::copy_from_slice(&vault_args),
-    );
-    let manifest = MultiAssetManifest {
-        vaults: assets
-            .iter()
-            .map(|asset| MultiAssetVault {
-                asset: VaultAsset::Xudt(asset.script.calc_script_hash().unpack()),
-                lock_hash: vault_lock.calc_script_hash().unpack(),
-                value: MultiAssetValue {
-                    reserve: asset.reserve[0] + asset.reserve[1],
-                    business_ckb: 10_000_000_000,
-                    amount: 1000,
-                },
-            })
-            .collect(),
-    };
     let settlement = MultiAssetSettlement {
         participant_lock_hashes: locks
             .each_ref()
@@ -355,119 +338,142 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             })
             .collect(),
     };
-    let content = manifest.commitment()?;
-    let state_template = CellOutput::new_builder()
-        .lock(state_lock.clone())
-        .type_(Some(state_type.clone()).pack())
-        .build();
-    let carrier = occupied_capacity(&state_template, wire::MULTI_ASSET_STATE_HEADER_LEN)?;
-    let chain_id = rpc
-        .block_by_number(0)?
-        .ok_or_else(|| anyhow!("genesis block is missing"))?
-        .header
-        .hash
-        .0;
-    let channel_id = script_blake2b256(&[b"CKB_MORPH_CHANNEL_ID", &anchor]);
-    let mut package = MultiAssetRecoveryPackage {
-        state: MultiAssetState {
-            header: MultiAssetHeader {
-                protocol_version: 1,
-                chain_id,
-                signature_scheme_id: 1,
-                channel_id,
-                funding_epoch: 0,
-                funding_anchor: anchor,
-                state_number: 0,
-                mode: Mode::BilateralPlain,
-                phase: Phase::Active,
-                participants_commitment: [0; 32],
-                asset_registry_commitment: asset_registry_commitment(&manifest.registry()?),
-                settlement_descriptor_commitment: settlement.commitment()?,
-                descriptor_version: wire::MULTI_ASSET_DESCRIPTOR_VERSION,
-                challenge_policy_commitment: script_blake2b256(&[
-                    b"CKB_MORPH_CHALLENGE_POLICY",
-                    &since.to_le_bytes(),
-                ]),
-                state_layout_version: wire::MULTI_ASSET_STATE_LAYOUT_VERSION,
-            },
-            vault_content_set_root: content,
-            vault_outpoint_set_root: [0; 32],
-            vault_count: assets.len() as u16,
-        },
-        authorization: StateAuthorization {
-            threshold: 2,
-            signatures: vec![],
-        },
-        manifest,
-        settlement,
-        outpoints: vec![],
-        state_carrier_capacity: carrier,
-        scripts: MultiAssetRecoveryScripts {
-            vault_lock: vault_lock.as_slice().to_vec(),
-            participant_locks: locks.each_ref().map(|lock| lock.as_slice().to_vec()),
-            carrier_refund_lock: owner_lock.as_slice().to_vec(),
-            state_type: state_type.as_slice().to_vec(),
-            state_lock: state_lock.as_slice().to_vec(),
-            type_scripts: assets
-                .iter()
-                .map(|asset| MultiAssetTypeScript {
-                    type_hash: asset.script.calc_script_hash().unpack(),
-                    script: asset.script.as_slice().to_vec(),
-                })
-                .collect(),
-        },
-    };
     let mut root_keys = [
         k256_signing_key(&options.alice_private_key)?,
         k256_signing_key(&options.bob_private_key)?,
     ];
     root_keys.sort_by_key(k256_pubkey);
     let public = root_keys.each_ref().map(k256_pubkey);
-    package.state.header.participants_commitment =
-        core_participants_commitment(2, &[&public[0], &public[1]]);
-    package.validate_contents()?;
-    let state_output = state_template.as_builder().capacity(carrier).build();
-    let mut tx = TransactionBuilder::default()
-        .cell_dep(secp.clone())
-        .cell_dep(state_code.cell_dep.clone())
-        .cell_dep(lock_code.cell_dep.clone())
-        .cell_dep(vault_code.cell_dep.clone())
-        .cell_dep(xudt_code.cell_dep.clone())
-        .input(first_input)
-        .output(state_output.clone())
-        .output_data(Bytes::from(package.state.encode()?.to_vec()).pack());
-    for (asset, vault) in assets.iter().zip(&package.manifest.vaults) {
-        tx = tx
-            .input(CellInput::new(asset.point.clone(), 0))
-            .output(
-                CellOutput::new_builder()
-                    .capacity(vault.value.capacity()?)
-                    .lock(vault_lock.clone())
-                    .type_(Some(asset.script.clone()).pack())
-                    .build(),
-            )
-            .output_data(Bytes::from(vault.value.amount.to_le_bytes().to_vec()).pack());
-    }
-    tx = tx
-        .output(wallet_change(
-            funding.capacity,
-            carrier,
-            options.fee,
-            &owner_lock,
-        )?)
-        .output_data(Bytes::new().pack())
-        .witness(unsigned_creation_witness(&package)?);
-    let funding_transaction = tx.build();
-    let predicted_funding_hash = funding_transaction.hash();
-    let draft = RootFundingDraft {
-        schema: "morph.multi_asset_root_draft.v1".to_string(),
-        transaction_hex: canonical_root_hex(funding_transaction.data().as_slice()),
-        participants: public.map(|key| canonical_root_hex(&key)),
+    let chain_id = rpc
+        .genesis_block_hash()?
+        .ok_or_else(|| anyhow!("missing genesis hash"))?
+        .0;
+    let authority = RootAuthorityHashes {
+        state_type: state_code.data_hash.0,
+        state_lock: lock_code.data_hash.0,
+        vault_lock: vault_code.data_hash.0,
     };
-    let (_, unsigned_exit) = draft.evidence()?;
+    let mut points = vec![funding.out_point.clone()];
+    if !options.shared_funding {
+        points.extend(assets.iter().flat_map(|asset| asset.points.iter().cloned()));
+    }
+    let mut inputs = points
+        .iter()
+        .map(|point| RootInput {
+            tx_hash: canonical_root_hex(point.tx_hash().as_slice()),
+            index: point.index().unpack(),
+        })
+        .collect::<Vec<_>>();
+    inputs.sort_by(|a, b| (&a.tx_hash, a.index).cmp(&(&b.tx_hash, b.index)));
+    let mut terms = RootFundingTerms {
+        schema: "morph.multi_asset_root_terms.v1".to_string(),
+        participants: public.map(|key| canonical_root_hex(&key)),
+        participant_locks_hex: locks
+            .each_ref()
+            .map(|lock| canonical_root_hex(lock.as_slice())),
+        carrier_refund_lock_hex: canonical_root_hex(owner_lock.as_slice()),
+        descriptor_hex: canonical_root_hex(&settlement.encode()?),
+        challenge_blocks: options.finalise_since.to_string(),
+        type_scripts_hex: assets
+            .iter()
+            .map(|asset| canonical_root_hex(asset.script.as_slice()))
+            .collect(),
+        cell_deps: crate::multi_asset_packages::dependency_records(&recovery_deps)?,
+        funders: vec![RootFunder {
+            pubkey: canonical_root_hex(&compressed_pubkey(&owner)?),
+            inputs,
+            ckb_contribution: "0".to_string(),
+            fee_contribution: options.fee.to_string(),
+            tokens: if options.shared_funding {
+                vec![]
+            } else {
+                assets
+                    .iter()
+                    .map(|asset| RootTokenContribution {
+                        type_hash: canonical_root_hex(asset.script.calc_script_hash().as_slice()),
+                        amount: "1000".to_string(),
+                    })
+                    .collect()
+            },
+        }],
+    };
+    if options.shared_funding {
+        for (i, lock) in locks.iter().enumerate() {
+            let key = if secp256k1_lock(&alice)? == *lock {
+                &alice
+            } else {
+                &bob
+            };
+            let mut inputs = assets
+                .iter()
+                .map(|asset| RootInput {
+                    tx_hash: canonical_root_hex(asset.points[i].tx_hash().as_slice()),
+                    index: asset.points[i].index().unpack(),
+                })
+                .collect::<Vec<_>>();
+            inputs.sort_by(|a, b| (&a.tx_hash, a.index).cmp(&(&b.tx_hash, b.index)));
+            let capacity = assets.iter().try_fold(0u64, |sum, asset| {
+                sum.checked_add(asset.reserve[i])
+                    .and_then(|value| {
+                        value.checked_add(if i == 0 { 6_000_000_000 } else { 4_000_000_000 })
+                    })
+                    .ok_or_else(|| anyhow!("shared funding capacity overflow"))
+            })?;
+            terms.funders.push(RootFunder {
+                pubkey: canonical_root_hex(&compressed_pubkey(key)?),
+                inputs,
+                ckb_contribution: capacity.to_string(),
+                fee_contribution: "0".to_string(),
+                tokens: assets
+                    .iter()
+                    .map(|asset| RootTokenContribution {
+                        type_hash: canonical_root_hex(asset.script.calc_script_hash().as_slice()),
+                        amount: if i == 0 { "700" } else { "300" }.to_string(),
+                    })
+                    .collect(),
+            });
+        }
+    }
+    terms.funders.sort_by(|a, b| a.pubkey.cmp(&b.pubkey));
+    let unsigned = terms.creation(chain_id, authority)?;
+    let required = unsigned.manifest.vaults.iter().try_fold(
+        unsigned.state_carrier_capacity,
+        |total, vault| -> Result<u64> {
+            total
+                .checked_add(vault.value.capacity()?)
+                .ok_or_else(|| anyhow!("root custody capacity overflow"))
+        },
+    )?;
+    let owner_public = canonical_root_hex(&compressed_pubkey(&owner)?);
+    terms
+        .funders
+        .iter_mut()
+        .find(|funder| funder.pubkey == owner_public)
+        .ok_or_else(|| anyhow!("missing fee/carrier funder"))?
+        .ckb_contribution = if options.shared_funding {
+        unsigned.state_carrier_capacity
+    } else {
+        required
+    }
+    .to_string();
+    let terms_path = options.store_dir.join("root-funding-terms.json");
+    ensure!(!terms_path.exists(), "root funding terms already exist");
+    crate::packages::write_private_atomic(&terms_path, &serde_json::to_vec_pretty(&terms)?)?;
     let draft_path = options.store_dir.join("root-funding-draft.json");
-    ensure!(!draft_path.exists(), "root funding draft already exists");
-    crate::packages::write_private_atomic(&draft_path, &serde_json::to_vec_pretty(&draft)?)?;
+    super::multi_asset_root_operator::prepare(
+        rpc,
+        super::multi_asset_root_operator::PrepareOptions {
+            terms: terms_path.clone(),
+            contracts_dir: options.contracts_dir.clone(),
+            max_fee: options.fee,
+            output: draft_path.clone(),
+        },
+    )?;
+    let draft: RootFundingDraft = serde_json::from_slice(&fs::read(&draft_path)?)?;
+    let (mut package, unsigned_exit) = draft.evidence()?;
+    let channel_id = package.state.header.channel_id;
+    let carrier = package.state_carrier_capacity;
+    let predicted_funding_hash = draft.transaction()?.calc_tx_hash();
     let session_dir = options
         .store_dir
         .join("signers")
@@ -555,6 +561,75 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     );
     let initial_recovery =
         crate::multi_asset_packages::read_package(&pre_funding_recovery)?.recovery()?;
+    let rejected = super::multi_asset_funding_operator::submit(
+        rpc,
+        super::multi_asset_funding_operator::Options {
+            transaction: intent.clone(),
+            package: pre_funding_recovery.clone(),
+            contracts_dir: options.contracts_dir.clone(),
+            store_dir: options.store_dir.clone(),
+            max_fee: options.fee,
+            mine_blocks: 0,
+            dry_run: true,
+        },
+    );
+    ensure!(
+        rejected.is_err(),
+        "funding preflight accepted missing wallet signatures"
+    );
+    ensure!(
+        !options
+            .store_dir
+            .join("submitted-funding")
+            .join(format!(
+                "funding-{}.tx",
+                hex::encode(predicted_funding_hash.as_slice())
+            ))
+            .exists(),
+        "failed wallet preflight poisoned the immutable funding transaction path"
+    );
+    let wallets = [
+        (
+            canonical_root_hex(&compressed_pubkey(&owner)?),
+            &options.private_key,
+        ),
+        (
+            canonical_root_hex(&compressed_pubkey(&alice)?),
+            &options.alice_private_key,
+        ),
+        (
+            canonical_root_hex(&compressed_pubkey(&bob)?),
+            &options.bob_private_key,
+        ),
+    ];
+    let mut intent = intent;
+    for funder in &terms.funders {
+        let secret = wallets
+            .iter()
+            .find(|(public, _)| *public == funder.pubkey)
+            .map(|(_, secret)| (*secret).clone())
+            .ok_or_else(|| anyhow!("unknown acceptance funding wallet"))?;
+        let signed = super::multi_asset_root_operator::sign_wallet(
+            rpc,
+            super::multi_asset_root_operator::SignOptions {
+                terms: terms_path.clone(),
+                transaction: intent,
+                package: pre_funding_recovery.clone(),
+                contracts_dir: options.contracts_dir.clone(),
+                max_fee: options.fee,
+                store_dir: options
+                    .store_dir
+                    .join("funding-wallet")
+                    .join(funder.pubkey.trim_start_matches("0x")),
+                private_key: secret,
+            },
+        )?;
+        intent = PathBuf::from(
+            signed["transaction"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing wallet-signed funding"))?,
+        );
+    }
     let fund = super::multi_asset_funding_operator::submit(
         rpc,
         super::multi_asset_funding_operator::Options {
@@ -565,9 +640,6 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             max_fee: options.fee,
             mine_blocks: options.mine_blocks,
             dry_run: false,
-            fee_authorization: super::multi_asset_splice_operator::FeeAuthorization::Wallet {
-                private_key: options.private_key.clone(),
-            },
         },
     )?;
     let funding_hash = parse_h256(
@@ -687,6 +759,11 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     }
     operator_checks.push("root_creation_bound_without_resetting_votes");
     operator_checks.push("independent_initial_exit_before_creation_and_same_path_confirmation");
+    operator_checks.push("public_root_builder_explicit_funder_budgets");
+    operator_checks.push("unsigned_wallet_preflight_cannot_poison_funding_artifact");
+    if options.shared_funding {
+        operator_checks.push("three_distinct_funders_signed_only_their_own_groups");
+    }
     if options.watch_publication {
         let fee_cell = find_largest_live_cell(rpc, &owner_lock, rpc.tip_header()?.number_value()?)?;
         let pass = super::multi_asset_watch::watch(
@@ -1229,9 +1306,9 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     }
     Ok(
         json!({"schema": "morph.multi_asset_devnet_acceptance.v1", "channel_id": format!("0x{}", hex::encode(channel_id)),
-        "asset_count": assets.len(), "operator_checks": operator_checks, "watch_passes":watch_passes, "issuance": issuance, "fund": fund, "activation": activation,
+        "asset_count": assets.len(), "shared_funding":options.shared_funding, "operator_checks": operator_checks, "watch_passes":watch_passes, "issuance": issuance, "fund": fund, "activation": activation,
         "publications": publications, "sponsor_funding": sponsor_funding, "finalise": finalise, "recovery_packages": package_paths,
-        "pre_funding_recovery_package": pre_funding_recovery.display().to_string(),
+        "pre_funding_recovery_package": pre_funding_recovery.display().to_string(),"root_funding_terms":terms_path,"root_funding_draft":draft_path,
         "summary": StoredMultiAssetPackage::from_recovery(&package, &recovery_deps)?.validate()?}),
     )
 }

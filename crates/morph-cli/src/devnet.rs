@@ -92,14 +92,15 @@ use crate::watch_alert::{
 };
 use crate::watch_policy::{WatchPolicyRun, read_watchtower_policy};
 
-const DEFAULT_SECP_TYPE_HASH: &str =
-    "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8";
+use crate::multi_asset_funding::SECP_TYPE_HASH as DEFAULT_SECP_TYPE_HASH;
 #[cfg(feature = "devnet")]
 pub mod multi_asset;
 #[cfg(feature = "devnet")]
 pub mod multi_asset_funding_operator;
 #[cfg(feature = "devnet")]
 pub mod multi_asset_operator;
+#[cfg(feature = "devnet")]
+pub mod multi_asset_root_operator;
 #[cfg(feature = "devnet")]
 pub mod multi_asset_splice_operator;
 #[cfg(feature = "devnet")]
@@ -12757,16 +12758,7 @@ fn secp256k1_lock(privkey: &Privkey) -> Result<Script> {
 }
 
 fn secp256k1_lock_from_pubkey(pubkey_sec1: &[u8]) -> Result<Script> {
-    ensure!(
-        pubkey_sec1.len() == COMPRESSED_SECP256K1_PUBKEY_LEN,
-        "secp256k1 lock pubkey must be compressed"
-    );
-    let args = blake160(pubkey_sec1);
-    Ok(Script::new_builder()
-        .code_hash(parse_h256(DEFAULT_SECP_TYPE_HASH)?.pack())
-        .hash_type(ScriptHashType::Type)
-        .args(Bytes::copy_from_slice(&args).pack())
-        .build())
+    crate::multi_asset_funding::funding_wallet_lock(pubkey_sec1)
 }
 
 fn compressed_pubkey(privkey: &Privkey) -> Result<[u8; 33]> {
@@ -15129,13 +15121,6 @@ fn parse_h256(value: &str) -> Result<H256> {
 
 fn parse_privkey(value: &str) -> Result<Privkey, ckb_crypto::secp::Error> {
     Privkey::from_str(value.strip_prefix("0x").unwrap_or(value))
-}
-
-fn blake160(data: &[u8]) -> [u8; 20] {
-    let hash = blake2b_256(data);
-    let mut out = [0u8; 20];
-    out.copy_from_slice(&hash[..20]);
-    out
 }
 
 fn byte32_to_h256(value: ckb_types::packed::Byte32) -> H256 {

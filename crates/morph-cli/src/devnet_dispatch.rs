@@ -78,6 +78,46 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             )?;
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
+        DevnetCommand::MultiAssetFundingPrepare {
+            terms,
+            max_fee,
+            contracts_dir,
+            output,
+        } => {
+            let report = devnet::multi_asset_root_operator::prepare(
+                &rpc,
+                devnet::multi_asset_root_operator::PrepareOptions {
+                    terms,
+                    max_fee,
+                    contracts_dir,
+                    output,
+                },
+            )?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        DevnetCommand::MultiAssetFundingWalletSign {
+            terms,
+            transaction,
+            package,
+            max_fee,
+            contracts_dir,
+            store_dir,
+            private_key,
+        } => {
+            let report = devnet::multi_asset_root_operator::sign_wallet(
+                &rpc,
+                devnet::multi_asset_root_operator::SignOptions {
+                    terms,
+                    transaction,
+                    package,
+                    max_fee,
+                    contracts_dir,
+                    store_dir,
+                    private_key,
+                },
+            )?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
         DevnetCommand::MultiAssetFundingSubmit {
             transaction,
             package,
@@ -86,7 +126,6 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             max_fee,
             mine_blocks,
             dry_run,
-            fee_authorization,
         } => {
             let report = devnet::multi_asset_funding_operator::submit(
                 &rpc,
@@ -98,7 +137,6 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                     max_fee,
                     mine_blocks,
                     dry_run,
-                    fee_authorization,
                 },
             )?;
             println!("{}", serde_json::to_string_pretty(&report)?);
@@ -161,6 +199,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             alice_private_key,
             bob_private_key,
             asset_count,
+            shared_funding,
             fee,
             finalise_since,
             mine_blocks,
@@ -179,6 +218,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                     alice_private_key,
                     bob_private_key,
                     asset_count,
+                    shared_funding,
                     fee,
                     finalise_since,
                     mine_blocks,

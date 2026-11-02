@@ -3,10 +3,24 @@
 use std::collections::BTreeSet;
 
 use anyhow::{Result, anyhow, ensure};
-use ckb_types::{packed, prelude::*};
+use ckb_types::{bytes::Bytes, packed, prelude::*};
 use morph_core::*;
 use morph_script_common::multi_asset as wire;
 
+pub(crate) const SECP_TYPE_HASH: &str =
+    "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8";
+pub(crate) fn funding_wallet_lock(pubkey: &[u8]) -> Result<packed::Script> {
+    ensure!(pubkey.len() == 33, "compressed key must be 33 bytes");
+    Ok(packed::Script::new_builder()
+        .code_hash(
+            <[u8; 32]>::try_from(crate::multi_asset_packages::decode_hex(SECP_TYPE_HASH, 32)?)
+                .map_err(|_| anyhow!("invalid standard secp type hash"))?
+                .pack(),
+        )
+        .hash_type(1u8)
+        .args(Bytes::copy_from_slice(&blake2b256(pubkey)[..20]).pack())
+        .build())
+}
 pub const MAX_FUNDING_BYTES: usize = 256 * 1024;
 
 fn script(raw: &[u8]) -> Result<packed::Script> {
