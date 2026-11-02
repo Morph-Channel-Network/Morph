@@ -110,6 +110,27 @@ function occupied(lock: Uint8Array, type?: Uint8Array): bigint {
   return (8n + scriptOccupied(lock) + (type === undefined ? 0n : scriptOccupied(type) + 16n)) * 100_000_000n;
 }
 
+function recoveryParts(witness: Uint8Array): { manifest: Uint8Array; descriptor: Uint8Array; points: Uint8Array; pointCount: number; scripts: Uint8Array[] } {
+  requireValue(witness.length >= 28 && same(witness.slice(0, 8), utf8.encode("MORPHMA!"))
+    && u16(witness, 8) === 1 && u16(witness, 10) === 0 && u16(witness, 22) === 0, "invalid recovery witness");
+  const manifestEnd = 28 + u32(witness, 12);
+  const descriptorEnd = manifestEnd + u32(witness, 16);
+  const pointCount = u16(witness, 20);
+  const scriptsStart = descriptorEnd + 36 * pointCount;
+  requireValue(pointCount <= MAX_VAULTS && scriptsStart + u32(witness, 24) === witness.length, "truncated recovery evidence");
+  const scripts: Uint8Array[] = [];
+  let cursor = scriptsStart;
+  while (cursor < witness.length) {
+    const len = u32(witness, cursor);
+    requireValue(scripts.length < 6 + MAX_VAULTS && len >= 53 && len <= MAX_SCRIPT_BYTES && cursor + 4 + len <= witness.length, "invalid script evidence length");
+    const script = witness.slice(cursor + 4, cursor + 4 + len);
+    scriptOccupied(script);
+    scripts.push(script);
+    cursor += 4 + len;
+  }
+  return {manifest: witness.slice(28, manifestEnd), descriptor: witness.slice(manifestEnd, descriptorEnd), points: witness.slice(descriptorEnd, scriptsStart), pointCount, scripts};
+}
+
 /** Verify both signatures, all commitments, provenance, per-asset conservation,
  * and occupied-capacity funding without converting u64/u128 values to Number.
  * Chain liveness, confirmations, and deployed code approval require an RPC and
@@ -118,7 +139,21 @@ export function inspectMultiAssetPackage(value: MultiAssetRecoveryPackage): Mult
   return inspectPackage(value, true);
 }
 
+interface PackageEvidence {
+  summary: MultiAssetPackageSummary;
+  header: Uint8Array;
+  witness: Uint8Array;
+  descriptor: Uint8Array;
+  scripts: Uint8Array[];
+  vaults: Vault[];
+  payouts: [Allocation, Allocation][];
+  publicKeys: readonly [Uint8Array, Uint8Array];
+}
 function inspectPackage(value: MultiAssetRecoveryPackage, verifySignatures: boolean): MultiAssetPackageSummary {
+  return inspectEvidence(value, verifySignatures).summary;
+}
+
+function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boolean): PackageEvidence {
   requireValue(typeof value === "object" && value !== null && value.schema === "morph.multi_asset_recovery_package.v1", "unsupported schema");
   requireValue(Object.keys(value).sort().join(",") === "cell_deps,header_hex,schema,signature_witness_hex,state_carrier_capacity,witness_hex", "unknown package fields");
   requireValue(Array.isArray(value.cell_deps) && value.cell_deps.length >= 1 && value.cell_deps.length <= 64, "incomplete code dependencies");
@@ -136,24 +171,17 @@ function inspectPackage(value: MultiAssetRecoveryPackage, verifySignatures: bool
   requireValue(header.length === 318 && u16(header, 0) === 1 && u16(header, 34) === 1
     && header[116] === 1 && [1, 2].includes(header[117]!) && u16(header, 214) === 4
     && u16(header, 248) === 2 && u16(header, 316) === 0, "unsupported State profile");
+  requireValue(header[117] !== 2 || unsigned(header, 108, 8) > 0n, "settling recovery requires positive state number");
   const count = u16(header, 314);
   const contentRoot = header.slice(250, 282);
   const pointRoot = header.slice(282, 314);
   const bound = !zero(pointRoot);
-  requireValue(!verifySignatures || bound || u64(header, 68) !== 0n,
+  requireValue(!verifySignatures || bound || unsigned(header, 68, 8) !== 0n,
     "root creation requires transaction-bound funding authorization");
   requireValue(count >= 1 && count <= MAX_VAULTS && !zero(contentRoot)
     && (header[117] !== 2 || bound), "invalid Vault context");
   const witness = bytes(value.witness_hex, MAX_WITNESS_BYTES);
-  requireValue(witness.length >= 28 && same(witness.slice(0, 8), utf8.encode("MORPHMA!"))
-    && u16(witness, 8) === 1 && u16(witness, 10) === 0 && u16(witness, 22) === 0, "invalid recovery witness");
-  const manifestEnd = 28 + u32(witness, 12);
-  const descriptorEnd = manifestEnd + u32(witness, 16);
-  const pointCount = u16(witness, 20);
-  const scriptsStart = descriptorEnd + 36 * pointCount;
-  requireValue(pointCount <= MAX_VAULTS && scriptsStart + u32(witness, 24) === witness.length, "truncated recovery evidence");
-  const manifest = witness.slice(28, manifestEnd);
-  const descriptor = witness.slice(manifestEnd, descriptorEnd);
+  const { manifest, descriptor, points, pointCount, scripts } = recoveryParts(witness);
   requireValue(manifest.length === 4 + count * 97 && u16(manifest, 0) === 1 && manifest[2] === count && manifest[3] === 0, "invalid Vault manifest");
   requireValue(descriptor.length === 100 + count * 97 && u16(descriptor, 0) === 4 && descriptor[2] === count && descriptor[3] === 0, "invalid settlement descriptor");
   requireValue(same(domainHash("CKB_MORPH_MULTI_ASSET_VAULT_SET_V1", manifest), contentRoot)
@@ -182,7 +210,6 @@ function inspectPackage(value: MultiAssetRecoveryPackage, verifySignatures: bool
   }
   const typed = vaults.filter((vault) => vault.asset.kind === 1);
   requireValue(same(domainHash("CKB_MORPH_ASSET_REGISTRY_V1", little(typed.length, 8), ...typed.map((vault) => vault.asset.type)), header.slice(150, 182)), "asset registry mismatch");
-  const points = witness.slice(descriptorEnd, scriptsStart);
   requireValue(bound ? pointCount === count : pointCount === 0, "incomplete OutPoint set");
   if (bound) {
     const seen = new Set<string>();
@@ -193,17 +220,7 @@ function inspectPackage(value: MultiAssetRecoveryPackage, verifySignatures: bool
     }
     requireValue(same(domainHash("CKB_MORPH_MULTI_ASSET_OUTPOINT_SET_V1", contentRoot, little(count, 2), points), pointRoot), "exact OutPoint commitment mismatch");
   }
-  const scripts: Uint8Array[] = [];
-  let cursor = scriptsStart;
-  for (let i = 0; i < 6 + typed.length; i++) {
-    const len = u32(witness, cursor);
-    requireValue(len >= 53 && len <= MAX_SCRIPT_BYTES && cursor + 4 + len <= witness.length, "invalid script evidence length");
-    const script = witness.slice(cursor + 4, cursor + 4 + len);
-    scriptOccupied(script);
-    scripts.push(script);
-    cursor += 4 + len;
-  }
-  requireValue(cursor === witness.length, "extra script evidence");
+  requireValue(scripts.length === 6 + typed.length, "extra or missing script evidence");
   for (let i = 0; i < 3; i++) requireValue(same(hash(scripts[i]!), locks[i]!), "payout script identity mismatch");
   const vaultScript = scripts[3]!;
   const stateType = scripts[4]!;
@@ -245,7 +262,7 @@ function inspectPackage(value: MultiAssetRecoveryPackage, verifySignatures: bool
       prehash: false, lowS: true, format: "compact",
     }), "invalid participant signature");
   }
-  return {
+  const summary: MultiAssetPackageSummary = {
     package_id: hex(digest), channel_id: hex(header.slice(36, 68)),
     funding_context_id: hex(domainHash("CKB_MORPH_MULTI_ASSET_FUNDING_CONTEXT_V1", header.slice(2, 34), header.slice(36, 68), header.slice(76, 108), contentRoot, pointRoot)),
     state_number: unsigned(header, 108, 8).toString(), phase: header[117] === 1 ? "active" : "settling",
@@ -254,6 +271,7 @@ function inspectPackage(value: MultiAssetRecoveryPackage, verifySignatures: bool
     state_carrier_capacity: value.state_carrier_capacity, signer_pubkeys: [hex(publicKeys[0]), hex(publicKeys[1])],
     assets: vaults.map((vault) => ({ type_hash: vault.asset.kind === 0 ? null : hex(vault.asset.type), reserve: vault.value.reserve.toString(), business_ckb: vault.value.business.toString(), amount: vault.value.amount.toString() })),
   };
+  return {summary, header, witness, descriptor, scripts, vaults, payouts, publicKeys};
 }
 
 
@@ -265,7 +283,7 @@ export interface MultiAssetProposal {
   signing_digest: string;
 }
 
-export interface MultiAssetProposalSignature {
+export interface MultiAssetSignatureReceipt {
   schema: "morph.multi_asset_signature.v1";
   signing_digest: string;
   pubkey: string;
@@ -336,7 +354,7 @@ export function inspectMultiAssetProposal(base: MultiAssetRecoveryPackage, propo
   return { summary, participant_lock_hashes: [hex(descriptor.slice(4, 36)), hex(descriptor.slice(36, 68))], payouts };
 }
 
-export function inspectMultiAssetProposalSignature(base: MultiAssetRecoveryPackage, proposal: MultiAssetProposal, signature: MultiAssetProposalSignature): { signer_pubkey: string; signing_digest: string } {
+export function inspectMultiAssetProposalSignature(base: MultiAssetRecoveryPackage, proposal: MultiAssetProposal, signature: MultiAssetSignatureReceipt): { signer_pubkey: string; signing_digest: string } {
   const inspected = inspectMultiAssetProposal(base, proposal);
   requireValue(typeof signature === "object" && signature !== null && signature.schema === "morph.multi_asset_signature.v1"
     && Object.keys(signature).sort().join(",") === "pubkey,schema,signature,signing_digest", "unsupported proposal signature fields");
@@ -347,4 +365,268 @@ export function inspectMultiAssetProposalSignature(base: MultiAssetRecoveryPacka
     prehash: false, lowS: true, format: "compact",
   }), "invalid proposal signature");
   return { signer_pubkey: signature.pubkey, signing_digest: signature.signing_digest };
+}
+
+export interface MultiAssetRootDraft {
+  schema: "morph.multi_asset_root_draft.v1";
+  transaction_hex: string;
+  participants: [string, string];
+}
+export type MultiAssetFundingTarget = "exit" | "creation";
+export interface MultiAssetRootInspection {
+  transaction_hash: string;
+  chain_id: string;
+  channel_id: string;
+  funding_context_id: string;
+  creation_digest: string;
+  exit_digest: string;
+  state_carrier_capacity: string;
+  participants: [string, string];
+  participant_lock_hashes: [string, string];
+  vault_outpoints: Array<{tx_hash: string; index: number}>;
+  assets: MultiAssetPackageSummary["assets"];
+  payouts: MultiAssetProposalInspection["payouts"];
+  input_count: number;
+  output_count: number;
+}
+export interface MultiAssetRootFunding {
+  schema: "morph.multi_asset_root_funding.v1";
+  transaction_hex: string;
+  recovery_package: MultiAssetRecoveryPackage;
+}
+
+const MAX_FUNDING_BYTES = 256 * 1024;
+function table(raw: Uint8Array, count: number): Uint8Array[] {
+  requireValue(raw.length >= 4 * (count + 1) && u32(raw, 0) === raw.length && u32(raw, 4) === 4 * (count + 1), "noncanonical Molecule table");
+  const offsets = Array.from({length: count}, (_, i) => u32(raw, 4 + i * 4));
+  offsets.push(raw.length);
+  requireValue(offsets.every((offset, i) => offset <= raw.length && (i === 0 || offset >= offsets[i - 1]!)), "invalid Molecule offsets");
+  return offsets.slice(0, -1).map((offset, i) => raw.slice(offset, offsets[i + 1]));
+}
+function dynamic(raw: Uint8Array, max: number): Uint8Array[] {
+  requireValue(raw.length >= 4 && u32(raw, 0) === raw.length, "invalid Molecule vector");
+  if (raw.length === 4) return [];
+  const first = u32(raw, 4);
+  requireValue(first >= 8 && first % 4 === 0 && first / 4 - 1 <= max, "Molecule vector exceeds count bound");
+  return table(raw, first / 4 - 1);
+}
+function fixed(raw: Uint8Array, size: number, max: number): Uint8Array[] {
+  const count = u32(raw, 0);
+  requireValue(count <= max && raw.length === 4 + size * count, "invalid Molecule fixed vector");
+  return Array.from({length: count}, (_, i) => raw.slice(4 + i * size, 4 + (i + 1) * size));
+}
+function byteVector(raw: Uint8Array): Uint8Array {
+  requireValue(raw.length >= 4 && u32(raw, 0) === raw.length - 4, "invalid Molecule Bytes");
+  return raw.slice(4);
+}
+function encodeTable(fields: Uint8Array[]): Uint8Array {
+  let offset = 4 * (fields.length + 1);
+  const offsets = fields.map((field) => { const start = offset; offset += field.length; return little(start, 4); });
+  return join(little(offset, 4), ...offsets, ...fields);
+}
+function encodeDynamic(fields: Uint8Array[]): Uint8Array { return fields.length === 0 ? little(4, 4) : encodeTable(fields); }
+function encodeBytes(raw: Uint8Array): Uint8Array { return join(little(raw.length, 4), raw); }
+interface FundingTransaction {
+  raw: Uint8Array;
+  fields: Uint8Array[];
+  witnesses: Uint8Array[];
+  witnessFields: Uint8Array[];
+  inputs: Uint8Array[];
+  outputs: Array<{capacity: bigint; lock: Uint8Array; type: Uint8Array | undefined; data: Uint8Array}>;
+  dependencies: MultiAssetRecoveryPackage["cell_deps"];
+}
+function fundingTransaction(raw: Uint8Array): FundingTransaction {
+  const [body, witnessVector] = table(raw, 2);
+  const fields = table(body!, 6);
+  requireValue(fields[0]!.length === 4 && u32(fields[0]!, 0) === 0, "unsupported root transaction version");
+  const dependencies = fixed(fields[1]!, 37, 64).map((dep) => {
+    requireValue(dep[36] === 0 || dep[36] === 1, "unsupported dependency type");
+    return {tx_hash: hex(dep.slice(0, 32)), index: u32(dep, 32), dep_type: dep[36] === 0 ? "code" as const : "dep_group" as const};
+  }).sort((a, b) => a.tx_hash < b.tx_hash ? -1 : a.tx_hash > b.tx_hash ? 1 : a.index - b.index);
+  fixed(fields[2]!, 32, 64);
+  const inputs = fixed(fields[3]!, 44, 64);
+  requireValue(inputs.length > 0 && dependencies.length > 0, "missing root inputs or dependencies");
+  const seen = new Set<string>();
+  for (const input of inputs) {
+    const point = input.slice(8);
+    requireValue(!zero(point.slice(0, 32)) && !seen.has(hex(point)), "duplicate or invalid funding input");
+    seen.add(hex(point));
+  }
+  const data = dynamic(fields[5]!, 64).map(byteVector);
+  const outputCells = dynamic(fields[4]!, 64);
+  requireValue(outputCells.length > 0 && outputCells.length === data.length, "invalid root output count");
+  const outputs = outputCells.map((cell, i) => {
+    const [capacityBytes, lock, typeBytes] = table(cell, 3);
+    requireValue(capacityBytes!.length === 8, "invalid output capacity encoding");
+    scriptOccupied(lock!);
+    const type = typeBytes!.length === 0 ? undefined : typeBytes!;
+    if (type !== undefined) scriptOccupied(type);
+    const capacity = unsigned(capacityBytes!, 0, 8);
+    requireValue(capacity >= (8n + scriptOccupied(lock!) + (type === undefined ? 0n : scriptOccupied(type)) + BigInt(data[i]!.length)) * 100_000_000n,
+      "root output below occupied capacity");
+    return {capacity, lock: lock!, type, data: data[i]!};
+  });
+  requireValue(outputs.reduce((sum, output) => sum + output.capacity, 0n) <= MAX_U64, "root output capacity overflow");
+  const witnesses = dynamic(witnessVector!, MAX_FUNDING_BYTES / 8).map(byteVector);
+  requireValue(witnesses.length > 0, "missing root witness zero");
+  const witnessFields = table(witnesses[0]!, 3);
+  return {raw: body!, fields, witnesses, witnessFields, inputs, outputs, dependencies};
+}
+function validPublicKey(key: Uint8Array): boolean {
+  if (key.length !== 33) return false;
+  try { secp256k1.Point.fromBytes(key); return true; } catch { return false; }
+}
+function emptySignatureWitness(participants: [string, string]): Uint8Array {
+  const keys = participants.map((key) => bytes(key, 33));
+  requireValue(keys.every(validPublicKey) && participants[0] < participants[1], "invalid or unordered root participants");
+  return join(Uint8Array.of(1, 0, 2, 2), keys[0]!, new Uint8Array(64), keys[1]!, new Uint8Array(64));
+}
+interface RootEvidence { inspection: MultiAssetRootInspection; creation: PackageEvidence; exit: MultiAssetRecoveryPackage; tx: FundingTransaction }
+function rootEvidence(draft: MultiAssetRootDraft): RootEvidence {
+  requireValue(typeof draft === "object" && draft !== null && draft.schema === "morph.multi_asset_root_draft.v1"
+    && Object.keys(draft).sort().join(",") === "participants,schema,transaction_hex"
+    && Array.isArray(draft.participants) && draft.participants.length === 2, "unsupported root draft fields");
+  const tx = fundingTransaction(bytes(draft.transaction_hex, MAX_FUNDING_BYTES));
+  requireValue(tx.witnessFields[0]!.length === 0 && tx.witnessFields[1]!.length === 0, "root draft contains creation or wallet authorization");
+  requireValue(tx.witnessFields[2]!.length > 0, "missing root creation evidence");
+  const evidence = byteVector(tx.witnessFields[2]!);
+  const scripts = recoveryParts(evidence).scripts;
+  requireValue(scripts.length >= 6, "missing root authority Scripts");
+  const states = tx.outputs.map((output, index) => ({output, index})).filter(({output}) => output.type !== undefined && same(output.type, scripts[4]!));
+  requireValue(states.length === 1, "root requires exactly one authentic State output");
+  const {output: state, index: stateIndex} = states[0]!;
+  requireValue(same(state.lock, scripts[5]!), "root State lock mismatch");
+  const header = state.data;
+  requireValue(header.length === 318 && unsigned(header, 68, 8) === 0n && unsigned(header, 108, 8) === 0n
+    && header[117] === 1 && zero(header.slice(282, 314)), "root creation must be unbound epoch-0 Active/0");
+  requireValue(same(hash(tx.inputs[0]!, little(stateIndex, 8)), header.slice(76, 108)), "root anchor does not derive from actual first input and State index");
+  const packageValue: MultiAssetRecoveryPackage = {schema: "morph.multi_asset_recovery_package.v1", header_hex: hex(header), witness_hex: hex(evidence),
+    signature_witness_hex: hex(emptySignatureWitness(draft.participants)), state_carrier_capacity: state.capacity.toString(), cell_deps: tx.dependencies};
+  const creation = inspectEvidence(packageValue, false);
+  const txHash = hash(tx.raw);
+  const outpoints = creation.vaults.map((vault) => {
+    const matches = tx.outputs.map((output, index) => ({output, index})).filter(({output}) => same(output.lock, scripts[3]!)
+      && (vault.asset.kind === 0 ? output.type === undefined : output.type !== undefined && same(hash(output.type), vault.asset.type)));
+    requireValue(matches.length === 1, "missing or duplicate root Vault");
+    const {output, index} = matches[0]!;
+    requireValue(output.capacity === vault.value.capacity && same(output.data, vault.asset.kind === 0 ? new Uint8Array() : little(vault.value.amount, 16)), "root Vault physical value mismatch");
+    return {tx_hash: hex(txHash), index};
+  });
+  const selected = new Set(outpoints.map((point) => point.index));
+  tx.outputs.forEach((output, index) => {
+    requireValue(!same(output.lock, scripts[3]!) || selected.has(index), "unlisted root Vault");
+    requireValue(!same(output.lock, scripts[5]!) || index === stateIndex, "unlisted root StateLock");
+  });
+  const points = join(...outpoints.map((point) => join(txHash, little(point.index, 4))));
+  const nextHeader = header.slice(); nextHeader.set(little(1, 8), 108); nextHeader[117] = 2;
+  nextHeader.set(domainHash("CKB_MORPH_MULTI_ASSET_OUTPOINT_SET_V1", header.slice(250, 282), little(outpoints.length, 2), points), 282);
+  const prefix = evidence.slice(0, 28); prefix.set(little(outpoints.length, 2), 20);
+  const parts = recoveryParts(evidence);
+  const nextWitness = join(prefix, parts.manifest, parts.descriptor, points, ...scripts.map((script) => join(little(script.length, 4), script)));
+  const exit = {...packageValue, header_hex: hex(nextHeader), witness_hex: hex(nextWitness)};
+  const next = inspectEvidence(exit, false);
+  const inspection: MultiAssetRootInspection = {transaction_hash: hex(txHash), chain_id: hex(header.slice(2, 34)), channel_id: next.summary.channel_id,
+    funding_context_id: next.summary.funding_context_id, creation_digest: hex(domainHash("CKB_MORPH_MULTI_ASSET_ROOT_FUNDING_V1", bytes(creation.summary.package_id, 32), txHash)),
+    exit_digest: next.summary.package_id, state_carrier_capacity: state.capacity.toString(), participants: [...draft.participants],
+    participant_lock_hashes: [hex(creation.descriptor.slice(4, 36)), hex(creation.descriptor.slice(36, 68))], vault_outpoints: outpoints,
+    assets: next.summary.assets, payouts: creation.vaults.map((vault, i) => ({type_hash: vault.asset.kind === 0 ? null : hex(vault.asset.type),
+      allocations: creation.payouts[i]!.map((value) => ({reserve: value.reserve.toString(), business_ckb: value.business.toString(), amount: value.amount.toString()})) as MultiAssetProposalInspection["payouts"][number]["allocations"]})),
+    input_count: tx.inputs.length, output_count: tx.outputs.length};
+  return {inspection, creation, exit, tx};
+}
+/** Inspect unsigned funding and its exact initial exit. This stateless operation
+ * does not reserve either signing role or establish chain/code approval. */
+export function inspectMultiAssetRootDraft(draft: MultiAssetRootDraft): MultiAssetRootInspection { return rootEvidence(draft).inspection; }
+
+function fundingReceipt(draft: MultiAssetRootDraft, target: MultiAssetFundingTarget, receipt: MultiAssetSignatureReceipt): {signer_pubkey: string; signing_digest: string} {
+  requireValue(target === "exit" || target === "creation", "unknown funding signing target");
+  const root = rootEvidence(draft).inspection;
+  const digest = target === "exit" ? root.exit_digest : root.creation_digest;
+  requireValue(typeof receipt === "object" && receipt !== null && receipt.schema === "morph.multi_asset_signature.v1"
+    && Object.keys(receipt).sort().join(",") === "pubkey,schema,signature,signing_digest"
+    && receipt.signing_digest === digest && root.participants.includes(receipt.pubkey), "funding receipt context or signer mismatch");
+  requireValue(secp256k1.verify(bytes(receipt.signature, 64), bytes(digest, 32), bytes(receipt.pubkey, 33), {prehash: false, lowS: true, format: "compact"}), "invalid funding receipt signature");
+  return {signer_pubkey: receipt.pubkey, signing_digest: digest};
+}
+export function inspectMultiAssetFundingSignature(draft: MultiAssetRootDraft, target: MultiAssetFundingTarget, receipt: MultiAssetSignatureReceipt): {signer_pubkey: string; signing_digest: string} {
+  return fundingReceipt(draft, target, receipt);
+}
+function fundingPair(draft: MultiAssetRootDraft, target: MultiAssetFundingTarget, receipts: MultiAssetSignatureReceipt[]): Uint8Array {
+  requireValue(Array.isArray(receipts) && receipts.length === 2, "funding requires both participant receipts");
+  const sorted = [...receipts].sort((a, b) => a.pubkey < b.pubkey ? -1 : a.pubkey > b.pubkey ? 1 : 0);
+  requireValue(sorted[0]!.pubkey !== sorted[1]!.pubkey, "duplicate funding participant receipt");
+  sorted.forEach((receipt) => fundingReceipt(draft, target, receipt));
+  return join(Uint8Array.of(1, 0, 2, 2), ...sorted.map((receipt) => join(bytes(receipt.pubkey, 33), bytes(receipt.signature, 64))));
+}
+/** Collect public receipts after each participant used its own durable journal.
+ * Persist the returned complete exit before exposing/submitting the transaction. */
+export function assembleMultiAssetRootFunding(draft: MultiAssetRootDraft, exitReceipts: MultiAssetSignatureReceipt[], creationReceipts: MultiAssetSignatureReceipt[]): MultiAssetRootFunding {
+  const root = rootEvidence(draft);
+  const exitSignatures = fundingPair(draft, "exit", exitReceipts);
+  const recovery = {...root.exit, signature_witness_hex: hex(exitSignatures)};
+  inspectMultiAssetPackage(recovery);
+  const creationSignatures = fundingPair(draft, "creation", creationReceipts);
+  const witnesses = root.tx.witnesses.slice();
+  witnesses[0] = encodeTable([root.tx.witnessFields[0]!, encodeBytes(creationSignatures), root.tx.witnessFields[2]!]);
+  const transaction = encodeTable([root.tx.raw, encodeDynamic(witnesses.map(encodeBytes))]);
+  requireValue(transaction.length <= MAX_FUNDING_BYTES, "signed root funding exceeds byte limit");
+  return {schema: "morph.multi_asset_root_funding.v1", transaction_hex: hex(transaction), recovery_package: recovery};
+}
+/** Verify signed root creation against the exact raw body and a complete,
+ * possibly newer exit. Wallet signatures and canonical custody require RPC. */
+export function inspectMultiAssetRootFunding(value: MultiAssetRootFunding): MultiAssetRootInspection {
+  requireValue(typeof value === "object" && value !== null && value.schema === "morph.multi_asset_root_funding.v1"
+    && Object.keys(value).sort().join(",") === "recovery_package,schema,transaction_hex", "unsupported root funding fields");
+  const summary = inspectMultiAssetPackage(value.recovery_package);
+  const tx = fundingTransaction(bytes(value.transaction_hex, MAX_FUNDING_BYTES));
+  requireValue(tx.witnessFields[1]!.length > 0, "missing root creation signatures");
+  const signatures = byteVector(tx.witnessFields[1]!);
+  requireValue(signatures.length === 198 && u16(signatures, 0) === 1 && signatures[2] === 2 && signatures[3] === 2, "invalid root creation signature envelope");
+  const participants: [string, string] = [hex(signatures.slice(4, 37)), hex(signatures.slice(101, 134))];
+  const witnesses = tx.witnesses.slice(); witnesses[0] = encodeTable([new Uint8Array(), new Uint8Array(), tx.witnessFields[2]!]);
+  const draft: MultiAssetRootDraft = {schema: "morph.multi_asset_root_draft.v1", transaction_hex: hex(encodeTable([tx.raw, encodeDynamic(witnesses.map(encodeBytes))])), participants};
+  const root = rootEvidence(draft);
+  for (let i = 0; i < 2; i++) {
+    fundingReceipt(draft, "creation", {schema: "morph.multi_asset_signature.v1", signing_digest: root.inspection.creation_digest,
+      pubkey: participants[i]!, signature: hex(signatures.slice(37 + 97 * i, 101 + 97 * i))});
+  }
+  const current = inspectEvidence(value.recovery_package, true);
+  const initial = bytes(root.exit.header_hex, 318);
+  requireValue(summary.phase === "settling" && summary.vaults_bound && same(current.header.slice(0, 108), initial.slice(0, 108))
+    && current.header[116] === initial[116] && same(current.header.slice(118, 182), initial.slice(118, 182))
+    && same(current.header.slice(214), initial.slice(214)), "root recovery funding context mismatch");
+  requireValue(current.scripts.length === root.creation.scripts.length && current.scripts.every((script, i) => same(script, root.creation.scripts[i]!)), "root recovery Scripts differ from creation");
+  const currentParts = recoveryParts(current.witness); const initialParts = recoveryParts(bytes(root.exit.witness_hex, MAX_WITNESS_BYTES));
+  requireValue(same(currentParts.manifest, initialParts.manifest) && same(currentParts.points, initialParts.points), "root recovery custody differs from creation");
+  return root.inspection;
+}
+
+export interface MultiAssetRootCollection {
+  schema: "morph.multi_asset_root_collection.v1";
+  draft: MultiAssetRootDraft;
+  exit_signatures: MultiAssetSignatureReceipt[];
+  creation_signatures: MultiAssetSignatureReceipt[];
+}
+export interface MultiAssetRootCollectionSummary extends MultiAssetRootInspection {
+  exit_signature_count: number;
+  creation_signature_count: number;
+  ready_to_export: boolean;
+}
+/** Public coordination evidence, without signer keys or rollback authority. */
+export function inspectMultiAssetRootCollection(value: MultiAssetRootCollection): MultiAssetRootCollectionSummary {
+  requireValue(typeof value === "object" && value !== null && value.schema === "morph.multi_asset_root_collection.v1"
+    && Object.keys(value).sort().join(",") === "creation_signatures,draft,exit_signatures,schema", "unsupported root collection fields");
+  const root = inspectMultiAssetRootDraft(value.draft);
+  for (const [target, receipts] of [["exit", value.exit_signatures], ["creation", value.creation_signatures]] as const) {
+    requireValue(Array.isArray(receipts) && receipts.length <= 2, "too many root collection receipts");
+    let previous: string | undefined;
+    for (const receipt of receipts) {
+      inspectMultiAssetFundingSignature(value.draft, target, receipt);
+      requireValue(previous === undefined || previous < receipt.pubkey, "root collection receipts must be unique and ordered");
+      previous = receipt.pubkey;
+    }
+  }
+  requireValue(value.creation_signatures.length === 0 || value.exit_signatures.length === 2, "creation collection requires complete initial exit");
+  return {...root, exit_signature_count: value.exit_signatures.length, creation_signature_count: value.creation_signatures.length,
+    ready_to_export: value.exit_signatures.length === 2 && value.creation_signatures.length === 2};
 }

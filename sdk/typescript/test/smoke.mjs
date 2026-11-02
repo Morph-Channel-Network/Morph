@@ -9,6 +9,11 @@ import {
   MorphAgentClient,
   MorphHubClient,
   inspectMultiAssetPackage,
+  inspectMultiAssetRootDraft,
+  inspectMultiAssetFundingSignature,
+  assembleMultiAssetRootFunding,
+  inspectMultiAssetRootFunding,
+  inspectMultiAssetRootCollection,
   createMultiAssetProposal,
   inspectMultiAssetProposal,
   inspectMultiAssetProposalSignature,
@@ -89,6 +94,75 @@ const maximumProposal = createMultiAssetProposal(multiAsset, ((1n<<64n)-1n).toSt
 assert.equal(inspectMultiAssetProposal(multiAsset, maximumProposal).summary.state_number, ((1n<<64n)-1n).toString());
 assert.throws(() => createMultiAssetProposal(multiAsset, (1n<<64n).toString(), proposal.descriptor_hex), /overflow/);
 
+const rootFixture = JSON.parse(await readFile(new URL("./fixtures/multi-asset-root.json", import.meta.url), "utf8"));
+assert.deepEqual(inspectMultiAssetRootDraft(rootFixture.draft), rootFixture.inspection);
+for (const [target, receipts] of [["exit", rootFixture.exit_receipts], ["creation", rootFixture.creation_receipts]]) {
+  for (const receipt of receipts) assert.deepEqual(inspectMultiAssetFundingSignature(rootFixture.draft, target, receipt), {signer_pubkey: receipt.pubkey, signing_digest: receipt.signing_digest});
+}
+const assembledRoot = assembleMultiAssetRootFunding(rootFixture.draft, rootFixture.exit_receipts, rootFixture.creation_receipts);
+assert.deepEqual(assembledRoot, rootFixture.funding);
+assert.deepEqual(inspectMultiAssetRootFunding(assembledRoot), rootFixture.inspection);
+assert.throws(() => assembleMultiAssetRootFunding(rootFixture.draft, [rootFixture.exit_receipts[0]], rootFixture.creation_receipts), /both participant/);
+assert.throws(() => assembleMultiAssetRootFunding(rootFixture.draft, [rootFixture.exit_receipts[0],rootFixture.exit_receipts[0]], rootFixture.creation_receipts), /duplicate/);
+assert.throws(() => inspectMultiAssetFundingSignature(rootFixture.draft, "creation", rootFixture.exit_receipts[0]), /context/);
+assert.throws(() => inspectMultiAssetRootDraft({...rootFixture.draft,participants:[...rootFixture.draft.participants].reverse()}), /participants/);
+assert.throws(() => inspectMultiAssetRootDraft({...rootFixture.draft,extra:true}), /draft fields/);
+assert.throws(() => inspectMultiAssetRootDraft({...rootFixture.draft,transaction_hex:assembledRoot.transaction_hex}), /contains creation/);
+assert.throws(() => inspectMultiAssetFundingSignature(rootFixture.draft,"exit",{...rootFixture.exit_receipts[0],signature:`0x${"00".repeat(64)}`}), /signature/);
+
+assert.equal(inspectMultiAssetRootCollection(rootFixture.collection).ready_to_export, true);
+assert.throws(() => inspectMultiAssetRootCollection({...rootFixture.collection,exit_signatures:[]}), /complete initial exit/);
+assert.throws(() => inspectMultiAssetRootCollection({...rootFixture.collection,exit_signatures:[...rootFixture.exit_receipts].reverse()}), /unique and ordered/);
+
+// Preserve State and custody commitments while repricing only the external
+// change: both root signing domains must still change with the raw TX hash.
+function fieldSlices(raw) {
+  const total=raw.readUInt32LE(0);assert.equal(total,raw.length);
+  const first=raw.readUInt32LE(4);const count=first/4-1;
+  return Array.from({length:count},(_,i)=>raw.subarray(raw.readUInt32LE(4+4*i),i+1===count?raw.length:raw.readUInt32LE(8+4*i)));
+}
+function packedTable(fields) {
+  const header=Buffer.alloc(4*(fields.length+1));let offset=header.length;
+  fields.forEach((field,i)=>{header.writeUInt32LE(offset,4+4*i);offset+=field.length;});header.writeUInt32LE(offset,0);
+  return Buffer.concat([header,...fields]);
+}
+function changeRoot(rawHex, mutate) {
+  const transaction=fieldSlices(Buffer.from(rawHex.slice(2),'hex'));const body=fieldSlices(transaction[0]).map(field=>Buffer.from(field));
+  mutate(body);transaction[0]=packedTable(body);return `0x${packedTable(transaction).toString('hex')}`;
+}
+const repriced=changeRoot(rootFixture.draft.transaction_hex, body=>{
+  const outputs=fieldSlices(body[4]);const change=fieldSlices(outputs[0]).map(field=>Buffer.from(field));
+  change[0].writeBigUInt64LE(change[0].readBigUInt64LE()+1n);outputs[0]=packedTable(change);body[4]=packedTable(outputs);
+});
+const repricedDraft={...rootFixture.draft,transaction_hex:repriced};
+const repricedInspection=inspectMultiAssetRootDraft(repricedDraft);
+assert.notEqual(repricedInspection.creation_digest,rootFixture.inspection.creation_digest);
+assert.notEqual(repricedInspection.exit_digest,rootFixture.inspection.exit_digest);
+assert.throws(()=>assembleMultiAssetRootFunding(repricedDraft,rootFixture.exit_receipts,rootFixture.creation_receipts),/context/);
+const repricedSigned=changeRoot(assembledRoot.transaction_hex, body=>{
+  const outputs=fieldSlices(body[4]);const change=fieldSlices(outputs[0]).map(field=>Buffer.from(field));
+  change[0].writeBigUInt64LE(change[0].readBigUInt64LE()+1n);outputs[0]=packedTable(change);body[4]=packedTable(outputs);
+});
+assert.throws(()=>inspectMultiAssetRootFunding({...assembledRoot,transaction_hex:repricedSigned}),/signature/);
+const wrongVault=changeRoot(rootFixture.draft.transaction_hex, body=>{
+  const outputs=fieldSlices(body[4]);const vault=fieldSlices(outputs[2]).map(field=>Buffer.from(field));
+  vault[0].writeBigUInt64LE(vault[0].readBigUInt64LE()-1n);outputs[2]=packedTable(vault);body[4]=packedTable(outputs);
+});
+assert.throws(()=>inspectMultiAssetRootDraft({...rootFixture.draft,transaction_hex:wrongVault}),/physical value/);
+const movedState=changeRoot(rootFixture.draft.transaction_hex, body=>{
+  const outputs=fieldSlices(body[4]);const data=fieldSlices(body[5]);[outputs[0],outputs[1]]=[outputs[1],outputs[0]];[data[0],data[1]]=[data[1],data[0]];
+  body[4]=packedTable(outputs);body[5]=packedTable(data);
+});
+assert.throws(()=>inspectMultiAssetRootDraft({...rootFixture.draft,transaction_hex:movedState}),/anchor/);
+const duplicateDep=changeRoot(rootFixture.draft.transaction_hex, body=>body[1].set(body[1].subarray(4,41),41));
+assert.throws(()=>inspectMultiAssetRootDraft({...rootFixture.draft,transaction_hex:duplicateDep}),/duplicate or unordered/);
+const duplicateInput=changeRoot(rootFixture.draft.transaction_hex, body=>{
+  const item=body[3].subarray(4);const count=Buffer.alloc(4);count.writeUInt32LE(2);body[3]=Buffer.concat([count,item,item]);
+});
+assert.throws(()=>inspectMultiAssetRootDraft({...rootFixture.draft,transaction_hex:duplicateInput}),/duplicate or invalid funding input/);
+const zeroExit={...multiAsset};const zeroHeader=Buffer.from(zeroExit.header_hex.slice(2),'hex');zeroHeader.writeBigUInt64LE(0n,108);zeroExit.header_hex=`0x${zeroHeader.toString('hex')}`;
+assert.throws(()=>inspectMultiAssetPackage(zeroExit),/positive state number/);
+
 const requirements = {
   requirement_id: `0x${"11".repeat(32)}`,
   payment_hash: `0x${"22".repeat(32)}`,
@@ -166,6 +240,26 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
+
+const rootCalls=[];
+let rootReply=rootFixture.collection;
+globalThis.fetch=async(url,init)=>{
+  assert.equal(init.headers.authorization,`Bearer ${apiBearerToken}`);assert.equal(new URL(url).search,'');
+  rootCalls.push({path:new URL(url).pathname,method:init.method,body:init.body===undefined?undefined:JSON.parse(init.body)});
+  if(init.method==='POST')return new Response(JSON.stringify({root_fundings:[]}),{status:200});
+  return new Response(JSON.stringify(new URL(url).pathname.endsWith('/export')?rootFixture.funding:rootReply),{status:200});
+};
+try {
+  const client=new MorphHubClient('https://hub.example.com',apiBearerToken);const id=rootFixture.inspection.transaction_hash;
+  await client.importRootFunding(rootFixture.draft);assert.deepEqual(rootCalls.at(-1).body,rootFixture.draft);
+  assert.deepEqual(await client.rootFunding(id),rootFixture.collection);
+  await client.addRootFundingSignature(id,'creation',rootFixture.creation_receipts[0]);assert.equal(rootCalls.at(-1).path,`/api/root-fundings/${id}/signatures`);
+  assert.deepEqual(await client.exportRootFunding(id),rootFixture.funding);
+  rootReply={...rootFixture.collection,exit_signatures:[],creation_signatures:[]};const before=rootCalls.filter(call=>call.method==='POST').length;
+  await assert.rejects(client.addRootFundingSignature(id,'creation',rootFixture.creation_receipts[0]),/complete initial exit/);
+  assert.equal(rootCalls.filter(call=>call.method==='POST').length,before);
+  await assert.rejects(client.rootFunding(`0x${'00'.repeat(32)}`),/different root/);
+} finally {globalThis.fetch=originalFetch;}
 
 globalThis.fetch = async () => new Response(
   new Uint8Array(2 * 1024 * 1024 + 1),

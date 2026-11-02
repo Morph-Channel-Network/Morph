@@ -24,6 +24,8 @@ pub enum MultiAssetError {
     IncompleteEvidence,
     #[error("root creation requires transaction-bound funding authorization")]
     RootFundingContextRequired,
+    #[error("settling recovery requires a positive state number")]
+    InvalidSettlingStateNumber,
     #[error("script identity or canonical Script encoding mismatch")]
     ScriptIdentity,
     #[error("signed reserve cannot fund the required occupied capacity")]
@@ -736,6 +738,9 @@ impl MultiAssetRecoveryPackage {
     /// Verify all evidence except participant signatures. Used before a signer
     /// authorises a proposed state; never sufficient for a recovery package.
     pub fn validate_contents(&self) -> MultiAssetResult<()> {
+        if self.state.header.phase == Phase::Settling && self.state.header.state_number == 0 {
+            return Err(MultiAssetError::InvalidSettlingStateNumber);
+        }
         let raw = self.state.encode()?;
         let header = wire::MultiAssetStateHeader::parse(&raw)?;
         let evidence = encode_multi_asset_witness(

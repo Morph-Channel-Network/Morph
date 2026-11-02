@@ -18,7 +18,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::conditional_packages::StoredConditionalBatchPackage;
+use crate::multi_asset_funding::{
+    RootCollectionSummary, RootFundingCollection, RootFundingDraft, RootFundingTarget,
+};
 use crate::multi_asset_packages::{MultiAssetPackageSummary, StoredMultiAssetPackage};
+use crate::multi_asset_signatures::SignatureMessage;
 use crate::rpc::CkbRpcClient;
 use crate::watch_alert::{WatchAlertEvent, WatchAlertSeverity, WatchtowerAlert};
 
@@ -39,6 +43,7 @@ const MAX_CONCURRENT_SSE_STREAMS: usize = 8;
 const MUTATION_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const MAX_MUTATIONS_PER_WINDOW: u32 = 120;
 const MAX_INVOICE_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
+const MAX_ROOT_FUNDINGS: usize = 32;
 const MAX_MULTI_ASSET_RECOVERY_PACKAGES: usize = 4096;
 const MAX_MULTI_ASSET_PACKAGE_VIEWS: usize = 32;
 
@@ -90,6 +95,7 @@ struct HubRuntimeState {
     node: MorphNodeState,
     conditional_batches: BTreeMap<Bytes32, StoredConditionalBatchPackage>,
     multi_asset_packages: BTreeMap<(Bytes32, Bytes32, u64), HubMultiAssetPackage>,
+    root_fundings: BTreeMap<Bytes32, HubRootFunding>,
     events: Vec<HubEvent>,
 }
 
@@ -97,6 +103,18 @@ struct HubRuntimeState {
 struct HubMultiAssetPackage {
     package: StoredMultiAssetPackage,
     summary: MultiAssetPackageSummary,
+}
+
+#[derive(Clone)]
+struct HubRootFunding {
+    collection: RootFundingCollection,
+    summary: RootCollectionSummary,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RootReceiptRequest {
+    target: RootFundingTarget,
+    receipt: SignatureMessage,
 }
 
 #[derive(Default)]
@@ -168,6 +186,7 @@ struct PersistedHubState {
     factories: Vec<PersistedFactory>,
     conditional_batches: Vec<StoredConditionalBatchPackage>,
     multi_asset_packages: Vec<StoredMultiAssetPackage>,
+    root_fundings: Vec<RootFundingCollection>,
     invoices: Vec<StoredMorphInvoice>,
     completed_flows: Vec<MorphBusinessFlow>,
     events: Vec<HubEvent>,
@@ -261,6 +280,7 @@ struct RestoreStateSummary {
     factories: usize,
     conditional_batches: usize,
     multi_asset_packages: usize,
+    root_fundings: usize,
     invoices: usize,
     completed_flows: usize,
     events: usize,
@@ -275,6 +295,7 @@ impl RestoreStateSummary {
             factories: state.node.factories.len(),
             conditional_batches: state.conditional_batches.len(),
             multi_asset_packages: state.multi_asset_packages.len(),
+            root_fundings: state.root_fundings.len(),
             invoices: state.node.invoices.records().count(),
             completed_flows: state.node.completed_flows.len(),
             events: state.events.len(),
@@ -405,6 +426,7 @@ struct HubView {
     conditional_batches: Vec<StoredConditionalBatchPackage>,
     multi_asset_packages: Vec<MultiAssetPackageSummary>,
     multi_asset_package_count: usize,
+    root_fundings: Vec<RootCollectionSummary>,
     events: Vec<EventView>,
     required_flows: Vec<&'static str>,
     completed_flows: Vec<&'static str>,
@@ -884,6 +906,7 @@ impl HubStore {
                 node: MorphNodeState::new(node_id, network)?,
                 conditional_batches: BTreeMap::new(),
                 multi_asset_packages: BTreeMap::new(),
+                root_fundings: BTreeMap::new(),
                 events: Vec::new(),
             }
         };
@@ -1128,6 +1151,12 @@ impl HubStore {
                 .map(|entry| entry.summary.clone())
                 .collect(),
             multi_asset_package_count: self.state.multi_asset_packages.len(),
+            root_fundings: self
+                .state
+                .root_fundings
+                .values()
+                .map(|entry| entry.summary.clone())
+                .collect(),
             events: self.state.events.iter().map(event_view).collect(),
             required_flows: MorphNodeState::required_business_flows()
                 .iter()
@@ -1191,6 +1220,12 @@ impl HubStore {
                 .multi_asset_packages
                 .values()
                 .map(|entry| entry.package.clone())
+                .collect(),
+            root_fundings: self
+                .state
+                .root_fundings
+                .values()
+                .map(|entry| entry.collection.clone())
                 .collect(),
             invoices: self.state.node.invoices.records().cloned().collect(),
             completed_flows: self.state.node.completed_flows.iter().copied().collect(),
@@ -1350,6 +1385,38 @@ impl HubRuntimeState {
                 "multi-asset funding-context state numbers must be unique"
             );
         }
+        ensure!(
+            persisted.root_fundings.len() <= MAX_ROOT_FUNDINGS,
+            "too many root funding proposals"
+        );
+        let mut root_fundings = BTreeMap::new();
+        for collection in persisted.root_fundings {
+            let summary = collection.summary()?;
+            ensure!(
+                collection
+                    .draft
+                    .participants
+                    .iter()
+                    .any(|key| key.trim_start_matches("0x") == pubkey),
+                "root funding proposal is not owned by this Hub identity"
+            );
+            let id = parse_bytes32(
+                "root funding transaction hash",
+                &summary.root.transaction_hash,
+            )?;
+            ensure!(
+                root_fundings
+                    .insert(
+                        id,
+                        HubRootFunding {
+                            collection,
+                            summary
+                        }
+                    )
+                    .is_none(),
+                "duplicate root funding transaction hash"
+            );
+        }
         node.completed_flows = persisted.completed_flows.into_iter().collect();
         Ok(Self {
             pubkey,
@@ -1357,6 +1424,7 @@ impl HubRuntimeState {
             node,
             conditional_batches,
             multi_asset_packages,
+            root_fundings,
             events: persisted.events,
         })
     }
@@ -1457,6 +1525,16 @@ impl HubServer {
                 let entry = store.state.multi_asset_packages.values().find(|entry| entry.summary.package_id == id)
                     .ok_or_else(|| anyhow!("multi-asset recovery package not found"))?;
                 Ok(json_response(200, "OK", &entry.package))
+            }
+            ("GET",path) if path.starts_with("/api/root-fundings/") => {
+                let rest=path.strip_prefix("/api/root-fundings/").ok_or_else(||anyhow!("invalid root funding path"))?;
+                let (requested,export)=rest.strip_suffix("/export").map_or((rest,false),|id|(id,true));
+                let id=parse_bytes32("root funding transaction hash",requested)?;
+                ensure!(hex_prefixed(&id)==requested,"root funding id must be canonical lowercase hex");
+                let store=self.store_lock()?;
+                let entry=store.state.root_fundings.get(&id).ok_or_else(||anyhow!("root funding proposal not found"))?;
+                if export {Ok(json_response(200,"OK",&entry.collection.export()?))}
+                else {Ok(json_response(200,"OK",&entry.collection))}
             }
             ("GET", "/api/state-file") => {
                 let store = self.store_lock()?;
@@ -1667,6 +1745,32 @@ impl HubServer {
                     "Validated conditional force-resolution package stored for watchtower recovery",
                 )?;
                 Ok(())
+            }),
+            ("POST","/api/root-fundings") => self.mutate(request_id,|store| {
+                let draft:RootFundingDraft=parse_body(&request.body)?;
+                let collection=RootFundingCollection::new(draft)?;
+                let local=format!("0x{}",store.state.pubkey);
+                ensure!(collection.draft.participants.contains(&local),"root funding participants do not include this Hub identity");
+                let peer=collection.draft.participants.iter().find(|key|**key!=local).ok_or_else(||anyhow!("missing root funding peer"))?;
+                ensure!(store.state.peer_pubkeys.values().any(|pubkey|format!("0x{pubkey}")==*peer),"root funding counterparty must be a known peer");
+                let summary=collection.summary()?;
+                let id=parse_bytes32("root funding transaction hash",&summary.root.transaction_hash)?;
+                if let Some(existing)=store.state.root_fundings.get(&id) {
+                    ensure!(existing.collection.draft==collection.draft,"root funding id already holds another immutable draft");return Ok(());
+                }
+                ensure!(store.state.root_fundings.len()<MAX_ROOT_FUNDINGS,"root funding proposal store is full");
+                store.state.root_fundings.insert(id,HubRootFunding {collection,summary});
+                store.push_event(EventSeverity::Info,"root_funding_proposed",Some(id),"Root funding proposal retained for participant review")?;Ok(())
+            }),
+            ("POST",path) if path.starts_with("/api/root-fundings/") && path.ends_with("/signatures") => self.mutate(request_id,|store| {
+                let requested=path.strip_prefix("/api/root-fundings/").and_then(|rest|rest.strip_suffix("/signatures")).ok_or_else(||anyhow!("invalid root receipt path"))?;
+                let id=parse_bytes32("root funding transaction hash",requested)?;
+                ensure!(hex_prefixed(&id)==requested,"root funding id must be canonical lowercase hex");
+                let message:RootReceiptRequest=parse_body(&request.body)?;
+                let entry=store.state.root_fundings.get_mut(&id).ok_or_else(||anyhow!("root funding proposal not found"))?;
+                if !entry.collection.add(message.target,message.receipt)? {return Ok(());}
+                entry.summary=entry.collection.summary()?;
+                store.push_event(EventSeverity::Info,"root_funding_signature_received",Some(id),"Verified participant funding receipt retained")?;Ok(())
             }),
             ("POST", "/api/multi-asset-packages") => self.mutate(request_id, |store| {
                 let package: StoredMultiAssetPackage = parse_body(&request.body)?;
@@ -2408,6 +2512,7 @@ fn hub_state_has_operational_records(state: &HubRuntimeState) -> bool {
         || !state.node.factories.is_empty()
         || !state.conditional_batches.is_empty()
         || !state.multi_asset_packages.is_empty()
+        || !state.root_fundings.is_empty()
         || state.node.invoices.records().next().is_some()
         || !state.node.completed_flows.is_empty()
 }
@@ -3513,7 +3618,11 @@ mod tests {
         let server = test_server(&pubkey_from_scalar(41));
         let store = server.store.lock().unwrap();
         let current = serde_json::to_value(store.persisted().unwrap()).unwrap();
-        for field in ["conditional_batches", "multi_asset_packages"] {
+        for field in [
+            "conditional_batches",
+            "multi_asset_packages",
+            "root_fundings",
+        ] {
             let mut incomplete = current.clone();
             incomplete.as_object_mut().unwrap().remove(field);
             assert!(serde_json::from_value::<PersistedHubState>(incomplete).is_err());
@@ -3574,6 +3683,153 @@ mod tests {
         let reloaded =
             HubStore::load_or_create(path, &persisted_pubkey, MorphNetwork::Devnet).unwrap();
         assert_eq!(reloaded.state.conditional_batches.len(), 1);
+    }
+
+    #[test]
+    fn root_funding_coordination_retains_exit_before_creation_and_survives_restart() {
+        let fixture = crate::multi_asset_funding::root_collection_tests::fixture();
+        let draft: RootFundingDraft = serde_json::from_value(fixture["draft"].clone()).unwrap();
+        let id = fixture["inspection"]["transaction_hash"].as_str().unwrap();
+        let local = draft.participants[0].trim_start_matches("0x");
+        let peer = draft.participants[1].trim_start_matches("0x");
+        let server = test_server(local);
+        let absent_peer = route_json(
+            &server,
+            "POST",
+            "/api/root-fundings",
+            fixture["draft"].clone(),
+        );
+        assert_ne!(absent_peer.status, 200);
+        assert_eq!(
+            route_json(
+                &server,
+                "POST",
+                "/api/peers",
+                json!({"pubkey":peer,"alias":"funding-peer"})
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            route_json(
+                &server,
+                "POST",
+                "/api/root-fundings",
+                fixture["draft"].clone()
+            )
+            .status,
+            200
+        );
+        let (path, pubkey) = {
+            let store = server.store.lock().unwrap();
+            (store.path.clone(), store.state.pubkey.clone())
+        };
+        let before = fs::read(&path).unwrap();
+        let receipt_path = format!("/api/root-fundings/{id}/signatures");
+        let export_path = format!("/api/root-fundings/{id}/export");
+        assert_ne!(
+            route_json(
+                &server,
+                "POST",
+                &receipt_path,
+                json!({"target":"creation","receipt":fixture["creation_receipts"][0]})
+            )
+            .status,
+            200
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_ne!(
+            route_json(&server, "GET", &export_path, json!({})).status,
+            200
+        );
+        for receipt in fixture["exit_receipts"].as_array().unwrap() {
+            assert_eq!(
+                route_json(
+                    &server,
+                    "POST",
+                    &receipt_path,
+                    json!({"target":"exit","receipt":receipt})
+                )
+                .status,
+                200
+            );
+        }
+        // A failed durable write cannot publish a receipt or mutate in-memory coordination.
+        let blocker = path.with_extension("blocker");
+        fs::write(&blocker, "not a directory").unwrap();
+        server.store.lock().unwrap().path = blocker.join("state.json");
+        assert_ne!(
+            route_json(
+                &server,
+                "POST",
+                &receipt_path,
+                json!({"target":"creation","receipt":fixture["creation_receipts"][0]})
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            server
+                .store
+                .lock()
+                .unwrap()
+                .state
+                .root_fundings
+                .values()
+                .next()
+                .unwrap()
+                .collection
+                .creation_signatures
+                .len(),
+            0
+        );
+        server.store.lock().unwrap().path = path.clone();
+        for receipt in fixture["creation_receipts"].as_array().unwrap() {
+            assert_eq!(
+                route_json(
+                    &server,
+                    "POST",
+                    &receipt_path,
+                    json!({"target":"creation","receipt":receipt})
+                )
+                .status,
+                200
+            );
+        }
+        let exported = route_json(&server, "GET", &export_path, json!({}));
+        assert_eq!(exported.status, 200);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&exported.body).unwrap(),
+            fixture["funding"]
+        );
+        let persisted = fs::read(&path).unwrap();
+        assert_eq!(
+            route_json(
+                &server,
+                "POST",
+                &receipt_path,
+                json!({"target":"creation","receipt":fixture["creation_receipts"][0]})
+            )
+            .status,
+            200
+        );
+        assert_eq!(fs::read(&path).unwrap(), persisted);
+        let reloaded = HubStore::load_or_create(path, &pubkey, MorphNetwork::Devnet).unwrap();
+        assert_eq!(reloaded.state.root_fundings.len(), 1);
+        assert!(
+            reloaded
+                .state
+                .root_fundings
+                .values()
+                .next()
+                .unwrap()
+                .summary
+                .ready_to_export
+        );
+        assert!(
+            reloaded.state.node.channels.is_empty(),
+            "a proposal must never masquerade as a funded operating channel"
+        );
     }
 
     #[test]

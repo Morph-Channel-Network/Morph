@@ -6,11 +6,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, ensure};
 use ckb_types::{bytes::Bytes, packed, prelude::*};
-use clap::{Subcommand, ValueEnum};
-use k256::ecdsa::{
-    Signature, VerifyingKey,
-    signature::hazmat::{PrehashSigner, PrehashVerifier},
-};
+use clap::Subcommand;
+use k256::ecdsa::{Signature, signature::hazmat::PrehashSigner};
 use morph_core::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -19,9 +16,8 @@ use crate::multi_asset_funding::{RootFundingDraft, validate_root_funding};
 use crate::multi_asset_packages::{
     StoredMultiAssetPackage, canonical_hex, decode_hex, write_package,
 };
-use crate::multi_asset_session::{
-    SIGNATURE_SCHEMA, SignatureMessage, channel_signing_key, payout_summary,
-};
+use crate::multi_asset_session::payout_summary;
+use crate::multi_asset_signatures::{SIGNATURE_SCHEMA, SignatureMessage, channel_signing_key};
 use crate::multi_asset_splice_transaction::{TransactionKind, write_transaction};
 #[cfg(feature = "devnet")]
 use crate::packages::try_lock_private_path;
@@ -76,11 +72,7 @@ pub enum FundingSessionCommand {
     },
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum FundingTarget {
-    Exit,
-    Creation,
-}
+pub use crate::multi_asset_funding::RootFundingTarget as FundingTarget;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -176,18 +168,11 @@ impl FundingJournal {
         Ok(())
     }
     fn verify(&self, target: FundingTarget, signature: &ParticipantSignature) -> Result<()> {
-        ensure!(
-            self.draft
-                .participants
-                .contains(&canonical_hex(&signature.pubkey_sec1)),
-            "root signature is not from a participant"
-        );
-        let key = VerifyingKey::from_sec1_bytes(&signature.pubkey_sec1)
-            .map_err(|_| anyhow!("invalid root public key"))?;
-        let signature = Signature::try_from(signature.signature.as_slice())
-            .map_err(|_| anyhow!("invalid root signature encoding"))?;
-        key.verify_prehash(&self.digest(target)?, &signature)
-            .map_err(|_| anyhow!("invalid root signature"))
+        crate::multi_asset_signatures::verify_participant(
+            &self.digest(target)?,
+            &self.draft.participants,
+            signature,
+        )
     }
     fn record(&mut self, target: FundingTarget, signature: ParticipantSignature) -> Result<()> {
         self.eligible(target)?;
@@ -298,12 +283,9 @@ fn save(path: &Path, journal: &FundingJournal) -> Result<()> {
     write_private_atomic(path, &bytes)
 }
 fn message(digest: &Bytes32, signature: &ParticipantSignature) -> Result<Value> {
-    Ok(serde_json::to_value(SignatureMessage {
-        schema: SIGNATURE_SCHEMA.to_string(),
-        signing_digest: canonical_hex(digest),
-        pubkey: canonical_hex(&signature.pubkey_sec1),
-        signature: canonical_hex(&signature.signature),
-    })?)
+    Ok(serde_json::to_value(SignatureMessage::new(
+        digest, signature,
+    ))?)
 }
 
 pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {

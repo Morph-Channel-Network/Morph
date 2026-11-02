@@ -363,6 +363,18 @@ fn multi_asset_rejects_foreign_funding_context_and_signature_replay() {
 }
 
 #[test]
+fn zero_number_settling_is_not_a_unilateral_recovery_exit() {
+    let mut package = fixture(2);
+    package.state.header.phase = Phase::Settling;
+    package.state.header.state_number = 0;
+    sign(&mut package);
+    assert_eq!(
+        package.validate(),
+        Err(MultiAssetError::InvalidSettlingStateNumber)
+    );
+}
+
+#[test]
 fn multi_asset_activation_changes_only_exact_provenance() {
     let mut package = fixture(2);
     package.state.header.phase = Phase::Active;

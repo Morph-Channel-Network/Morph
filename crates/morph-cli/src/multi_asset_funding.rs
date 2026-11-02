@@ -88,6 +88,40 @@ pub fn validate_root_funding_contents(
         (1..=64).contains(&raw.cell_deps().len()) && raw.header_deps().len() <= 64,
         "invalid root funding dependency count"
     );
+    let mut input_points = BTreeSet::new();
+    for input in raw.inputs() {
+        let point = input.previous_output();
+        ensure!(
+            point.tx_hash().as_slice() != [0; 32] && input_points.insert(point.as_slice().to_vec()),
+            "duplicate or invalid funding input"
+        );
+    }
+    for (index, output) in raw.outputs().into_iter().enumerate() {
+        let data = raw
+            .outputs_data()
+            .get(index)
+            .ok_or_else(|| anyhow!("missing root output data"))?
+            .raw_data();
+        ensure!(
+            matches!(output.lock().hash_type().as_slice(), [0] | [1] | [2] | [4])
+                && output
+                    .type_()
+                    .to_opt()
+                    .is_none_or(|ty| matches!(ty.hash_type().as_slice(), [0] | [1] | [2] | [4])),
+            "unknown root output Script hash type"
+        );
+        ensure!(
+            u64::from(output.capacity())
+                >= output
+                    .occupied_capacity(ckb_types::core::Capacity::bytes(data.len())?)?
+                    .as_u64(),
+            "root output below occupied capacity"
+        );
+    }
+    raw.outputs().into_iter().try_fold(0u64, |sum, output| {
+        sum.checked_add(u64::from(output.capacity()))
+            .ok_or_else(|| anyhow!("root output capacity overflow"))
+    })?;
     let hash: [u8; 32] = transaction.calc_tx_hash().unpack();
     ensure!(
         current.outpoints.iter().all(|point| point.tx_hash == hash),
@@ -280,7 +314,7 @@ fn creation_contents(
 
 /// Public immutable funding proposal. Every amount and the initial exit are
 /// derived from the packed transaction; no duplicate roots or amounts exist.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RootFundingDraft {
     pub schema: String,
@@ -364,20 +398,11 @@ impl RootFundingDraft {
         exit.state.header.phase = Phase::Settling;
         exit.state.header.state_number = 1;
         validate_root_funding_contents(&exit, &tx)?;
-        // Validate code-dependency shape without pretending unsigned evidence
-        // is a recoverable package.
-        let deps = tx.raw().cell_deps();
-        let mut points = BTreeSet::new();
-        for dep in deps {
-            ensure!(
-                dep.dep_type().as_slice() == [0] || dep.dep_type().as_slice() == [1],
-                "invalid dependency type"
-            );
-            ensure!(
-                points.insert(dep.out_point().as_slice().to_vec()),
-                "duplicate funding dependency"
-            );
-        }
+        // Metadata is canonical even before any signature can be reserved.
+        let dependencies = tx.raw().cell_deps().into_iter().collect::<Vec<_>>();
+        crate::multi_asset_packages::decode_dependency_records(
+            &crate::multi_asset_packages::dependency_records(&dependencies)?,
+        )?;
         Ok((creation, exit))
     }
     pub fn digests(&self) -> Result<([u8; 32], [u8; 32])> {
@@ -804,4 +829,464 @@ pub(crate) mod tests {
             .build();
         assert!(validate_root_funding(&current, &tx).is_err());
     }
+}
+
+/// Public coordination state. It contains no signer authority or reservation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RootFundingCollection {
+    pub schema: String,
+    pub draft: RootFundingDraft,
+    pub exit_signatures: Vec<crate::multi_asset_signatures::SignatureMessage>,
+    pub creation_signatures: Vec<crate::multi_asset_signatures::SignatureMessage>,
+}
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum RootFundingTarget {
+    Exit,
+    Creation,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RootFundingInspection {
+    pub transaction_hash: String,
+    pub chain_id: String,
+    pub channel_id: String,
+    pub funding_context_id: String,
+    pub creation_digest: String,
+    pub exit_digest: String,
+    pub state_carrier_capacity: String,
+    pub participants: [String; 2],
+    pub participant_lock_hashes: [String; 2],
+    pub vault_outpoints: Vec<RootFundingPoint>,
+    pub assets: Vec<crate::multi_asset_packages::MultiAssetPackageBalance>,
+    pub payouts: Vec<serde_json::Value>,
+    pub input_count: usize,
+    pub output_count: usize,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RootFundingPoint {
+    pub tx_hash: String,
+    pub index: u32,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RootCollectionSummary {
+    #[serde(flatten)]
+    pub root: RootFundingInspection,
+    pub exit_signature_count: usize,
+    pub creation_signature_count: usize,
+    pub ready_to_export: bool,
+}
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RootFundingExport {
+    pub schema: String,
+    pub transaction_hex: String,
+    pub recovery_package: crate::multi_asset_packages::StoredMultiAssetPackage,
+}
+impl RootFundingDraft {
+    pub fn inspection(&self) -> Result<RootFundingInspection> {
+        use crate::multi_asset_packages::{MultiAssetPackageBalance, canonical_hex};
+        let (creation, exit) = self.evidence()?;
+        let tx = self.transaction()?;
+        let (creation_digest, exit_digest) = self.digests()?;
+        Ok(RootFundingInspection {
+            transaction_hash: canonical_hex(tx.calc_tx_hash().as_slice()),
+            chain_id: canonical_hex(&creation.state.header.chain_id),
+            channel_id: canonical_hex(&creation.state.header.channel_id),
+            funding_context_id: canonical_hex(&exit.state.funding_context_id()?),
+            creation_digest: canonical_hex(&creation_digest),
+            exit_digest: canonical_hex(&exit_digest),
+            state_carrier_capacity: creation.state_carrier_capacity.to_string(),
+            participants: self.participants.clone(),
+            participant_lock_hashes: creation
+                .settlement
+                .participant_lock_hashes
+                .map(|hash| canonical_hex(&hash)),
+            vault_outpoints: exit
+                .outpoints
+                .iter()
+                .map(|point| RootFundingPoint {
+                    tx_hash: canonical_hex(&point.tx_hash),
+                    index: point.index,
+                })
+                .collect(),
+            assets: creation
+                .manifest
+                .vaults
+                .iter()
+                .map(|vault| MultiAssetPackageBalance {
+                    type_hash: match vault.asset {
+                        VaultAsset::Ckb => None,
+                        VaultAsset::Xudt(hash) => Some(canonical_hex(&hash)),
+                    },
+                    reserve: vault.value.reserve.to_string(),
+                    business_ckb: vault.value.business_ckb.to_string(),
+                    amount: vault.value.amount.to_string(),
+                })
+                .collect(),
+            payouts: crate::multi_asset_session::payout_summary(&creation.settlement),
+            input_count: tx.raw().inputs().len(),
+            output_count: tx.raw().outputs().len(),
+        })
+    }
+}
+impl RootFundingTarget {
+    pub fn digest(self, draft: &RootFundingDraft) -> Result<Bytes32> {
+        let (creation, exit) = draft.digests()?;
+        Ok(match self {
+            Self::Exit => exit,
+            Self::Creation => creation,
+        })
+    }
+}
+impl RootFundingCollection {
+    pub fn new(draft: RootFundingDraft) -> Result<Self> {
+        let result = Self {
+            schema: "morph.multi_asset_root_collection.v1".to_string(),
+            draft,
+            exit_signatures: vec![],
+            creation_signatures: vec![],
+        };
+        result.validate()?;
+        Ok(result)
+    }
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.schema == "morph.multi_asset_root_collection.v1",
+            "unsupported root collection schema"
+        );
+        self.draft.evidence()?;
+        for (target, receipts) in [
+            (RootFundingTarget::Exit, &self.exit_signatures),
+            (RootFundingTarget::Creation, &self.creation_signatures),
+        ] {
+            ensure!(
+                receipts.len() <= 2
+                    && receipts
+                        .windows(2)
+                        .all(|pair| pair[0].pubkey < pair[1].pubkey),
+                "root receipts must be bounded, unique and ordered"
+            );
+            for receipt in receipts {
+                receipt.verify(&target.digest(&self.draft)?, &self.draft.participants)?;
+            }
+        }
+        if !self.creation_signatures.is_empty() {
+            self.initial_exit()?.validate()?;
+        }
+        Ok(())
+    }
+    pub fn add(
+        &mut self,
+        target: RootFundingTarget,
+        receipt: crate::multi_asset_signatures::SignatureMessage,
+    ) -> Result<bool> {
+        self.validate()?;
+        if matches!(target, RootFundingTarget::Creation) {
+            self.initial_exit()?.validate()?;
+        }
+        receipt.verify(&target.digest(&self.draft)?, &self.draft.participants)?;
+        let receipts = match target {
+            RootFundingTarget::Exit => &mut self.exit_signatures,
+            RootFundingTarget::Creation => &mut self.creation_signatures,
+        };
+        if let Some(existing) = receipts
+            .iter()
+            .find(|existing| existing.pubkey == receipt.pubkey)
+        {
+            ensure!(*existing == receipt, "conflicting public signature receipt");
+            return Ok(false);
+        }
+        receipts.push(receipt);
+        receipts.sort_by(|a, b| a.pubkey.cmp(&b.pubkey));
+        Ok(true)
+    }
+    fn authorization(&self, target: RootFundingTarget) -> Result<StateAuthorization> {
+        let receipts = match target {
+            RootFundingTarget::Exit => &self.exit_signatures,
+            RootFundingTarget::Creation => &self.creation_signatures,
+        };
+        let signatures = receipts
+            .iter()
+            .map(|receipt| receipt.verify(&target.digest(&self.draft)?, &self.draft.participants))
+            .collect::<Result<_>>()?;
+        Ok(StateAuthorization {
+            threshold: 2,
+            signatures,
+        })
+    }
+    pub fn initial_exit(&self) -> Result<MultiAssetRecoveryPackage> {
+        let (_, mut exit) = self.draft.evidence()?;
+        exit.authorization = self.authorization(RootFundingTarget::Exit)?;
+        Ok(exit)
+    }
+    pub fn summary(&self) -> Result<RootCollectionSummary> {
+        self.validate()?;
+        Ok(RootCollectionSummary {
+            root: self.draft.inspection()?,
+            exit_signature_count: self.exit_signatures.len(),
+            creation_signature_count: self.creation_signatures.len(),
+            ready_to_export: self.exit_signatures.len() == 2 && self.creation_signatures.len() == 2,
+        })
+    }
+    pub fn export(&self) -> Result<RootFundingExport> {
+        use crate::multi_asset_packages::{StoredMultiAssetPackage, canonical_hex};
+        self.validate()?;
+        let exit = self.initial_exit()?;
+        exit.validate()?;
+        let tx = self.draft.transaction()?;
+        let raw = tx
+            .witnesses()
+            .get(0)
+            .ok_or_else(|| anyhow!("missing root witness"))?
+            .raw_data();
+        let witness = packed::WitnessArgs::from_slice(&raw)?
+            .as_builder()
+            .input_type(
+                Some(Bytes::from(
+                    encode_multi_asset_signatures(
+                        &self.authorization(RootFundingTarget::Creation)?,
+                    )?
+                    .to_vec(),
+                ))
+                .pack(),
+            )
+            .build();
+        let mut witnesses = tx.witnesses().into_iter().collect::<Vec<_>>();
+        witnesses[0] = witness.as_bytes().pack();
+        let signed = tx.as_builder().witnesses(witnesses.pack()).build();
+        validate_root_funding(&exit, &signed)?;
+        let recovery_package = StoredMultiAssetPackage::from_recovery(
+            &exit,
+            &signed.raw().cell_deps().into_iter().collect::<Vec<_>>(),
+        )?;
+        Ok(RootFundingExport {
+            schema: "morph.multi_asset_root_funding.v1".to_string(),
+            transaction_hex: canonical_hex(signed.as_slice()),
+            recovery_package,
+        })
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod root_collection_tests {
+    use super::*;
+    use crate::multi_asset_signatures::SignatureMessage;
+    use k256::ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner};
+    pub(crate) fn receipts(
+        draft: &RootFundingDraft,
+        target: RootFundingTarget,
+    ) -> Vec<SignatureMessage> {
+        let digest = target.digest(draft).unwrap();
+        let mut result = [1u8, 2]
+            .into_iter()
+            .map(|seed| {
+                let key = SigningKey::from_slice(&[seed; 32]).unwrap();
+                let signature: Signature = key.sign_prehash(&digest).unwrap();
+                SignatureMessage::new(
+                    &digest,
+                    &ParticipantSignature {
+                        pubkey_sec1: key
+                            .verifying_key()
+                            .to_encoded_point(true)
+                            .as_bytes()
+                            .to_vec(),
+                        signature: signature.to_bytes().to_vec(),
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        result.sort_by(|a, b| a.pubkey.cmp(&b.pubkey));
+        result
+    }
+    pub(crate) fn fixture() -> serde_json::Value {
+        let draft = super::tests::draft_fixture();
+        let inspection = draft.inspection().unwrap();
+        let exit = receipts(&draft, RootFundingTarget::Exit);
+        let creation = receipts(&draft, RootFundingTarget::Creation);
+        let collection = RootFundingCollection {
+            schema: "morph.multi_asset_root_collection.v1".to_string(),
+            draft: draft.clone(),
+            exit_signatures: exit.clone(),
+            creation_signatures: creation.clone(),
+        };
+        serde_json::json!({"draft":draft,"inspection":inspection,"exit_receipts":exit,"creation_receipts":creation,"funding":collection.export().unwrap(),"collection":collection})
+    }
+    #[test]
+    fn sdk_root_fixture_matches_rust_encodings_and_both_signing_domains() {
+        let expected: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../sdk/typescript/test/fixtures/multi-asset-root.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            fixture(),
+            expected,
+            "Rust and SDK must share exact root bytes and signing domains"
+        );
+    }
+    #[test]
+    fn imported_root_bundle_keeps_recovery_and_rejects_invalid_authorisation() {
+        let dir = std::env::temp_dir().join(format!(
+            "morph-root-import-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("funding.json");
+        let store = dir.join("recovery");
+        let fixture = fixture();
+        std::fs::write(&source, serde_json::to_vec(&fixture["funding"]).unwrap()).unwrap();
+        let result = import_root_funding(&source, &store).unwrap();
+        let transaction = std::path::Path::new(result["transaction"].as_str().unwrap());
+        let recovery = std::path::Path::new(result["recovery_package"].as_str().unwrap());
+        assert!(transaction.is_file());
+        assert!(recovery.is_file());
+        let package: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(recovery).unwrap()).unwrap();
+        assert_eq!(package, fixture["funding"]["recovery_package"]);
+        assert_eq!(import_root_funding(&source, &store).unwrap(), result);
+        let mut invalid = fixture["funding"].clone();
+        invalid["transaction_hex"] = serde_json::json!("0x00");
+        std::fs::write(&source, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        let rejected_store = dir.join("rejected");
+        assert!(import_root_funding(&source, &rejected_store).is_err());
+        assert!(!rejected_store.exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn public_collection_requires_complete_exit_and_rejects_cross_role_and_duplicate_receipts() {
+        let draft = super::tests::draft_fixture();
+        let mut collection = RootFundingCollection::new(draft.clone()).unwrap();
+        let exit = receipts(&draft, RootFundingTarget::Exit);
+        let creation = receipts(&draft, RootFundingTarget::Creation);
+        assert!(
+            collection
+                .add(RootFundingTarget::Creation, creation[0].clone())
+                .is_err()
+        );
+        assert!(collection.creation_signatures.is_empty());
+        assert!(
+            collection
+                .add(RootFundingTarget::Exit, creation[0].clone())
+                .is_err()
+        );
+        assert!(
+            collection
+                .add(RootFundingTarget::Exit, exit[0].clone())
+                .unwrap()
+        );
+        assert!(
+            !collection
+                .add(RootFundingTarget::Exit, exit[0].clone())
+                .unwrap()
+        );
+        assert!(collection.export().is_err());
+        collection
+            .add(RootFundingTarget::Exit, exit[1].clone())
+            .unwrap();
+        collection
+            .add(RootFundingTarget::Creation, creation[0].clone())
+            .unwrap();
+        assert!(collection.export().is_err());
+        collection
+            .add(RootFundingTarget::Creation, creation[1].clone())
+            .unwrap();
+        let exported = collection.export().unwrap();
+        let tx = packed::Transaction::from_slice(
+            &crate::multi_asset_packages::decode_hex(&exported.transaction_hex, MAX_FUNDING_BYTES)
+                .unwrap(),
+        )
+        .unwrap();
+        validate_root_funding(&exported.recovery_package.recovery().unwrap(), &tx).unwrap();
+        let restored: RootFundingCollection =
+            serde_json::from_slice(&serde_json::to_vec(&collection).unwrap()).unwrap();
+        assert!(restored.summary().unwrap().ready_to_export);
+        let mut duplicate = collection.clone();
+        duplicate.exit_signatures.push(exit[0].clone());
+        assert!(duplicate.validate().is_err());
+        let mut missing = serde_json::to_value(&collection).unwrap();
+        missing.as_object_mut().unwrap().remove("exit_signatures");
+        assert!(serde_json::from_value::<RootFundingCollection>(missing).is_err());
+    }
+}
+
+impl RootFundingExport {
+    pub fn inspection(&self) -> Result<RootFundingInspection> {
+        use crate::multi_asset_packages::{canonical_hex, decode_hex};
+        ensure!(
+            self.schema == "morph.multi_asset_root_funding.v1",
+            "unsupported root funding export schema"
+        );
+        let tx = packed::Transaction::from_slice(&decode_hex(
+            &self.transaction_hex,
+            MAX_FUNDING_BYTES,
+        )?)?;
+        validate_root_funding(&self.recovery_package.recovery()?, &tx)?;
+        let raw = tx
+            .witnesses()
+            .get(0)
+            .ok_or_else(|| anyhow!("missing root funding witness"))?
+            .raw_data();
+        let args = packed::WitnessArgs::from_slice(&raw)?;
+        let signature_bytes = args
+            .input_type()
+            .to_opt()
+            .ok_or_else(|| anyhow!("missing root creation signatures"))?
+            .raw_data();
+        let signatures = morph_script_common::BilateralSignatureWitness::parse(&signature_bytes)
+            .map_err(|error| anyhow!("invalid root signatures: {error:?}"))?;
+        let participants = [
+            canonical_hex(signatures.pubkey(0)),
+            canonical_hex(signatures.pubkey(1)),
+        ];
+        let witness = args
+            .as_builder()
+            .lock(None::<Bytes>.pack())
+            .input_type(None::<Bytes>.pack())
+            .build();
+        let mut witnesses = tx.witnesses().into_iter().collect::<Vec<_>>();
+        witnesses[0] = witness.as_bytes().pack();
+        let unsigned = tx.as_builder().witnesses(witnesses.pack()).build();
+        RootFundingDraft {
+            schema: "morph.multi_asset_root_draft.v1".to_string(),
+            transaction_hex: canonical_hex(unsigned.as_slice()),
+            participants,
+        }
+        .inspection()
+    }
+}
+pub fn import_root_funding(
+    path: &std::path::Path,
+    store_dir: &std::path::Path,
+) -> Result<serde_json::Value> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(768 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() <= 768 * 1024,
+        "root funding export exceeds byte limit"
+    );
+    let funding: RootFundingExport = serde_json::from_slice(&bytes)?;
+    let inspection = funding.inspection()?;
+    // A complete independently verified exit is durable before exporting the
+    // funding binary. Import never creates or resets a signing authority.
+    let recovery =
+        crate::multi_asset_packages::write_package(store_dir, &funding.recovery_package)?;
+    let raw = crate::multi_asset_packages::decode_hex(&funding.transaction_hex, MAX_FUNDING_BYTES)?;
+    let tx = packed::Transaction::from_slice(&raw)?;
+    let transaction = crate::multi_asset_splice_transaction::write_transaction(
+        &store_dir
+            .join("received-funding")
+            .join(hex::encode(blake2b256(&raw))),
+        &tx,
+        crate::multi_asset_splice_transaction::TransactionKind::Root,
+    )?;
+    Ok(
+        serde_json::json!({"transaction":transaction,"recovery_package":recovery,"transaction_hash":inspection.transaction_hash}),
+    )
 }

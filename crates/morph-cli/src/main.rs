@@ -51,6 +51,7 @@ mod multi_asset_packages;
 mod multi_asset_root_transaction;
 mod multi_asset_session;
 mod multi_asset_session_chain;
+mod multi_asset_signatures;
 mod multi_asset_splice_transaction;
 #[cfg(feature = "devnet")]
 mod multi_asset_supervision;
@@ -132,6 +133,12 @@ enum InvoiceAssetArg {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Verify a public funding bundle and durably extract its exit before the binary.
+    ImportRootFunding {
+        bundle: PathBuf,
+        #[arg(long)]
+        store_dir: PathBuf,
+    },
     /// Independently collect an initial exit before authorising exact root funding.
     MultiAssetFundingSession {
         #[arg(long)]
@@ -3163,6 +3170,11 @@ enum DevnetCommand {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::ImportRootFunding { bundle, store_dir } => {
+            let result = multi_asset_funding::import_root_funding(&bundle, &store_dir)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
         Command::MultiAssetFundingSession { session, command } => {
             let result = multi_asset_funding_session::run(&session, command)?;
             println!("{}", serde_json::to_string_pretty(&result)?);

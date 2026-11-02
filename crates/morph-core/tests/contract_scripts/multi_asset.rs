@@ -483,6 +483,28 @@ fn rejects(context: &Context, tx: &TransactionView, codes: &[i8]) {
 
 #[ignore = "requires `make build-contracts`"]
 #[test]
+fn multi_asset_initial_exit_cannot_publish_settling_state_zero() {
+    let mut fixture = build(2, false);
+    fixture.package.state.header.phase = Phase::Settling;
+    fixture.package.state.header.state_number = 0;
+    signed(&mut fixture.package);
+    let transaction = fixture.context.complete_tx(
+        TransactionBuilder::default()
+            .input(
+                CellInput::new_builder()
+                    .previous_output(point(&fixture.activation, 0))
+                    .build(),
+            )
+            .output(fixture.activation.outputs().get(0).unwrap())
+            .output_data(Bytes::from(fixture.package.state.encode().unwrap().to_vec()).pack())
+            .witness(evidence(&fixture.package, true))
+            .build(),
+    );
+    rejects(&fixture.context, &transaction, &[10]);
+}
+
+#[ignore = "requires `make build-contracts`"]
+#[test]
 fn multi_asset_root_creation_rejects_transaction_replacement() {
     let fixture = build(2, false);
     // Repricing the carrier by one shannon preserves the anchor and signed

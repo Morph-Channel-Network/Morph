@@ -8,11 +8,14 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::multi_asset_session_chain::{SessionLineage, SessionOrigin};
+use crate::multi_asset_signatures::{SIGNATURE_SCHEMA, SignatureMessage, channel_signing_key};
 use crate::multi_asset_splice_transaction::SpliceDraft;
 use anyhow::{Result, anyhow, ensure};
 use ckb_types::{bytes::Bytes, packed, prelude::*};
 use clap::{Subcommand, ValueEnum};
-use k256::ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner};
+#[cfg(test)]
+use k256::ecdsa::SigningKey;
+use k256::ecdsa::{Signature, signature::hazmat::PrehashSigner};
 use morph_core::*;
 use morph_script_common::multi_asset as wire;
 use serde::{Deserialize, Serialize};
@@ -24,7 +27,6 @@ use crate::multi_asset_packages::{
 
 const SESSION_SCHEMA: &str = "morph.multi_asset_session.v1";
 const PROPOSAL_SCHEMA: &str = "morph.multi_asset_proposal.v1";
-pub(crate) const SIGNATURE_SCHEMA: &str = "morph.multi_asset_signature.v1";
 const RETIRED_SCHEMA: &str = "morph.multi_asset_retired_session.v1";
 const MAX_SESSION_BYTES: u64 = 512 * 1024;
 const MAX_DESCRIPTOR_BYTES: usize = wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
@@ -209,26 +211,6 @@ struct ProposalMessage {
     state_number: String,
     descriptor_hex: String,
     signing_digest: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SignatureMessage {
-    pub(crate) schema: String,
-    pub(crate) signing_digest: String,
-    pub(crate) pubkey: String,
-    pub(crate) signature: String,
-}
-
-pub(crate) fn channel_signing_key(private_key: &str, expected: &[u8]) -> Result<SigningKey> {
-    let raw = hex::decode(private_key.strip_prefix("0x").unwrap_or(private_key))
-        .map_err(|_| anyhow!("invalid channel signing key"))?;
-    let key = SigningKey::from_slice(&raw).map_err(|_| anyhow!("invalid channel signing key"))?;
-    ensure!(
-        key.verifying_key().to_encoded_point(true).as_bytes() == expected,
-        "key does not match session's local signer"
-    );
-    Ok(key)
 }
 
 fn read_limited(path: &Path) -> Result<Vec<u8>> {
@@ -634,12 +616,10 @@ fn run_loaded(
                 .iter()
                 .find(|signature| signature.pubkey_sec1 == pubkey)
             {
-                return Ok(serde_json::to_value(SignatureMessage {
-                    schema: SIGNATURE_SCHEMA.to_string(),
-                    signing_digest: canonical_hex(&signing_digest),
-                    pubkey: canonical_hex(&signature.pubkey_sec1),
-                    signature: canonical_hex(&signature.signature),
-                })?);
+                return Ok(serde_json::to_value(SignatureMessage::new(
+                    &signing_digest,
+                    signature,
+                ))?);
             }
             let reserved_digest = target.reserve(&mut session.backend)?;
             ensure!(
@@ -660,12 +640,10 @@ fn run_loaded(
             target.record(&mut session.backend, signature.clone())?;
             save(path, &session)?;
             verify(&session)?;
-            Ok(serde_json::to_value(SignatureMessage {
-                schema: SIGNATURE_SCHEMA.to_string(),
-                signing_digest: canonical_hex(&reserved_digest),
-                pubkey: canonical_hex(&signature.pubkey_sec1),
-                signature: canonical_hex(&signature.signature),
-            })?)
+            Ok(serde_json::to_value(SignatureMessage::new(
+                &reserved_digest,
+                &signature,
+            ))?)
         }
         SessionCommand::AddSignature { target, signature } => {
             let message: SignatureMessage = serde_json::from_slice(&read_limited(&signature)?)?;

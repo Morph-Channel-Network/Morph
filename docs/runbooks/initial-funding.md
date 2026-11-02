@@ -8,6 +8,36 @@ participant secrets.
 
 ## Construct exact root funding
 
+The SDK independently checks root drafts with `inspectMultiAssetRootDraft` and
+public receipts with `inspectMultiAssetFundingSignature`. Amounts stay decimal
+strings, including quantities above JavaScript's safe integer range.
+`assembleMultiAssetRootFunding` requires two valid exit receipts before two
+creation receipts and produces the complete recovery package and transaction.
+These stateless helpers do not replace either participant's durable signing
+journal.
+
+The Hub coordinates public evidence through `POST /api/root-fundings`,
+`POST /api/root-fundings/<transaction-hash>/signatures` (body `{target,receipt}`),
+and `GET /api/root-fundings/<transaction-hash>[/export]`. Targets are `exit` and
+`creation`. The authenticated Hub identity must participate and its counterparty
+must be a known peer when importing a draft. Read and write scopes apply;
+coordination needs no signing key. Drafts are immutable, receipts are verified
+and persisted before acknowledgement, and creation receipts require the full
+exit. The UI exposes these proposals separately from active channels. Collecting
+all receipts does not broadcast, confirm funding, or create an operating channel.
+
+`MorphHubClient` provides `importRootFunding`, `rootFunding`,
+`addRootFundingSignature`, and `exportRootFunding`; returned collections and
+exports are independently verified. Export includes the recovery package, not
+just transaction bytes. Import it locally with
+`morph-cli import-root-funding funding.json --store-dir recovery`: the CLI
+verifies both authorisations and physical custody, writes the recovery package
+durably, then writes the transaction. Wallet authorisation and chain submission
+still follow the steps below. Import cannot initialise or reset signing history.
+Export inspection can accept a newer positive settling recovery state for the
+same funding context; its initial payout summary always describes the original
+root draft. The supplied recovery package retains its own state and descriptor.
+
 `devnet multi-asset-funding-prepare` builds a draft from explicit
 `morph.multi_asset_root_terms.v1` terms. It takes no keys and performs no
 issuance, automatic input selection, signing or broadcast. The terms contain:
