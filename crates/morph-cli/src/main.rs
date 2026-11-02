@@ -44,7 +44,13 @@ mod devnet;
 mod devnet_dispatch;
 mod factory_packages;
 mod hub;
+mod multi_asset_funding;
 mod multi_asset_packages;
+mod multi_asset_session;
+mod multi_asset_session_chain;
+mod multi_asset_splice_transaction;
+#[cfg(feature = "devnet")]
+mod multi_asset_supervision;
 mod packages;
 mod preproduction;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
@@ -123,6 +129,33 @@ enum InvoiceAssetArg {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Negotiate signed multi-asset updates using a durable local signing journal.
+    MultiAssetSession {
+        #[arg(long)]
+        session: PathBuf,
+        #[command(subcommand)]
+        command: multi_asset_session::SessionCommand,
+    },
+    /// Continuously verify registered signer contexts and persist local health/alerts.
+    #[cfg(feature = "devnet")]
+    MultiAssetSupervise {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        health_file: PathBuf,
+        #[arg(long)]
+        alert_file: PathBuf,
+        #[arg(long)]
+        cycles: Option<u64>,
+    },
+    /// Read supervision health; stale or unverified contexts return a failing exit status.
+    #[cfg(feature = "devnet")]
+    MultiAssetSupervisionHealth {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        health_file: PathBuf,
+    },
     /// Validate the built-in bilateral-channel fixture.
     ValidateFixture,
     /// Print a JSON state header fixture and signing digest.
@@ -593,6 +626,125 @@ enum HubCommand {
 #[cfg(feature = "devnet")]
 #[derive(Debug, Subcommand)]
 enum DevnetCommand {
+    /// Scan canonical multi-asset State Cells and publish saved newer recovery evidence.
+    MultiAssetWatch {
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[command(subcommand)]
+        fee_authorization: devnet::multi_asset_operator::FeeAuthorization,
+        #[arg(long)]
+        fee_out_point: String,
+        #[arg(long)]
+        store_dir: PathBuf,
+        #[arg(long)]
+        channel_id: String,
+        #[arg(long)]
+        from_block: u64,
+        #[arg(long)]
+        cursor_file: PathBuf,
+        #[arg(long)]
+        alert_file: PathBuf,
+        #[arg(long)]
+        publication_profile: PathBuf,
+        #[arg(long)]
+        attempt_log: PathBuf,
+        #[arg(long, default_value_t = 1)]
+        detection_depth: u64,
+        #[arg(long, default_value_t = 30)]
+        timeout_secs: u64,
+        #[arg(long, default_value_t = 1000)]
+        poll_ms: u64,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value_t = 0)]
+        mine_blocks: u64,
+    },
+    /// Recover activation, publish, or finalise the complete Vault set from saved evidence.
+    MultiAssetTransact {
+        #[arg(long, value_enum)]
+        operation: devnet::multi_asset_operator::Operation,
+        #[arg(long)]
+        package: PathBuf,
+        #[arg(long)]
+        state_out_point: String,
+        #[arg(long)]
+        fee_out_point: String,
+        #[command(subcommand)]
+        fee_authorization: devnet::multi_asset_operator::FeeAuthorization,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value = "target/multi-asset/packages")]
+        store_dir: PathBuf,
+        #[arg(long, default_value_t = 100_000_000)]
+        fee: u64,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value_t = 0)]
+        mine_blocks: u64,
+        #[arg(long)]
+        publication_profile: Option<PathBuf>,
+        #[arg(long)]
+        attempt_log: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Submit a fully signed epoch-0 funding transaction or replay its exact bytes.
+    MultiAssetFundingSubmit {
+        #[arg(long)]
+        transaction: PathBuf,
+        #[arg(long)]
+        package: PathBuf,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value = "target/multi-asset/packages")]
+        store_dir: PathBuf,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value_t = 0)]
+        mine_blocks: u64,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Construct an exact unsigned splice draft from explicit funding inputs and value terms.
+    MultiAssetSplicePrepare {
+        #[arg(long)]
+        old_package: PathBuf,
+        #[arg(long)]
+        state_out_point: String,
+        #[arg(long)]
+        terms: PathBuf,
+        #[arg(long = "external-input", required = true)]
+        external_inputs: Vec<String>,
+        #[arg(long)]
+        change_pubkey: String,
+        #[arg(long)]
+        fee: u64,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Verify live complete sets and code, then submit an exact signed splice body.
+    MultiAssetSpliceSubmit {
+        #[arg(long)]
+        transaction: PathBuf,
+        #[arg(long)]
+        old_package: PathBuf,
+        #[arg(long)]
+        new_package: PathBuf,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value = "target/multi-asset/packages")]
+        store_dir: PathBuf,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value_t = 0)]
+        mine_blocks: u64,
+        #[arg(long)]
+        dry_run: bool,
+        #[command(subcommand)]
+        fee_authorization: devnet::multi_asset_splice_operator::FeeAuthorization,
+    },
     /// Exercise a complete multi-xUDT channel lifecycle on an isolated devnet.
     MultiAssetSmoke {
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
@@ -613,6 +765,15 @@ enum DevnetCommand {
         mine_blocks: u64,
         #[arg(long, default_value = "target/multi-asset-devnet/packages")]
         store_dir: PathBuf,
+        #[arg(long)]
+        publication_profile: Option<PathBuf>,
+        #[arg(long, requires = "publication_profile")]
+        watch_publication: bool,
+        #[arg(long, requires = "watch_publication")]
+        watch_reorg: bool,
+        /// Use a separately funded, state-number-bound SponsorCell for every publication.
+        #[arg(long)]
+        sponsor_publication: bool,
         #[arg(long)]
         json: bool,
     },
@@ -2961,6 +3122,35 @@ enum DevnetCommand {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::MultiAssetSession { session, command } => {
+            let result = multi_asset_session::run(&session, command)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        #[cfg(feature = "devnet")]
+        Command::MultiAssetSupervise {
+            config,
+            health_file,
+            alert_file,
+            cycles,
+        } => {
+            let result = multi_asset_supervision::run(&config, &health_file, &alert_file, cycles)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        #[cfg(feature = "devnet")]
+        Command::MultiAssetSupervisionHealth {
+            config,
+            health_file,
+        } => {
+            let result = multi_asset_supervision::health(&config, &health_file)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            ensure!(
+                result.healthy,
+                "signer supervision is stale or contains unverified contexts"
+            );
+            Ok(())
+        }
         Command::ValidateFixture => validate_fixture(),
         Command::PrintFixture => print_fixture(),
         Command::NewInvoice {

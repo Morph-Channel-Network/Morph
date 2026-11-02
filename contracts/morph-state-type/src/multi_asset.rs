@@ -3,7 +3,7 @@ use ckb_std::ckb_types::packed::Script;
 use ckb_std::ckb_types::prelude::*;
 use ckb_std::high_level::{
     load_cell_capacity, load_cell_lock_hash, load_cell_type_hash, load_input, load_input_out_point,
-    load_transaction, load_witness_args,
+    load_transaction, load_tx_hash, load_witness_args,
 };
 use morph_script_common::multi_asset::{
     MultiAssetStateHeader, MultiAssetVaultArgs, MultiAssetWitness, multi_asset_occupied_capacity,
@@ -63,7 +63,7 @@ pub fn validate(anchor: &[u8], since: u64, old: Option<&[u8]>, new: Option<&[u8]
     match (old, new) {
         (None, Some(raw)) => {
             let header = MultiAssetStateHeader::parse(raw)?;
-            let base = header.base()?;
+            let base = header;
             if base.funding_anchor() != anchor
                 || base.phase() != PHASE_ACTIVE
                 || base.state_number() != 0
@@ -71,9 +71,26 @@ pub fn validate(anchor: &[u8], since: u64, old: Option<&[u8]>, new: Option<&[u8]
             {
                 return Err(ScriptError::VaultActivationInvalid);
             }
+            if let Some(raw) =
+                morph_script_common::multi_asset_splice_runtime::splice_evidence(0, Source::Input)?
+            {
+                morph_script_common::multi_asset_splice_runtime::verify_splice(&raw)?;
+                signatures(&header, Source::Input)?;
+            } else {
+                let witness = load_witness_args(0, Source::Input)
+                    .map_err(|_| ScriptError::ParticipantWitnessMissing)?;
+                let raw = witness
+                    .input_type()
+                    .to_opt()
+                    .ok_or(ScriptError::ParticipantWitnessMissing)?
+                    .raw_data();
+                header.verify_root_funding_signatures(
+                    &load_tx_hash().map_err(|_| ScriptError::Encoding)?,
+                    &BilateralSignatureWitness::parse(&raw)?,
+                )?;
+            }
             super::validate_anchor_derivation(anchor)?;
             super::validate_output_lock_args_bind_output_type(0, Source::GroupOutput)?;
-            signatures(&header, Source::Input)?;
             let evidence_raw = multi_asset_evidence(0, Source::Input)?;
             let evidence = MultiAssetWitness::parse(&evidence_raw)?;
             evidence.validate_header(&header)?;
@@ -84,7 +101,7 @@ pub fn validate(anchor: &[u8], since: u64, old: Option<&[u8]>, new: Option<&[u8]
         (Some(old_raw), Some(new_raw)) => {
             let old = MultiAssetStateHeader::parse(old_raw)?;
             let new = MultiAssetStateHeader::parse(new_raw)?;
-            if old.base()?.funding_anchor() != anchor || new.base()?.funding_anchor() != anchor {
+            if old.funding_anchor() != anchor || new.funding_anchor() != anchor {
                 return Err(ScriptError::FundingAnchorMismatch);
             }
             super::validate_output_lock_preserved()?;
@@ -100,13 +117,13 @@ pub fn validate(anchor: &[u8], since: u64, old: Option<&[u8]>, new: Option<&[u8]
                 }
                 activate(&evidence)?;
             } else {
-                if !old.same_context_except_progress(&new)? {
+                if !old.same_context_except_progress(&new) {
                     return Err(ScriptError::HeaderContextChanged);
                 }
-                if new.base()?.state_number() <= old.base()?.state_number() {
+                if new.state_number() <= old.state_number() {
                     return Err(ScriptError::NonMonotonicStateNumber);
                 }
-                if new.base()?.phase() != PHASE_SETTLING {
+                if new.phase() != PHASE_SETTLING {
                     return Err(ScriptError::NewStateNotSettling);
                 }
                 signatures(&new, Source::GroupInput)?;
@@ -115,10 +132,22 @@ pub fn validate(anchor: &[u8], since: u64, old: Option<&[u8]>, new: Option<&[u8]
         }
         (Some(raw), None) => {
             let header = MultiAssetStateHeader::parse(raw)?;
-            if header.base()?.funding_anchor() != anchor {
+            if header.funding_anchor() != anchor {
                 return Err(ScriptError::FundingAnchorMismatch);
             }
-            if header.base()?.phase() != PHASE_SETTLING || !header.vaults_are_bound() {
+            if let Some(raw) = morph_script_common::multi_asset_splice_runtime::splice_evidence(
+                0,
+                Source::GroupInput,
+            )? {
+                if load_input_out_point(0, Source::GroupInput).map_err(|_| ScriptError::Encoding)?
+                    != load_input_out_point(0, Source::Input).map_err(|_| ScriptError::Encoding)?
+                {
+                    return Err(ScriptError::MultiAssetSpliceMismatch);
+                }
+                super::validate_output_lock_args_bind_output_type(0, Source::GroupInput)?;
+                return morph_script_common::multi_asset_splice_runtime::verify_splice(&raw);
+            }
+            if header.phase() != PHASE_SETTLING || !header.vaults_are_bound() {
                 return Err(ScriptError::NewStateNotSettling);
             }
             super::validate_output_lock_args_bind_output_type(0, Source::GroupInput)?;

@@ -12,6 +12,8 @@ pub mod bridge;
 pub mod conditional;
 pub mod hash;
 pub mod multi_asset;
+pub mod multi_asset_backend;
+pub mod multi_asset_splice;
 pub mod node;
 pub mod policy;
 pub mod rgbpp;
@@ -28,6 +30,8 @@ pub use hash::{
     splice_asset_delta_commitment, vault_descriptor_commitment, vault_outpoint_commitment,
 };
 pub use multi_asset::*;
+pub use multi_asset_backend::*;
+pub use multi_asset_splice::*;
 pub use node::*;
 pub use policy::*;
 pub use rgbpp::*;

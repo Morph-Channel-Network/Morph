@@ -151,10 +151,11 @@ descriptors have two asset slots, with physical paths limited to CKB plus one
 xUDT type. Descriptor v3 conditional batches are CKB-only.
 
 The [candidate multi-asset profile](multi-asset-wire.md) now implements a
-separate 414-byte State layout, 1–8 Vaults, whole-set activation and retirement,
-per-asset settlement, occupied-capacity evidence, CLI/SDK recovery, and durable
-Hub import/export. Multi-asset splice, Factory custody, conditional xUDT, and
-publication/reorg automation remain implementation work tracked by the
+separate 318-byte State layout, 1–8 Vaults, whole-set activation and retirement,
+per-asset settlement, occupied-capacity evidence, CLI/SDK recovery, durable
+bilateral signing sessions, Hub import/export, and canonical dispute-watch
+passes with reorg recovery. Multi-asset splice, Factory custody, conditional
+xUDT, and multi-channel watch service orchestration remain work tracked by the
 [multi-asset channel design](multi-asset-channels.md).
 
 ```mermaid
@@ -317,9 +318,9 @@ Header bytes, bilateral signature witness bytes, channel id, funding anchor,
 derived funding context id, state number, signing digest, source State
 outpoint, and descriptor commitment/version metadata. It validates signatures
 and metadata before write and read. Latest-package selection is by channel id
-and state number, while watchtower re-anchor handling prefers the derived
-funding context id and falls back to the funding anchor for older package
-stores. The broader paper `StatePackage` object is the protocol requirement for
+and state number. Watchtower re-anchor handling requires the exact derived
+funding context id; funding-anchor-only matching is rejected. The broader paper `StatePackage`
+object is the protocol requirement for
 arbitrary representation profiles; the current bilateral devnet package is the
 implemented plaintext profile.
 

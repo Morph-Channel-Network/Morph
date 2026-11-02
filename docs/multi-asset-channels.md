@@ -4,7 +4,7 @@ Status: implementation in progress, 2026-11-02. The candidate bilateral profile
 now has host validation, versioned State/Vault script paths, CKB-VM lifecycle
 evidence, lossless CLI/SDK recovery packages, and durable Hub import/export.
 The source release remains v3.0.0; multi-asset splice, Factory custody, typed
-conditions, and full publication/reorg automation are still implementation
+conditions, and full multi-channel watch orchestration are still implementation
 work. See [candidate wire profile](multi-asset-wire.md) for the implemented
 encoding and verification commands.
 
@@ -60,7 +60,8 @@ activation rule: funding cannot sign its own final transaction hash.
 Keep content identity and exact provenance as distinct commitments. Define new
 domain-separated set commitments and a versioned State representation; do not
 reinterpret the existing single-Vault `vault_materialisation_root` or
-`vault_outpoint_commitment` in place. Existing profiles retain their encodings.
+`vault_outpoint_commitment` in place. The multi-asset encoding has no embedded single-Vault header; historical
+multi-asset layouts are rejected.
 
 ### Settlement and Capacity
 
@@ -109,8 +110,8 @@ trades or mint one asset by burning another.
 Introduce explicit descriptor, State-layout, Vault-args, and witness versions
 where interpretation changes. Freeze their exact bytes only after the design
 and budget review. Update matching host/script domains, parity tests, fixtures,
-schemas, deployment hashes, and release manifests together. Keep old packages
-decodable under their original profile; fail closed on unsupported new shapes.
+deployment hashes, and release manifests together. Support only the current
+package shape; reject missing required fields and unsupported shapes.
 Moving an existing channel requires an authorised migration/re-anchor or a
 close and reopen, not a parser upgrade alone.
 
@@ -118,6 +119,17 @@ CLI, SDK, Hub, and watchtower packages must retain the full asset registry,
 Vault manifest, exact OutPoints, descriptor, signatures, dependencies, and
 funding context needed to reconstruct unilateral settlement. Test recovery
 after restart and canonical-chain reorganisation for the entire set.
+
+The [splice implementation](multi-asset-splice.md) now has bounded flow/header
+validation, exact-transaction binding, complete initial-exit prerequisites and
+durable signer freeze rules. The State/Vault execution path now has CKB-VM
+coverage through re-anchor, activation and full unilateral retirement. Exact
+native construction, offline draft signing/export and canonical-input/code-checked
+submission are implemented. Isolated-node acceptance covers 2→1→2 assets, exact
+keyless replay after reorg and final unilateral settlement. Confirmed
+same-session switching, root binding, exact keyless funding replay, explicit
+reorg refresh and bounded signer supervision are verified. Independent initial
+signing, failover, pooled publication and terminal abort tracking remain open.
 
 ## Delivery Sequence and Acceptance
 
@@ -131,18 +143,27 @@ after restart and canonical-chain reorganisation for the entire set.
 
 Current evidence: steps 1–2 have bilateral host and CKB-VM coverage, and real
 two/eight-xUDT node lifecycles. Step 4 has CLI/SDK/Hub persistence and lossless
-cross-language fixtures. Steps 3 and 5, watchtower publication/reorg
-automation, reviewed release artifacts, and independent review remain open.
+cross-language fixtures. Canonical multi-asset dispute watch passes now have
+late-package and real reorg/republication evidence. Steps 3 and 5, full service
+orchestration, reviewed release artifacts and independent review remain open.
 
-Remaining integration work includes the native channel backend's proposal and
-signing lifecycle, ordinary production transaction commands that consume the
-stored recovery package and validate live code dependencies, and reuse of the
-existing bounded fee/RBF publication controller. The current live-node entry
-point is an acceptance harness, not the completed operator/backend integration.
-Multi-asset watchtower work must preserve canonical block-hash cursor checks,
-clear orphanable funding/observation state after a reorg, and rescan from the
-configured channel-creation `from_block`; stored packages remain retained
-across funding contexts.
+Standalone package-based activation/publication/finalisation now validates canonical live
+inputs, code dependencies and approved Morph artifacts, durably stores recovery
+evidence, and supports the existing bounded fee/RBF publication controller.
+The acceptance harness reuses this operator path. Native backend proposals,
+durable local signing reservations, dual-signature commit and lost-response recovery are implemented through the offline signing
+session CLI. Explicit wallet/sponsor operator authorization is implemented. Application
+payment/Hub orchestration and the production transaction/release gate remain
+work. Two/eight-asset SponsorCell publication and real rollback recovery have
+node acceptance evidence; an independent CLI process also publishes with all
+Morph private-key environment variables removed.
+Multi-asset watch passes enforce canonical block hashes and parent linkage,
+clear orphanable funding/observation state after reorgs, and rescan from the
+configured creation origin. Passive monitoring leaves Active channels open.
+Manual unactivated funding recovery is implemented from original creation
+evidence and a saved latest recovery package, without participant keys. Watch
+automation for that phase, multi-channel service/health orchestration and
+finalisation monitoring remain integration work.
 
 Required negative cases include missing or extra Vaults; substituted
 byte-identical Vaults with different OutPoints; duplicate manifest entries;

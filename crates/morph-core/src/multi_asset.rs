@@ -4,19 +4,17 @@ use std::collections::BTreeMap;
 
 use morph_script_common::multi_asset as wire;
 use morph_script_common::{
-    BILATERAL_SIGNATURE_WITNESS_LEN, BilateralSignatureWitness, ScriptError, StateHeaderInput,
-    write_u16,
+    BILATERAL_SIGNATURE_WITNESS_LEN, BilateralSignatureWitness, ScriptError, write_u16,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::hash::{
     MULTI_ASSET_DESCRIPTOR_DOMAIN, MULTI_ASSET_FUNDING_CONTEXT_DOMAIN,
-    MULTI_ASSET_OUTPOINT_SET_DOMAIN, MULTI_ASSET_STATE_DOMAIN, MULTI_ASSET_VAULT_SET_DOMAIN,
+    MULTI_ASSET_OUTPOINT_SET_DOMAIN, MULTI_ASSET_ROOT_FUNDING_DOMAIN, MULTI_ASSET_STATE_DOMAIN,
+    MULTI_ASSET_VAULT_SET_DOMAIN,
 };
-use crate::{
-    AssetRegistry, Bytes32, Mode, Phase, StateAuthorization, StateHeader, VaultAsset, blake2b256,
-};
+use crate::{AssetRegistry, Bytes32, Mode, Phase, StateAuthorization, VaultAsset, blake2b256};
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum MultiAssetError {
@@ -24,6 +22,8 @@ pub enum MultiAssetError {
     Wire(ScriptError),
     #[error("incomplete or noncanonical multi-asset recovery evidence")]
     IncompleteEvidence,
+    #[error("root creation requires transaction-bound funding authorization")]
+    RootFundingContextRequired,
     #[error("script identity or canonical Script encoding mismatch")]
     ScriptIdentity,
     #[error("signed reserve cannot fund the required occupied capacity")]
@@ -38,7 +38,7 @@ impl From<ScriptError> for MultiAssetError {
 
 pub type MultiAssetResult<T> = Result<T, MultiAssetError>;
 
-fn wire_asset(asset: &VaultAsset) -> wire::MultiAssetId {
+pub(crate) fn wire_asset(asset: &VaultAsset) -> wire::MultiAssetId {
     match asset {
         VaultAsset::Ckb => wire::MultiAssetId::CKB,
         VaultAsset::Xudt(hash) => wire::MultiAssetId::xudt(*hash),
@@ -54,7 +54,7 @@ pub struct MultiAssetValue {
 }
 
 impl MultiAssetValue {
-    fn wire(self) -> wire::MultiAssetAllocation {
+    pub(crate) fn wire(self) -> wire::MultiAssetAllocation {
         wire::MultiAssetAllocation {
             reserve: self.reserve,
             business_ckb: self.business_ckb,
@@ -87,7 +87,7 @@ fn check_count(count: usize) -> MultiAssetResult<()> {
     Ok(())
 }
 
-fn host_commitment(domain: &[u8], encoded: &[u8]) -> Bytes32 {
+pub(crate) fn host_commitment(domain: &[u8], encoded: &[u8]) -> Bytes32 {
     let mut data = Vec::with_capacity(domain.len() + encoded.len());
     data.extend_from_slice(domain);
     data.extend_from_slice(encoded);
@@ -173,6 +173,40 @@ impl MultiAssetSettlement {
         wire::MultiAssetSettlementDescriptor::parse(&raw)?;
         Ok(raw)
     }
+    pub fn decode(raw: &[u8]) -> MultiAssetResult<Self> {
+        let descriptor = wire::MultiAssetSettlementDescriptor::parse(raw)?;
+        let array32 = |bytes: &[u8]| {
+            bytes
+                .try_into()
+                .map_err(|_| MultiAssetError::IncompleteEvidence)
+        };
+        let payouts = (0..descriptor.count())
+            .map(|index| {
+                let entry = descriptor.entry(index)?;
+                Ok(MultiAssetPayout {
+                    asset: if entry.asset.kind == 0 {
+                        VaultAsset::Ckb
+                    } else {
+                        VaultAsset::Xudt(entry.asset.type_hash)
+                    },
+                    values: entry.allocations.map(|value| MultiAssetValue {
+                        reserve: value.reserve,
+                        business_ckb: value.business_ckb,
+                        amount: value.amount,
+                    }),
+                })
+            })
+            .collect::<MultiAssetResult<Vec<_>>>()?;
+        Ok(Self {
+            participant_lock_hashes: [
+                array32(descriptor.lock_hash(0)?)?,
+                array32(descriptor.lock_hash(1)?)?,
+            ],
+            carrier_refund_lock_hash: array32(descriptor.carrier_refund_lock())?,
+            payouts,
+        })
+    }
+
     pub fn commitment(&self) -> MultiAssetResult<Bytes32> {
         Ok(host_commitment(
             MULTI_ASSET_DESCRIPTOR_DOMAIN,
@@ -227,8 +261,28 @@ pub fn multi_asset_outpoint_commitment(
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct MultiAssetHeader {
+    pub protocol_version: u16,
+    pub chain_id: Bytes32,
+    pub signature_scheme_id: u16,
+    pub channel_id: Bytes32,
+    pub funding_epoch: u64,
+    pub funding_anchor: Bytes32,
+    pub state_number: u64,
+    pub mode: Mode,
+    pub phase: Phase,
+    pub participants_commitment: Bytes32,
+    pub asset_registry_commitment: Bytes32,
+    pub settlement_descriptor_commitment: Bytes32,
+    pub descriptor_version: u16,
+    pub challenge_policy_commitment: Bytes32,
+    pub state_layout_version: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MultiAssetState {
-    pub header: StateHeader,
+    pub header: MultiAssetHeader,
     pub vault_content_set_root: Bytes32,
     pub vault_outpoint_set_root: Bytes32,
     pub vault_count: u16,
@@ -243,14 +297,13 @@ impl MultiAssetState {
             _ => return Err(MultiAssetError::IncompleteEvidence),
         };
         Ok(wire::encode_multi_asset_state_header(
-            &StateHeaderInput {
+            &wire::MultiAssetStateHeaderInput {
                 protocol_version: base.protocol_version,
                 chain_id: base.chain_id,
                 signature_scheme_id: base.signature_scheme_id,
                 channel_id: base.channel_id,
                 funding_epoch: base.funding_epoch,
                 funding_anchor: base.funding_anchor,
-                vault_set_commitment: base.vault_set_commitment,
                 state_number: base.state_number,
                 mode: match base.mode {
                     Mode::BilateralPlain => 1,
@@ -261,10 +314,8 @@ impl MultiAssetState {
                 asset_registry_commitment: base.asset_registry_commitment,
                 settlement_descriptor_commitment: base.settlement_descriptor_commitment,
                 descriptor_version: base.descriptor_version,
-                vault_materialisation_root: base.vault_materialisation_root,
                 challenge_policy_commitment: base.challenge_policy_commitment,
                 state_layout_version: base.state_layout_version,
-                vault_outpoint_commitment: base.vault_outpoint_commitment,
             },
             &self.vault_content_set_root,
             &self.vault_outpoint_set_root,
@@ -273,6 +324,22 @@ impl MultiAssetState {
     }
     pub fn signing_digest(&self) -> MultiAssetResult<Bytes32> {
         Ok(host_commitment(MULTI_ASSET_STATE_DOMAIN, &self.encode()?))
+    }
+    pub fn root_funding_signing_digest(
+        &self,
+        transaction_hash: &Bytes32,
+    ) -> MultiAssetResult<Bytes32> {
+        if self.header.funding_epoch != 0
+            || self.header.phase != Phase::Active
+            || self.header.state_number != 0
+            || self.vault_outpoint_set_root != [0; 32]
+            || *transaction_hash == [0; 32]
+        {
+            return Err(MultiAssetError::Wire(ScriptError::VaultActivationInvalid));
+        }
+        let mut bytes = self.signing_digest()?.to_vec();
+        bytes.extend_from_slice(transaction_hash);
+        Ok(host_commitment(MULTI_ASSET_ROOT_FUNDING_DOMAIN, &bytes))
     }
     pub fn funding_context_id(&self) -> MultiAssetResult<Bytes32> {
         self.encode()?;
@@ -522,7 +589,153 @@ pub struct MultiAssetRecoveryPackage {
 }
 
 impl MultiAssetRecoveryPackage {
+    /// Decode the current wire profile into validated host objects. No older
+    /// layouts or unsigned recovery packages are accepted.
+    pub fn decode(
+        header: &[u8],
+        witness: &[u8],
+        signatures: &[u8],
+        carrier: u64,
+    ) -> MultiAssetResult<Self> {
+        let mut package = Self::decode_contents(header, witness, carrier)?;
+        let signatures = BilateralSignatureWitness::parse(signatures)?;
+        package.authorization.signatures = (0..2)
+            .map(|index| crate::ParticipantSignature {
+                pubkey_sec1: signatures.pubkey(index).to_vec(),
+                signature: signatures.signature(index).to_vec(),
+            })
+            .collect();
+        package.validate()?;
+        Ok(package)
+    }
+
+    /// Decode unsigned proposal evidence only. Never use this as authenticated
+    /// recovery evidence; `decode` and `validate` require complete signatures.
+    pub fn decode_contents(header: &[u8], witness: &[u8], carrier: u64) -> MultiAssetResult<Self> {
+        fn bytes32(bytes: &[u8]) -> MultiAssetResult<Bytes32> {
+            bytes
+                .try_into()
+                .map_err(|_| MultiAssetError::IncompleteEvidence)
+        }
+        let state = wire::MultiAssetStateHeader::parse(header)?;
+        let base = state;
+        let evidence = wire::MultiAssetWitness::parse(witness)?;
+        evidence.validate_header(&state)?;
+        let vaults = (0..evidence.manifest().count())
+            .map(|index| {
+                let entry = evidence.manifest().entry(index)?;
+                Ok(MultiAssetVault {
+                    asset: if entry.asset.kind == 0 {
+                        VaultAsset::Ckb
+                    } else {
+                        VaultAsset::Xudt(entry.asset.type_hash)
+                    },
+                    lock_hash: entry.lock_hash,
+                    value: MultiAssetValue {
+                        reserve: entry.allocation.reserve,
+                        business_ckb: entry.allocation.business_ckb,
+                        amount: entry.allocation.amount,
+                    },
+                })
+            })
+            .collect::<MultiAssetResult<Vec<_>>>()?;
+        let mut type_index = 6;
+        let type_scripts = vaults
+            .iter()
+            .filter_map(|vault| match vault.asset {
+                VaultAsset::Ckb => None,
+                VaultAsset::Xudt(type_hash) => {
+                    let result = evidence
+                        .scripts()
+                        .script(type_index)
+                        .map(|script| MultiAssetTypeScript {
+                            type_hash,
+                            script: script.to_vec(),
+                        })
+                        .map_err(MultiAssetError::from);
+                    type_index += 1;
+                    Some(result)
+                }
+            })
+            .collect::<MultiAssetResult<Vec<_>>>()?;
+        let outpoints = evidence
+            .outpoints()
+            .chunks_exact(36)
+            .map(|raw| {
+                Ok(MultiAssetOutPoint {
+                    tx_hash: bytes32(&raw[..32])?,
+                    index: u32::from_le_bytes(
+                        raw[32..]
+                            .try_into()
+                            .map_err(|_| MultiAssetError::IncompleteEvidence)?,
+                    ),
+                })
+            })
+            .collect::<MultiAssetResult<Vec<_>>>()?;
+        let package = Self {
+            state: MultiAssetState {
+                header: MultiAssetHeader {
+                    protocol_version: base.protocol_version(),
+                    chain_id: bytes32(base.chain_id())?,
+                    signature_scheme_id: base.signature_scheme_id(),
+                    channel_id: bytes32(base.channel_id())?,
+                    funding_epoch: base.funding_epoch(),
+                    funding_anchor: bytes32(base.funding_anchor())?,
+                    state_number: base.state_number(),
+                    mode: Mode::BilateralPlain,
+                    phase: if base.phase() == morph_script_common::PHASE_ACTIVE {
+                        Phase::Active
+                    } else {
+                        Phase::Settling
+                    },
+                    participants_commitment: bytes32(base.participants_commitment())?,
+                    asset_registry_commitment: bytes32(base.asset_registry_commitment())?,
+                    settlement_descriptor_commitment: bytes32(
+                        base.settlement_descriptor_commitment(),
+                    )?,
+                    descriptor_version: base.descriptor_version(),
+                    challenge_policy_commitment: bytes32(base.challenge_policy_commitment())?,
+                    state_layout_version: base.state_layout_version(),
+                },
+                vault_content_set_root: bytes32(state.content_root())?,
+                vault_outpoint_set_root: bytes32(state.outpoint_root())?,
+                vault_count: state.vault_count() as u16,
+            },
+            authorization: StateAuthorization {
+                threshold: 2,
+                signatures: vec![],
+            },
+            manifest: MultiAssetManifest { vaults },
+            settlement: MultiAssetSettlement::decode(evidence.descriptor().as_bytes())?,
+            outpoints,
+            scripts: MultiAssetRecoveryScripts {
+                participant_locks: [
+                    evidence.scripts().script(0)?.to_vec(),
+                    evidence.scripts().script(1)?.to_vec(),
+                ],
+                carrier_refund_lock: evidence.scripts().script(2)?.to_vec(),
+                vault_lock: evidence.scripts().script(3)?.to_vec(),
+                state_type: evidence.scripts().script(4)?.to_vec(),
+                state_lock: evidence.scripts().script(5)?.to_vec(),
+                type_scripts,
+            },
+            state_carrier_capacity: carrier,
+        };
+        package.validate_contents()?;
+        Ok(package)
+    }
+
     pub fn validate(&self) -> MultiAssetResult<()> {
+        self.validate_contents()?;
+        if self.state.header.funding_epoch == 0 && self.outpoints.is_empty() {
+            return Err(MultiAssetError::RootFundingContextRequired);
+        }
+        self.state.verify_authorization(&self.authorization)
+    }
+
+    /// Verify all evidence except participant signatures. Used before a signer
+    /// authorises a proposed state; never sufficient for a recovery package.
+    pub fn validate_contents(&self) -> MultiAssetResult<()> {
         let raw = self.state.encode()?;
         let header = wire::MultiAssetStateHeader::parse(&raw)?;
         let evidence = encode_multi_asset_witness(
@@ -532,7 +745,6 @@ impl MultiAssetRecoveryPackage {
             &self.scripts,
         )?;
         wire::MultiAssetWitness::parse(&evidence)?.validate_header(&header)?;
-        self.state.verify_authorization(&self.authorization)?;
         self.scripts.validate(
             &self.manifest,
             &self.settlement,

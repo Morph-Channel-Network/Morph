@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+- Add multi-asset splice intent validation and durable old-context signing
+  freeze, requiring exact transaction identity and a complete future exit.
+  Add State/Vault splice execution, whole-transaction per-type conservation
+  and CKB-VM recovery/negative acceptance. Add native construction/submission,
+  same-journal confirmed switching, explicit reorg refresh and bounded signer
+  supervision with durable alerts and expiring health.
+- Bind root creation signatures to the exact raw funding transaction; reject
+  ordinary state signatures and transaction-free root recovery packages.
+  Add confirmed root journal binding and keyless exact funding replay, keeping
+  reserved votes across reorg refresh and later splice retirement.
+
+- Recover interrupted multi-asset activation from authenticated creation
+  evidence and the latest saved recovery package, without participant keys.
+  Remove the harness-only activation builder.
+- Add durable bilateral multi-asset signing sessions, recovery packages and
+  canonical dispute-watch passes with reorg recovery.
+- Reconstruct complete-set publication and finalisation from saved evidence;
+  keep wallet and policy-bound sponsor fee authorization explicit. Add
+  two/eight-asset sponsor rollback acceptance and independent CLI evidence
+  with Morph private-key environment variables removed.
+- Reject historical Vault arguments, missing required persistence fields and
+  funding-anchor package fallbacks. Development deployments require fresh state.
+- Remove the unused schema draft and consolidate current protocol documentation.
+- Use an independent 318-byte multi-asset State header, removing three
+  single-Vault fields and rejecting the earlier unpublished layout.
+
 ## v3.0.0 — 2026-08-25
 
 Morph 3.0 closes the conditional-settlement gap exposed by the Counter-Strike
@@ -39,14 +67,14 @@ state.
 - The machine-checked envelope caps batches at eight CKB transfers and a 2,016
   block refund horizon. Mainnet, real assets, and conditional xUDT remain out of
   scope.
-- See `docs/v3.0-plan.md` for the architecture, invariants, and Counter-Strike
+- See `docs/conditional-batches.md` for the architecture, invariants, and Counter-Strike
   integration guidance.
 
 ## v2.0.0 — 2026-08-16
 
 Morph Channel 2.0 closes the deferred factory reduced-proof protocol work and
 adds the operator value-limit policy. The plan of record is
-`docs/v2.0-plan.md`.
+`docs/factory-multi-right.md`.
 
 ### Factory protocol surface
 
@@ -117,6 +145,17 @@ save/publication command for kind 8 state-cell packages (mirroring
 validation, fixtures, and on-chain CKB-VM evidence exist today.
 
 ## Unreleased
+
+- Add multi-asset splice intent validation and durable old-context signing
+  freeze, requiring exact transaction identity and a complete future exit.
+  Add State/Vault splice execution, whole-transaction per-type conservation
+  and CKB-VM recovery/negative acceptance. Add native construction/submission,
+  same-journal confirmed switching, explicit reorg refresh and bounded signer
+  supervision with durable alerts and expiring health.
+- Bind root creation signatures to the exact raw funding transaction; reject
+  ordinary state signatures and transaction-free root recovery packages.
+  Add confirmed root journal binding and keyless exact funding replay, keeping
+  reserved votes across reorg refresh and later splice retirement.
 
 ### Security and reliability follow-up
 

@@ -1,10 +1,10 @@
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+#[cfg(test)]
+use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+#[cfg(all(test, unix))]
+use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,8 @@ pub enum WatchAlertSeverity {
 #[serde(rename_all = "snake_case")]
 pub enum WatchAlertEvent {
     ChainReorgDetected,
+    RecoveryDataInvalid,
+    PublicationFailed,
     OlderStateDetected,
     PublicationSubmitted,
     SpliceDetected,
@@ -114,33 +116,7 @@ impl WatchtowerAlert {
 }
 
 pub fn append_watchtower_alert(path: &Path, alert: &WatchtowerAlert) -> Result<()> {
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create alert directory {}", parent.display()))?;
-    }
-    let mut options = OpenOptions::new();
-    options.create(true).append(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    let mut file = options
-        .open(path)
-        .with_context(|| format!("failed to open watchtower alert file {}", path.display()))?;
-    #[cfg(unix)]
-    file.set_permissions(fs::Permissions::from_mode(0o600))
-        .with_context(|| {
-            format!(
-                "failed to restrict watchtower alert file permissions {}",
-                path.display()
-            )
-        })?;
-    serde_json::to_writer(&mut file, alert)
-        .with_context(|| format!("failed to encode watchtower alert {}", path.display()))?;
-    file.write_all(b"\n")
-        .with_context(|| format!("failed to write watchtower alert {}", path.display()))?;
-    Ok(())
+    crate::packages::append_private_jsonl(path, alert)
 }
 
 pub fn post_watchtower_alert_webhook_with_secret(
@@ -339,6 +315,30 @@ mod tests {
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
         );
+
+        for (invalid, reason) in [
+            ("{\"schema\":\"another_stream\"}\n", "another schema"),
+            (
+                "{\"schema\":\"morph.watchtower_alert\"}",
+                "incomplete record",
+            ),
+        ] {
+            fs::write(&path, invalid).unwrap();
+            #[cfg(unix)]
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(
+                append_watchtower_alert(&path, &alert)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(reason)
+            );
+            assert_eq!(fs::read_to_string(&path).unwrap(), invalid);
+            #[cfg(unix)]
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o644
+            );
+        }
 
         let _ = fs::remove_file(path);
     }

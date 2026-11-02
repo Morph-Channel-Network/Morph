@@ -219,7 +219,7 @@ export class MorphAgentClient {
     amount: string;
     payer: string;
     resource: string;
-    operation?: string;
+    operation: string;
     description?: string;
     expires_in_seconds?: number;
     rgbpp_proof_commitment?: string;
@@ -232,7 +232,7 @@ export class MorphAgentClient {
     amount: string;
     payer: string;
     resource: string;
-    operation?: string;
+    operation: string;
     description?: string;
     expires_in_seconds?: number;
     rgbpp_proof_commitment?: string;
@@ -288,7 +288,7 @@ export class MorphAgentClient {
     amount: string;
     payer: string;
     resource: string;
-    operation?: string;
+    operation: string;
     plaintext_base64: string;
     description?: string;
     expires_in_seconds?: number;

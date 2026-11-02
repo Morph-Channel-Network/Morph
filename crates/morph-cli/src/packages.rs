@@ -291,9 +291,11 @@ pub struct FactoryLocalExitPackageSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchCursor {
     pub schema: String,
     pub channel_id: String,
+    pub from_block: u64,
     pub next_block: u64,
     pub scanned_to_block: u64,
     #[serde(deserialize_with = "deserialize_required_option")]
@@ -456,10 +458,16 @@ impl StoredStatePackage {
 }
 
 impl WatchCursor {
-    pub fn new(channel_id: &str, next_block: u64, scanned_to_block: u64) -> Result<Self> {
+    pub fn new(
+        channel_id: &str,
+        from_block: u64,
+        next_block: u64,
+        scanned_to_block: u64,
+    ) -> Result<Self> {
         let cursor = Self {
             schema: WATCH_CURSOR_SCHEMA.to_string(),
             channel_id: canonical_hex32(channel_id)?,
+            from_block,
             next_block,
             scanned_to_block,
             scanned_to_block_hash: None,
@@ -511,6 +519,13 @@ impl WatchCursor {
                 "watch cursor scanned_to_block_hash must be canonical"
             );
         }
+        let has_observation = self.current_funding_context_id.is_some();
+        ensure!(
+            self.current_funding_anchor.is_some() == has_observation
+                && self.last_observed_state_number.is_some() == has_observation
+                && self.last_observed_out_point.is_some() == has_observation,
+            "watch cursor observation requires funding context, anchor, state number and OutPoint together"
+        );
         if let Some(anchor) = &self.current_funding_anchor {
             ensure!(
                 *anchor == canonical_hex32(anchor)?,
@@ -524,10 +539,14 @@ impl WatchCursor {
             );
         }
         ensure!(
-            self.scanned_to_block < self.next_block
-                || self.scanned_to_block == 0
-                || self.next_block == 0,
-            "watch cursor next_block must advance past scanned_to_block"
+            self.next_block >= self.from_block
+                && self.scanned_to_block >= self.from_block.saturating_sub(1),
+            "watch cursor precedes its scan origin"
+        );
+        ensure!(
+            self.scanned_to_block.checked_add(1) == Some(self.next_block)
+                || (self.scanned_to_block == 0 && self.next_block == 0),
+            "watch cursor next_block must immediately follow scanned_to_block"
         );
         Ok(())
     }
@@ -1196,8 +1215,12 @@ pub fn read_watch_cursor(path: &Path) -> Result<Option<WatchCursor>> {
     if !path.exists() {
         return Ok(None);
     }
-    let bytes = fs::read(path)
-        .with_context(|| format!("failed to read watch cursor {}", path.display()))?;
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(16 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    ensure!(bytes.len() <= 16 * 1024, "watch cursor exceeds byte limit");
     let cursor: WatchCursor = serde_json::from_slice(&bytes)
         .with_context(|| format!("failed to parse watch cursor {}", path.display()))?;
     cursor
@@ -1206,24 +1229,189 @@ pub fn read_watch_cursor(path: &Path) -> Result<Option<WatchCursor>> {
     Ok(Some(cursor))
 }
 
+#[cfg(unix)]
+pub(crate) fn sync_recovery_directories(parent: &Path, existing_parent: &Path) -> Result<()> {
+    for ancestor in parent.ancestors() {
+        let directory = if ancestor.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            ancestor
+        };
+        fs::File::open(directory)?.sync_all()?;
+        if directory == existing_parent {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// The sidecar inode is never renamed or unlinked, avoiding separate lock
+/// domains when one writer atomically replaces the session snapshot.
+pub(crate) fn required_option<'de, D, T>(
+    deserializer: D,
+) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
+fn open_private_lock(path: &Path) -> Result<(fs::File, PathBuf, PathBuf)> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let existing = parent
+        .ancestors()
+        .find(|p| p.is_dir())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    fs::create_dir_all(parent)?;
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".lock");
+    let mut options = fs::OpenOptions::new();
+    options.create(true).read(true).write(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    Ok((
+        options.open(PathBuf::from(name))?,
+        parent.to_path_buf(),
+        existing,
+    ))
+}
+fn sync_private_lock(lock: &fs::File, parent: &Path, existing: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        lock.sync_all()?;
+        sync_recovery_directories(parent, existing)?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (lock, parent, existing);
+    }
+    Ok(())
+}
+pub(crate) fn lock_private_path(path: &Path) -> Result<fs::File> {
+    let (lock, parent, existing) = open_private_lock(path)?;
+    lock.lock()
+        .context("failed to lock persistent state file")?;
+    sync_private_lock(&lock, &parent, &existing)?;
+    Ok(lock)
+}
+pub(crate) fn try_lock_private_path(path: &Path) -> Result<Option<fs::File>> {
+    let (lock, parent, existing) = open_private_lock(path)?;
+    match lock.try_lock() {
+        Ok(()) => {
+            sync_private_lock(&lock, &parent, &existing)?;
+            Ok(Some(lock))
+        }
+        Err(fs::TryLockError::WouldBlock) => Ok(None),
+        Err(fs::TryLockError::Error(error)) => Err(error.into()),
+    }
+}
+
+pub(crate) fn append_private_jsonl<T: Serialize>(path: &Path, record: &T) -> Result<()> {
+    use std::io::{BufRead, Read, Seek, SeekFrom, Write};
+    const MAX_RECORD_BYTES: usize = 256 * 1024;
+    #[derive(Deserialize)]
+    struct Schema {
+        schema: String,
+    }
+    let mut encoded = serde_json::to_vec(record)?;
+    ensure!(
+        encoded.len() < MAX_RECORD_BYTES,
+        "persistent event exceeds byte limit"
+    );
+    let incoming: Schema = serde_json::from_slice(&encoded)?;
+    encoded.push(b'\n');
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let mut options = fs::OpenOptions::new();
+    options.create(true).read(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.lock()
+        .context("failed to lock persistent event stream")?;
+    if file.metadata()?.len() > 0 {
+        let mut last = [0; 1];
+        file.seek(SeekFrom::End(-1))?;
+        file.read_exact(&mut last)?;
+        ensure!(
+            last[0] == b'\n',
+            "persistent event stream ends with an incomplete record"
+        );
+        file.seek(SeekFrom::Start(0))?;
+        let mut first = Vec::new();
+        std::io::BufReader::new((&file).take(MAX_RECORD_BYTES as u64 + 1))
+            .read_until(b'\n', &mut first)?;
+        ensure!(
+            first.len() <= MAX_RECORD_BYTES,
+            "persistent event header exceeds byte limit"
+        );
+        let existing: Schema = serde_json::from_slice(&first)?;
+        ensure!(
+            existing.schema == incoming.schema,
+            "persistent event stream has another schema"
+        );
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(&encoded)?;
+    file.sync_all()?;
+    #[cfg(unix)]
+    {
+        fs::File::open(parent)?.sync_all()?;
+    }
+    Ok(())
+}
+
+pub(crate) fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let existing_parent = parent
+        .ancestors()
+        .find(|p| p.is_dir())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    fs::create_dir_all(parent)?;
+    let temporary = atomic_json_tmp_path(path);
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    fs::rename(&temporary, path)?;
+    #[cfg(unix)]
+    sync_recovery_directories(parent, &existing_parent)?;
+    Ok(())
+}
+
 pub fn write_watch_cursor(path: &Path, cursor: &WatchCursor) -> Result<()> {
     cursor.validate()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create cursor directory {}", parent.display()))?;
-    }
-    let tmp = atomic_json_tmp_path(path);
-    let json = serde_json::to_vec_pretty(cursor)?;
-    fs::write(&tmp, json)
-        .with_context(|| format!("failed to write temporary watch cursor {}", tmp.display()))?;
-    fs::rename(&tmp, path).with_context(|| {
-        format!(
-            "failed to atomically move watch cursor {} to {}",
-            tmp.display(),
-            path.display()
-        )
-    })?;
-    Ok(())
+    write_private_atomic(path, &serde_json::to_vec_pretty(cursor)?)
 }
 
 pub fn read_package(path: &Path) -> Result<StoredStatePackage> {
@@ -2768,7 +2956,7 @@ mod tests {
         let funding_anchor = format!("0x{}", "22".repeat(BYTE32_LEN));
         let funding_context_id = format!("0x{}", "23".repeat(BYTE32_LEN));
         let path = default_watch_cursor_path(&dir, &channel_id).unwrap();
-        let cursor = WatchCursor::new(&channel_id, 43, 42)
+        let cursor = WatchCursor::new(&channel_id, 40, 43, 42)
             .unwrap()
             .with_scanned_block_hash(&format!("0x{}", "24".repeat(BYTE32_LEN)))
             .unwrap()
@@ -2780,7 +2968,19 @@ mod tests {
 
         let loaded = read_watch_cursor(&path).unwrap().unwrap();
         assert_eq!(loaded.channel_id, channel_id);
+        assert_eq!(loaded.from_block, 40);
         assert_eq!(loaded.next_block, 43);
+        let mut gap = loaded.clone();
+        gap.next_block += 1;
+        assert!(gap.validate().is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
         assert_eq!(loaded.scanned_to_block, 42);
         assert_eq!(
             loaded.scanned_to_block_hash.as_deref(),
@@ -2796,6 +2996,19 @@ mod tests {
         );
         assert_eq!(loaded.last_observed_state_number, Some(7));
         assert_eq!(loaded.last_observed_out_point.as_deref(), Some("0xabc:0"));
+        let mut anchor_only = loaded.clone();
+        anchor_only.current_funding_context_id = None;
+        assert!(anchor_only.validate().is_err());
+        let encoded = serde_json::to_value(&loaded).unwrap();
+        for field in [
+            "from_block",
+            "current_funding_context_id",
+            "scanned_to_block_hash",
+        ] {
+            let mut incomplete = encoded.clone();
+            incomplete.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<WatchCursor>(incomplete).is_err());
+        }
 
         fs::remove_dir_all(dir).unwrap();
     }

@@ -74,18 +74,16 @@ fn validate_sponsored_state(policy: &SponsorPolicy) -> Result<()> {
     loop {
         match load_cell_data(index, Source::Output) {
             Ok(data) => {
-                if let Ok(header) = publication_state_header(&data)
-                    && header.channel_id() == policy.channel_id()
+                if let Ok((channel, anchor, number, phase)) = publication_state_header(&data)
+                    && channel == policy.channel_id()
                 {
                     if sponsored_state.is_some() {
                         return Err(ScriptError::StateCellAmbiguous);
                     }
-                    if header.phase() != PHASE_SETTLING {
+                    if phase != PHASE_SETTLING {
                         return Err(ScriptError::NewStateNotSettling);
                     }
-                    if header.state_number() < policy.min_state_number()
-                        || header.state_number() > policy.max_state_number()
-                    {
+                    if number < policy.min_state_number() || number > policy.max_state_number() {
                         return Err(ScriptError::SponsorStateOutOfRange);
                     }
                     let type_hash = load_cell_type_hash(index, Source::Output)
@@ -95,8 +93,8 @@ fn validate_sponsored_state(policy: &SponsorPolicy) -> Result<()> {
                         return Err(ScriptError::StateTypeMismatch);
                     }
                     let mut funding_anchor = [0u8; BYTE32_LEN];
-                    funding_anchor.copy_from_slice(header.funding_anchor());
-                    sponsored_state = Some((header.state_number(), funding_anchor));
+                    funding_anchor.copy_from_slice(anchor);
+                    sponsored_state = Some((number, funding_anchor));
                 }
                 index += 1;
             }
@@ -124,8 +122,8 @@ fn ensure_publication_backed_by_state_type_input(
                 if type_hash.as_slice() == policy.publication_state_type_hash() {
                     let data =
                         load_cell_data(index, Source::Input).map_err(|_| ScriptError::Encoding)?;
-                    let header = publication_state_header(&data)?;
-                    if header.funding_anchor() != output_funding_anchor {
+                    let (_, anchor, _, _) = publication_state_header(&data)?;
+                    if anchor != output_funding_anchor {
                         return Err(ScriptError::FundingAnchorMismatch);
                     }
                     return Ok(());
@@ -141,14 +139,25 @@ fn ensure_publication_backed_by_state_type_input(
 }
 
 #[cfg(target_arch = "riscv64")]
-fn publication_state_header(data: &[u8]) -> Result<StateHeader<'_>> {
+fn publication_state_header(data: &[u8]) -> Result<(&[u8], &[u8], u64, u8)> {
     use morph_script_common::multi_asset::{MULTI_ASSET_STATE_HEADER_LEN, MultiAssetStateHeader};
     if data.len() == MULTI_ASSET_STATE_HEADER_LEN {
-        MultiAssetStateHeader::parse(data)?.base()
+        let header = MultiAssetStateHeader::parse(data)?;
+        Ok((
+            header.channel_id(),
+            header.funding_anchor(),
+            header.state_number(),
+            header.phase(),
+        ))
     } else {
         let header = StateHeader::parse(data)?;
         header.validate_profile()?;
-        Ok(header)
+        Ok((
+            header.channel_id(),
+            header.funding_anchor(),
+            header.state_number(),
+            header.phase(),
+        ))
     }
 }
 

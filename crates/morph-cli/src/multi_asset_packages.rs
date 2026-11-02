@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use crate::packages::sync_recovery_directories;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -71,11 +73,11 @@ pub(crate) struct DecodedMultiAssetPackage {
     pub cell_deps: Vec<CellDep>,
 }
 
-fn canonical_hex(raw: &[u8]) -> String {
+pub(crate) fn canonical_hex(raw: &[u8]) -> String {
     format!("0x{}", hex::encode(raw))
 }
 
-fn decode_hex(raw: &str, max: usize) -> Result<Vec<u8>> {
+pub(crate) fn decode_hex(raw: &str, max: usize) -> Result<Vec<u8>> {
     ensure!(
         raw.len() <= 2 + 2 * max,
         "multi-asset field exceeds its byte limit"
@@ -96,6 +98,16 @@ fn wire_error(error: morph_script_common::ScriptError) -> anyhow::Error {
 }
 
 impl StoredMultiAssetPackage {
+    pub fn recovery(&self) -> Result<MultiAssetRecoveryPackage> {
+        let decoded = self.decode()?;
+        Ok(MultiAssetRecoveryPackage::decode(
+            &decoded.header,
+            &decoded.witness,
+            &decoded.signatures,
+            decoded.carrier_capacity,
+        )?)
+    }
+
     pub fn value_subject(&self) -> Result<ValueSubject> {
         let summary = self.validate()?;
         let mut subject = ValueSubject::default();
@@ -113,7 +125,6 @@ impl StoredMultiAssetPackage {
         package: &MultiAssetRecoveryPackage,
         cell_deps: &[CellDep],
     ) -> Result<Self> {
-        package.validate()?;
         let mut cell_deps = cell_deps
             .iter()
             .map(|dep| {
@@ -130,6 +141,14 @@ impl StoredMultiAssetPackage {
             })
             .collect::<Result<Vec<_>>>()?;
         cell_deps.sort_by(|a, b| (&a.tx_hash, a.index).cmp(&(&b.tx_hash, b.index)));
+        Self::with_dependency_records(package, cell_deps)
+    }
+
+    pub(crate) fn with_dependency_records(
+        package: &MultiAssetRecoveryPackage,
+        cell_deps: Vec<StoredMultiAssetCellDep>,
+    ) -> Result<Self> {
+        package.validate()?;
         let stored = Self {
             schema: MULTI_ASSET_PACKAGE_SCHEMA.to_string(),
             header_hex: canonical_hex(&package.state.encode()?),
@@ -231,7 +250,7 @@ impl StoredMultiAssetPackage {
                 <= decoded.carrier_capacity,
             "State carrier is below occupied capacity"
         );
-        let base = header.base().map_err(wire_error)?;
+        let base = header;
         let mut assets = Vec::new();
         for index in 0..witness.manifest().count() {
             let entry = witness.manifest().entry(index).map_err(wire_error)?;
@@ -279,22 +298,6 @@ pub fn read_package(path: &Path) -> Result<StoredMultiAssetPackage> {
     let package: StoredMultiAssetPackage = serde_json::from_slice(&bytes)?;
     package.validate()?;
     Ok(package)
-}
-
-#[cfg(unix)]
-fn sync_recovery_directories(parent: &Path, existing_parent: &Path) -> Result<()> {
-    for ancestor in parent.ancestors() {
-        let directory = if ancestor.as_os_str().is_empty() {
-            Path::new(".")
-        } else {
-            ancestor
-        };
-        File::open(directory)?.sync_all()?;
-        if directory == existing_parent {
-            break;
-        }
-    }
-    Ok(())
 }
 
 pub fn write_package(dir: &Path, package: &StoredMultiAssetPackage) -> Result<std::path::PathBuf> {
@@ -435,14 +438,13 @@ pub fn fixture_package() -> Result<StoredMultiAssetPackage> {
         .each_ref()
         .map(|key| key.verifying_key().to_encoded_point(true));
     let state = MultiAssetState {
-        header: StateHeader {
+        header: MultiAssetHeader {
             protocol_version: 1,
             chain_id: [1; 32],
             signature_scheme_id: 1,
             channel_id: [2; 32],
             funding_epoch: 0,
             funding_anchor: anchor,
-            vault_set_commitment: content,
             state_number: 9,
             mode: Mode::BilateralPlain,
             phase: Phase::Settling,
@@ -453,10 +455,8 @@ pub fn fixture_package() -> Result<StoredMultiAssetPackage> {
             asset_registry_commitment: asset_registry_commitment(&manifest.registry()?),
             settlement_descriptor_commitment: settlement.commitment()?,
             descriptor_version: wire::MULTI_ASSET_DESCRIPTOR_VERSION,
-            vault_materialisation_root: [0; 32],
             challenge_policy_commitment: [3; 32],
             state_layout_version: wire::MULTI_ASSET_STATE_LAYOUT_VERSION,
-            vault_outpoint_commitment: [0; 32],
         },
         vault_content_set_root: content,
         vault_outpoint_set_root: multi_asset_outpoint_commitment(&manifest, &points)?,

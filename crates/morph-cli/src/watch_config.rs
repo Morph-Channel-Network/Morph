@@ -32,9 +32,7 @@ fn bytes32_hex(seed: u8) -> String {
     format!("0x{}", format!("{seed:02x}").repeat(32))
 }
 
-fn default_operator_id() -> String {
-    "watchtower-local".to_string()
-}
+const FIXTURE_OPERATOR_ID: &str = "watchtower-local";
 
 fn validate_operator_id(value: &str) -> Result<()> {
     ensure!(
@@ -68,9 +66,7 @@ fn validate_publication_profile_operator(path: &Path, operator_id: &str) -> Resu
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WatchtowerConfig {
     pub schema: String,
-    #[serde(default = "default_operator_id")]
     pub operator_id: String,
-    #[serde(default)]
     pub defaults: WatchtowerConfigDefaults,
     pub channels: Vec<WatchtowerChannelConfig>,
 }
@@ -95,7 +91,6 @@ pub struct WatchtowerConfigDefaults {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WatchtowerChannelConfig {
     pub channel_id: String,
-    #[serde(default)]
     pub from_block: u64,
     pub sponsor_out_point: Option<String>,
     pub store_dir: Option<PathBuf>,
@@ -210,7 +205,7 @@ impl WatchtowerConfig {
     pub fn fixture() -> Self {
         Self {
             schema: WATCH_CONFIG_SCHEMA.to_string(),
-            operator_id: default_operator_id(),
+            operator_id: FIXTURE_OPERATOR_ID.to_string(),
             defaults: WatchtowerConfigDefaults {
                 store_dir: Some(PathBuf::from("target/morph-state-packages")),
                 watch_policy: Some(PathBuf::from("target/watch-policy.json")),
@@ -836,6 +831,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn config_requires_explicit_operator_defaults_and_scan_origin() {
+        let current = serde_json::to_value(WatchtowerConfig::fixture()).unwrap();
+        for field in ["operator_id", "defaults"] {
+            let mut incomplete = current.clone();
+            incomplete.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<WatchtowerConfig>(incomplete).is_err());
+        }
+        let mut missing_origin = current;
+        missing_origin["channels"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("from_block");
+        assert!(serde_json::from_value::<WatchtowerConfig>(missing_origin).is_err());
+    }
+
+    #[test]
     fn validates_fixture_config() {
         let config = WatchtowerConfig::fixture();
         config.validate().unwrap();
@@ -915,7 +926,7 @@ mod tests {
         let profile_path = dir.join("profile.json");
         let config_path = dir.join("watch.json");
         let mut profile = crate::publication::fixture_publication_profile();
-        profile.operator_id = default_operator_id();
+        profile.operator_id = FIXTURE_OPERATOR_ID.to_string();
         fs::write(&profile_path, serde_json::to_vec(&profile).unwrap()).unwrap();
         let mut config = WatchtowerConfig::fixture();
         config.defaults.publication_profile = Some(PathBuf::from("profile.json"));

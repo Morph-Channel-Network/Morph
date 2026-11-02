@@ -1,4 +1,5 @@
 use super::*;
+use ckb_testtool::ckb_types::packed::{OutPoint, Script};
 use morph_core::{
     Mode, MultiAssetManifest, MultiAssetOutPoint, MultiAssetPayout, MultiAssetRecoveryPackage,
     MultiAssetRecoveryScripts, MultiAssetSettlement, MultiAssetState, MultiAssetTypeScript,
@@ -91,17 +92,33 @@ fn build(count: usize, one_sided: bool) -> Fixture {
 }
 
 fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture {
+    build_profile(typed_count, one_sided, plain, false)
+}
+
+fn build_profile(
+    typed_count: usize,
+    one_sided: bool,
+    plain: bool,
+    maximum_scripts: bool,
+) -> Fixture {
+    let reserve = if maximum_scripts {
+        240_000_000_000u64
+    } else {
+        40_000_000_000
+    };
+    let capacity = reserve + 10_000_000_000;
+    let lock_args = if maximum_scripts { 459 } else { 1 };
     let mut context = Context::default();
     let wallet = deploy_always_success_with_args(&mut context, Bytes::from(vec![99]));
     let mut locks = [
-        deploy_always_success_with_args(&mut context, Bytes::from(vec![1])),
-        deploy_always_success_with_args(&mut context, Bytes::from(vec![2])),
+        deploy_always_success_with_args(&mut context, Bytes::from(vec![1; lock_args])),
+        deploy_always_success_with_args(&mut context, Bytes::from(vec![2; lock_args])),
     ];
     locks.sort_by_key(|lock| lock.calc_script_hash());
     let carrier_capacity = CELL_CAPACITY;
     let funding_wallet = context.create_cell(
         CellOutput::new_builder()
-            .capacity(carrier_capacity + if plain { 50_000_000_000 } else { 0 } + 10_000)
+            .capacity(carrier_capacity + if plain { capacity } else { 0 } + 10_000)
             .lock(wallet.clone())
             .build(),
         Bytes::new(),
@@ -147,7 +164,7 @@ fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture
                     .unwrap_or(VaultAsset::Ckb),
                 lock_hash: vault_lock.calc_script_hash().unpack(),
                 value: MultiAssetValue {
-                    reserve: 40_000_000_000,
+                    reserve,
                     business_ckb: 10_000_000_000,
                     amount: if script.is_some() { 1000 } else { 0 },
                 },
@@ -169,12 +186,12 @@ fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture
                 } else {
                     [
                         MultiAssetValue {
-                            reserve: 20_000_000_000,
+                            reserve: reserve / 2,
                             business_ckb: 6_000_000_000,
                             amount: if vault.value.amount != 0 { 700 } else { 0 },
                         },
                         MultiAssetValue {
-                            reserve: 20_000_000_000,
+                            reserve: reserve / 2,
                             business_ckb: 4_000_000_000,
                             amount: if vault.value.amount != 0 { 300 } else { 0 },
                         },
@@ -186,14 +203,14 @@ fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture
     let content = manifest.commitment().unwrap();
     let mut package = MultiAssetRecoveryPackage {
         state: MultiAssetState {
-            header: morph_core::StateHeader {
+            header: morph_core::MultiAssetHeader {
                 protocol_version: 1,
                 chain_id: [1; 32],
                 signature_scheme_id: 1,
                 channel_id: [2; 32],
                 funding_epoch: 0,
                 funding_anchor: anchor,
-                vault_set_commitment: content,
+
                 state_number: 0,
                 mode: Mode::BilateralPlain,
                 phase: Phase::Active,
@@ -201,10 +218,9 @@ fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture
                 asset_registry_commitment: asset_registry_commitment(&manifest.registry().unwrap()),
                 settlement_descriptor_commitment: settlement.commitment().unwrap(),
                 descriptor_version: wire::MULTI_ASSET_DESCRIPTOR_VERSION,
-                vault_materialisation_root: [0; 32],
+
                 challenge_policy_commitment: [3; 32],
                 state_layout_version: wire::MULTI_ASSET_STATE_LAYOUT_VERSION,
-                vault_outpoint_commitment: [0; 32],
             },
             vault_content_set_root: content,
             vault_outpoint_set_root: [0; 32],
@@ -234,7 +250,7 @@ fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture
         },
     };
     signed(&mut package);
-    package.validate().unwrap();
+    package.validate_contents().unwrap();
     let mut funding = TransactionBuilder::default()
         .input(funding_input)
         .output(
@@ -249,7 +265,7 @@ fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture
         if let Some(script) = script {
             let input = context.create_cell(
                 CellOutput::new_builder()
-                    .capacity(50_000_000_000u64)
+                    .capacity(capacity)
                     .lock(wallet.clone())
                     .type_(Some(script.clone()).pack())
                     .build(),
@@ -260,7 +276,7 @@ fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture
         funding = funding
             .output(
                 CellOutput::new_builder()
-                    .capacity(50_000_000_000u64)
+                    .capacity(capacity)
                     .lock(vault_lock.clone())
                     .type_(script.clone().pack())
                     .build(),
@@ -275,6 +291,23 @@ fn build_with_plain(typed_count: usize, one_sided: bool, plain: bool) -> Fixture
             );
     }
     let funding = context.complete_tx(funding.witness(evidence(&package, true)).build());
+    let digest = package
+        .state
+        .root_funding_signing_digest(&funding.hash().unpack())
+        .unwrap();
+    let mut keys = [signing_key(1), signing_key(2)];
+    keys.sort_by_key(pubkey);
+    package.authorization.signatures = keys
+        .iter()
+        .map(|key| ParticipantSignature {
+            pubkey_sec1: pubkey(key).to_vec(),
+            signature: signature(key, &digest).to_vec(),
+        })
+        .collect();
+    let funding = funding
+        .as_advanced_builder()
+        .set_witnesses(vec![evidence(&package, true).pack()])
+        .build();
     let cycles = context
         .verify_tx(&funding, MAX_CYCLES)
         .expect("multi-asset funding");
@@ -446,6 +479,46 @@ fn rejects(context: &Context, tx: &TransactionView, codes: &[i8]) {
             .any(|code| message.contains(&format!("error code {code} "))),
         "unexpected rejection: {error:?}"
     );
+}
+
+#[ignore = "requires `make build-contracts`"]
+#[test]
+fn multi_asset_root_creation_rejects_transaction_replacement() {
+    let fixture = build(2, false);
+    // Repricing the carrier by one shannon preserves the anchor and signed
+    // State bytes, but changes every future Vault OutPoint.
+    let mut outputs = fixture.funding.outputs().into_iter().collect::<Vec<_>>();
+    outputs[0] = outputs[0]
+        .clone()
+        .as_builder()
+        .capacity(u64::from(outputs[0].capacity()) - 1)
+        .build();
+    let replaced = fixture
+        .funding
+        .clone()
+        .as_advanced_builder()
+        .set_outputs(outputs)
+        .build();
+    assert_ne!(replaced.hash(), fixture.funding.hash());
+    rejects(&fixture.context, &replaced, &[24]);
+    // Ordinary state votes cannot stand in for transaction-bound creation.
+    let raw = fixture.funding.outputs_data().get(0).unwrap().raw_data();
+    let witness_raw = fixture.funding.witnesses().get(0).unwrap().raw_data();
+    let args = WitnessArgs::from_slice(&witness_raw).unwrap();
+    let mut creation = MultiAssetRecoveryPackage::decode_contents(
+        &raw,
+        &args.output_type().to_opt().unwrap().raw_data(),
+        fixture.package.state_carrier_capacity,
+    )
+    .unwrap();
+    signed(&mut creation);
+    let old_vote = fixture
+        .funding
+        .clone()
+        .as_advanced_builder()
+        .set_witnesses(vec![evidence(&creation, true).pack()])
+        .build();
+    rejects(&fixture.context, &old_vote, &[24]);
 }
 
 #[ignore = "requires `make build-contracts`"]
@@ -748,4 +821,776 @@ fn multi_asset_plain_fee_change_can_share_the_carrier_refund_address() {
         .context
         .verify_tx(&tx, MAX_CYCLES)
         .expect("canonical carrier refund plus independent fee change");
+}
+
+struct SpliceFixture {
+    base: Fixture,
+    plan: morph_core::MultiAssetSpliceProposal,
+    transaction: TransactionView,
+    admitted_input: Option<OutPoint>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum SpliceChange {
+    ReplaceOne,
+    ReplaceAll,
+    AddOne,
+    RemoveOne,
+}
+
+fn splice_transaction(
+    typed_count: usize,
+    plain: bool,
+    weak_admission: bool,
+    active: bool,
+    change_kind: SpliceChange,
+    maximum_scripts: bool,
+) -> SpliceFixture {
+    use morph_core::{
+        MultiAssetSpliceFlow, MultiAssetSpliceProposal, multi_asset_splice_funding_anchor,
+    };
+    let mut base = build_profile(typed_count, false, plain, maximum_scripts);
+    let old_point = point(
+        if active {
+            &base.activation
+        } else {
+            &base.supersede
+        },
+        0,
+    );
+    let old_state = MultiAssetOutPoint {
+        tx_hash: old_point.tx_hash().unpack(),
+        index: 0,
+    };
+    let anchor = multi_asset_splice_funding_anchor(&old_state);
+    let state_type = base
+        .state_type
+        .clone()
+        .as_builder()
+        .args(state_args_with_anchor(anchor, base.since).pack())
+        .build();
+    let state_lock = base
+        .state_lock
+        .clone()
+        .as_builder()
+        .args(state_type.calc_script_hash().as_bytes().pack())
+        .build();
+    let vault_lock = base
+        .vault_lock
+        .clone()
+        .as_builder()
+        .args(
+            wire::encode_multi_asset_vault_args(
+                &anchor,
+                base.since,
+                &state_type.calc_script_hash().unpack(),
+                &state_lock.calc_script_hash().unpack(),
+            )
+            .unwrap()
+            .to_vec()
+            .pack(),
+        )
+        .build();
+    let mut next = base.package.clone();
+    let template = next.manifest.vaults.last().unwrap().value;
+    let removed = match change_kind {
+        SpliceChange::AddOne => vec![],
+        SpliceChange::ReplaceAll => std::mem::take(&mut next.manifest.vaults),
+        _ => vec![next.manifest.vaults.pop().unwrap()],
+    };
+    next.scripts.type_scripts.retain(|entry| {
+        !removed
+            .iter()
+            .any(|vault| vault.asset == VaultAsset::Xudt(entry.type_hash))
+    });
+    let admitted_count = match change_kind {
+        SpliceChange::ReplaceAll => removed.len(),
+        SpliceChange::RemoveOne => 0,
+        _ => 1,
+    };
+    let mut admitted = Vec::new();
+    for index in 0..admitted_count {
+        let ty = if weak_admission {
+            deploy_always_success_with_args(
+                &mut base.context,
+                Bytes::from(vec![
+                    97 + index as u8;
+                    if maximum_scripts { 459 } else { 32 }
+                ]),
+            )
+        } else {
+            deploy_contract(
+                &mut base.context,
+                "morph-devnet-xudt",
+                vec![99 + index as u8; 32],
+            )
+        };
+        let hash = ty.calc_script_hash().unpack();
+        next.scripts.type_scripts.push(MultiAssetTypeScript {
+            type_hash: hash,
+            script: ty.as_slice().to_vec(),
+        });
+        admitted.push(MultiAssetVault {
+            asset: VaultAsset::Xudt(hash),
+            lock_hash: vault_lock.calc_script_hash().unpack(),
+            value: template,
+        });
+    }
+    let admitted_hash = admitted.first().map(|vault| match vault.asset {
+        VaultAsset::Xudt(hash) => hash,
+        _ => unreachable!(),
+    });
+    next.scripts
+        .type_scripts
+        .sort_by_key(|entry| entry.type_hash);
+    next.scripts.state_type = state_type.as_slice().to_vec();
+    next.scripts.state_lock = state_lock.as_slice().to_vec();
+    next.scripts.vault_lock = vault_lock.as_slice().to_vec();
+    let mut flows = Vec::new();
+    for vault in &mut next.manifest.vaults {
+        vault.lock_hash = vault_lock.calc_script_hash().unpack();
+        let amount = if matches!(vault.asset, VaultAsset::Xudt(_)) {
+            100
+        } else {
+            0
+        };
+        vault.value.amount += amount;
+        flows.push(MultiAssetSpliceFlow {
+            asset: vault.asset.clone(),
+            deposit: MultiAssetValue {
+                amount,
+                ..MultiAssetValue::default()
+            },
+            withdrawal: MultiAssetValue::default(),
+        });
+    }
+    for vault in &removed {
+        flows.push(MultiAssetSpliceFlow {
+            asset: vault.asset.clone(),
+            deposit: MultiAssetValue::default(),
+            withdrawal: vault.value,
+        });
+    }
+    for vault in &admitted {
+        flows.push(MultiAssetSpliceFlow {
+            asset: vault.asset.clone(),
+            deposit: vault.value,
+            withdrawal: MultiAssetValue::default(),
+        });
+    }
+    flows.sort_by_key(|flow| flow.asset.clone());
+    next.manifest.vaults.extend(admitted);
+    next.manifest
+        .vaults
+        .sort_by_key(|vault| vault.asset.clone());
+    next.state.vault_count = next.manifest.vaults.len() as u16;
+    next.settlement.payouts = next
+        .manifest
+        .vaults
+        .iter()
+        .map(|vault| MultiAssetPayout {
+            asset: vault.asset.clone(),
+            values: [
+                MultiAssetValue {
+                    reserve: vault.value.reserve / 2,
+                    business_ckb: vault.value.business_ckb / 2,
+                    amount: vault.value.amount / 2,
+                },
+                MultiAssetValue {
+                    reserve: vault.value.reserve - vault.value.reserve / 2,
+                    business_ckb: vault.value.business_ckb - vault.value.business_ckb / 2,
+                    amount: vault.value.amount - vault.value.amount / 2,
+                },
+            ],
+        })
+        .collect();
+    next.state.header.funding_epoch += 1;
+    next.state.header.funding_anchor = anchor;
+    next.state.header.phase = Phase::Active;
+    next.state.header.state_number = 0;
+    next.state.header.asset_registry_commitment =
+        asset_registry_commitment(&next.manifest.registry().unwrap());
+    next.state.header.settlement_descriptor_commitment = next.settlement.commitment().unwrap();
+    next.state.vault_content_set_root = next.manifest.commitment().unwrap();
+    next.state.vault_outpoint_set_root = [0; 32];
+    next.outpoints.clear();
+    signed(&mut next);
+    next.validate().unwrap();
+    let mut tx = TransactionBuilder::default().input(CellInput::new(old_point, 0));
+    for point in &base.package.outpoints {
+        tx = tx.input(CellInput::new(
+            OutPoint::new(point.tx_hash.pack(), point.index),
+            0,
+        ));
+    }
+    let mut change = CELL_CAPACITY - 10_000;
+    let mut admitted_input = None;
+    for flow in &flows {
+        if flow.deposit.amount == 0 {
+            continue;
+        }
+        let VaultAsset::Xudt(hash) = flow.asset else {
+            unreachable!()
+        };
+        let ty = Script::from_slice(
+            &next
+                .scripts
+                .type_scripts
+                .iter()
+                .find(|entry| entry.type_hash == hash)
+                .unwrap()
+                .script,
+        )
+        .unwrap();
+        let capacity = flow.deposit.capacity().unwrap().max(50_000_000_000);
+        let input = base.context.create_cell(
+            CellOutput::new_builder()
+                .capacity(capacity)
+                .lock(base.locks[0].clone())
+                .type_(Some(ty).pack())
+                .build(),
+            xudt_amount_data(flow.deposit.amount),
+        );
+        if Some(hash) == admitted_hash {
+            admitted_input = Some(input.clone());
+        }
+        tx = tx.input(CellInput::new(input, 0));
+        change += capacity - flow.deposit.capacity().unwrap();
+    }
+    let fee = base.context.create_cell(
+        CellOutput::new_builder()
+            .capacity(CELL_CAPACITY)
+            .lock(base.locks[0].clone())
+            .build(),
+        Bytes::new(),
+    );
+    tx = tx
+        .input(CellInput::new(fee, 0))
+        .output(
+            CellOutput::new_builder()
+                .capacity(next.state_carrier_capacity)
+                .lock(state_lock)
+                .type_(Some(state_type).pack())
+                .build(),
+        )
+        .output_data(Bytes::from(next.state.encode().unwrap().to_vec()).pack());
+    for vault in &next.manifest.vaults {
+        let ty = match vault.asset {
+            VaultAsset::Ckb => None,
+            VaultAsset::Xudt(hash) => Some(
+                Script::from_slice(
+                    &next
+                        .scripts
+                        .type_scripts
+                        .iter()
+                        .find(|entry| entry.type_hash == hash)
+                        .unwrap()
+                        .script,
+                )
+                .unwrap(),
+            ),
+        };
+        let data = if ty.is_some() {
+            xudt_amount_data(vault.value.amount)
+        } else {
+            Bytes::new()
+        };
+        tx = tx
+            .output(
+                CellOutput::new_builder()
+                    .capacity(vault.value.capacity().unwrap())
+                    .lock(vault_lock.clone())
+                    .type_(ty.pack())
+                    .build(),
+            )
+            .output_data(data.pack());
+    }
+    for flow in &flows {
+        if flow.withdrawal.capacity().unwrap() == 0 {
+            continue;
+        }
+        let ty = if flow.withdrawal.amount == 0 {
+            None
+        } else {
+            let VaultAsset::Xudt(hash) = flow.asset else {
+                unreachable!()
+            };
+            Some(
+                Script::from_slice(
+                    &base
+                        .package
+                        .scripts
+                        .type_scripts
+                        .iter()
+                        .find(|entry| entry.type_hash == hash)
+                        .unwrap()
+                        .script,
+                )
+                .unwrap(),
+            )
+        };
+        let data = if ty.is_some() {
+            xudt_amount_data(flow.withdrawal.amount)
+        } else {
+            Bytes::new()
+        };
+        tx = tx
+            .output(
+                CellOutput::new_builder()
+                    .capacity(flow.withdrawal.capacity().unwrap())
+                    .lock(base.locks[0].clone())
+                    .type_(ty.pack())
+                    .build(),
+            )
+            .output_data(data.pack());
+    }
+    tx = tx
+        .output(
+            CellOutput::new_builder()
+                .capacity(change)
+                .lock(base.locks[0].clone())
+                .build(),
+        )
+        .output_data(Bytes::new().pack());
+    let tx = base.context.complete_tx(tx.build());
+    let plan = MultiAssetSpliceProposal {
+        base_state_digest: base.package.state.signing_digest().unwrap(),
+        old_state_outpoint: old_state,
+        transaction_hash: tx.hash().unpack(),
+        new_state_authorization: next.authorization.clone(),
+        initial_recovery_authorization: StateAuthorization {
+            threshold: 2,
+            signatures: vec![],
+        },
+        new_state: next.state,
+        new_manifest: next.manifest,
+        new_settlement: next.settlement,
+        new_scripts: next.scripts,
+        flows,
+        withdrawal_lock: if removed.is_empty() {
+            vec![]
+        } else {
+            base.locks[0].as_slice().to_vec()
+        },
+    };
+    let mut result = SpliceFixture {
+        base,
+        plan,
+        transaction: tx,
+        admitted_input,
+    };
+    resign_splice(&mut result);
+    result
+}
+
+fn resign_splice(fixture: &mut SpliceFixture) {
+    fixture.plan.transaction_hash = fixture.transaction.hash().unpack();
+    let mut recovery = MultiAssetRecoveryPackage {
+        state: fixture.plan.new_state.clone(),
+        authorization: StateAuthorization {
+            threshold: 2,
+            signatures: vec![],
+        },
+        manifest: fixture.plan.new_manifest.clone(),
+        settlement: fixture.plan.new_settlement.clone(),
+        outpoints: (0..fixture.plan.new_manifest.vaults.len())
+            .map(|index| MultiAssetOutPoint {
+                tx_hash: fixture.plan.transaction_hash,
+                index: index as u32 + 1,
+            })
+            .collect(),
+        scripts: fixture.plan.new_scripts.clone(),
+        state_carrier_capacity: fixture.base.package.state_carrier_capacity,
+    };
+    recovery.state.header.phase = Phase::Settling;
+    recovery.state.header.state_number = 1;
+    recovery.state.vault_outpoint_set_root =
+        multi_asset_outpoint_commitment(&recovery.manifest, &recovery.outpoints).unwrap();
+    signed(&mut recovery);
+    fixture.plan.initial_recovery_authorization = recovery.authorization;
+    let mut keys = [signing_key(1), signing_key(2)];
+    keys.sort_by_key(pubkey);
+    let digest = fixture.plan.signing_digest(&fixture.base.package).unwrap();
+    let authorization = StateAuthorization {
+        threshold: 2,
+        signatures: keys
+            .iter()
+            .map(|key| ParticipantSignature {
+                pubkey_sec1: pubkey(key).to_vec(),
+                signature: signature(key, &digest).to_vec(),
+            })
+            .collect(),
+    };
+    let raw = fixture
+        .plan
+        .encode_witness(&fixture.base.package, &authorization)
+        .unwrap();
+    let witness = WitnessArgs::new_builder()
+        .input_type(
+            Some(Bytes::from(
+                encode_multi_asset_signatures(&fixture.plan.new_state_authorization)
+                    .unwrap()
+                    .to_vec(),
+            ))
+            .pack(),
+        )
+        .output_type(Some(Bytes::from(raw)).pack())
+        .build()
+        .as_bytes();
+    fixture.transaction = fixture
+        .transaction
+        .clone()
+        .as_advanced_builder()
+        .set_witnesses(vec![witness.pack()])
+        .build();
+    assert_eq!(
+        fixture.transaction.hash().as_slice(),
+        fixture.plan.transaction_hash
+    );
+}
+
+#[test]
+#[ignore]
+fn multi_asset_splice_reanchors_full_set_with_asset_admission_withdrawal_and_recovery() {
+    for (count, plain, change, maximum) in [
+        (2, true, SpliceChange::ReplaceOne, false),
+        (8, false, SpliceChange::ReplaceAll, false),
+        (2, false, SpliceChange::AddOne, false),
+        (2, false, SpliceChange::RemoveOne, false),
+        (8, false, SpliceChange::ReplaceAll, true),
+    ] {
+        let mut fixture = splice_transaction(count, plain, maximum, count == 8, change, maximum);
+        let cycles = fixture
+            .base
+            .context
+            .verify_tx(&fixture.transaction, MAX_CYCLES)
+            .expect("complete multi-asset splice");
+        eprintln!(
+            "multi-asset splice count={count} plain={plain} change={change:?} maximum_scripts={maximum} cycles={cycles} bytes={}",
+            fixture.transaction.data().as_slice().len()
+        );
+        materialise(&mut fixture.base.context, &fixture.transaction);
+        let recovery = fixture
+            .plan
+            .initial_recovery(&fixture.base.package)
+            .unwrap();
+        let mut active = recovery.clone();
+        active.state = fixture.plan.new_state.clone();
+        active.state.vault_outpoint_set_root = recovery.state.vault_outpoint_set_root;
+        let mut activate = TransactionBuilder::default()
+            .input(CellInput::new(point(&fixture.transaction, 0), 0))
+            .output(fixture.transaction.outputs().get(0).unwrap())
+            .output_data(Bytes::from(active.state.encode().unwrap().to_vec()).pack())
+            .witness(evidence(&active, false));
+        for point in &active.outpoints {
+            activate = activate.cell_dep(
+                CellDep::new_builder()
+                    .out_point(OutPoint::new(point.tx_hash.pack(), point.index))
+                    .build(),
+            );
+        }
+        let activate = fixture.base.context.complete_tx(activate.build());
+        fixture
+            .base
+            .context
+            .verify_tx(&activate, MAX_CYCLES)
+            .expect("splice set activation");
+        materialise(&mut fixture.base.context, &activate);
+        let publish = fixture.base.context.complete_tx(
+            TransactionBuilder::default()
+                .input(CellInput::new(point(&activate, 0), 0))
+                .output(activate.outputs().get(0).unwrap())
+                .output_data(Bytes::from(recovery.state.encode().unwrap().to_vec()).pack())
+                .witness(evidence(&recovery, true))
+                .build(),
+        );
+        fixture
+            .base
+            .context
+            .verify_tx(&publish, MAX_CYCLES)
+            .expect("pre-signed initial exit after splice");
+        materialise(&mut fixture.base.context, &publish);
+        // Reuse the ordinary complete-set finalisation builder, replacing only
+        // its newly proven funding context and canonical State checkpoint.
+        fixture.base.package = recovery.clone();
+        fixture.base.supersede = publish;
+        fixture.base.funding = fixture.transaction;
+        fixture.base.vault_types = fixture
+            .plan
+            .new_manifest
+            .vaults
+            .iter()
+            .map(|vault| match vault.asset {
+                VaultAsset::Ckb => None,
+                VaultAsset::Xudt(hash) => Some(
+                    Script::from_slice(
+                        &fixture
+                            .plan
+                            .new_scripts
+                            .type_scripts
+                            .iter()
+                            .find(|entry| entry.type_hash == hash)
+                            .unwrap()
+                            .script,
+                    )
+                    .unwrap(),
+                ),
+            })
+            .collect();
+        let final_tx = finalise(&mut fixture.base);
+        fixture
+            .base
+            .context
+            .verify_tx(&final_tx, MAX_CYCLES)
+            .expect("complete post-splice retirement");
+        recovery.validate().unwrap();
+    }
+}
+
+#[test]
+#[ignore]
+fn multi_asset_splice_rejects_body_changes_clone_partial_sets_withdrawal_and_carrier_substitution()
+{
+    for mutation in 0..9 {
+        let mut fixture =
+            splice_transaction(2, true, false, false, SpliceChange::ReplaceOne, false);
+        let mut inputs = fixture.transaction.inputs().into_iter().collect::<Vec<_>>();
+        let mut outputs = fixture
+            .transaction
+            .outputs()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut data = fixture
+            .transaction
+            .outputs_data()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let last = outputs.len() - 1;
+        let change: u64 = outputs[last].capacity().unpack();
+        let expected = match mutation {
+            0 => {
+                outputs[last] = outputs[last]
+                    .clone()
+                    .as_builder()
+                    .capacity(change - 1)
+                    .build();
+                vec![68]
+            }
+            1 => {
+                let old = inputs[1].previous_output();
+                let (cell, bytes) = fixture.base.context.get_cell(&old).unwrap();
+                let clone = fixture.base.context.create_cell(cell, bytes);
+                inputs[1] = CellInput::new(clone, 0);
+                vec![50]
+            }
+            2 => {
+                inputs.remove(1);
+                outputs[last] = outputs[last]
+                    .clone()
+                    .as_builder()
+                    .capacity(change - 50_000_000_000)
+                    .build();
+                vec![50, 66]
+            }
+            3 => {
+                outputs.remove(1);
+                data.remove(1);
+                let pos = outputs.len() - 1;
+                outputs[pos] = outputs[pos]
+                    .clone()
+                    .as_builder()
+                    .capacity(change + 50_000_000_000)
+                    .build();
+                vec![65, 66]
+            }
+            4 => {
+                let index = 1 + fixture.plan.new_manifest.vaults.len();
+                outputs[index] = outputs[index]
+                    .clone()
+                    .as_builder()
+                    .lock(fixture.base.locks[1].clone())
+                    .build();
+                vec![65]
+            }
+            5 => {
+                let carrier: u64 = outputs[0].capacity().unpack();
+                outputs[0] = outputs[0]
+                    .clone()
+                    .as_builder()
+                    .capacity(carrier - 1)
+                    .build();
+                outputs[last] = outputs[last]
+                    .clone()
+                    .as_builder()
+                    .capacity(change + 1)
+                    .build();
+                vec![52]
+            }
+            6 => {
+                let (cell, bytes) = fixture
+                    .base
+                    .context
+                    .get_cell(&inputs[1].previous_output())
+                    .unwrap();
+                let extra = fixture.base.context.create_cell(cell, bytes);
+                inputs.push(CellInput::new(extra, 0));
+                outputs[last] = outputs[last]
+                    .clone()
+                    .as_builder()
+                    .capacity(change + 50_000_000_000)
+                    .build();
+                vec![66]
+            }
+            7 => {
+                outputs[last] = outputs[last]
+                    .clone()
+                    .as_builder()
+                    .capacity(change - 50_000_000_000)
+                    .build();
+                outputs.push(outputs[1].clone());
+                data.push(data[1].clone());
+                vec![66, 68]
+            }
+            _ => {
+                outputs[0] = outputs[0]
+                    .clone()
+                    .as_builder()
+                    .type_(Some(fixture.base.locks[1].clone()).pack())
+                    .build();
+                vec![68]
+            }
+        };
+        fixture.transaction = fixture
+            .transaction
+            .clone()
+            .as_advanced_builder()
+            .set_inputs(inputs)
+            .set_outputs(outputs)
+            .set_outputs_data(data)
+            .build();
+        if mutation != 0 {
+            resign_splice(&mut fixture);
+        }
+        rejects(&fixture.base.context, &fixture.transaction, &expected);
+    }
+}
+
+#[test]
+#[ignore]
+fn multi_asset_splice_independently_rejects_mint_under_a_permissive_asset_type() {
+    let mut fixture = splice_transaction(2, true, true, false, SpliceChange::ReplaceOne, false);
+    fixture
+        .base
+        .context
+        .verify_tx(&fixture.transaction, MAX_CYCLES)
+        .expect("valid permissive-type transfer");
+    let (cell, _) = fixture
+        .base
+        .context
+        .get_cell(fixture.admitted_input.as_ref().unwrap())
+        .unwrap();
+    fixture.base.context.create_cell_with_out_point(
+        fixture.admitted_input.clone().unwrap(),
+        cell,
+        xudt_amount_data(999),
+    );
+    rejects(&fixture.base.context, &fixture.transaction, &[64]);
+}
+
+#[test]
+#[ignore]
+fn multi_asset_splice_requires_both_bridge_and_new_creation_authorizations() {
+    use morph_script_common::multi_asset_splice as splice;
+    for mutation in 0..3 {
+        let mut fixture =
+            splice_transaction(2, true, false, false, SpliceChange::ReplaceOne, false);
+        let witness = fixture.transaction.witnesses().get(0).unwrap().raw_data();
+        let args = WitnessArgs::from_slice(&witness).unwrap();
+        let args = match mutation {
+            0 => {
+                let mut body = args.output_type().to_opt().unwrap().raw_data().to_vec();
+                body[splice::MULTI_ASSET_SPLICE_PREFIX_LEN
+                    + splice::MULTI_ASSET_SPLICE_HEADER_LEN
+                    + wire::MULTI_ASSET_STATE_HEADER_LEN
+                    + 37] ^= 1;
+                args.as_builder()
+                    .output_type(Some(Bytes::from(body)).pack())
+                    .build()
+            }
+            1 => args.as_builder().input_type(None::<Bytes>.pack()).build(),
+            _ => args
+                .as_builder()
+                .input_type(
+                    Some(Bytes::from(
+                        encode_multi_asset_signatures(&fixture.base.package.authorization)
+                            .unwrap()
+                            .to_vec(),
+                    ))
+                    .pack(),
+                )
+                .build(),
+        };
+        fixture.transaction = fixture
+            .transaction
+            .as_advanced_builder()
+            .set_witnesses(vec![args.as_bytes().pack()])
+            .build();
+        rejects(
+            &fixture.base.context,
+            &fixture.transaction,
+            if mutation == 1 { &[21] } else { &[24] },
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn multi_asset_splice_rejects_reserve_business_reclassification_even_with_valid_bridge_signatures()
+{
+    use morph_script_common::multi_asset_splice as splice;
+    let mut fixture = splice_transaction(2, true, false, false, SpliceChange::ReplaceOne, false);
+    let raw = fixture.transaction.witnesses().get(0).unwrap().raw_data();
+    let args = WitnessArgs::from_slice(&raw).unwrap();
+    let mut body = args.output_type().to_opt().unwrap().raw_data().to_vec();
+    let flows_len = u32::from_le_bytes(body[28..32].try_into().unwrap()) as usize;
+    let start = body.len() - flows_len;
+    // The unchanged plain CKB Vault declares a one-shannon extra deposit;
+    // physical inputs/outputs and both new-State authorizations stay valid.
+    body[start + 4 + 33] = 1;
+    let root = splice::MultiAssetSpliceFlows::parse(&body[start..])
+        .unwrap()
+        .commitment();
+    let header_start = splice::MULTI_ASSET_SPLICE_PREFIX_LEN;
+    body[header_start + 104..header_start + 136].copy_from_slice(&root);
+    let digest = splice::MultiAssetSpliceHeader::parse(
+        &body[header_start..header_start + splice::MULTI_ASSET_SPLICE_HEADER_LEN],
+    )
+    .unwrap()
+    .signing_digest();
+    let mut keys = [signing_key(1), signing_key(2)];
+    keys.sort_by_key(pubkey);
+    let authorization = StateAuthorization {
+        threshold: 2,
+        signatures: keys
+            .iter()
+            .map(|key| ParticipantSignature {
+                pubkey_sec1: pubkey(key).to_vec(),
+                signature: signature(key, &digest).to_vec(),
+            })
+            .collect(),
+    };
+    let offset =
+        header_start + splice::MULTI_ASSET_SPLICE_HEADER_LEN + wire::MULTI_ASSET_STATE_HEADER_LEN;
+    body[offset..offset + 198]
+        .copy_from_slice(&encode_multi_asset_signatures(&authorization).unwrap());
+    let witness = args
+        .as_builder()
+        .output_type(Some(Bytes::from(body)).pack())
+        .build();
+    fixture.transaction = fixture
+        .transaction
+        .as_advanced_builder()
+        .set_witnesses(vec![witness.as_bytes().pack()])
+        .build();
+    rejects(&fixture.base.context, &fixture.transaction, &[64]);
 }

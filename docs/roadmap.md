@@ -33,8 +33,8 @@ external review and operational release evidence remain open.
 | M4: Factory mode | Implemented narrowly | Conservative factory updates, local exits, reduced-rights proof, sparse-Merkle update, reduced exit, factory splice, and reduced splice through `WitnessEnvelope`. |
 | M5: Watchtower and audit gates | Implemented locally | Watch config, policy checks, JSONL/webhook alerts, stale-package guard, smoke assertions, stateful assertions, and budget profiles. |
 | M6: Production readiness | Controlled-devnet candidate; production open | Factory has a checked manifest/envelope and runbooks. Publication now has bounded node-informed fees, CKB RBF, least-privilege two-operator local evidence, and induced-reorg recovery. External review, independent rebuild/operators, and repeated public-network measurements remain open. |
-| M7: Factory 2.0 surface (v2.0) | Implemented locally | Multi-right reduced updates (envelope kind 8), compact variable-depth sparse-Merkle proofs, and the operator value-limit policy with runbook; see `docs/v2.0-plan.md`. Devnet save/publication plumbing for kind 8 packages is the remaining follow-up. |
-| M8: Conditional batch surface (v3.0) | Implemented locally | Descriptor v3, bounded preimage/absolute-refund leaves, cooperative consolidation, Vault-to-Batch materialisation, Batch CKB-VM enforcement, canonical CLI package, and durable Hub import; see `docs/v3.0-plan.md`. |
+| M7: Factory 2.0 surface (v2.0) | Implemented locally | Multi-right reduced updates (envelope kind 8), compact variable-depth sparse-Merkle proofs, and the operator value-limit policy with runbook; see `docs/factory-multi-right.md`. Devnet save/publication plumbing for kind 8 packages is the remaining follow-up. |
+| M8: Conditional batch surface (v3.0) | Implemented locally | Descriptor v3, bounded preimage/absolute-refund leaves, cooperative consolidation, Vault-to-Batch materialisation, Batch CKB-VM enforcement, canonical CLI package, and durable Hub import; see `docs/conditional-batches.md`. |
 | M9: Multi-asset channels | Implementation in progress | Bilateral layout 2 / descriptor 4 supports 1–8 Vaults with host, CKB-VM, CLI/SDK, durable Hub recovery, and real-node two/eight-xUDT lifecycle evidence. Multi-asset splice, Factory custody, typed conditions, publication/reorg automation and release qualification remain open; see [candidate profile](multi-asset-wire.md). |
 
 ## Current Factory Witness Baseline
@@ -57,7 +57,7 @@ authorisation boundary.
 | Area | Deferred item | Why it is deferred |
 | --- | --- | --- |
 | Multi-asset channels | Multiple xUDT types in one physical channel funding context. | Next protocol extension (M9): host/right models already represent multiple assets; single-Vault provenance and fixed settlement/splice paths need a versioned replacement. |
-| Factory proofs | ~~Multi-right reduced updates.~~ | Delivered in 2.0 as envelope kind 8; see `docs/v2.0-plan.md`. |
+| Factory proofs | ~~Multi-right reduced updates.~~ | Delivered in 2.0 as envelope kind 8; see `docs/factory-multi-right.md`. |
 | Factory proofs | ~~Variable-depth or dynamic proof profiles.~~ | Delivered in 2.0 as compact bounded sparse-Merkle proofs on kind 8. |
 | Factory 2.0 tooling | Devnet save/publication command for kind 8 state-cell packages. | Host validation, fixtures, and on-chain evidence exist; the live-node publication flow mirrors `save-factory-merkle-update-package` and needs a devnet rehearsal. |
 | Factory membership | Larger participant sets with production ergonomics. | The wire supports 2-16 participants; production ergonomics still need proof-size, fee, and UX evidence. |

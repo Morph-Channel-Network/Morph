@@ -70,7 +70,7 @@ function unsigned(raw: Uint8Array, offset: number, length: number): bigint {
 }
 function u16(raw: Uint8Array, offset: number): number { return Number(unsigned(raw, offset, 2)); }
 function u32(raw: Uint8Array, offset: number): number { return Number(unsigned(raw, offset, 4)); }
-function little(value: number, length: number): Uint8Array {
+function little(value: number | bigint, length: number): Uint8Array {
   let remaining = BigInt(value);
   return Uint8Array.from({ length }, () => { const byte = Number(remaining & 255n); remaining >>= 8n; return byte; });
 }
@@ -115,6 +115,10 @@ function occupied(lock: Uint8Array, type?: Uint8Array): bigint {
  * Chain liveness, confirmations, and deployed code approval require an RPC and
  * the operator's release policy in addition to this local evidence check. */
 export function inspectMultiAssetPackage(value: MultiAssetRecoveryPackage): MultiAssetPackageSummary {
+  return inspectPackage(value, true);
+}
+
+function inspectPackage(value: MultiAssetRecoveryPackage, verifySignatures: boolean): MultiAssetPackageSummary {
   requireValue(typeof value === "object" && value !== null && value.schema === "morph.multi_asset_recovery_package.v1", "unsupported schema");
   requireValue(Object.keys(value).sort().join(",") === "cell_deps,header_hex,schema,signature_witness_hex,state_carrier_capacity,witness_hex", "unknown package fields");
   requireValue(Array.isArray(value.cell_deps) && value.cell_deps.length >= 1 && value.cell_deps.length <= 64, "incomplete code dependencies");
@@ -128,17 +132,18 @@ export function inspectMultiAssetPackage(value: MultiAssetRecoveryPackage): Mult
       || (previousDependency.tx_hash === dep.tx_hash && previousDependency.index < dep.index), "duplicate or unordered code dependencies");
     previousDependency = dep;
   }
-  const header = bytes(value.header_hex, 414);
-  requireValue(header.length === 414 && u16(header, 0) === 1 && u16(header, 34) === 1
-    && header[148] === 1 && [1, 2].includes(header[149]!) && u16(header, 246) === 4
-    && u16(header, 312) === 2 && u16(header, 412) === 0
-    && zero(header.slice(248, 280)) && zero(header.slice(314, 346)), "unsupported State profile");
-  const count = u16(header, 410);
-  const contentRoot = header.slice(346, 378);
-  const pointRoot = header.slice(378, 410);
+  const header = bytes(value.header_hex, 318);
+  requireValue(header.length === 318 && u16(header, 0) === 1 && u16(header, 34) === 1
+    && header[116] === 1 && [1, 2].includes(header[117]!) && u16(header, 214) === 4
+    && u16(header, 248) === 2 && u16(header, 316) === 0, "unsupported State profile");
+  const count = u16(header, 314);
+  const contentRoot = header.slice(250, 282);
+  const pointRoot = header.slice(282, 314);
   const bound = !zero(pointRoot);
+  requireValue(!verifySignatures || bound || u64(header, 68) !== 0n,
+    "root creation requires transaction-bound funding authorization");
   requireValue(count >= 1 && count <= MAX_VAULTS && !zero(contentRoot)
-    && same(header.slice(108, 140), contentRoot) && (header[149] !== 2 || bound), "invalid Vault context");
+    && (header[117] !== 2 || bound), "invalid Vault context");
   const witness = bytes(value.witness_hex, MAX_WITNESS_BYTES);
   requireValue(witness.length >= 28 && same(witness.slice(0, 8), utf8.encode("MORPHMA!"))
     && u16(witness, 8) === 1 && u16(witness, 10) === 0 && u16(witness, 22) === 0, "invalid recovery witness");
@@ -152,7 +157,7 @@ export function inspectMultiAssetPackage(value: MultiAssetRecoveryPackage): Mult
   requireValue(manifest.length === 4 + count * 97 && u16(manifest, 0) === 1 && manifest[2] === count && manifest[3] === 0, "invalid Vault manifest");
   requireValue(descriptor.length === 100 + count * 97 && u16(descriptor, 0) === 4 && descriptor[2] === count && descriptor[3] === 0, "invalid settlement descriptor");
   requireValue(same(domainHash("CKB_MORPH_MULTI_ASSET_VAULT_SET_V1", manifest), contentRoot)
-    && same(domainHash("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1", descriptor), header.slice(214, 246)), "manifest or descriptor commitment mismatch");
+    && same(domainHash("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1", descriptor), header.slice(182, 214)), "manifest or descriptor commitment mismatch");
   const locks = [descriptor.slice(4, 36), descriptor.slice(36, 68), descriptor.slice(68, 100)];
   requireValue(!zero(locks[0]!) && hex(locks[0]!) < hex(locks[1]!) && !zero(locks[2]!), "invalid payout locks");
   const vaults: Vault[] = [];
@@ -176,7 +181,7 @@ export function inspectMultiAssetPackage(value: MultiAssetRecoveryPackage): Mult
     payouts.push([a, b]);
   }
   const typed = vaults.filter((vault) => vault.asset.kind === 1);
-  requireValue(same(domainHash("CKB_MORPH_ASSET_REGISTRY_V1", little(typed.length, 8), ...typed.map((vault) => vault.asset.type)), header.slice(182, 214)), "asset registry mismatch");
+  requireValue(same(domainHash("CKB_MORPH_ASSET_REGISTRY_V1", little(typed.length, 8), ...typed.map((vault) => vault.asset.type)), header.slice(150, 182)), "asset registry mismatch");
   const points = witness.slice(descriptorEnd, scriptsStart);
   requireValue(bound ? pointCount === count : pointCount === 0, "incomplete OutPoint set");
   if (bound) {
@@ -227,15 +232,15 @@ export function inspectMultiAssetPackage(value: MultiAssetRecoveryPackage): Mult
   }
   requireValue(typeof value.state_carrier_capacity === "string" && /^[1-9][0-9]{0,19}$/.test(value.state_carrier_capacity), "invalid carrier capacity");
   const carrier = BigInt(value.state_carrier_capacity);
-  const stateOccupied = (8n + scriptOccupied(stateLock) + scriptOccupied(stateType) + 414n) * 100_000_000n;
+  const stateOccupied = (8n + scriptOccupied(stateLock) + scriptOccupied(stateType) + 318n) * 100_000_000n;
   requireValue(carrier <= MAX_U64 && occupied(scripts[2]!) <= carrier && stateOccupied <= carrier, "insufficient State carrier capacity");
   const signatures = bytes(value.signature_witness_hex, 198);
   requireValue(signatures.length === 198 && u16(signatures, 0) === 1 && signatures[2] === 2 && signatures[3] === 2, "unsupported signatures");
   const publicKeys = [signatures.slice(4, 37), signatures.slice(101, 134)] as const;
   requireValue(hex(publicKeys[0]) < hex(publicKeys[1])
-    && same(domainHash("CKB_MORPH_PARTICIPANTS", Uint8Array.of(2, 2), ...publicKeys), header.slice(150, 182)), "participant commitment mismatch");
+    && same(domainHash("CKB_MORPH_PARTICIPANTS", Uint8Array.of(2, 2), ...publicKeys), header.slice(118, 150)), "participant commitment mismatch");
   const digest = domainHash("CKB_MORPH_MULTI_ASSET_STATE_V1", header);
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; verifySignatures && i < 2; i++) {
     requireValue(secp256k1.verify(signatures.slice(37 + i * 97, 101 + i * 97), digest, publicKeys[i]!, {
       prehash: false, lowS: true, format: "compact",
     }), "invalid participant signature");
@@ -243,10 +248,103 @@ export function inspectMultiAssetPackage(value: MultiAssetRecoveryPackage): Mult
   return {
     package_id: hex(digest), channel_id: hex(header.slice(36, 68)),
     funding_context_id: hex(domainHash("CKB_MORPH_MULTI_ASSET_FUNDING_CONTEXT_V1", header.slice(2, 34), header.slice(36, 68), header.slice(76, 108), contentRoot, pointRoot)),
-    state_number: unsigned(header, 140, 8).toString(), phase: header[149] === 1 ? "active" : "settling",
+    state_number: unsigned(header, 108, 8).toString(), phase: header[117] === 1 ? "active" : "settling",
     vaults_bound: bound, vault_count: count, witness_bytes: witness.length,
     dependency_count: value.cell_deps.length,
     state_carrier_capacity: value.state_carrier_capacity, signer_pubkeys: [hex(publicKeys[0]), hex(publicKeys[1])],
     assets: vaults.map((vault) => ({ type_hash: vault.asset.kind === 0 ? null : hex(vault.asset.type), reserve: vault.value.reserve.toString(), business_ckb: vault.value.business.toString(), amount: vault.value.amount.toString() })),
   };
+}
+
+
+export interface MultiAssetProposal {
+  schema: "morph.multi_asset_proposal.v1";
+  base_state_digest: string;
+  state_number: string;
+  descriptor_hex: string;
+  signing_digest: string;
+}
+
+export interface MultiAssetProposalSignature {
+  schema: "morph.multi_asset_signature.v1";
+  signing_digest: string;
+  pubkey: string;
+  signature: string;
+}
+
+export interface MultiAssetProposalInspection {
+  summary: MultiAssetPackageSummary;
+  participant_lock_hashes: [string, string];
+  payouts: Array<{
+    type_hash: string | null;
+    allocations: [
+      { reserve: string; business_ckb: string; amount: string },
+      { reserve: string; business_ckb: string; amount: string },
+    ];
+  }>;
+}
+
+function proposalEvidence(base: MultiAssetRecoveryPackage, stateNumber: string, descriptorHex: string): MultiAssetRecoveryPackage {
+  const current = inspectMultiAssetPackage(base);
+  requireValue(current.phase === "settling" && current.vaults_bound, "proposal requires bound settling recovery");
+  requireValue(typeof stateNumber === "string" && /^[1-9][0-9]{0,19}$/.test(stateNumber), "noncanonical proposal state number");
+  const number = BigInt(stateNumber);
+  requireValue(number <= MAX_U64 && number > BigInt(current.state_number), "proposal must advance state number without overflow");
+  const descriptor = bytes(descriptorHex, 100 + MAX_VAULTS * 97);
+  const header = bytes(base.header_hex, 318);
+  header.set(little(number, 8), 108);
+  header.set(domainHash("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1", descriptor), 182);
+  const old = bytes(base.witness_hex, MAX_WITNESS_BYTES);
+  const manifestEnd = 28 + u32(old, 12);
+  const descriptorEnd = manifestEnd + u32(old, 16);
+  const prefix = old.slice(0, 28);
+  prefix.set(little(descriptor.length, 4), 16);
+  const witness = join(prefix, old.slice(28, manifestEnd), descriptor, old.slice(descriptorEnd));
+  return { ...base, header_hex: hex(header), witness_hex: hex(witness) };
+}
+
+/** Construct a proposal for explicit peer review. This stateless helper does
+ * not replace a durable signer reservation or implement anti-rollback storage. */
+export function createMultiAssetProposal(base: MultiAssetRecoveryPackage, stateNumber: string, descriptorHex: string): MultiAssetProposal {
+  const summary = inspectMultiAssetPackage(base);
+  const evidence = proposalEvidence(base, stateNumber, descriptorHex);
+  // Only the new signatures are absent; all content and the old authenticated
+  // participant identities are independently verified before requesting a vote.
+  const next = inspectPackage(evidence, false);
+  return { schema: "morph.multi_asset_proposal.v1", base_state_digest: summary.package_id,
+    state_number: stateNumber, descriptor_hex: descriptorHex, signing_digest: next.package_id };
+}
+
+/** Inspect exact per-asset payouts without requiring signatures for the new
+ * proposal. The base recovery package always requires both valid signatures. */
+export function inspectMultiAssetProposal(base: MultiAssetRecoveryPackage, proposal: MultiAssetProposal): MultiAssetProposalInspection {
+  requireValue(typeof proposal === "object" && proposal !== null && proposal.schema === "morph.multi_asset_proposal.v1"
+    && Object.keys(proposal).sort().join(",") === "base_state_digest,descriptor_hex,schema,signing_digest,state_number", "unsupported proposal fields");
+  const current = inspectMultiAssetPackage(base);
+  requireValue(proposal.base_state_digest === current.package_id, "proposal does not extend current signed state");
+  const evidence = proposalEvidence(base, proposal.state_number, proposal.descriptor_hex);
+  const summary = inspectPackage(evidence, false);
+  requireValue(summary.package_id === proposal.signing_digest, "proposal signing digest mismatch");
+  const descriptor = bytes(proposal.descriptor_hex, 100 + MAX_VAULTS * 97);
+  const payouts = summary.assets.map((_, index) => {
+    const offset = 100 + index * 97;
+    const id = asset(descriptor, offset);
+    const values = [allocation(descriptor, offset + 33, id, false), allocation(descriptor, offset + 65, id, false)];
+    return { type_hash: id.kind === 0 ? null : hex(id.type),
+      allocations: values.map(value => ({ reserve: value.reserve.toString(), business_ckb: value.business.toString(), amount: value.amount.toString() })) as MultiAssetProposalInspection["payouts"][number]["allocations"] };
+  });
+  return { summary, participant_lock_hashes: [hex(descriptor.slice(4, 36)), hex(descriptor.slice(36, 68))], payouts };
+}
+
+export function inspectMultiAssetProposalSignature(base: MultiAssetRecoveryPackage, proposal: MultiAssetProposal, signature: MultiAssetProposalSignature): { signer_pubkey: string; signing_digest: string } {
+  const inspected = inspectMultiAssetProposal(base, proposal);
+  requireValue(typeof signature === "object" && signature !== null && signature.schema === "morph.multi_asset_signature.v1"
+    && Object.keys(signature).sort().join(",") === "pubkey,schema,signature,signing_digest", "unsupported proposal signature fields");
+  requireValue(signature.signing_digest === proposal.signing_digest
+    && inspected.summary.signer_pubkeys.includes(signature.pubkey), "proposal signature context or signer mismatch");
+  const raw = bytes(signature.signature, 64);
+  requireValue(raw.length === 64 && secp256k1.verify(raw, bytes(proposal.signing_digest, 32), bytes(signature.pubkey, 33), {
+    prehash: false, lowS: true, format: "compact",
+  }), "invalid proposal signature");
+  return { signer_pubkey: signature.pubkey, signing_digest: signature.signing_digest };
 }

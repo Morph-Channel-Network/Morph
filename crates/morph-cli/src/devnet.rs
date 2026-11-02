@@ -96,6 +96,14 @@ const DEFAULT_SECP_TYPE_HASH: &str =
     "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8";
 #[cfg(feature = "devnet")]
 pub mod multi_asset;
+#[cfg(feature = "devnet")]
+pub mod multi_asset_funding_operator;
+#[cfg(feature = "devnet")]
+pub mod multi_asset_operator;
+#[cfg(feature = "devnet")]
+pub mod multi_asset_splice_operator;
+#[cfg(feature = "devnet")]
+pub mod multi_asset_watch;
 pub const DEFAULT_SPONSOR_MIN_STATE_NUMBER: u64 = 1;
 pub const DEFAULT_SPONSOR_MAX_STATE_NUMBER: u64 = 1 << 20;
 const CONTRACTS: [(&str, &str); 8] = [
@@ -1626,6 +1634,7 @@ struct ContractBinary {
 struct ContractTarget {
     name: String,
     data_hash: H256,
+    type_hash: Option<H256>,
 }
 
 #[derive(Debug, Clone)]
@@ -7753,6 +7762,10 @@ pub fn watch_latest_state_package(
         match read_watch_cursor(&cursor_file)? {
             Some(cursor) => {
                 ensure!(
+                    cursor.from_block == options.from_block,
+                    "watch cursor scan origin differs; use a fresh cursor or --ignore-cursor"
+                );
+                ensure!(
                     cursor.channel_id == channel_id,
                     "watch cursor {} belongs to channel {}, not {}",
                     cursor_file.display(),
@@ -7870,11 +7883,7 @@ pub fn watch_latest_state_package(
                     let previous_funding_context_id = current_funding_context_id.clone();
                     let splice_detected = previous_funding_context_id
                         .as_ref()
-                        .is_some_and(|context_id| context_id != &observed.funding_context_id)
-                        || (previous_funding_context_id.is_none()
-                            && previous_funding_anchor
-                                .as_ref()
-                                .is_some_and(|anchor| anchor != &observed.funding_anchor));
+                        .is_some_and(|context_id| context_id != &observed.funding_context_id);
                     if splice_detected {
                         append_watch_alert_if_requested(
                             &options.alert_file,
@@ -7909,13 +7918,7 @@ pub fn watch_latest_state_package(
                     let selected_for_context = latest_package_for_funding_context(
                         &package_records,
                         &observed.funding_context_id,
-                    )
-                    .or_else(|| {
-                        latest_package_for_funding_anchor(
-                            &package_records,
-                            &observed.funding_anchor,
-                        )
-                    });
+                    );
                     let Some(selected_for_context) = selected_for_context else {
                         append_watch_alert_if_requested(
                             &options.alert_file,
@@ -7980,6 +7983,8 @@ pub fn watch_latest_state_package(
 
                     let selected_for_context_state_number =
                         selected_for_context.package.state_number;
+                    // This explicit saved-package publication policy can begin
+                    // a settling state from an active State Cell.
                     if observed.state_number < selected_for_context_state_number {
                         append_watch_alert_if_requested(
                             &options.alert_file,
@@ -8087,6 +8092,7 @@ pub fn watch_latest_state_package(
                             &cursor_file,
                             &watch_cursor_for_state(
                                 &channel_id,
+                                options.from_block,
                                 next_from_block,
                                 scanned_to_block,
                                 scanned_to_block_hash.as_deref(),
@@ -8126,6 +8132,7 @@ pub fn watch_latest_state_package(
                     &cursor_file,
                     &watch_cursor_for_state(
                         &channel_id,
+                        options.from_block,
                         next_block,
                         scanned_to_block,
                         scanned_to_block_hash.as_deref(),
@@ -8141,6 +8148,7 @@ pub fn watch_latest_state_package(
                 &cursor_file,
                 &watch_cursor_for_state(
                     &channel_id,
+                    options.from_block,
                     next_block,
                     scanned_to_block,
                     scanned_to_block_hash.as_deref(),
@@ -8217,17 +8225,6 @@ fn state_package_funding_context_id(record: &StatePackageRecord) -> Option<Strin
     record.package.funding_context_id().ok()
 }
 
-fn latest_package_for_funding_anchor(
-    records: &[StatePackageRecord],
-    funding_anchor: &str,
-) -> Option<StatePackageRecord> {
-    records
-        .iter()
-        .filter(|record| record.package.funding_anchor == funding_anchor)
-        .cloned()
-        .max_by(compare_state_package_records)
-}
-
 fn cursor_requires_publication_retry(
     rpc: &CkbRpcClient,
     cursor: &WatchCursor,
@@ -8242,13 +8239,7 @@ fn cursor_requires_publication_retry(
     let selected = cursor
         .current_funding_context_id
         .as_deref()
-        .and_then(|context_id| latest_package_for_funding_context(records, context_id))
-        .or_else(|| {
-            cursor
-                .current_funding_anchor
-                .as_deref()
-                .and_then(|anchor| latest_package_for_funding_anchor(records, anchor))
-        });
+        .and_then(|context_id| latest_package_for_funding_context(records, context_id));
     let Some(selected) = selected else {
         return Ok(false);
     };
@@ -8283,13 +8274,14 @@ fn compare_state_package_records(
 
 fn watch_cursor_for_state(
     channel_id: &str,
+    from_block: u64,
     next_block: u64,
     scanned_to_block: u64,
     scanned_to_block_hash: Option<&str>,
     observed: Option<&ObservedStateCellReport>,
     previous_cursor: Option<&WatchCursor>,
 ) -> Result<WatchCursor> {
-    let mut cursor = WatchCursor::new(channel_id, next_block, scanned_to_block)?;
+    let mut cursor = WatchCursor::new(channel_id, from_block, next_block, scanned_to_block)?;
     if let Some(block_hash) = scanned_to_block_hash {
         cursor = cursor.with_scanned_block_hash(block_hash)?;
     } else if let Some(previous_cursor) =
@@ -8475,9 +8467,31 @@ pub fn fund_sponsor(rpc: &CkbRpcClient, options: FundSponsorOptions) -> Result<F
         .with_context(|| "invalid secp256k1 private key for sponsor funding")?;
     let owner_lock = secp256k1_lock(&owner_key)?;
     let state_out_point = parse_out_point(&options.state_out_point)?;
-    let state_cell = load_live_cell(rpc, state_out_point)?;
-    let header = WireStateHeader::parse(state_cell.data.as_ref())
-        .map_err(|err| anyhow!("state cell does not contain a valid Morph StateHeader: {err:?}"))?;
+    let state_cell = load_canonical_live_cell(rpc, state_out_point)?;
+    let (channel, funding_anchor, state_number) = if state_cell.data.len()
+        == morph_script_common::multi_asset::MULTI_ASSET_STATE_HEADER_LEN
+    {
+        let header =
+            morph_script_common::multi_asset::MultiAssetStateHeader::parse(&state_cell.data)
+                .map_err(|error| anyhow!("invalid multi-asset publication State: {error:?}"))?;
+        (
+            header.channel_id(),
+            header.funding_anchor(),
+            header.state_number(),
+        )
+    } else {
+        let header = WireStateHeader::parse(&state_cell.data)
+            .and_then(|header| {
+                header.validate_profile()?;
+                Ok(header)
+            })
+            .map_err(|error| anyhow!("invalid publication State: {error:?}"))?;
+        (
+            header.channel_id(),
+            header.funding_anchor(),
+            header.state_number(),
+        )
+    };
     let state_type_hash: [u8; 32] = state_cell
         .output
         .type_()
@@ -8489,7 +8503,38 @@ pub fn fund_sponsor(rpc: &CkbRpcClient, options: FundSponsorOptions) -> Result<F
     let tip_number = rpc.tip_header()?.number_value()?;
     let funding_cell = find_largest_live_cell(rpc, &owner_lock, tip_number)?;
     let secp_dep = find_secp256k1_cell_dep(rpc)?;
-    let contracts = find_deployed_contracts(rpc, &options.contracts_dir, tip_number)?;
+    let state_type = state_cell
+        .output
+        .type_()
+        .to_opt()
+        .ok_or_else(|| anyhow!("missing State type"))?;
+    let type_args = state_type.args().raw_data();
+    ensure!(
+        type_args.len() >= 32
+            && &type_args[..32] == funding_anchor
+            && state_cell.output.lock().args().raw_data().as_ref() == state_type_hash,
+        "sponsor funding State authority arguments are inconsistent"
+    );
+    let sponsor_binary = fs::read(options.contracts_dir.join("morph-sponsor-lock"))?;
+    ensure!(
+        !sponsor_binary.is_empty(),
+        "approved sponsor artifact is empty"
+    );
+    let sponsor_template = data1_script(H256::from(blake2b_256(&sponsor_binary)), Bytes::new());
+    let targets = vec![
+        contract_target_for_script(&options.contracts_dir, "morph-state-type", &state_type)?,
+        contract_target_for_script(
+            &options.contracts_dir,
+            "morph-state-lock",
+            &state_cell.output.lock(),
+        )?,
+        contract_target_for_script(
+            &options.contracts_dir,
+            "morph-sponsor-lock",
+            &sponsor_template,
+        )?,
+    ];
+    let contracts = find_deployed_targets(rpc, targets, tip_number)?;
     let sponsor_contract = contract_by_name(&contracts, "morph-sponsor-lock")?;
 
     let sponsor_change_lock = if let Some(pubkey) = options.sponsor_change_pubkey.as_deref() {
@@ -8499,8 +8544,7 @@ pub fn fund_sponsor(rpc: &CkbRpcClient, options: FundSponsorOptions) -> Result<F
         owner_lock.clone()
     };
     let change_lock_hash = sponsor_change_lock.calc_script_hash();
-    let channel_id: &[u8; 32] = header
-        .channel_id()
+    let channel_id: &[u8; 32] = channel
         .try_into()
         .map_err(|_| anyhow!("state header channel id is not 32 bytes"))?;
     let sponsor_policy_settings = sponsor_policy_settings(
@@ -8562,8 +8606,8 @@ pub fn fund_sponsor(rpc: &CkbRpcClient, options: FundSponsorOptions) -> Result<F
         status: sent.status,
         block_number: sent.block_number,
         block_hash: sent.block_hash,
-        channel_id: hex32(header.channel_id()),
-        state_number: header.state_number(),
+        channel_id: hex32(channel),
+        state_number,
         sponsor_out_point: PrintableOutPoint {
             tx_hash: sent.tx_hash,
             index: 0,
@@ -11438,6 +11482,17 @@ fn send_and_mine(
     mine_blocks: u64,
 ) -> Result<SentTransactionReport> {
     let metrics = transaction_metrics(rpc, &tx)?;
+    send_preflighted_and_mine(rpc, tx, mine_blocks, metrics)
+}
+
+/// The caller has just verified these exact witnesses and checked its
+/// canonical checkpoint. Preserve that VM result across submission.
+fn send_preflighted_and_mine(
+    rpc: &CkbRpcClient,
+    tx: ckb_types::core::TransactionView,
+    mine_blocks: u64,
+    metrics: TransactionMetrics,
+) -> Result<SentTransactionReport> {
     let tx_hash = tx.hash();
     let json_tx: ckb_jsonrpc_types::Transaction = tx.data().into();
     let sent_hash = rpc.send_transaction(json_tx)?;
@@ -12130,23 +12185,124 @@ fn observed_state_cells(
     tip_number: u64,
     filter: &StateCellDetectionFilter,
 ) -> Result<Vec<ObservedStateCellReport>> {
+    observed_state_cells_in_profile(
+        block,
+        channel_id,
+        tip_number,
+        filter,
+        StateObservationProfile::SingleVault,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum StateObservationProfile {
+    SingleVault,
+    MultiAsset,
+}
+
+struct StateObservation<'a> {
+    channel_id: &'a [u8],
+    funding_anchor: &'a [u8],
+    vault_set_commitment: &'a [u8],
+    state_number: u64,
+    phase: u8,
+    settlement_descriptor_commitment: &'a [u8],
+    descriptor_version: u16,
+}
+
+fn parse_state_observation(
+    raw: &[u8],
+    profile: StateObservationProfile,
+) -> std::result::Result<(StateObservation<'_>, String), ScriptError> {
+    match profile {
+        StateObservationProfile::SingleVault => {
+            let header = WireStateHeader::parse(raw)?;
+            header.validate_profile()?;
+            Ok((
+                StateObservation {
+                    channel_id: header.channel_id(),
+                    funding_anchor: header.funding_anchor(),
+                    vault_set_commitment: header.vault_set_commitment(),
+                    state_number: header.state_number(),
+                    phase: header.phase(),
+                    settlement_descriptor_commitment: header.settlement_descriptor_commitment(),
+                    descriptor_version: header.descriptor_version(),
+                },
+                funding_context_id_for_header(&header),
+            ))
+        }
+        StateObservationProfile::MultiAsset => {
+            let header = morph_script_common::multi_asset::MultiAssetStateHeader::parse(raw)?;
+            if !header.vaults_are_bound() {
+                return Err(ScriptError::VaultActivationInvalid);
+            }
+            Ok((
+                StateObservation {
+                    channel_id: header.channel_id(),
+                    funding_anchor: header.funding_anchor(),
+                    vault_set_commitment: header.content_root(),
+                    state_number: header.state_number(),
+                    phase: header.phase(),
+                    settlement_descriptor_commitment: header.settlement_descriptor_commitment(),
+                    descriptor_version: header.descriptor_version(),
+                },
+                hex32(&header.funding_context_id()?),
+            ))
+        }
+    }
+}
+
+fn live_state_is_settling(
+    rpc: &CkbRpcClient,
+    point: OutPoint,
+    profile: StateObservationProfile,
+) -> Result<bool> {
+    let live = rpc.canonical_live_cell(point.into(), true)?;
+    if live.status != "live" {
+        return Ok(false);
+    }
+    let data = live
+        .cell
+        .ok_or_else(|| anyhow!("canonical State cell missing"))?
+        .data
+        .ok_or_else(|| anyhow!("canonical State data missing"))?
+        .content;
+    let (header, _) = parse_state_observation(data.as_bytes(), profile)
+        .map_err(|error| anyhow!("invalid cached State observation: {error:?}"))?;
+    Ok(header.phase == PHASE_SETTLING)
+}
+
+fn stale_settling_state_requires_defense(
+    observed: &ObservedStateCellReport,
+    saved_number: u64,
+) -> bool {
+    observed.phase == "settling" && observed.state_number < saved_number
+}
+
+fn observed_state_cells_in_profile(
+    block: &ckb_jsonrpc_types::BlockView,
+    channel_id: &str,
+    tip_number: u64,
+    filter: &StateCellDetectionFilter,
+    profile: StateObservationProfile,
+) -> Result<Vec<ObservedStateCellReport>> {
     let block_number = block.header.inner.number.value();
     let block_hash = format!("{:#x}", block.header.hash);
     let confirmations = block_confirmations(block_number, tip_number)?;
     let mut observed = Vec::new();
     for tx in &block.transactions {
         for (index, data) in tx.inner.outputs_data.iter().enumerate() {
-            let Ok(header) = WireStateHeader::parse(data.as_bytes()) else {
+            let Ok((header, context_id)) = parse_state_observation(data.as_bytes(), profile) else {
                 continue;
             };
-            if hex32(header.channel_id()) != channel_id {
+            if hex32(header.channel_id) != channel_id {
                 continue;
             }
             let Some(output) = tx.inner.outputs.get(index) else {
                 continue;
             };
             let output: CellOutput = output.clone().into();
-            if !is_authentic_observed_state_cell(&output, &header, filter) {
+            if !is_authentic_observed_state_cell(&output, header.funding_anchor, filter) {
                 continue;
             }
             let tx_hash = format!("{:#x}", tx.hash);
@@ -12156,13 +12312,13 @@ fn observed_state_cells(
                 tx_hash: tx_hash.clone(),
                 output_index: index as u32,
                 out_point: format!("{tx_hash}:{index}"),
-                funding_anchor: hex32(header.funding_anchor()),
-                funding_context_id: funding_context_id_for_header(&header),
-                vault_set_commitment: hex32(header.vault_set_commitment()),
-                state_number: header.state_number(),
-                phase: phase_label(header.phase()).to_string(),
-                settlement_descriptor_commitment: hex32(header.settlement_descriptor_commitment()),
-                descriptor_version: header.descriptor_version(),
+                funding_anchor: hex32(header.funding_anchor),
+                funding_context_id: context_id,
+                vault_set_commitment: hex32(header.vault_set_commitment),
+                state_number: header.state_number,
+                phase: phase_label(header.phase).to_string(),
+                settlement_descriptor_commitment: hex32(header.settlement_descriptor_commitment),
+                descriptor_version: header.descriptor_version,
                 confirmations,
             });
         }
@@ -12181,7 +12337,7 @@ fn block_confirmations(block_number: u64, tip_number: u64) -> Result<u64> {
 
 fn is_authentic_observed_state_cell(
     output: &CellOutput,
-    header: &WireStateHeader,
+    funding_anchor: &[u8],
     filter: &StateCellDetectionFilter,
 ) -> bool {
     let Some(type_script) = output.type_().to_opt() else {
@@ -12191,8 +12347,7 @@ fn is_authentic_observed_state_cell(
         return false;
     }
     let type_args = type_script.args().raw_data();
-    if type_args.len() < BYTE32_LEN || &type_args.as_ref()[..BYTE32_LEN] != header.funding_anchor()
-    {
+    if type_args.len() < BYTE32_LEN || &type_args.as_ref()[..BYTE32_LEN] != funding_anchor {
         return false;
     }
 
@@ -12302,6 +12457,7 @@ fn load_contract_targets(contracts_dir: &Path) -> Result<Vec<ContractTarget>> {
             Ok(ContractTarget {
                 name: (*name).to_string(),
                 data_hash: H256::from(blake2b_256(&data)),
+                type_hash: None,
             })
         })
         .collect()
@@ -12312,7 +12468,56 @@ fn find_deployed_contracts(
     contracts_dir: &Path,
     tip_number: u64,
 ) -> Result<Vec<ResolvedContract>> {
-    let targets = load_contract_targets(contracts_dir)?;
+    find_deployed_targets(rpc, load_contract_targets(contracts_dir)?, tip_number)
+}
+
+fn contract_target_for_script(
+    contracts_dir: &Path,
+    name: &str,
+    script: &Script,
+) -> Result<ContractTarget> {
+    let binary = fs::read(contracts_dir.join(name))?;
+    ensure!(!binary.is_empty(), "approved contract artifact is empty");
+    let data_hash = H256::from(blake2b_256(&binary));
+    let type_hash = match script.hash_type().as_slice()[0] {
+        0 | 2 | 4 => {
+            ensure!(
+                script.code_hash().as_slice() == data_hash.as_bytes(),
+                "script does not match approved contract {name}"
+            );
+            None
+        }
+        1 => Some(byte32_to_h256(script.code_hash())),
+        _ => return Err(anyhow!("unsupported script hash type")),
+    };
+    Ok(ContractTarget {
+        name: name.to_string(),
+        data_hash,
+        type_hash,
+    })
+}
+
+fn find_deployed_contract_by_script(
+    rpc: &CkbRpcClient,
+    contracts_dir: &Path,
+    name: &str,
+    script: &Script,
+    tip_number: u64,
+) -> Result<ResolvedContract> {
+    find_deployed_targets(
+        rpc,
+        vec![contract_target_for_script(contracts_dir, name, script)?],
+        tip_number,
+    )?
+    .pop()
+    .ok_or_else(|| anyhow!("approved contract {name} not found"))
+}
+
+fn find_deployed_targets(
+    rpc: &CkbRpcClient,
+    targets: Vec<ContractTarget>,
+    tip_number: u64,
+) -> Result<Vec<ResolvedContract>> {
     let mut found: Vec<Option<OutPoint>> = vec![None; targets.len()];
 
     for number in 0..=tip_number {
@@ -12325,6 +12530,17 @@ fn find_deployed_contracts(
                 for (target_index, target) in targets.iter().enumerate() {
                     if data_hash != target.data_hash {
                         continue;
+                    }
+                    if let Some(expected_type) = &target.type_hash {
+                        let Some(output) = tx.inner.outputs.get(index) else {
+                            continue;
+                        };
+                        let output: CellOutput = output.clone().into();
+                        if !output.type_().to_opt().is_some_and(|ty| {
+                            byte32_to_h256(ty.calc_script_hash()) == *expected_type
+                        }) {
+                            continue;
+                        }
                     }
                     let out_point = OutPoint::new(tx.hash.pack(), index as u32);
                     let live = rpc.live_cell(out_point.clone().into(), false)?;
@@ -15441,7 +15657,7 @@ mod tests {
     }
 
     #[test]
-    fn selects_latest_state_package_for_funding_anchor() {
+    fn selects_latest_state_package_for_exact_funding_context() {
         let old_anchor = format!("0x{}", "11".repeat(BYTE32_LEN));
         let new_anchor = format!("0x{}", "22".repeat(BYTE32_LEN));
         let new_context = format!("0x{}", "aa".repeat(BYTE32_LEN));
@@ -15459,13 +15675,10 @@ mod tests {
         assert_eq!(global.package.state_number, 3);
         assert_eq!(global.package.funding_anchor, old_anchor);
 
-        let selected = latest_package_for_funding_anchor(&records, &new_anchor).unwrap();
-        assert_eq!(selected.package.state_number, 1);
-        assert_eq!(selected.package.funding_anchor, new_anchor);
-
         let selected = latest_package_for_funding_context(&records, &new_context).unwrap();
         assert_eq!(selected.package.state_number, 1);
         assert_eq!(selected.package.funding_context_id, new_context);
+        assert!(latest_package_for_funding_context(&records, &new_anchor).is_none());
     }
 
     #[test]
@@ -15492,6 +15705,7 @@ mod tests {
         let scanned_hash = format!("0x{}", "88".repeat(BYTE32_LEN));
         let cursor = watch_cursor_for_state(
             &channel_id,
+            0,
             12,
             11,
             Some(&scanned_hash),
@@ -15527,13 +15741,13 @@ mod tests {
         let channel_id = format!("0x{}", "33".repeat(BYTE32_LEN));
         let funding_anchor = format!("0x{}", "44".repeat(BYTE32_LEN));
         let funding_context_id = format!("0x{}", "45".repeat(BYTE32_LEN));
-        let previous = WatchCursor::new(&channel_id, 10, 9)
+        let previous = WatchCursor::new(&channel_id, 0, 10, 9)
             .unwrap()
             .with_observed_context_state(&funding_anchor, &funding_context_id, 5, "0xabc:0")
             .unwrap();
 
         let cursor =
-            watch_cursor_for_state(&channel_id, 12, 11, None, None, Some(&previous)).unwrap();
+            watch_cursor_for_state(&channel_id, 0, 12, 11, None, None, Some(&previous)).unwrap();
 
         assert_eq!(cursor.next_block, 12);
         assert_eq!(cursor.scanned_to_block, 11);
@@ -15625,7 +15839,7 @@ mod tests {
 
         assert!(is_authentic_observed_state_cell(
             &state_output,
-            &header,
+            header.funding_anchor(),
             &filter
         ));
 
@@ -15635,7 +15849,7 @@ mod tests {
             .build();
         assert!(!is_authentic_observed_state_cell(
             &fake_data_only_output,
-            &header,
+            header.funding_anchor(),
             &filter
         ));
 
@@ -15650,7 +15864,7 @@ mod tests {
             .build();
         assert!(!is_authentic_observed_state_cell(
             &mismatched_lock_output,
-            &header,
+            header.funding_anchor(),
             &filter
         ));
 
@@ -15671,7 +15885,7 @@ mod tests {
             .build();
         assert!(!is_authentic_observed_state_cell(
             &wrong_anchor_output,
-            &header,
+            header.funding_anchor(),
             &filter
         ));
     }

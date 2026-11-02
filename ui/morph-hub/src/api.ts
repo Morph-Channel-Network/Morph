@@ -13,7 +13,7 @@ export interface RestoreStateSummary {
   peers: number;
   channels: number;
   factories: number;
-  multi_asset_packages?: number;
+  multi_asset_packages: number;
   invoices: number;
   completed_flows: number;
   events: number;

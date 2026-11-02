@@ -116,6 +116,7 @@ pub trait ChannelBackend {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MorphBilateralChannelBackend {
     current_state: StateCell,
     current_authorization: StateAuthorization,
@@ -125,7 +126,6 @@ pub struct MorphBilateralChannelBackend {
     verified_rgbpp_bindings: BTreeSet<Bytes32>,
     payments: BTreeMap<Bytes32, BackendPaymentState>,
     idempotency_index: BTreeMap<Bytes32, Bytes32>,
-    #[serde(default)]
     conditional_batches: BTreeMap<Bytes32, ConditionalBatchRecord>,
 }
 

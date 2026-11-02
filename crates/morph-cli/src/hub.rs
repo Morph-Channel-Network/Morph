@@ -159,15 +159,14 @@ struct CachedRpcView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PersistedHubState {
     pubkey: String,
     network: MorphNetwork,
     peers: Vec<PersistedPeer>,
     channels: Vec<PersistedChannel>,
     factories: Vec<PersistedFactory>,
-    #[serde(default)]
     conditional_batches: Vec<StoredConditionalBatchPackage>,
-    #[serde(default)]
     multi_asset_packages: Vec<StoredMultiAssetPackage>,
     invoices: Vec<StoredMorphInvoice>,
     completed_flows: Vec<MorphBusinessFlow>,
@@ -175,12 +174,14 @@ struct PersistedHubState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PersistedPeer {
     pubkey: String,
     alias: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PersistedChannel {
     channel_id: String,
     counterparty_pubkey: String,
@@ -193,6 +194,7 @@ struct PersistedChannel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PersistedFactory {
     factory_id: String,
     participant_pubkeys: Vec<String>,
@@ -3505,6 +3507,21 @@ mod tests {
     use std::os::unix::fs::{PermissionsExt, symlink};
 
     static TEST_STATE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn persisted_state_requires_current_collections_and_rejects_unknown_fields() {
+        let server = test_server(&pubkey_from_scalar(41));
+        let store = server.store.lock().unwrap();
+        let current = serde_json::to_value(store.persisted().unwrap()).unwrap();
+        for field in ["conditional_batches", "multi_asset_packages"] {
+            let mut incomplete = current.clone();
+            incomplete.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<PersistedHubState>(incomplete).is_err());
+        }
+        let mut unknown = current;
+        unknown["obsolete_field"] = json!([]);
+        assert!(serde_json::from_value::<PersistedHubState>(unknown).is_err());
+    }
 
     #[test]
     fn conditional_force_package_is_validated_linked_and_persisted() {

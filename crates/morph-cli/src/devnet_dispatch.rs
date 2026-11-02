@@ -4,6 +4,155 @@ use crate::packages::canonical_hex32;
 pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
     let rpc = CkbRpcClient::new(rpc_url)?;
     match command {
+        DevnetCommand::MultiAssetWatch {
+            contracts_dir,
+            fee_authorization,
+            fee_out_point,
+            store_dir,
+            channel_id,
+            from_block,
+            cursor_file,
+            alert_file,
+            publication_profile,
+            attempt_log,
+            detection_depth,
+            timeout_secs,
+            poll_ms,
+            max_fee,
+            mine_blocks,
+        } => {
+            let report = devnet::multi_asset_watch::watch(
+                &rpc,
+                devnet::multi_asset_watch::Options {
+                    contracts_dir,
+                    fee_authorization,
+                    fee_out_point,
+                    store_dir,
+                    channel_id,
+                    from_block,
+                    cursor_file,
+                    alert_file,
+                    publication_profile,
+                    attempt_log,
+                    detection_depth,
+                    timeout_secs,
+                    poll_ms,
+                    max_fee,
+                    mine_blocks,
+                },
+            )?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        DevnetCommand::MultiAssetTransact {
+            operation,
+            package,
+            state_out_point,
+            fee_out_point,
+            fee_authorization,
+            contracts_dir,
+            store_dir,
+            fee,
+            max_fee,
+            mine_blocks,
+            publication_profile,
+            attempt_log,
+            dry_run,
+        } => {
+            let report = devnet::multi_asset_operator::transact(
+                &rpc,
+                devnet::multi_asset_operator::Options {
+                    operation,
+                    package,
+                    state_out_point,
+                    fee_out_point,
+                    fee_authorization,
+                    contracts_dir,
+                    store_dir,
+                    fee,
+                    max_fee,
+                    mine_blocks,
+                    publication_profile,
+                    attempt_log,
+                    dry_run,
+                },
+            )?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        DevnetCommand::MultiAssetFundingSubmit {
+            transaction,
+            package,
+            contracts_dir,
+            store_dir,
+            max_fee,
+            mine_blocks,
+            dry_run,
+        } => {
+            let report = devnet::multi_asset_funding_operator::submit(
+                &rpc,
+                devnet::multi_asset_funding_operator::Options {
+                    transaction,
+                    package,
+                    contracts_dir,
+                    store_dir,
+                    max_fee,
+                    mine_blocks,
+                    dry_run,
+                },
+            )?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        DevnetCommand::MultiAssetSplicePrepare {
+            old_package,
+            state_out_point,
+            terms,
+            external_inputs,
+            change_pubkey,
+            fee,
+            contracts_dir,
+            output,
+        } => {
+            let report = devnet::multi_asset_splice_operator::prepare(
+                &rpc,
+                devnet::multi_asset_splice_operator::PrepareOptions {
+                    old_package,
+                    state_out_point,
+                    terms,
+                    external_inputs,
+                    change_pubkey,
+                    fee,
+                    contracts_dir,
+                    output,
+                },
+            )?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        DevnetCommand::MultiAssetSpliceSubmit {
+            transaction,
+            old_package,
+            new_package,
+            contracts_dir,
+            store_dir,
+            max_fee,
+            mine_blocks,
+            dry_run,
+            fee_authorization,
+        } => {
+            let report = devnet::multi_asset_splice_operator::submit(
+                &rpc,
+                devnet::multi_asset_splice_operator::Options {
+                    transaction,
+                    old_package,
+                    new_package,
+                    contracts_dir,
+                    store_dir,
+                    max_fee,
+                    mine_blocks,
+                    dry_run,
+                    fee_authorization,
+                },
+            )?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
         DevnetCommand::MultiAssetSmoke {
             contracts_dir,
             private_key,
@@ -14,6 +163,10 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             finalise_since,
             mine_blocks,
             store_dir,
+            publication_profile,
+            watch_publication,
+            watch_reorg,
+            sponsor_publication,
             json: _,
         } => {
             let report = devnet::multi_asset::smoke(
@@ -28,6 +181,10 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                     finalise_since,
                     mine_blocks,
                     store_dir,
+                    publication_profile,
+                    watch_publication,
+                    watch_reorg,
+                    sponsor_publication,
                 },
             )?;
             println!("{}", serde_json::to_string_pretty(&report)?);

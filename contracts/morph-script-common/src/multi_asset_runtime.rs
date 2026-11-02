@@ -23,7 +23,13 @@ pub fn multi_asset_evidence(index: usize, source: Source) -> Result<Vec<u8>> {
         .output_type()
         .to_opt()
         .ok_or(ScriptError::SettlementWitnessMissing)?;
-    Ok(evidence.raw_data().to_vec())
+    let raw = evidence.raw_data();
+    if raw.starts_with(crate::multi_asset_splice::MULTI_ASSET_SPLICE_MAGIC) {
+        let splice = crate::multi_asset_splice::MultiAssetSpliceWitness::parse(&raw)?;
+        Ok(splice.new_evidence().as_bytes().to_vec())
+    } else {
+        Ok(raw.to_vec())
+    }
 }
 
 fn actual_asset(index: usize, source: Source) -> Result<MultiAssetId> {
@@ -35,7 +41,7 @@ fn actual_asset(index: usize, source: Source) -> Result<MultiAssetId> {
     )
 }
 
-fn verify_value(
+pub(crate) fn verify_value(
     index: usize,
     source: Source,
     lock: &[u8],

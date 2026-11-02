@@ -1,15 +1,14 @@
-//! Versioned, bounded multi-Vault channel encodings. Legacy headers and
-//! descriptors intentionally do not accept these encodings.
+//! Bounded multi-Vault channel encodings, independent of single-Vault layouts.
 
 use crate::{
     BilateralSignatureWitness, MORPH_PROTOCOL_VERSION, PHASE_ACTIVE, PHASE_SETTLING, Result,
-    SIGNATURE_SCHEME_SECP256K1_ECDSA_BLAKE2B, STATE_HEADER_LEN, STATE_MODE_BILATERAL_PLAINTEXT,
-    ScriptError, StateHeader, StateHeaderInput, blake2b256, encode_state_header, read_u16,
-    read_u32, read_u64, read_u128, write_u16, write_u64,
+    SIGNATURE_SCHEME_SECP256K1_ECDSA_BLAKE2B, STATE_MODE_BILATERAL_PLAINTEXT, ScriptError,
+    blake2b256, read_u16, read_u32, read_u64, read_u128, write_u16, write_u64,
 };
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{Signature, VerifyingKey};
 
+pub const MULTI_ASSET_ROOT_FUNDING_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_ROOT_FUNDING_V1";
 pub const MULTI_ASSET_STATE_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_STATE_V1";
 pub const MULTI_ASSET_VAULT_SET_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_VAULT_SET_V1";
 pub const MULTI_ASSET_OUTPOINT_SET_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_OUTPOINT_SET_V1";
@@ -21,7 +20,7 @@ pub const MULTI_ASSET_ENCODING_VERSION: u16 = 1;
 /// Candidate resource bounds; release requires worst-case CKB-VM budget evidence.
 pub const MULTI_ASSET_MAX_VAULTS: usize = 8;
 pub const MULTI_ASSET_MAX_OUTPUTS: usize = 2 * MULTI_ASSET_MAX_VAULTS + 1;
-pub const MULTI_ASSET_STATE_HEADER_LEN: usize = STATE_HEADER_LEN + 32 + 32 + 2 + 2;
+pub const MULTI_ASSET_STATE_HEADER_LEN: usize = 318;
 pub const MULTI_ASSET_ID_LEN: usize = 33;
 pub const MULTI_ASSET_ALLOCATION_LEN: usize = 32;
 pub const MULTI_ASSET_VAULT_ENTRY_LEN: usize = 97;
@@ -189,7 +188,7 @@ impl MultiAssetAllocation {
         Ok(())
     }
 
-    fn validate_for(&self, asset: MultiAssetId, vault: bool) -> Result<()> {
+    pub(crate) fn validate_for(&self, asset: MultiAssetId, vault: bool) -> Result<()> {
         let capacity = self.capacity()?;
         if ((asset.kind == 0 || capacity == 0) && self.amount != 0)
             || (capacity != 0 && self.reserve == 0)
@@ -433,17 +432,50 @@ pub struct MultiAssetStateHeader<'a> {
     raw: &'a [u8],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MultiAssetStateHeaderInput {
+    pub protocol_version: u16,
+    pub chain_id: [u8; 32],
+    pub signature_scheme_id: u16,
+    pub channel_id: [u8; 32],
+    pub funding_epoch: u64,
+    pub funding_anchor: [u8; 32],
+    pub state_number: u64,
+    pub mode: u8,
+    pub phase: u8,
+    pub participants_commitment: [u8; 32],
+    pub asset_registry_commitment: [u8; 32],
+    pub settlement_descriptor_commitment: [u8; 32],
+    pub descriptor_version: u16,
+    pub challenge_policy_commitment: [u8; 32],
+    pub state_layout_version: u16,
+}
+
 pub fn encode_multi_asset_state_header(
-    base: &StateHeaderInput,
+    input: &MultiAssetStateHeaderInput,
     content_root: &[u8; 32],
     outpoint_root: &[u8; 32],
     count: u16,
 ) -> Result<[u8; MULTI_ASSET_STATE_HEADER_LEN]> {
     let mut raw = [0; MULTI_ASSET_STATE_HEADER_LEN];
-    raw[..STATE_HEADER_LEN].copy_from_slice(&encode_state_header(base));
-    raw[346..378].copy_from_slice(content_root);
-    raw[378..410].copy_from_slice(outpoint_root);
-    write_u16(&mut raw, 410, count);
+    write_u16(&mut raw, 0, input.protocol_version);
+    raw[2..34].copy_from_slice(&input.chain_id);
+    write_u16(&mut raw, 34, input.signature_scheme_id);
+    raw[36..68].copy_from_slice(&input.channel_id);
+    write_u64(&mut raw, 68, input.funding_epoch);
+    raw[76..108].copy_from_slice(&input.funding_anchor);
+    write_u64(&mut raw, 108, input.state_number);
+    raw[116] = input.mode;
+    raw[117] = input.phase;
+    raw[118..150].copy_from_slice(&input.participants_commitment);
+    raw[150..182].copy_from_slice(&input.asset_registry_commitment);
+    raw[182..214].copy_from_slice(&input.settlement_descriptor_commitment);
+    write_u16(&mut raw, 214, input.descriptor_version);
+    raw[216..248].copy_from_slice(&input.challenge_policy_commitment);
+    write_u16(&mut raw, 248, input.state_layout_version);
+    raw[250..282].copy_from_slice(content_root);
+    raw[282..314].copy_from_slice(outpoint_root);
+    write_u16(&mut raw, 314, count);
     MultiAssetStateHeader::parse(&raw)?;
     Ok(raw)
 }
@@ -454,18 +486,15 @@ impl<'a> MultiAssetStateHeader<'a> {
             return Err(ScriptError::MultiAssetEncoding);
         }
         let header = Self { raw };
-        let base = header.base()?;
+        let base = header;
         if base.protocol_version() != MORPH_PROTOCOL_VERSION
             || base.signature_scheme_id() != SIGNATURE_SCHEME_SECP256K1_ECDSA_BLAKE2B
             || base.state_layout_version() != MULTI_ASSET_STATE_LAYOUT_VERSION
             || base.descriptor_version() != MULTI_ASSET_DESCRIPTOR_VERSION
             || base.mode() != STATE_MODE_BILATERAL_PLAINTEXT
             || !matches!(base.phase(), PHASE_ACTIVE | PHASE_SETTLING)
-            || !zero(base.vault_materialisation_root())
-            || !zero(base.vault_outpoint_commitment())
-            || base.vault_set_commitment() != header.content_root()
             || zero(header.content_root())
-            || read_u16(raw, 412) != 0
+            || read_u16(raw, 316) != 0
             || !(1..=MULTI_ASSET_MAX_VAULTS).contains(&header.vault_count())
             || (base.phase() == PHASE_SETTLING && !header.vaults_are_bound())
         {
@@ -473,20 +502,62 @@ impl<'a> MultiAssetStateHeader<'a> {
         }
         Ok(header)
     }
-    pub fn base(&self) -> Result<StateHeader<'a>> {
-        StateHeader::parse(&self.raw[..STATE_HEADER_LEN])
+    pub fn protocol_version(&self) -> u16 {
+        read_u16(self.raw, 0)
+    }
+    pub fn chain_id(&self) -> &'a [u8] {
+        &self.raw[2..34]
+    }
+    pub fn signature_scheme_id(&self) -> u16 {
+        read_u16(self.raw, 34)
+    }
+    pub fn channel_id(&self) -> &'a [u8] {
+        &self.raw[36..68]
+    }
+    pub fn funding_epoch(&self) -> u64 {
+        read_u64(self.raw, 68)
+    }
+    pub fn funding_anchor(&self) -> &'a [u8] {
+        &self.raw[76..108]
+    }
+    pub fn state_number(&self) -> u64 {
+        read_u64(self.raw, 108)
+    }
+    pub fn mode(&self) -> u8 {
+        self.raw[116]
+    }
+    pub fn phase(&self) -> u8 {
+        self.raw[117]
+    }
+    pub fn participants_commitment(&self) -> &'a [u8] {
+        &self.raw[118..150]
+    }
+    pub fn asset_registry_commitment(&self) -> &'a [u8] {
+        &self.raw[150..182]
+    }
+    pub fn settlement_descriptor_commitment(&self) -> &'a [u8] {
+        &self.raw[182..214]
+    }
+    pub fn descriptor_version(&self) -> u16 {
+        read_u16(self.raw, 214)
+    }
+    pub fn challenge_policy_commitment(&self) -> &'a [u8] {
+        &self.raw[216..248]
+    }
+    pub fn state_layout_version(&self) -> u16 {
+        read_u16(self.raw, 248)
     }
     pub fn as_bytes(&self) -> &'a [u8] {
         self.raw
     }
     pub fn content_root(&self) -> &'a [u8] {
-        &self.raw[346..378]
+        &self.raw[250..282]
     }
     pub fn outpoint_root(&self) -> &'a [u8] {
-        &self.raw[378..410]
+        &self.raw[282..314]
     }
     pub fn vault_count(&self) -> usize {
-        read_u16(self.raw, 410) as usize
+        read_u16(self.raw, 314) as usize
     }
     pub fn vaults_are_bound(&self) -> bool {
         !zero(self.outpoint_root())
@@ -494,8 +565,36 @@ impl<'a> MultiAssetStateHeader<'a> {
     pub fn signing_digest(&self) -> [u8; 32] {
         blake2b256(&[MULTI_ASSET_STATE_DOMAIN, self.raw])
     }
+    /// Root creation authorises the exact raw funding transaction. Witnesses
+    /// are excluded from CKB transaction identity, avoiding a signing cycle.
+    pub fn root_funding_signing_digest(&self, transaction_hash: &[u8; 32]) -> Result<[u8; 32]> {
+        if self.funding_epoch() != 0
+            || self.phase() != PHASE_ACTIVE
+            || self.state_number() != 0
+            || self.vaults_are_bound()
+            || zero(transaction_hash)
+        {
+            return Err(ScriptError::VaultActivationInvalid);
+        }
+        Ok(blake2b256(&[
+            MULTI_ASSET_ROOT_FUNDING_DOMAIN,
+            &self.signing_digest(),
+            transaction_hash,
+        ]))
+    }
+    pub fn verify_root_funding_signatures(
+        &self,
+        transaction_hash: &[u8; 32],
+        witness: &BilateralSignatureWitness,
+    ) -> Result<()> {
+        verify_multi_asset_signatures(
+            self.participants_commitment(),
+            &self.root_funding_signing_digest(transaction_hash)?,
+            witness,
+        )
+    }
     pub fn funding_context_id(&self) -> Result<[u8; 32]> {
-        let base = self.base()?;
+        let base = self;
         Ok(blake2b256(&[
             MULTI_ASSET_FUNDING_CONTEXT_DOMAIN,
             base.chain_id(),
@@ -508,28 +607,42 @@ impl<'a> MultiAssetStateHeader<'a> {
     pub fn is_activation_to(&self, next: &Self) -> bool {
         !self.vaults_are_bound()
             && next.vaults_are_bound()
-            && self.raw[..378] == next.raw[..378]
-            && self.raw[410..] == next.raw[410..]
+            && self.raw[..282] == next.raw[..282]
+            && self.raw[314..] == next.raw[314..]
     }
-    pub fn same_context_except_progress(&self, next: &Self) -> Result<bool> {
-        Ok(self.base()?.same_context_except_progress(&next.base()?)
-            && self.raw[346..] == next.raw[346..])
+    pub fn same_context_except_progress(&self, next: &Self) -> bool {
+        // Only number, phase and settlement descriptor are signed progress.
+        self.raw[..108] == next.raw[..108]
+            && self.mode() == next.mode()
+            && self.raw[118..182] == next.raw[118..182]
+            && self.raw[214..] == next.raw[214..]
     }
     pub fn verify_signatures(&self, witness: &BilateralSignatureWitness) -> Result<()> {
-        if self.base()?.participants_commitment() != witness.participants_commitment() {
-            return Err(ScriptError::ParticipantCommitmentMismatch);
-        }
-        let digest = self.signing_digest();
-        for i in 0..2 {
-            let key = VerifyingKey::from_sec1_bytes(witness.pubkey(i))
-                .map_err(|_| ScriptError::ParticipantWitnessEncoding)?;
-            let signature = Signature::try_from(witness.signature(i))
-                .map_err(|_| ScriptError::ParticipantWitnessEncoding)?;
-            key.verify_prehash(&digest, &signature)
-                .map_err(|_| ScriptError::InvalidParticipantSignature)?;
-        }
-        Ok(())
+        verify_multi_asset_signatures(
+            self.participants_commitment(),
+            &self.signing_digest(),
+            witness,
+        )
     }
+}
+
+pub fn verify_multi_asset_signatures(
+    participants: &[u8],
+    digest: &[u8; 32],
+    witness: &BilateralSignatureWitness,
+) -> Result<()> {
+    if participants != witness.participants_commitment() {
+        return Err(ScriptError::ParticipantCommitmentMismatch);
+    }
+    for index in 0..2 {
+        let key = VerifyingKey::from_sec1_bytes(witness.pubkey(index))
+            .map_err(|_| ScriptError::ParticipantWitnessEncoding)?;
+        let signature = Signature::try_from(witness.signature(index))
+            .map_err(|_| ScriptError::ParticipantWitnessEncoding)?;
+        key.verify_prehash(digest, &signature)
+            .map_err(|_| ScriptError::InvalidParticipantSignature)?;
+    }
+    Ok(())
 }
 
 /// OutPoints follow canonical manifest asset order, not input/output order.
@@ -808,7 +921,7 @@ impl<'a> MultiAssetWitness<'a> {
         Ok(&self.outpoints[index * 36..(index + 1) * 36])
     }
     pub fn validate_header(&self, header: &MultiAssetStateHeader) -> Result<()> {
-        let base = header.base()?;
+        let base = header;
         if self.manifest.count() != header.vault_count()
             || self.manifest.commitment() != header.content_root()
             || self.manifest.asset_registry_commitment()? != base.asset_registry_commitment()

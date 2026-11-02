@@ -11,6 +11,8 @@ export type WatchAlertSeverity = 'info' | 'warning' | 'critical';
 export type HubScope = 'read' | 'write' | 'restore' | 'sign';
 export type WatchAlertEvent =
   | 'chain_reorg_detected'
+  | 'recovery_data_invalid'
+  | 'publication_failed'
   | 'older_state_detected'
   | 'publication_submitted'
   | 'splice_detected'
@@ -224,8 +226,8 @@ export interface NodeState {
   invoices: InvoiceRecord[];
   factories: FactoryRecord[];
   conditional_batches: ConditionalBatchPackage[];
-  multi_asset_packages?: MultiAssetRecoverySummary[];
-  multi_asset_package_count?: number;
+  multi_asset_packages: MultiAssetRecoverySummary[];
+  multi_asset_package_count: number;
   events: HubEvent[];
   required_flows: FlowKey[];
   completed_flows: FlowKey[];

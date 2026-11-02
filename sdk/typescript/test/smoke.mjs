@@ -9,6 +9,9 @@ import {
   MorphAgentClient,
   MorphHubClient,
   inspectMultiAssetPackage,
+  createMultiAssetProposal,
+  inspectMultiAssetProposal,
+  inspectMultiAssetProposalSignature,
   verifySignedPaymentPayload,
 } from "../dist/index.js";
 
@@ -40,7 +43,7 @@ for (const [assetIndex, delta] of [[0, 1n], [1, -1n]]) {
 const ckbHash = (...parts) => blake2b(Buffer.concat(parts.map((part) => Buffer.from(part))), {
   dkLen: 32, personalization: Buffer.from("ckb-default-hash"),
 });
-forgedHeader.set(ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1"), forgedWitness.subarray(descriptorStart, descriptorStart + descriptorLength)), 214);
+forgedHeader.set(ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1"), forgedWitness.subarray(descriptorStart, descriptorStart + descriptorLength)), 182);
 const forgedDigest = ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_STATE_V1"), forgedHeader);
 const fixtureKeys = [Buffer.alloc(32, 1), Buffer.alloc(32, 2)]
   .sort((a, b) => Buffer.compare(Buffer.from(secp256k1.getPublicKey(a, true)), Buffer.from(secp256k1.getPublicKey(b, true))));
@@ -57,13 +60,34 @@ assert.throws(() => inspectMultiAssetPackage(forged), /per-asset conservation mi
 
 const largeState = { ...multiAsset };
 const largeHeader = Buffer.from(largeState.header_hex.slice(2), "hex");
-largeHeader.writeBigUInt64LE((1n << 64n) - 1n, 140);
+largeHeader.writeBigUInt64LE((1n << 64n) - 1n, 108);
 const largeDigest = ckbHash(Buffer.from("CKB_MORPH_MULTI_ASSET_STATE_V1"), largeHeader);
 const largeSignatures = Buffer.from(multiAsset.signature_witness_hex.slice(2), "hex");
 fixtureKeys.forEach((key, index) => largeSignatures.set(secp256k1.sign(largeDigest, key, { prehash: false, format: "compact" }), 37 + index * 97));
 largeState.header_hex = `0x${largeHeader.toString("hex")}`;
 largeState.signature_witness_hex = `0x${largeSignatures.toString("hex")}`;
 assert.equal(inspectMultiAssetPackage(largeState).state_number, ((1n << 64n) - 1n).toString());
+
+const updateFixture = JSON.parse(await readFile(new URL("./fixtures/multi-asset-update.json", import.meta.url), "utf8"));
+const proposal = createMultiAssetProposal(multiAsset, updateFixture.proposal.state_number, updateFixture.proposal.descriptor_hex);
+assert.deepEqual(proposal, updateFixture.proposal);
+const proposalView = inspectMultiAssetProposal(multiAsset, proposal);
+assert.equal(proposalView.summary.package_id, proposal.signing_digest);
+assert.equal(BigInt(proposalView.payouts[0].allocations[0].amount) + BigInt(proposalView.payouts[0].allocations[1].amount), BigInt(multiAssetSummary.assets[0].amount));
+assert.deepEqual(inspectMultiAssetProposalSignature(multiAsset, proposal, updateFixture.signature), {
+  signer_pubkey: updateFixture.signature.pubkey, signing_digest: proposal.signing_digest,
+});
+assert.throws(() => inspectMultiAssetProposal(multiAsset, {...proposal, base_state_digest: `0x${"00".repeat(32)}`}), /current signed state/);
+assert.throws(() => inspectMultiAssetProposal(multiAsset, {...proposal, signing_digest: `0x${"00".repeat(32)}`}), /signing digest mismatch/);
+assert.throws(() => inspectMultiAssetProposal(multiAsset, {...proposal, state_number: multiAssetSummary.state_number}), /advance state number/);
+assert.throws(() => inspectMultiAssetProposal(multiAsset, {...proposal, extra: true}), /proposal fields/);
+assert.throws(() => inspectMultiAssetProposalSignature(multiAsset, proposal, {...updateFixture.signature, signature:`0x${"00".repeat(64)}`}), /signature/);
+assert.throws(() => inspectMultiAssetProposalSignature(multiAsset, proposal, {...updateFixture.signature, signing_digest:multiAssetSummary.package_id}), /context or signer mismatch/);
+assert.throws(() => createMultiAssetProposal(multiAsset, proposal.state_number, `0x${forgedWitness.subarray(descriptorStart, descriptorStart + descriptorLength).toString("hex")}`), /per-asset conservation mismatch/);
+assert.throws(() => createMultiAssetProposal({...multiAsset, signature_witness_hex:`0x${badSignature.toString("hex")}`}, proposal.state_number, proposal.descriptor_hex), /signature/);
+const maximumProposal = createMultiAssetProposal(multiAsset, ((1n<<64n)-1n).toString(), proposal.descriptor_hex);
+assert.equal(inspectMultiAssetProposal(multiAsset, maximumProposal).summary.state_number, ((1n<<64n)-1n).toString());
+assert.throws(() => createMultiAssetProposal(multiAsset, (1n<<64n).toString(), proposal.descriptor_hex), /overflow/);
 
 const requirements = {
   requirement_id: `0x${"11".repeat(32)}`,

@@ -442,6 +442,7 @@ jq -n \
   --arg alert_file "$WATCH_DIR_ABS/watch-alerts.jsonl" \
   '{
     schema: "morph.watchtower_config",
+    operator_id: "watchtower-local",
     defaults: {
       store_dir: $store_dir,
       watch_policy: $watch_policy,
@@ -555,6 +556,7 @@ jq -n \
   --arg alert_file "$WATCH_LOOP_DIR_ABS/watch-alerts.jsonl" \
   '{
     schema: "morph.watchtower_config",
+    operator_id: "watchtower-local",
     defaults: {
       store_dir: $store_dir,
       alert_file: $alert_file,

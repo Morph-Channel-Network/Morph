@@ -49,10 +49,19 @@ pub fn validate(raw_args: &[u8]) -> Result<()> {
     let state_data =
         load_cell_data(state_index, Source::Input).map_err(|_| ScriptError::Encoding)?;
     let header = MultiAssetStateHeader::parse(&state_data)?;
-    if header.base()?.funding_anchor() != args.funding_anchor() {
+    if header.funding_anchor() != args.funding_anchor() {
         return Err(ScriptError::FundingAnchorMismatch);
     }
-    if header.base()?.phase() != PHASE_SETTLING || !header.vaults_are_bound() {
+    if let Some(raw) = morph_script_common::multi_asset_splice_runtime::splice_evidence(
+        state_index,
+        Source::Input,
+    )? {
+        if state_index != 0 {
+            return Err(ScriptError::MultiAssetSpliceMismatch);
+        }
+        return morph_script_common::multi_asset_splice_runtime::verify_splice(&raw);
+    }
+    if header.phase() != PHASE_SETTLING || !header.vaults_are_bound() {
         return Err(ScriptError::NewStateNotSettling);
     }
     let state_input = load_input(state_index, Source::Input).map_err(|_| ScriptError::Encoding)?;

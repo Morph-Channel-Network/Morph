@@ -999,7 +999,7 @@ export function StateActions({ state, runAction, busy }: { state: NodeState; run
       </form>
       {recoveryStatus && <small className="inline-error">{recoveryStatus}</small>}
       <div className="stack-list">
-        {(state.multi_asset_packages ?? []).map(packageValue => (
+        {state.multi_asset_packages.map(packageValue => (
           <button type="button" className="copy-button" key={packageValue.package_id} disabled={busy || recoveryBusy} onClick={() => { void loadRecovery(packageValue.package_id); }}>
             <FileJson size={15} /> {shortHex(packageValue.channel_id)} · state {packageValue.state_number} · {packageValue.vault_count} assets
           </button>

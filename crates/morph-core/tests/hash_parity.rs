@@ -18,6 +18,18 @@ fn bytes32(value: u8) -> [u8; 32] {
 fn duplicated_host_and_script_domains_match() {
     assert_eq!(host_hash::STATE_DOMAIN, wire::STATE_DOMAIN);
     assert_eq!(
+        host_hash::MULTI_ASSET_ROOT_FUNDING_DOMAIN,
+        wire::multi_asset::MULTI_ASSET_ROOT_FUNDING_DOMAIN
+    );
+    assert_eq!(
+        host_hash::MULTI_ASSET_SPLICE_DOMAIN,
+        wire::multi_asset_splice::MULTI_ASSET_SPLICE_DOMAIN
+    );
+    assert_eq!(
+        host_hash::MULTI_ASSET_SPLICE_FLOW_DOMAIN,
+        wire::multi_asset_splice::MULTI_ASSET_SPLICE_FLOW_DOMAIN
+    );
+    assert_eq!(
         host_hash::FUNDING_CONTEXT_DOMAIN,
         wire::FUNDING_CONTEXT_DOMAIN
     );
