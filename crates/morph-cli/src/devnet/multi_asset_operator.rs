@@ -195,7 +195,120 @@ pub(super) fn validate_resolved_code(
             "committed {name} does not match approved contract artifact"
         );
     }
+    if let Some(conditional) = witness.descriptor().conditional().map_err(invalid)? {
+        validate_conditional_batch_code(contracts_dir, &conditional, cells)?;
+    }
     Ok(())
+}
+
+fn validate_conditional_batch_code(
+    contracts_dir: &Path,
+    conditional: &morph_script_common::multi_asset_conditional::MultiAssetConditional<'_>,
+    cells: &[LiveCellDetails],
+) -> Result<()> {
+    // The Batch code is needed only by the future conditional withdrawal,
+    // so it must be qualified before a participant signs or publishes it.
+    let committed = Script::new_builder()
+        .code_hash(ckb_types::packed::Byte32::from_slice(
+            conditional.code_hash(),
+        )?)
+        .hash_type(conditional.hash_type())
+        .build();
+    let binary = fs::read(contracts_dir.join("morph-batch-lock"))
+        .context("missing approved contract morph-batch-lock")?;
+    let approved_hash = blake2b_256(&binary);
+    ensure!(
+        cells
+            .iter()
+            .any(|cell| code_matches(&committed, cell) && blake2b_256(&cell.data) == approved_hash),
+        "committed morph-batch-lock does not match approved contract artifact"
+    );
+    Ok(())
+}
+
+/// Canonical channel-value outputs shared by public finalisation and its
+/// reviews. Pending CKB goes to one signed Batch executor; every other asset
+/// and the complete State carrier retain their ordinary independent lanes.
+fn settlement_outputs(
+    witness: &wire::MultiAssetWitness<'_>,
+    header: &wire::MultiAssetStateHeader<'_>,
+    carrier_capacity: u64,
+) -> Result<Vec<(CellOutput, Bytes)>> {
+    witness.validate_header(header).map_err(invalid)?;
+    ensure!(
+        header.vaults_are_bound() && header.phase() == PHASE_SETTLING && header.state_number() > 0,
+        "finalisation outputs require bound positive settling evidence"
+    );
+    let mut outputs = Vec::new();
+    let mut type_index = 6;
+    for index in 0..witness.descriptor().count() {
+        let payout = witness.descriptor().entry(index).map_err(invalid)?;
+        if payout.asset.kind == 0
+            && let Some(conditional) = witness.descriptor().conditional().map_err(invalid)?
+        {
+            let lock = Script::from_slice(
+                &conditional
+                    .batch_script(
+                        header.channel_id(),
+                        &header.funding_context_id().map_err(invalid)?,
+                        header.state_number(),
+                    )
+                    .map_err(invalid)?,
+            )?;
+            outputs.push((
+                CellOutput::new_builder()
+                    .capacity(
+                        witness
+                            .manifest()
+                            .entry(index)
+                            .map_err(invalid)?
+                            .allocation
+                            .capacity()
+                            .map_err(invalid)?,
+                    )
+                    .lock(lock)
+                    .build(),
+                Bytes::new(),
+            ));
+            continue;
+        }
+        let ty = if payout.asset.kind == 1 {
+            let ty = script(witness, type_index)?;
+            type_index += 1;
+            Some(ty)
+        } else {
+            None
+        };
+        for participant in 0..2 {
+            let value = payout.allocations[participant];
+            let capacity = value.capacity().map_err(invalid)?;
+            if capacity == 0 {
+                continue;
+            }
+            let output_type = if value.amount > 0 { ty.clone() } else { None };
+            let data = if output_type.is_some() {
+                Bytes::from(value.amount.to_le_bytes().to_vec())
+            } else {
+                Bytes::new()
+            };
+            outputs.push((
+                CellOutput::new_builder()
+                    .capacity(capacity)
+                    .lock(script(witness, participant)?)
+                    .type_(output_type.pack())
+                    .build(),
+                data,
+            ));
+        }
+    }
+    outputs.push((
+        CellOutput::new_builder()
+            .capacity(carrier_capacity)
+            .lock(script(witness, 2)?)
+            .build(),
+        Bytes::new(),
+    ));
+    Ok(outputs)
 }
 
 pub(super) fn validate_vaults(
@@ -253,6 +366,119 @@ struct ActivationEvidence {
 
 /// Recover the original funding descriptor from authenticated creation
 /// evidence, even when the retained unilateral state has different payouts.
+fn factory_materialisation_view(
+    raw: &[u8],
+) -> Result<Option<morph_script_common::factory_multi_asset::FactoryMaterialisationView<'_>>> {
+    use morph_script_common::factory_multi_asset as factory;
+    if raw.starts_with(factory::FACTORY_MATERIALISATION_MAGIC) {
+        let frame = factory::FactoryMaterialisationWitness::parse(raw).map_err(invalid)?;
+        frame.verify().map_err(invalid)?;
+        Ok(Some(
+            factory::FactoryMaterialisationView::from_intent_bytes(frame.intent().as_bytes())
+                .map_err(invalid)?,
+        ))
+    } else if raw.starts_with(factory::FACTORY_REDUCED_RELEASE_MAGIC) {
+        let frame = factory::FactoryReducedReleaseWitness::parse(raw).map_err(invalid)?;
+        frame.verify().map_err(invalid)?;
+        let intent = frame
+            .child_intent()
+            .ok_or_else(|| anyhow!("Factory transition does not create a child"))?;
+        Ok(Some(
+            factory::FactoryMaterialisationView::from_intent_bytes(intent.as_bytes())
+                .map_err(invalid)?,
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
+/// The bounded child view delegates physical authority to the exact approved
+/// Factory Type that already executed in the canonical parent transaction.
+/// Checking only the view or a claimed header would not establish authority.
+fn verify_factory_activation_source(
+    rpc: &CkbRpcClient,
+    transaction: &ckb_types::packed::Transaction,
+    view: &morph_script_common::factory_multi_asset::FactoryMaterialisationView<'_>,
+    recovery: &morph_core::MultiAssetRecoveryPackage,
+    directory: &Path,
+) -> Result<()> {
+    let context = view.source_context().map_err(invalid)?;
+    ensure!(
+        view.transaction_hash() == transaction.calc_tx_hash().as_slice(),
+        "Factory parent proof commits another transaction"
+    );
+    let source = transaction
+        .raw()
+        .inputs()
+        .get(0)
+        .ok_or_else(|| anyhow!("Factory parent input missing"))?
+        .previous_output();
+    ensure!(
+        source.as_slice() == context.old_state_outpoint(),
+        "Factory parent proof references another source State"
+    );
+    let (previous, _) = super::multi_asset_splice_operator::canonical_transaction(
+        rpc,
+        source.tx_hash().unpack(),
+        1,
+    )?;
+    let index = u32::from(source.index()) as usize;
+    let output = previous
+        .raw()
+        .outputs()
+        .get(index)
+        .ok_or_else(|| anyhow!("canonical Factory source output missing"))?;
+    let data = previous
+        .raw()
+        .outputs_data()
+        .get(index)
+        .ok_or_else(|| anyhow!("canonical Factory source data missing"))?
+        .raw_data();
+    let ty = output
+        .type_()
+        .to_opt()
+        .ok_or_else(|| anyhow!("Factory parent source has no authentic Type"))?;
+    let child_type = Script::from_slice(&recovery.scripts.state_type)?;
+    let child_args = child_type.args().raw_data();
+    let child_args = wire::MultiAssetStateTypeArgs::parse(&child_args).map_err(invalid)?;
+    ensure!(
+        child_args.factory_origin() == Some(ty.calc_script_hash().as_slice()),
+        "child does not commit its authentic parent Factory Type"
+    );
+    for (script, name) in [
+        (ty.clone(), "morph-factory-type"),
+        (output.lock(), "morph-state-lock"),
+    ] {
+        ensure!(
+            script.hash_type().as_slice() == [2]
+                && script.code_hash().as_slice() == blake2b_256(&fs::read(directory.join(name))?),
+            "canonical Factory source does not use approved data1 {name}"
+        );
+    }
+    ensure!(
+        output.lock().args().raw_data().as_ref() == ty.calc_script_hash().as_slice(),
+        "canonical Factory StateLock is not bound to its Type"
+    );
+    let header =
+        morph_script_common::factory_multi_asset::FactoryMultiAssetStateHeader::parse(&data)
+            .map_err(invalid)?;
+    let args = ty.args().raw_data();
+    ensure!(
+        morph_script_common::factory_multi_asset::parse_factory_multi_asset_type_args(&args)
+            .map_err(invalid)?
+            == header.factory_id()
+            && header.chain_id() == context.chain_id()
+            && header.chain_id() == recovery.state.header.chain_id
+            && header.factory_id() == context.factory_id()
+            && header.participants_commitment() == context.participants_commitment()
+            && header.content_root() == context.source().commitment()
+            && header.outpoint_root() == context.source_outpoint_root().map_err(invalid)?
+            && u64::from(output.capacity()) == context.factory_carrier_capacity(),
+        "canonical Factory source differs from complete parent proof"
+    );
+    Ok(())
+}
+
 fn activation_evidence(
     initial_header: &[u8],
     funding_witness: &[u8],
@@ -278,11 +504,7 @@ fn activation_evidence(
         .to_opt()
         .ok_or_else(|| anyhow!("funding recovery evidence missing"))?
         .raw_data();
-    let signatures = witness
-        .input_type()
-        .to_opt()
-        .ok_or_else(|| anyhow!("funding participant signatures missing"))?
-        .raw_data();
+    let factory_view = factory_materialisation_view(&evidence)?;
     let splice;
     let creation_evidence = if evidence
         .starts_with(morph_script_common::multi_asset_splice::MULTI_ASSET_SPLICE_MAGIC)
@@ -297,7 +519,32 @@ fn activation_evidence(
     } else {
         evidence.as_ref()
     };
-    let mut original = if header.funding_epoch() == 0 {
+    let mut original = if let Some(factory) = factory_view {
+        ensure!(
+            witness.input_type().to_opt().is_none() && factory.transaction_hash() == *funding_hash,
+            "Factory child creation has another signing role or transaction"
+        );
+        let child = factory
+            .child_by_anchor(header.funding_anchor())
+            .map_err(invalid)?;
+        let mut original = morph_core::MultiAssetRecoveryPackage::decode_contents(
+            child.header.as_bytes(),
+            child.evidence.as_bytes(),
+            child.carrier_capacity,
+        )?;
+        ensure!(
+            child.carrier_capacity == recovery.state_carrier_capacity,
+            "Factory child carrier differs from saved recovery"
+        );
+        original.state.header.phase = morph_core::Phase::Active;
+        original.state.header.state_number = 0;
+        original
+    } else if header.funding_epoch() == 0 {
+        let signatures = witness
+            .input_type()
+            .to_opt()
+            .ok_or_else(|| anyhow!("funding participant signatures missing"))?
+            .raw_data();
         header
             .verify_root_funding_signatures(
                 funding_hash,
@@ -311,6 +558,11 @@ fn activation_evidence(
             recovery.state_carrier_capacity,
         )?
     } else {
+        let signatures = witness
+            .input_type()
+            .to_opt()
+            .ok_or_else(|| anyhow!("funding participant signatures missing"))?
+            .raw_data();
         morph_core::MultiAssetRecoveryPackage::decode(
             initial_header,
             creation_evidence,
@@ -351,19 +603,13 @@ fn recover_activation(
     state_point: &OutPoint,
     initial_header: &[u8],
     stored: &StoredMultiAssetPackage,
+    contracts_dir: &Path,
 ) -> Result<ActivationEvidence> {
-    let response = rpc.transaction(H256::from(state_point.tx_hash()))?;
-    ensure!(
-        response.tx_status.status == Status::Committed,
-        "funding transaction is not committed"
-    );
-    let transaction = response
-        .transaction
-        .ok_or_else(|| anyhow!("funding transaction body missing"))?;
-    let ckb_jsonrpc_types::Either::Left(transaction) = transaction.inner else {
-        return Err(anyhow!("expected the requested JSON funding transaction"));
-    };
-    let transaction: ckb_types::packed::Transaction = transaction.inner.into();
+    let (transaction, _) = super::multi_asset_splice_operator::canonical_transaction(
+        rpc,
+        H256::from(state_point.tx_hash()),
+        1,
+    )?;
     ensure!(
         transaction.calc_tx_hash() == state_point.tx_hash(),
         "funding transaction hash differs from live State"
@@ -372,6 +618,27 @@ fn recover_activation(
         .witnesses()
         .get(0)
         .ok_or_else(|| anyhow!("funding witness zero missing"))?;
+    let args = WitnessArgs::from_slice(&witness.raw_data())?;
+    if let Some(payload) = args.output_type().to_opt() {
+        let payload = payload.raw_data();
+        if let Some(view) = factory_materialisation_view(&payload)? {
+            verify_factory_activation_source(
+                rpc,
+                &transaction,
+                &view,
+                &stored.recovery()?,
+                contracts_dir,
+            )?;
+            let header = wire::MultiAssetStateHeader::parse(initial_header).map_err(invalid)?;
+            let child = view
+                .child_by_anchor(header.funding_anchor())
+                .map_err(invalid)?;
+            ensure!(
+                child.state_output_index == u32::from(state_point.index()) as usize,
+                "Factory child creation locator differs from actual State output"
+            );
+        }
+    }
     activation_evidence(
         initial_header,
         &witness.raw_data(),
@@ -506,7 +773,13 @@ pub fn transact(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         "State authority/carrier does not match recovery package"
     );
     let activation = if matches!(options.operation, Operation::Activate) {
-        Some(recover_activation(rpc, &state_point, &state.data, &stored)?)
+        Some(recover_activation(
+            rpc,
+            &state_point,
+            &state.data,
+            &stored,
+            &options.contracts_dir,
+        )?)
     } else {
         ensure!(
             old_header.same_context_except_progress(&header),
@@ -654,47 +927,9 @@ pub fn transact(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
             for point in &vault_points {
                 tx = tx.input(CellInput::new(point.clone(), 0));
             }
-            let mut type_index = 6;
-            for index in 0..witness.descriptor().count() {
-                let payout = witness.descriptor().entry(index).map_err(invalid)?;
-                let ty = if payout.asset.kind == 1 {
-                    let ty = script(&witness, type_index)?;
-                    type_index += 1;
-                    Some(ty)
-                } else {
-                    None
-                };
-                for participant in 0..2 {
-                    let value = payout.allocations[participant];
-                    let capacity = value.capacity().map_err(invalid)?;
-                    if capacity == 0 {
-                        continue;
-                    }
-                    let output_type = if value.amount > 0 { ty.clone() } else { None };
-                    let data = if output_type.is_some() {
-                        value.amount.to_le_bytes().to_vec()
-                    } else {
-                        vec![]
-                    };
-                    tx = tx
-                        .output(
-                            CellOutput::new_builder()
-                                .capacity(capacity)
-                                .lock(script(&witness, participant)?)
-                                .type_(output_type.pack())
-                                .build(),
-                        )
-                        .output_data(Bytes::from(data).pack());
-                }
+            for (output, data) in settlement_outputs(&witness, &header, decoded.carrier_capacity)? {
+                tx = tx.output(output).output_data(data.pack());
             }
-            tx = tx
-                .output(
-                    CellOutput::new_builder()
-                        .capacity(decoded.carrier_capacity)
-                        .lock(script(&witness, 2)?)
-                        .build(),
-                )
-                .output_data(Bytes::new().pack());
         } else {
             tx = tx
                 .output(state.output.clone())
@@ -922,6 +1157,64 @@ mod activation_tests {
     use super::*;
     use k256::ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner};
     use morph_core::{MultiAssetRecoveryPackage, ParticipantSignature, Phase};
+
+    #[test]
+    fn factory_child_activation_uses_public_parent_authority_and_original_child_terms() {
+        let (request, _, _, children) = crate::factory_journal_fixture::reduced_child_request();
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../sdk/typescript/test/fixtures/factory-transitions.json"
+        ))
+        .unwrap();
+        let case = corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|case| case["operation"] == "ReducedChild")
+            .unwrap();
+        let bytes = crate::multi_asset_packages::decode_hex(
+            case["package"]["transaction_hex"].as_str().unwrap(),
+            morph_core::FACTORY_MAX_TRANSACTION_BYTES,
+        )
+        .unwrap();
+        let transaction = ckb_types::packed::Transaction::from_slice(&bytes).unwrap();
+        let public = request.public_child(0).unwrap();
+        let initial = transaction
+            .raw()
+            .outputs_data()
+            .get(public.state_output_index)
+            .unwrap()
+            .raw_data();
+        let witness = transaction.witnesses().get(0).unwrap().raw_data();
+        assert!(
+            WitnessArgs::from_slice(&witness)
+                .unwrap()
+                .input_type()
+                .to_opt()
+                .is_none()
+        );
+        let hash = transaction.calc_tx_hash().unpack();
+        let recovered = activation_evidence(&initial, &witness, &hash, &children[0]).unwrap();
+        let bound = wire::MultiAssetStateHeader::parse(&recovered.header).unwrap();
+        assert!(bound.vaults_are_bound());
+        assert_eq!(bound.state_number(), 0);
+        assert_eq!(bound.phase(), PHASE_ACTIVE);
+        let args = WitnessArgs::from_slice(&recovered.witness).unwrap();
+        assert!(args.input_type().to_opt().is_none());
+        let payload = args.output_type().to_opt().unwrap().raw_data();
+        let evidence = wire::MultiAssetWitness::parse(&payload).unwrap();
+        assert_eq!(
+            evidence.descriptor().as_bytes(),
+            public.evidence.descriptor().as_bytes()
+        );
+        assert!(activation_evidence(&initial, &witness, &[9; 32], &children[0]).is_err());
+        let mut wrong = initial.to_vec();
+        wrong[76] ^= 1;
+        assert!(activation_evidence(&wrong, &witness, &hash, &children[0]).is_err());
+        let missing = WitnessArgs::new_builder()
+            .output_type(Some(Bytes::from(vec![0; 8])).pack())
+            .build();
+        assert!(activation_evidence(&initial, missing.as_slice(), &hash, &children[0]).is_err());
+    }
 
     fn signatures(digest: &[u8; 32]) -> Vec<ParticipantSignature> {
         let mut signatures = [1, 2]
@@ -1229,4 +1522,124 @@ pub(super) fn validate_funding_balances(
         "funding fee is zero or exceeds max_fee"
     );
     Ok(fee)
+}
+
+#[cfg(test)]
+mod conditional_tests {
+    use super::*;
+
+    #[test]
+    fn public_finalisation_builds_signed_batch_without_spending_token_or_carrier_lanes() {
+        let stored = crate::fixture_exports::conditional_package();
+        let decoded = stored.decode().unwrap();
+        let witness = wire::MultiAssetWitness::parse(&decoded.witness).unwrap();
+        let header = wire::MultiAssetStateHeader::parse(&decoded.header).unwrap();
+        let outputs = settlement_outputs(&witness, &header, decoded.carrier_capacity).unwrap();
+        let conditional = witness.descriptor().conditional().unwrap().unwrap();
+        assert_eq!(outputs.len(), 4);
+        assert_eq!(
+            u64::from(outputs[0].0.capacity()),
+            witness
+                .manifest()
+                .entry(0)
+                .unwrap()
+                .allocation
+                .capacity()
+                .unwrap()
+        );
+        assert_eq!(
+            outputs[0].0.lock().as_slice(),
+            conditional
+                .batch_script(
+                    header.channel_id(),
+                    &header.funding_context_id().unwrap(),
+                    header.state_number()
+                )
+                .unwrap()
+        );
+        assert!(outputs[0].0.type_().to_opt().is_none());
+        assert!(outputs[0].1.is_empty());
+        let token = witness.descriptor().entry(1).unwrap();
+        for participant in 0..2 {
+            assert_eq!(
+                outputs[1 + participant].0.lock(),
+                script(&witness, participant).unwrap()
+            );
+            assert_eq!(
+                u64::from(outputs[1 + participant].0.capacity()),
+                token.allocations[participant].capacity().unwrap()
+            );
+            assert_eq!(
+                outputs[1 + participant].1.as_ref(),
+                token.allocations[participant].amount.to_le_bytes()
+            );
+        }
+        assert_eq!(u64::from(outputs[3].0.capacity()), decoded.carrier_capacity);
+        assert_eq!(outputs[3].0.lock(), script(&witness, 2).unwrap());
+        assert!(outputs[3].0.type_().to_opt().is_none());
+        assert!(outputs[3].1.is_empty());
+        assert_eq!(
+            stored.validate().unwrap().capability["pending_ckb"],
+            "2000000000"
+        );
+    }
+
+    #[test]
+    fn public_finalisation_rejects_mismatched_descriptor_or_nonsettling_source() {
+        let stored = crate::fixture_exports::conditional_package();
+        let decoded = stored.decode().unwrap();
+        let witness = wire::MultiAssetWitness::parse(&decoded.witness).unwrap();
+        let mut wrong = decoded.header.clone();
+        wrong[182] ^= 1;
+        let header = wire::MultiAssetStateHeader::parse(&wrong).unwrap();
+        assert!(settlement_outputs(&witness, &header, decoded.carrier_capacity).is_err());
+        let mut active = decoded.header;
+        active[117] = morph_script_common::PHASE_ACTIVE;
+        let header = wire::MultiAssetStateHeader::parse(&active).unwrap();
+        assert!(settlement_outputs(&witness, &header, decoded.carrier_capacity).is_err());
+    }
+
+    #[test]
+    fn future_batch_executor_requires_live_code_matching_approved_artifact() {
+        let stored = crate::fixture_exports::conditional_package();
+        let decoded = stored.decode().unwrap();
+        let witness = wire::MultiAssetWitness::parse(&decoded.witness).unwrap();
+        let original = witness.descriptor().conditional().unwrap().unwrap();
+        let approved = Bytes::from_static(b"approved Batch executor fixture");
+        let mut raw = original.as_bytes().to_vec();
+        raw[4..36].copy_from_slice(&blake2b_256(&approved));
+        let conditional =
+            morph_script_common::multi_asset_conditional::MultiAssetConditional::parse(&raw)
+                .unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "morph-batch-code-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("morph-batch-lock"), &approved).unwrap();
+        let cell = LiveCellDetails {
+            output: CellOutput::new_builder().build(),
+            capacity: 0,
+            data: approved,
+        };
+        validate_conditional_batch_code(&path, &conditional, std::slice::from_ref(&cell)).unwrap();
+        assert!(validate_conditional_batch_code(&path, &conditional, &[]).is_err());
+        let replacement = LiveCellDetails {
+            output: cell.output.clone(),
+            capacity: cell.capacity,
+            data: Bytes::from_static(b"unapproved replacement"),
+        };
+        assert!(validate_conditional_batch_code(&path, &conditional, &[replacement]).is_err());
+        fs::write(
+            path.join("morph-batch-lock"),
+            b"different approved deployment",
+        )
+        .unwrap();
+        assert!(validate_conditional_batch_code(&path, &conditional, &[cell]).is_err());
+        fs::remove_dir_all(path).unwrap();
+    }
 }

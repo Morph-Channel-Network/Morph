@@ -1,7 +1,7 @@
 # Pre-production Operator Runbooks
 
 These runbooks govern the controlled-devnet
-`morph-v3-conditional-batch` pilot. They are executable procedures, not a
+`morph-current-custody` candidate. They are executable procedures, not a
 mainnet operations claim.
 
 Read and rehearse all of the following before activation:
@@ -14,8 +14,12 @@ Read and rehearse all of the following before activation:
   contract upgrades, and rollback;
 - [`value-limits.md`](value-limits.md): authoring, reviewing, and applying the
   operator value-limit policy before any real-assets phase;
-- [`rehearsal-2026-08-15.md`](rehearsal-2026-08-15.md): the repository-side dry
-  run evidence for this candidate.
+- [`current-watch-service.md`](current-watch-service.md): the shared scanner,
+  bounded publication service and reorg recovery;
+- [`current-publication-reliability.md`](current-publication-reliability.md):
+  fee, eviction, retry and controlled-reorg development rehearsals;
+- [`rehearsal-2026-08-15.md`](rehearsal-2026-08-15.md): historical evidence for
+  the retired candidate; it does not qualify the current ELFs.
 
 ## Roles
 

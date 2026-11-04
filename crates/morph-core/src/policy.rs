@@ -21,6 +21,8 @@ const HEX32_LEN: usize = 64;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ValueLimitError {
+    #[error("invalid current custody manifest: {0}")]
+    InvalidCustody(String),
     #[error("unsupported value-limit policy schema {0}")]
     UnsupportedSchema(String),
     #[error("value-limit xUDT key {0} is not canonical 0x-prefixed 32-byte hex")]
@@ -59,6 +61,104 @@ pub struct ValueSubject {
 }
 
 impl ValueSubject {
+    /// One custody snapshot, including reserve, business CKB, every token Type
+    /// and its separate State carrier. Multiple simultaneous custody bundles
+    /// can be added; mutually exclusive before/after states use include_peak.
+    pub fn add_manifest(
+        &mut self,
+        manifest: &crate::MultiAssetManifest,
+        state_carrier_capacity: u64,
+    ) -> Result<(), ValueLimitError> {
+        manifest
+            .encode()
+            .map_err(|error| ValueLimitError::InvalidCustody(error.to_string()))?;
+        self.add_ckb(u128::from(state_carrier_capacity))?;
+        for vault in &manifest.vaults {
+            self.add_ckb(u128::from(vault.value.reserve))?;
+            self.add_ckb(u128::from(vault.value.business_ckb))?;
+            if let crate::VaultAsset::Xudt(type_hash) = vault.asset {
+                self.add_xudt_raw(type_hash, vault.value.amount)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn from_manifest(
+        manifest: &crate::MultiAssetManifest,
+        state_carrier_capacity: u64,
+    ) -> Result<Self, ValueLimitError> {
+        let mut subject = Self::default();
+        subject.add_manifest(manifest, state_carrier_capacity)?;
+        Ok(subject)
+    }
+
+    /// Offline Factory admission view. Claims are not added to physical
+    /// custody, but every typed value right is admitted even when its current
+    /// balance is zero. Child carriers are simultaneous future custody; the
+    /// source and resulting custody are mutually exclusive snapshots.
+    /// This review does not establish canonical-chain or signer authority.
+    pub fn from_factory_request(
+        request: &crate::FactorySigningRequest,
+    ) -> Result<Self, ValueLimitError> {
+        use morph_script_common::factory_multi_asset as factory;
+
+        let invalid =
+            |error: crate::FactoryBackendError| ValueLimitError::InvalidCustody(error.to_string());
+        request
+            .validate_for_review(&request.members().map_err(invalid)?)
+            .map_err(invalid)?;
+        let mut peak = if let Some(source) = &request.source {
+            Self::from_manifest(&source.manifest, source.state_carrier_capacity)?
+        } else {
+            Self::default()
+        };
+        let mut future = if let Some(target) = &request.target {
+            Self::from_manifest(&target.manifest, target.state_carrier_capacity)?
+        } else {
+            Self::default()
+        };
+        let mut add_children = |intent: &factory::FactoryMaterialisationIntent<'_>| {
+            for index in 0..intent.child_count() {
+                let child = intent
+                    .child(index)
+                    .map_err(|error| ValueLimitError::InvalidCustody(format!("{error:?}")))?;
+                let manifest =
+                    crate::MultiAssetManifest::decode(child.evidence.manifest().as_bytes())
+                        .map_err(|error| ValueLimitError::InvalidCustody(error.to_string()))?;
+                future.add_manifest(&manifest, child.carrier_capacity)?;
+            }
+            Ok::<_, ValueLimitError>(())
+        };
+        match request.role {
+            crate::FactorySigningRole::Materialisation => {
+                let frame = factory::FactoryMaterialisationWitness::parse(&request.witness)
+                    .map_err(|error| ValueLimitError::InvalidCustody(format!("{error:?}")))?;
+                add_children(frame.intent())?;
+            }
+            crate::FactorySigningRole::Transition => {
+                let frame = factory::FactoryReducedReleaseWitness::parse(&request.witness)
+                    .map_err(|error| ValueLimitError::InvalidCustody(format!("{error:?}")))?;
+                if let Some(intent) = frame.child_intent() {
+                    add_children(intent)?;
+                }
+            }
+            _ => {}
+        }
+        peak.include_peak(&future);
+        for right in &request.target_rights {
+            if matches!(
+                right.id.kind,
+                crate::FactoryRightKind::Balance
+                    | crate::FactoryRightKind::ReserveClaim
+                    | crate::FactoryRightKind::SponsorBudgetClaim
+            ) && let Some(asset) = right.id.asset_type
+            {
+                peak.add_xudt_raw(asset, 0)?;
+            }
+        }
+        Ok(peak)
+    }
+
     pub fn add_ckb(&mut self, amount: u128) -> Result<(), ValueLimitError> {
         self.ckb_capacity = self.ckb_capacity.checked_add(amount).ok_or_else(|| {
             ValueLimitError::ValueOverflow {

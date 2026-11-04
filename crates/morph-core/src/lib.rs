@@ -2,20 +2,25 @@
 
 //! Core Morph Channel protocol objects and validation invariants.
 //!
-//! This crate is deliberately host-side Rust for now. It provides executable
+//! This crate is deliberately host-side Rust. Canonical CKB packed types are
+//! used for exact transaction-body checks, without an RPC or VM dependency.
+//! It provides executable
 //! protocol semantics for the no-std CKB script boundary, including fixed-layout
-//! body schemas and current-envelope-carried factory authorisation.
+//! body schemas and role-separated Factory authorisation.
 
 pub mod agent;
 pub mod backend;
 pub mod bridge;
 pub mod conditional;
+pub mod factory_backend;
 pub mod factory_multi_asset;
+pub mod factory_multi_asset_reduced;
 pub mod hash;
 pub mod multi_asset;
 pub mod multi_asset_backend;
 pub mod multi_asset_splice;
 pub mod node;
+pub mod payment;
 pub mod policy;
 pub mod rgbpp;
 pub mod types;
@@ -25,16 +30,15 @@ pub use agent::*;
 pub use backend::*;
 pub use bridge::*;
 pub use conditional::*;
+pub use factory_backend::*;
 pub use factory_multi_asset::*;
-pub use hash::{
-    SigningBytes, asset_registry_commitment, blake2b256, factory_vault_delta_commitment,
-    factory_vault_descriptor_commitment, funding_context_id, participants_commitment,
-    splice_asset_delta_commitment, vault_descriptor_commitment, vault_outpoint_commitment,
-};
+pub use factory_multi_asset_reduced::*;
+pub use hash::{SigningBytes, asset_registry_commitment, blake2b256, participants_commitment};
 pub use multi_asset::*;
 pub use multi_asset_backend::*;
 pub use multi_asset_splice::*;
 pub use node::*;
+pub use payment::*;
 pub use policy::*;
 pub use rgbpp::*;
 pub use types::*;

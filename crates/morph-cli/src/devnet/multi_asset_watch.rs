@@ -4,12 +4,20 @@ use super::*;
 use crate::multi_asset_packages::{
     self as packages, MultiAssetPackageSummary, StoredMultiAssetPackage,
 };
-use crate::packages::lock_private_path;
+use crate::persistence::lock_private_path;
 use morph_script_common::multi_asset as wire;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 const MAX_PACKAGES: usize = 4096;
+
+/// Wallet authority is used only to create a separate bounded sponsor budget.
+/// Publishing from that budget uses the public sponsor change key.
+pub struct AutoSponsorFunding {
+    pub private_key: String,
+    pub capacity: u64,
+    pub funding_fee: u64,
+}
 
 pub struct Options {
     pub contracts_dir: PathBuf,
@@ -27,6 +35,9 @@ pub struct Options {
     pub poll_ms: u64,
     pub max_fee: u64,
     pub mine_blocks: u64,
+    pub watch_policy: Option<PathBuf>,
+    pub alert_webhook_url: Option<String>,
+    pub auto_fund_sponsor: Option<AutoSponsorFunding>,
 }
 
 #[derive(Clone)]
@@ -183,11 +194,7 @@ fn retry_required(rpc: &CkbRpcClient, cursor: &WatchCursor, records: &Records) -
     if selected.summary.state_number.parse::<u64>()? <= number {
         return Ok(false);
     }
-    live_state_is_settling(
-        rpc,
-        parse_out_point(point)?,
-        StateObservationProfile::MultiAsset,
-    )
+    live_state_is_settling(rpc, parse_out_point(point)?)
 }
 
 fn alert(
@@ -199,6 +206,20 @@ fn alert(
     selected: u64,
     observed: Option<&ObservedStateCellReport>,
 ) -> Result<()> {
+    emit_alert(
+        options,
+        &alert_record(event, severity, message, cursor, selected, observed)?,
+    )
+}
+
+fn alert_record(
+    event: WatchAlertEvent,
+    severity: WatchAlertSeverity,
+    message: String,
+    cursor: &WatchCursor,
+    selected: u64,
+    observed: Option<&ObservedStateCellReport>,
+) -> Result<WatchtowerAlert> {
     let mut alert = WatchtowerAlert::new(
         cursor.channel_id.clone(),
         severity,
@@ -215,8 +236,25 @@ fn alert(
                 cursor.current_funding_context_id.clone(),
                 Some(observed.funding_context_id.clone()),
             );
+        if let Some(selected_anchor) = &cursor.current_funding_anchor {
+            alert = alert
+                .with_funding_anchors(selected_anchor.clone(), observed.funding_anchor.clone());
+        }
     }
-    append_watchtower_alert(&options.alert_file, &alert)
+    Ok(alert)
+}
+
+fn emit_alert(options: &Options, alert: &WatchtowerAlert) -> Result<()> {
+    append_watchtower_alert(&options.alert_file, alert)?;
+    if let Some(url) = &options.alert_webhook_url {
+        let secret = std::env::var("MORPH_WATCHTOWER_WEBHOOK_SECRET").ok();
+        crate::watch_alert::post_watchtower_alert_webhook_with_secret(
+            url,
+            alert,
+            secret.as_deref(),
+        )?;
+    }
+    Ok(())
 }
 
 fn reset_cursor(channel: &str, from_block: u64) -> Result<WatchCursor> {
@@ -244,8 +282,8 @@ fn recover_scan(
     recovery: &mut Option<WatchReorgRecoveryReport>,
     report: WatchReorgRecoveryReport,
 ) -> Result<()> {
-    append_watchtower_alert(
-        &options.alert_file,
+    emit_alert(
+        options,
         &reorg_alert(
             &cursor.channel_id,
             0,
@@ -278,6 +316,7 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         options.max_fee <= profile.fee.max_fee,
         "watch max_fee exceeds publication profile cap"
     );
+    validate_funding_and_policy(&options)?;
     let _cursor_lock = lock_private_path(&options.cursor_file)?;
     let reconciliation = reconcile_publication_attempts(rpc, &options.attempt_log, &profile)?;
     let loaded = read_watch_cursor(&options.cursor_file)?;
@@ -407,13 +446,7 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
             let next_height = height
                 .checked_add(1)
                 .ok_or_else(|| anyhow!("watch height overflow"))?;
-            let observations = observed_state_cells_in_profile(
-                &block,
-                &channel,
-                tip,
-                &filter,
-                StateObservationProfile::MultiAsset,
-            )?;
+            let observations = observed_state_cells(&block, &channel, tip, &filter)?;
             for observed in observations {
                 let point = parse_out_point(&observed.out_point)?;
                 if rpc.canonical_live_cell(point.clone().into(), false)?.status != "live" {
@@ -522,13 +555,29 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                         number,
                         Some(&observed),
                     )?;
+                    let (fee_out_point, sponsor_top_up) =
+                        match publication_sponsor(rpc, &options, &observed, number) {
+                            Ok(funded) => funded,
+                            Err(error) => {
+                                alert(
+                                    &options,
+                                    WatchAlertEvent::PublicationFailed,
+                                    WatchAlertSeverity::Critical,
+                                    error.to_string(),
+                                    &cursor,
+                                    number,
+                                    Some(&observed),
+                                )?;
+                                return Err(error);
+                            }
+                        };
                     let publication = super::multi_asset_operator::transact(
                         rpc,
                         super::multi_asset_operator::Options {
                             operation: super::multi_asset_operator::Operation::Publish,
                             package: selected.path.clone(),
                             state_out_point: observed.out_point.clone(),
-                            fee_out_point: options.fee_out_point.clone(),
+                            fee_out_point,
                             fee_authorization: options.fee_authorization.clone(),
                             contracts_dir: options.contracts_dir.clone(),
                             store_dir: options.store_dir.clone(),
@@ -542,8 +591,14 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                     );
                     match publication {
                         Ok(publication) => {
-                            alert(
-                                &options,
+                            let selected_header = packages::decode_hex(
+                                &selected.package.header_hex,
+                                wire::MULTI_ASSET_STATE_HEADER_LEN,
+                            )?;
+                            let selected_header =
+                                wire::MultiAssetStateHeader::parse(&selected_header)
+                                    .map_err(invalid)?;
+                            let submitted = alert_record(
                                 WatchAlertEvent::PublicationSubmitted,
                                 WatchAlertSeverity::Warning,
                                 format!(
@@ -553,11 +608,28 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                                 &cursor,
                                 number,
                                 Some(&observed),
-                            )?;
+                            )?
+                            .with_publication(
+                                publication["tx_hash"]
+                                    .as_str()
+                                    .context("publication receipt lacks exact transaction hash")?
+                                    .to_string(),
+                            )
+                            .with_funding_anchors(
+                                hex32(selected_header.funding_anchor()),
+                                observed.funding_anchor.clone(),
+                            )
+                            .with_optional_funding_contexts(
+                                Some(selected.summary.funding_context_id.clone()),
+                                Some(observed.funding_context_id.clone()),
+                            );
+                            emit_alert(&options, &submitted)?;
                             return Ok(
                                 json!({"schema":"morph.multi_asset_watch_pass.v1", "channel_id":channel,
                                 "operator_id":profile.operator_id, "cursor_file":options.cursor_file, "reorg_recovery":recovery,
                                 "retry_rescan":retry_rescan, "publication_reconciliation":reconciliation,
+                                "scanned_to_block":cursor.scanned_to_block,"next_from_block":cursor.next_block,
+                                "sponsor_top_up":sponsor_top_up,
                                 "selected":selected.summary, "observed":observed_json(Some(&observed))?, "publication":publication}),
                             );
                         }
@@ -617,6 +689,100 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
     }
 }
 
+fn validate_funding_and_policy(options: &Options) -> Result<()> {
+    if let Some(funding) = &options.auto_fund_sponsor {
+        ensure!(
+            options.fee_out_point.is_empty(),
+            "auto sponsor funding cannot also name an explicit fee input"
+        );
+        ensure!(
+            matches!(
+                options.fee_authorization,
+                super::multi_asset_operator::FeeAuthorization::Sponsor { .. }
+            ),
+            "auto sponsor publication requires public sponsor authorization"
+        );
+        ensure!(
+            options.mine_blocks > 0
+                && funding.funding_fee > 0
+                && funding.capacity >= options.max_fee,
+            "invalid auto sponsor funding budget or confirmation count"
+        );
+    } else {
+        ensure!(
+            !options.fee_out_point.is_empty(),
+            "watch requires an explicit fee input or auto sponsor funding"
+        );
+    }
+    if let Some(path) = &options.watch_policy {
+        crate::watch_policy::read_watchtower_policy(path)?.validate_run(
+            &crate::watch_policy::WatchPolicyRun {
+                channel_id: &options.channel_id,
+                detection_depth: options.detection_depth,
+                timeout_secs: options.timeout_secs,
+                poll_ms: options.poll_ms,
+                fee: options
+                    .auto_fund_sponsor
+                    .as_ref()
+                    .map_or(options.max_fee, |funding| {
+                        options.max_fee.max(funding.funding_fee)
+                    }),
+                mine_blocks: options.mine_blocks,
+                sponsor_out_point_present: matches!(
+                    options.fee_authorization,
+                    super::multi_asset_operator::FeeAuthorization::Sponsor { .. }
+                ) && options.auto_fund_sponsor.is_none(),
+                auto_fund_sponsor: options.auto_fund_sponsor.is_some(),
+                auto_sponsor_capacity: options
+                    .auto_fund_sponsor
+                    .as_ref()
+                    .map_or(0, |funding| funding.capacity),
+                alert_webhook_present: options.alert_webhook_url.is_some(),
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn publication_sponsor(
+    rpc: &CkbRpcClient,
+    options: &Options,
+    observed: &ObservedStateCellReport,
+    selected: u64,
+) -> Result<(String, Option<FundSponsorReport>)> {
+    let Some(funding) = &options.auto_fund_sponsor else {
+        return Ok((options.fee_out_point.clone(), None));
+    };
+    let super::multi_asset_operator::FeeAuthorization::Sponsor { change_pubkey } =
+        &options.fee_authorization
+    else {
+        return Err(anyhow!(
+            "auto sponsor requires public sponsor authorization"
+        ));
+    };
+    let top_up = fund_sponsor(
+        rpc,
+        FundSponsorOptions {
+            contracts_dir: options.contracts_dir.clone(),
+            private_key: funding.private_key.clone(),
+            sponsor_change_pubkey: Some(change_pubkey.clone()),
+            state_out_point: observed.out_point.clone(),
+            sponsor_capacity: funding.capacity,
+            sponsor_min_state_number: selected,
+            sponsor_max_state_number: selected,
+            strict_sponsor_range: false,
+            sponsor_max_fee_per_tx: Some(options.max_fee),
+            sponsor_max_total_fee: Some(options.max_fee),
+            fee: funding.funding_fee,
+            mine_blocks: options.mine_blocks,
+        },
+    )?;
+    Ok((
+        printable_out_point_string(&top_up.sponsor_out_point),
+        Some(top_up),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -624,6 +790,80 @@ mod tests {
     use k256::ecdsa::{Signature, SigningKey};
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn service_policy_checks_actual_sponsor_budget_and_webhook_before_rpc() {
+        let path = std::env::temp_dir().join(format!(
+            "morph-current-watch-policy-{}-{}.json",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let mut policy = crate::watch_policy::fixture_policy();
+        policy.min_detection_depth = 1;
+        policy.min_timeout_secs = 1;
+        policy.allow_explicit_sponsor = false;
+        policy.require_auto_fund_sponsor = true;
+        policy.allow_webhook_alerts = false;
+        fs::write(&path, serde_json::to_vec(&policy).unwrap()).unwrap();
+        let key = SigningKey::from_slice(&[1; 32]).unwrap();
+        let mut options = Options {
+            contracts_dir: PathBuf::from("contracts"),
+            fee_authorization: super::super::multi_asset_operator::FeeAuthorization::Sponsor {
+                change_pubkey: hex::encode(key.verifying_key().to_encoded_point(true).as_bytes()),
+            },
+            fee_out_point: String::new(),
+            store_dir: PathBuf::from("packages"),
+            channel_id: format!("0x{}", "01".repeat(32)),
+            from_block: 0,
+            cursor_file: PathBuf::from("cursor.json"),
+            alert_file: PathBuf::from("alerts.jsonl"),
+            publication_profile: PathBuf::from("profile.json"),
+            attempt_log: PathBuf::from("attempts.jsonl"),
+            detection_depth: 1,
+            timeout_secs: 1,
+            poll_ms: 100,
+            max_fee: policy.max_fee,
+            mine_blocks: 4,
+            watch_policy: Some(path.clone()),
+            alert_webhook_url: None,
+            auto_fund_sponsor: Some(AutoSponsorFunding {
+                private_key: hex::encode([1; 32]),
+                capacity: policy.max_auto_sponsor_capacity,
+                funding_fee: 1,
+            }),
+        };
+        validate_funding_and_policy(&options).unwrap();
+        options.alert_webhook_url = Some("http://127.0.0.1:1/alerts".to_string());
+        assert!(
+            validate_funding_and_policy(&options)
+                .unwrap_err()
+                .to_string()
+                .contains("webhook")
+        );
+        options.alert_webhook_url = None;
+        options.auto_fund_sponsor.as_mut().unwrap().funding_fee = options.max_fee + 1;
+        assert!(
+            validate_funding_and_policy(&options)
+                .unwrap_err()
+                .to_string()
+                .contains("exceeds policy maximum")
+        );
+        options.auto_fund_sponsor.as_mut().unwrap().funding_fee = 1;
+        options.fee_out_point = format!("0x{}:0", "02".repeat(32));
+        assert!(validate_funding_and_policy(&options).is_err());
+        options.fee_out_point.clear();
+        options.auto_fund_sponsor.as_mut().unwrap().capacity = options.max_fee - 1;
+        assert!(validate_funding_and_policy(&options).is_err());
+        options.auto_fund_sponsor = None;
+        options.fee_out_point = format!("0x{}:0", "02".repeat(32));
+        assert!(
+            validate_funding_and_policy(&options)
+                .unwrap_err()
+                .to_string()
+                .contains("explicit sponsor")
+        );
+        fs::remove_file(path).unwrap();
+    }
 
     fn resign(package: &mut morph_core::MultiAssetRecoveryPackage) {
         let digest = package.state.signing_digest().unwrap();
@@ -725,14 +965,7 @@ mod tests {
         };
         let channel = hex32(&package.state.header.channel_id);
         let block = make_block(output.clone());
-        let found = observed_state_cells_in_profile(
-            &block,
-            &channel,
-            10,
-            &filter,
-            StateObservationProfile::MultiAsset,
-        )
-        .unwrap();
+        let found = observed_state_cells(&block, &channel, 10, &filter).unwrap();
         assert_eq!(found.len(), 1);
         assert!(stale_settling_state_requires_defense(
             &found[0],
@@ -746,22 +979,40 @@ mod tests {
             found[0].funding_context_id,
             hex32(&package.state.funding_context_id().unwrap())
         );
-        assert!(
-            observed_state_cells(&block, &channel, 10, &filter)
-                .unwrap()
-                .is_empty()
+        let mut cursor = reset_cursor(&channel, 1).unwrap();
+        cursor.current_funding_anchor = Some(found[0].funding_anchor.clone());
+        cursor.current_funding_context_id = Some(found[0].funding_context_id.clone());
+        let submitted = alert_record(
+            WatchAlertEvent::PublicationSubmitted,
+            WatchAlertSeverity::Warning,
+            "current publication observed".to_string(),
+            &cursor,
+            found[0].state_number + 1,
+            Some(&found[0]),
+        )
+        .unwrap()
+        .with_publication(hex32(&[91; 32]));
+        assert_eq!(submitted.publication_tx_hash, Some(hex32(&[91; 32])));
+        assert_eq!(
+            submitted.selected_funding_anchor,
+            Some(found[0].funding_anchor.clone())
         );
+        assert_eq!(
+            submitted.observed_funding_anchor,
+            submitted.selected_funding_anchor
+        );
+        assert_eq!(
+            submitted.selected_funding_context_id,
+            Some(found[0].funding_context_id.clone())
+        );
+        let mut retired_shape = vec![0; 346];
+        retired_shape[..318].copy_from_slice(&package.state.encode().unwrap());
+        assert!(parse_state_observation(&retired_shape).is_err());
         let fake = make_block(output.as_builder().type_(None::<Script>.pack()).build());
         assert!(
-            observed_state_cells_in_profile(
-                &fake,
-                &channel,
-                10,
-                &filter,
-                StateObservationProfile::MultiAsset
-            )
-            .unwrap()
-            .is_empty()
+            observed_state_cells(&fake, &channel, 10, &filter,)
+                .unwrap()
+                .is_empty()
         );
     }
 }

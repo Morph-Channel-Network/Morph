@@ -80,7 +80,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: morph-contracts-${{ github.sha }}
-          path: target/morph-v3-conditional-batch.tar.gz
+          path: target/morph-current-custody.tar.gz
           if-no-files-found: error
           retention-days: 30
 
@@ -103,4 +103,4 @@ jobs:
       - name: Attest contract release provenance
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
-          subject-path: target/attestation/morph-v3-conditional-batch.tar.gz
+          subject-path: target/attestation/morph-current-custody.tar.gz

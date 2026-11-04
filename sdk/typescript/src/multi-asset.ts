@@ -1,5 +1,6 @@
+import { MAX_U64, MAX_SCRIPT_BYTES, utf8, requireValue, bytes, hex, join, hash, domainHash, same, zero, unsigned, u16, u32, little, asset, allocation, scriptOccupied, occupied, byteVector, encodeTable, encodeDynamic, encodeBytes, transactionEvidence, validPublicKey, type Vault, type Allocation, type TransactionEvidence } from "./protocol-wire.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { blake2b } from "@noble/hashes/blake2.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 export interface MultiAssetRecoveryPackage {
   schema: "morph.multi_asset_recovery_package.v1";
@@ -22,92 +23,98 @@ export interface MultiAssetPackageSummary {
   dependency_count: number;
   state_carrier_capacity: string;
   signer_pubkeys: [string, string];
+  capability: MultiAssetSettlementCapabilityInspection;
   assets: Array<{ type_hash: string | null; reserve: string; business_ckb: string; amount: string }>;
 }
 
-const MAX_U64 = (1n << 64n) - 1n;
 const MAX_VAULTS = 8;
-const MAX_SCRIPT_BYTES = 512;
-const MAX_WITNESS_BYTES = 28 + 4 + 8 * 97 + 100 + 8 * 97 + 8 * 36 + 14 * 516;
-const utf8 = new TextEncoder();
+const BATCH_DESCRIPTOR_BYTES = 156 + 8 * 84;
+const CONDITIONAL_BYTES = 36 + BATCH_DESCRIPTOR_BYTES;
+const MAX_DESCRIPTOR_BYTES = 100 + MAX_VAULTS * 97 + CONDITIONAL_BYTES;
+const MAX_WITNESS_BYTES = 28 + 4 + 8 * 97 + MAX_DESCRIPTOR_BYTES + 8 * 36 + 14 * 516;
 
-function requireValue(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new TypeError(`invalid multi-asset package: ${message}`);
+function fundingContext(header: Uint8Array): Uint8Array {
+  return domainHash("CKB_MORPH_MULTI_ASSET_FUNDING_CONTEXT_V1",header.slice(2,34),header.slice(36,68),
+    header.slice(76,108),header.slice(250,282),header.slice(282,314));
 }
 
-function bytes(raw: string, max: number): Uint8Array {
-  requireValue(typeof raw === "string" && raw.length <= 2 + 2 * max && /^0x(?:[0-9a-f]{2})*$/.test(raw), "noncanonical hex or byte limit exceeded");
-  return Uint8Array.from(raw.slice(2).match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+export type MultiAssetSettlementCapabilityInspection = { kind: "ordinary" } | {
+  kind: "ckb_conditional";
+  batch_code_hash: string;
+  batch_hash_type: number;
+  batch_id: string;
+  application_context_commitment: string;
+  pending_ckb: string;
+  batch_lock_hash: string;
+  settled_capacities: [string, string];
+  transfers: Array<{
+    transfer_id: string;
+    payer_lock_hash: string;
+    payee_lock_hash: string;
+    hash_algorithm: "ckb_blake2b" | "sha256";
+    payment_hash: string;
+    amount: string;
+    refund_after_block: string;
+  }>;
+};
+
+interface SettlementCapability {
+  inspection: MultiAssetSettlementCapabilityInspection;
+  pending: bigint;
+  settled: readonly [bigint, bigint] | undefined;
+  batchScript: Uint8Array | undefined;
 }
 
-function hex(raw: Uint8Array): string {
-  return `0x${Array.from(raw, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
-}
-
-function join(...parts: Uint8Array[]): Uint8Array {
-  const output = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
-  let offset = 0;
-  for (const part of parts) { output.set(part, offset); offset += part.length; }
-  return output;
-}
-
-function hash(...parts: Uint8Array[]): Uint8Array {
-  return blake2b(join(...parts), { dkLen: 32, personalization: utf8.encode("ckb-default-hash") });
-}
-
-function domainHash(domain: string, ...parts: Uint8Array[]): Uint8Array {
-  return hash(utf8.encode(domain), ...parts);
-}
-
-function same(a: Uint8Array, b: Uint8Array): boolean { return hex(a) === hex(b); }
-function zero(raw: Uint8Array): boolean { return raw.every((byte) => byte === 0); }
-
-function unsigned(raw: Uint8Array, offset: number, length: number): bigint {
-  requireValue(offset >= 0 && offset + length <= raw.length, "truncated integer");
-  let value = 0n;
-  for (let i = length - 1; i >= 0; i--) value = (value << 8n) | BigInt(raw[offset + i]!);
-  return value;
-}
-function u16(raw: Uint8Array, offset: number): number { return Number(unsigned(raw, offset, 2)); }
-function u32(raw: Uint8Array, offset: number): number { return Number(unsigned(raw, offset, 4)); }
-function little(value: number | bigint, length: number): Uint8Array {
-  let remaining = BigInt(value);
-  return Uint8Array.from({ length }, () => { const byte = Number(remaining & 255n); remaining >>= 8n; return byte; });
-}
-
-interface Asset { kind: number; type: Uint8Array; key: string }
-interface Allocation { reserve: bigint; business: bigint; amount: bigint; capacity: bigint }
-interface Vault { asset: Asset; lock: Uint8Array; value: Allocation }
-
-function asset(raw: Uint8Array, offset: number): Asset {
-  requireValue(offset + 33 <= raw.length, "truncated asset");
-  const kind = raw[offset]!;
-  const type = raw.slice(offset + 1, offset + 33);
-  requireValue((kind === 0 && zero(type)) || (kind === 1 && !zero(type)), "unknown asset identity");
-  return { kind, type, key: hex(raw.slice(offset, offset + 33)) };
-}
-
-function allocation(raw: Uint8Array, offset: number, id: Asset, vault: boolean): Allocation {
-  const reserve = unsigned(raw, offset, 8);
-  const business = unsigned(raw, offset + 8, 8);
-  const amount = unsigned(raw, offset + 16, 16);
-  const capacity = reserve + business;
-  requireValue(capacity <= MAX_U64 && (id.kind !== 0 || amount === 0n)
-    && (capacity !== 0n || amount === 0n) && (capacity === 0n || reserve > 0n)
-    && (!vault || (capacity > 0n && (id.kind === 0 || amount > 0n))), "invalid allocation or overflow");
-  return { reserve, business, amount, capacity };
-}
-
-function scriptOccupied(raw: Uint8Array): bigint {
-  requireValue(raw.length >= 53 && raw.length <= MAX_SCRIPT_BYTES
-    && u32(raw, 0) === raw.length && u32(raw, 4) === 16 && u32(raw, 8) === 48
-    && u32(raw, 12) === 49 && u32(raw, 49) === raw.length - 53
-    && [0, 1, 2, 4].includes(raw[48]!), "noncanonical CKB Script");
-  return BigInt(33 + raw.length - 53);
-}
-
-function occupied(lock: Uint8Array, type?: Uint8Array): bigint {
-  return (8n + scriptOccupied(lock) + (type === undefined ? 0n : scriptOccupied(type) + 16n)) * 100_000_000n;
+function settlementCapability(descriptor: Uint8Array, count: number, header: Uint8Array): SettlementCapability {
+  const prefix = 100 + count * 97;
+  const tag = descriptor[3];
+  requireValue(tag === 0 || tag === 1, "unknown settlement capability");
+  requireValue(descriptor.length === prefix + (tag === 1 ? CONDITIONAL_BYTES : 0), "invalid settlement descriptor length");
+  if (tag === 0) return { inspection: {kind: "ordinary"}, pending: 0n, settled: undefined, batchScript: undefined };
+  const conditional = descriptor.slice(prefix);
+  requireValue(u16(conditional, 0) === 1 && conditional[2] === 0 && [0,1,2,4].includes(conditional[3]!)
+    && !zero(conditional.slice(4,36)), "invalid conditional capability identity");
+  const batch = conditional.slice(36);
+  const transferCount = batch[68]!;
+  requireValue(u16(batch,0) === 3 && batch[2] === 2 && batch[3] === 8 && transferCount >= 1 && transferCount <= 8
+    && !zero(batch.slice(4,36)) && !zero(batch.slice(36,68)) && zero(batch.slice(69,76)), "invalid conditional Batch descriptor");
+  const locks = [descriptor.slice(4,36), descriptor.slice(36,68)];
+  requireValue(same(batch.slice(76,108), locks[0]!) && same(batch.slice(116,148), locks[1]!), "conditional participant mismatch");
+  const settled = [unsigned(batch,108,8),unsigned(batch,148,8)] as const;
+  requireValue(settled[0] > 0n && settled[1] > 0n, "invalid conditional settled capacities");
+  const transfers: Extract<MultiAssetSettlementCapabilityInspection, {kind: "ckb_conditional"}>["transfers"] = [];
+  const hashes = new Set<string>();
+  let previousId = "";
+  let pending = 0n;
+  for (let index=0;index<8;index++) {
+    const transfer = batch.slice(156+index*84,156+(index+1)*84);
+    if (index >= transferCount) {
+      requireValue(zero(transfer), "nonzero unused conditional transfer");
+      continue;
+    }
+    const id = hex(transfer.slice(0,32));
+    const payer = transfer[32]!;
+    const algorithm = transfer[33]!;
+    const payment = hex(transfer.slice(36,68));
+    const amount = unsigned(transfer,68,8);
+    const refund = unsigned(transfer,76,8);
+    requireValue(!zero(transfer.slice(0,32)) && id > previousId && payer <= 1 && (algorithm === 0 || algorithm === 1)
+      && u16(transfer,34) === 0 && !zero(transfer.slice(36,68)) && !hashes.has(payment)
+      && amount > 0n && refund > 0n && refund <= 0x00ff_ffff_ffff_ffffn, "invalid conditional transfer");
+    pending += amount;
+    requireValue(pending + settled[0] + settled[1] <= MAX_U64, "conditional capacity overflow");
+    previousId = id;
+    hashes.add(payment);
+    transfers.push({transfer_id:id,payer_lock_hash:hex(locks[payer]!),payee_lock_hash:hex(locks[1-payer]!),
+      hash_algorithm:algorithm === 0 ? "ckb_blake2b" : "sha256",payment_hash:payment,
+      amount:amount.toString(),refund_after_block:refund.toString()});
+  }
+  requireValue(!zero(header.slice(36,68)), "invalid conditional channel identity");
+  const args = join(header.slice(36,68),fundingContext(header),header.slice(108,116),domainHash("CKB_MORPH_SETTLEMENT_DESCRIPTOR",batch));
+  const batchScript = encodeTable([conditional.slice(4,36),Uint8Array.of(conditional[3]!),encodeBytes(args)]);
+  return {pending,settled,batchScript,inspection:{kind:"ckb_conditional",batch_code_hash:hex(conditional.slice(4,36)),batch_hash_type:conditional[3]!,
+    batch_id:hex(batch.slice(4,36)),application_context_commitment:hex(batch.slice(36,68)),pending_ckb:pending.toString(),
+    batch_lock_hash:hex(hash(batchScript)),settled_capacities:[settled[0].toString(),settled[1].toString()],transfers}};
 }
 
 function recoveryParts(witness: Uint8Array): { manifest: Uint8Array; descriptor: Uint8Array; points: Uint8Array; pointCount: number; scripts: Uint8Array[] } {
@@ -148,15 +155,16 @@ interface PackageEvidence {
   vaults: Vault[];
   payouts: [Allocation, Allocation][];
   publicKeys: readonly [Uint8Array, Uint8Array];
+  capability: SettlementCapability;
 }
 function inspectPackage(value: MultiAssetRecoveryPackage, verifySignatures: boolean): MultiAssetPackageSummary {
   return inspectEvidence(value, verifySignatures).summary;
 }
 
-function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boolean): PackageEvidence {
+function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boolean, dependenciesRequired = true): PackageEvidence {
   requireValue(typeof value === "object" && value !== null && value.schema === "morph.multi_asset_recovery_package.v1", "unsupported schema");
   requireValue(Object.keys(value).sort().join(",") === "cell_deps,header_hex,schema,signature_witness_hex,state_carrier_capacity,witness_hex", "unknown package fields");
-  requireValue(Array.isArray(value.cell_deps) && value.cell_deps.length >= 1 && value.cell_deps.length <= 64, "incomplete code dependencies");
+  requireValue(Array.isArray(value.cell_deps) && value.cell_deps.length >= (dependenciesRequired ? 1 : 0) && value.cell_deps.length <= 64, "incomplete code dependencies");
   let previousDependency: { tx_hash: string; index: number } | undefined;
   for (const dep of value.cell_deps) {
     requireValue(typeof dep === "object" && dep !== null && Object.keys(dep).sort().join(",") === "dep_type,index,tx_hash"
@@ -169,7 +177,7 @@ function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boo
   }
   const header = bytes(value.header_hex, 318);
   requireValue(header.length === 318 && u16(header, 0) === 1 && u16(header, 34) === 1
-    && header[116] === 1 && [1, 2].includes(header[117]!) && u16(header, 214) === 4
+    && header[116] === 1 && [1, 2].includes(header[117]!) && u16(header, 214) === 5
     && u16(header, 248) === 2 && u16(header, 316) === 0, "unsupported State profile");
   requireValue(header[117] !== 2 || unsigned(header, 108, 8) > 0n, "settling recovery requires positive state number");
   const count = u16(header, 314);
@@ -183,7 +191,8 @@ function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boo
   const witness = bytes(value.witness_hex, MAX_WITNESS_BYTES);
   const { manifest, descriptor, points, pointCount, scripts } = recoveryParts(witness);
   requireValue(manifest.length === 4 + count * 97 && u16(manifest, 0) === 1 && manifest[2] === count && manifest[3] === 0, "invalid Vault manifest");
-  requireValue(descriptor.length === 100 + count * 97 && u16(descriptor, 0) === 4 && descriptor[2] === count && descriptor[3] === 0, "invalid settlement descriptor");
+  requireValue(descriptor.length >= 100 + count * 97 && u16(descriptor, 0) === 5 && descriptor[2] === count, "invalid settlement descriptor");
+  const capability = settlementCapability(descriptor, count, header);
   requireValue(same(domainHash("CKB_MORPH_MULTI_ASSET_VAULT_SET_V1", manifest), contentRoot)
     && same(domainHash("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1", descriptor), header.slice(182, 214)), "manifest or descriptor commitment mismatch");
   const locks = [descriptor.slice(4, 36), descriptor.slice(36, 68), descriptor.slice(68, 100)];
@@ -204,10 +213,13 @@ function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boo
     requireValue(asset(descriptor, payoutOffset).key === id.key, "settlement asset mismatch");
     const a = allocation(descriptor, payoutOffset + 33, id, false);
     const b = allocation(descriptor, payoutOffset + 65, id, false);
-    requireValue(a.reserve + b.reserve === funded.reserve && a.business + b.business === funded.business
+    requireValue(a.reserve + b.reserve === funded.reserve && a.business + b.business + (id.kind === 0 ? capability.pending : 0n) === funded.business
       && a.amount + b.amount === funded.amount, "per-asset conservation mismatch");
     payouts.push([a, b]);
   }
+  if (capability.settled !== undefined) requireValue(vaults[0]!.asset.kind === 0
+    && capability.settled[0] === payouts[0]![0].capacity && capability.settled[1] === payouts[0]![1].capacity,
+    "conditional settled allocation mismatch");
   const typed = vaults.filter((vault) => vault.asset.kind === 1);
   requireValue(same(domainHash("CKB_MORPH_ASSET_REGISTRY_V1", little(typed.length, 8), ...typed.map((vault) => vault.asset.type)), header.slice(150, 182)), "asset registry mismatch");
   requireValue(bound ? pointCount === count : pointCount === 0, "incomplete OutPoint set");
@@ -235,6 +247,12 @@ function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boo
     && same(vaultArgs.slice(12, 44), header.slice(76, 108)), "State/Vault script authority mismatch");
   const vaultHash = hash(vaultScript);
   for (let i = 0; i < 3; i++) requireValue(!same(hash(scripts[i]!), vaultHash) && !same(hash(scripts[i]!), hash(stateLock)), "payout retains channel authority");
+  if (capability.batchScript !== undefined) {
+    const batchHash = hash(capability.batchScript);
+    requireValue(occupied(capability.batchScript) <= vaults[0]!.value.reserve, "insufficient conditional Batch reserve");
+    requireValue(!same(batchHash,vaultHash) && !same(batchHash,hash(stateLock)) && locks.every(lock => !same(batchHash,lock)),
+      "conditional Batch retains payout or channel authority");
+  }
   let typeIndex = 6;
   for (let i = 0; i < count; i++) {
     const vault = vaults[i]!;
@@ -264,14 +282,127 @@ function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boo
   }
   const summary: MultiAssetPackageSummary = {
     package_id: hex(digest), channel_id: hex(header.slice(36, 68)),
-    funding_context_id: hex(domainHash("CKB_MORPH_MULTI_ASSET_FUNDING_CONTEXT_V1", header.slice(2, 34), header.slice(36, 68), header.slice(76, 108), contentRoot, pointRoot)),
+    funding_context_id: hex(fundingContext(header)),
     state_number: unsigned(header, 108, 8).toString(), phase: header[117] === 1 ? "active" : "settling",
     vaults_bound: bound, vault_count: count, witness_bytes: witness.length,
     dependency_count: value.cell_deps.length,
     state_carrier_capacity: value.state_carrier_capacity, signer_pubkeys: [hex(publicKeys[0]), hex(publicKeys[1])],
+    capability: capability.inspection,
     assets: vaults.map((vault) => ({ type_hash: vault.asset.kind === 0 ? null : hex(vault.asset.type), reserve: vault.value.reserve.toString(), business_ckb: vault.value.business.toString(), amount: vault.value.amount.toString() })),
   };
-  return {summary, header, witness, descriptor, scripts, vaults, payouts, publicKeys};
+  return {summary, header, witness, descriptor, scripts, vaults, payouts, publicKeys, capability};
+}
+
+/** Inspect only a Factory child's public initial-exit terms. This accepts no
+ * authorization signatures and grants no ability to publish or sign. */
+export function inspectMultiAssetPublicExitTerms(headerHex:string,witnessHex:string,carrier:string,participants:[string,string]):MultiAssetPackageSummary {
+  const summary=inspectEvidence({schema:"morph.multi_asset_recovery_package.v1",header_hex:headerHex,witness_hex:witnessHex,
+    signature_witness_hex:hex(emptySignatureWitness(participants)),state_carrier_capacity:carrier,cell_deps:[]},false,false).summary;
+  requireValue(summary.vaults_bound && summary.phase === "settling" && summary.state_number === "1", "child requires bound initial exit terms");
+  return summary;
+}
+
+/** Review the signed execution capability, including every pending transfer.
+ * This performs the same complete package verification as ordinary inspection. */
+export function inspectMultiAssetSettlementCapability(value: MultiAssetRecoveryPackage): MultiAssetSettlementCapabilityInspection {
+  return inspectEvidence(value, true).capability.inspection;
+}
+
+export type ConditionalResolution =
+  | { kind: "fulfill"; transfer_id: string; preimage: string }
+  | { kind: "refund"; transfer_id: string };
+
+export interface ConditionalBatchPackage {
+  schema: "morph.conditional_batch_package.v1";
+  source_package: MultiAssetRecoveryPackage;
+  resolutions: ConditionalResolution[];
+  input_since: string;
+  resolution_witness_hex: string;
+  resolved_capacities: [string, string];
+}
+
+export interface ConditionalBatchPackageInspection {
+  schema: "morph.conditional_batch_package.v1";
+  source: MultiAssetPackageSummary;
+  batch_id: string;
+  batch_lock_hash: string;
+  transfer_count: number;
+  total_capacity: string;
+  descriptor_commitment: string;
+  input_since: string;
+  resolved_capacities: [string, string];
+}
+
+function canonicalU64(value: string, label: string): bigint {
+  requireValue(typeof value === "string" && /^(0|[1-9][0-9]{0,19})$/.test(value), `noncanonical ${label}`);
+  const number = BigInt(value);
+  requireValue(number <= MAX_U64, `${label} exceeds u64`);
+  return number;
+}
+
+function conditionalResolutionEvidence(source: MultiAssetRecoveryPackage, resolutions: ConditionalResolution[], since: string): {
+  inspection: ConditionalBatchPackageInspection; witness: Uint8Array;
+} {
+  const evidence = inspectEvidence(source,true);
+  const capability = evidence.capability.inspection;
+  requireValue(evidence.summary.vaults_bound && evidence.summary.phase === "settling"
+    && capability.kind === "ckb_conditional", "conditional resolution requires a bound signed conditional source");
+  const inputSince = canonicalU64(since,"input_since");
+  requireValue(Array.isArray(resolutions) && resolutions.length === capability.transfers.length,
+    "conditional resolutions must cover every transfer exactly once");
+  const capacities = capability.settled_capacities.map(value=>BigInt(value)) as [bigint,bigint];
+  const batch = evidence.descriptor.slice(100+evidence.summary.vault_count*97+36);
+  const witness = new Uint8Array(4+BATCH_DESCRIPTOR_BYTES+8*33);
+  witness.set(little(1,2));witness[2]=resolutions.length;witness.set(batch,4);
+  for (let index=0;index<resolutions.length;index++) {
+    const resolution=resolutions[index]!;
+    const transfer=capability.transfers[index]!;
+    requireValue(typeof resolution === "object" && resolution !== null
+      && (resolution.kind === "fulfill" || resolution.kind === "refund")
+      && Object.keys(resolution).sort().join(",") === (resolution.kind === "fulfill" ? "kind,preimage,transfer_id" : "kind,transfer_id")
+      && resolution.transfer_id === transfer.transfer_id,"conditional resolutions must be unique, ordered and match signed transfers");
+    const offset=4+BATCH_DESCRIPTOR_BYTES+index*33;
+    const payer=transfer.payer_lock_hash === hex(evidence.descriptor.slice(4,36)) ? 0 : 1;
+    let recipient: number;
+    if (resolution.kind === "fulfill") {
+      const preimage=bytes(resolution.preimage,32);
+      requireValue(preimage.length === 32 && hex(transfer.hash_algorithm === "sha256" ? sha256(preimage) : hash(preimage)) === transfer.payment_hash,
+        "conditional preimage does not match signed payment hash");
+      recipient=1-payer;witness[offset]=1;witness.set(preimage,offset+1);
+    } else {
+      requireValue(inputSince <= 0x00ff_ffff_ffff_ffffn && inputSince >= BigInt(transfer.refund_after_block),
+        "conditional refund requires mature canonical absolute-block since");
+      recipient=payer;witness[offset]=2;
+    }
+    capacities[recipient]! += BigInt(transfer.amount);
+    requireValue(capacities[recipient]! <= MAX_U64,"conditional resolved capacity overflow");
+  }
+  return {witness,inspection:{schema:"morph.conditional_batch_package.v1",source:evidence.summary,
+    batch_id:capability.batch_id,batch_lock_hash:capability.batch_lock_hash,transfer_count:resolutions.length,
+    total_capacity:(capacities[0]+capacities[1]).toString(),
+    descriptor_commitment:hex(domainHash("CKB_MORPH_SETTLEMENT_DESCRIPTOR",batch)),input_since:since,
+    resolved_capacities:[capacities[0].toString(),capacities[1].toString()]}};
+}
+
+/** Resolve the signed current capability, without creating another signer or
+ * inferring authority from detached channel metadata. Chain publication and
+ * the live Batch OutPoint still require canonical transaction evidence. */
+export function createConditionalBatchPackage(source: MultiAssetRecoveryPackage, resolutions: ConditionalResolution[], inputSince: string): ConditionalBatchPackage {
+  const resolved=conditionalResolutionEvidence(source,resolutions,inputSince);
+  return {schema:"morph.conditional_batch_package.v1",source_package:source,resolutions,input_since:inputSince,
+    resolution_witness_hex:hex(resolved.witness),resolved_capacities:resolved.inspection.resolved_capacities};
+}
+
+export function inspectConditionalBatchPackage(value: ConditionalBatchPackage): ConditionalBatchPackageInspection {
+  requireValue(typeof value === "object" && value !== null && value.schema === "morph.conditional_batch_package.v1"
+    && Object.keys(value).sort().join(",") === "input_since,resolution_witness_hex,resolutions,resolved_capacities,schema,source_package",
+    "unsupported conditional package fields");
+  const resolved=conditionalResolutionEvidence(value.source_package,value.resolutions,value.input_since);
+  requireValue(same(bytes(value.resolution_witness_hex,resolved.witness.length),resolved.witness),"conditional resolution witness mismatch");
+  requireValue(Array.isArray(value.resolved_capacities) && value.resolved_capacities.length === 2
+    && value.resolved_capacities.every((capacity,index)=>typeof capacity === "string" && capacity === resolved.inspection.resolved_capacities[index]),
+    "conditional resolved capacities mismatch");
+  return resolved.inspection;
 }
 
 
@@ -293,6 +424,7 @@ export interface MultiAssetSignatureReceipt {
 export interface MultiAssetProposalInspection {
   summary: MultiAssetPackageSummary;
   participant_lock_hashes: [string, string];
+  capability: MultiAssetSettlementCapabilityInspection;
   payouts: Array<{
     type_hash: string | null;
     allocations: [
@@ -308,7 +440,7 @@ function proposalEvidence(base: MultiAssetRecoveryPackage, stateNumber: string, 
   requireValue(typeof stateNumber === "string" && /^[1-9][0-9]{0,19}$/.test(stateNumber), "noncanonical proposal state number");
   const number = BigInt(stateNumber);
   requireValue(number <= MAX_U64 && number > BigInt(current.state_number), "proposal must advance state number without overflow");
-  const descriptor = bytes(descriptorHex, 100 + MAX_VAULTS * 97);
+  const descriptor = bytes(descriptorHex, MAX_DESCRIPTOR_BYTES);
   const header = bytes(base.header_hex, 318);
   header.set(little(number, 8), 108);
   header.set(domainHash("CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1", descriptor), 182);
@@ -343,7 +475,7 @@ export function inspectMultiAssetProposal(base: MultiAssetRecoveryPackage, propo
   const evidence = proposalEvidence(base, proposal.state_number, proposal.descriptor_hex);
   const summary = inspectPackage(evidence, false);
   requireValue(summary.package_id === proposal.signing_digest, "proposal signing digest mismatch");
-  const descriptor = bytes(proposal.descriptor_hex, 100 + MAX_VAULTS * 97);
+  const descriptor = bytes(proposal.descriptor_hex, MAX_DESCRIPTOR_BYTES);
   const payouts = summary.assets.map((_, index) => {
     const offset = 100 + index * 97;
     const id = asset(descriptor, offset);
@@ -351,7 +483,8 @@ export function inspectMultiAssetProposal(base: MultiAssetRecoveryPackage, propo
     return { type_hash: id.kind === 0 ? null : hex(id.type),
       allocations: values.map(value => ({ reserve: value.reserve.toString(), business_ckb: value.business.toString(), amount: value.amount.toString() })) as MultiAssetProposalInspection["payouts"][number]["allocations"] };
   });
-  return { summary, participant_lock_hashes: [hex(descriptor.slice(4, 36)), hex(descriptor.slice(36, 68))], payouts };
+  return { summary, participant_lock_hashes: [hex(descriptor.slice(4, 36)), hex(descriptor.slice(36, 68))],
+    capability: settlementCapability(descriptor,summary.vault_count,bytes(evidence.header_hex,318)).inspection, payouts };
 }
 
 export function inspectMultiAssetProposalSignature(base: MultiAssetRecoveryPackage, proposal: MultiAssetProposal, signature: MultiAssetSignatureReceipt): { signer_pubkey: string; signing_digest: string } {
@@ -378,6 +511,7 @@ export interface MultiAssetRootInspection {
   vault_outpoints: Array<{tx_hash: string; index: number}>;
   assets: MultiAssetPackageSummary["assets"];
   payouts: MultiAssetProposalInspection["payouts"];
+  capability: MultiAssetSettlementCapabilityInspection;
   input_count: number;
   output_count: number;
 }
@@ -388,87 +522,6 @@ export interface MultiAssetRootFunding {
 }
 
 const MAX_FUNDING_BYTES = 256 * 1024;
-function table(raw: Uint8Array, count: number): Uint8Array[] {
-  requireValue(raw.length >= 4 * (count + 1) && u32(raw, 0) === raw.length && u32(raw, 4) === 4 * (count + 1), "noncanonical Molecule table");
-  const offsets = Array.from({length: count}, (_, i) => u32(raw, 4 + i * 4));
-  offsets.push(raw.length);
-  requireValue(offsets.every((offset, i) => offset <= raw.length && (i === 0 || offset >= offsets[i - 1]!)), "invalid Molecule offsets");
-  return offsets.slice(0, -1).map((offset, i) => raw.slice(offset, offsets[i + 1]));
-}
-function dynamic(raw: Uint8Array, max: number): Uint8Array[] {
-  requireValue(raw.length >= 4 && u32(raw, 0) === raw.length, "invalid Molecule vector");
-  if (raw.length === 4) return [];
-  const first = u32(raw, 4);
-  requireValue(first >= 8 && first % 4 === 0 && first / 4 - 1 <= max, "Molecule vector exceeds count bound");
-  return table(raw, first / 4 - 1);
-}
-function fixed(raw: Uint8Array, size: number, max: number): Uint8Array[] {
-  const count = u32(raw, 0);
-  requireValue(count <= max && raw.length === 4 + size * count, "invalid Molecule fixed vector");
-  return Array.from({length: count}, (_, i) => raw.slice(4 + i * size, 4 + (i + 1) * size));
-}
-function byteVector(raw: Uint8Array): Uint8Array {
-  requireValue(raw.length >= 4 && u32(raw, 0) === raw.length - 4, "invalid Molecule Bytes");
-  return raw.slice(4);
-}
-function encodeTable(fields: Uint8Array[]): Uint8Array {
-  let offset = 4 * (fields.length + 1);
-  const offsets = fields.map((field) => { const start = offset; offset += field.length; return little(start, 4); });
-  return join(little(offset, 4), ...offsets, ...fields);
-}
-function encodeDynamic(fields: Uint8Array[]): Uint8Array { return fields.length === 0 ? little(4, 4) : encodeTable(fields); }
-function encodeBytes(raw: Uint8Array): Uint8Array { return join(little(raw.length, 4), raw); }
-interface TransactionEvidence {
-  raw: Uint8Array;
-  fields: Uint8Array[];
-  witnesses: Uint8Array[];
-  witnessFields: Uint8Array[];
-  inputs: Uint8Array[];
-  outputs: Array<{capacity: bigint; lock: Uint8Array; type: Uint8Array | undefined; data: Uint8Array}>;
-  dependencies: MultiAssetRecoveryPackage["cell_deps"];
-}
-function transactionEvidence(raw: Uint8Array, emptyMorphWitness = false): TransactionEvidence {
-  const [body, witnessVector] = table(raw, 2);
-  const fields = table(body!, 6);
-  requireValue(fields[0]!.length === 4 && u32(fields[0]!, 0) === 0, "unsupported root transaction version");
-  const dependencies = fixed(fields[1]!, 37, 64).map((dep) => {
-    requireValue(dep[36] === 0 || dep[36] === 1, "unsupported dependency type");
-    return {tx_hash: hex(dep.slice(0, 32)), index: u32(dep, 32), dep_type: dep[36] === 0 ? "code" as const : "dep_group" as const};
-  }).sort((a, b) => a.tx_hash < b.tx_hash ? -1 : a.tx_hash > b.tx_hash ? 1 : a.index - b.index);
-  fixed(fields[2]!, 32, 64);
-  const inputs = fixed(fields[3]!, 44, 64);
-  requireValue(inputs.length > 0 && dependencies.length > 0, "missing root inputs or dependencies");
-  const seen = new Set<string>();
-  for (const input of inputs) {
-    const point = input.slice(8);
-    requireValue(!zero(point.slice(0, 32)) && !seen.has(hex(point)), "duplicate or invalid funding input");
-    seen.add(hex(point));
-  }
-  const data = dynamic(fields[5]!, 64).map(byteVector);
-  const outputCells = dynamic(fields[4]!, 64);
-  requireValue(outputCells.length > 0 && outputCells.length === data.length, "invalid root output count");
-  const outputs = outputCells.map((cell, i) => {
-    const [capacityBytes, lock, typeBytes] = table(cell, 3);
-    requireValue(capacityBytes!.length === 8, "invalid output capacity encoding");
-    scriptOccupied(lock!);
-    const type = typeBytes!.length === 0 ? undefined : typeBytes!;
-    if (type !== undefined) scriptOccupied(type);
-    const capacity = unsigned(capacityBytes!, 0, 8);
-    requireValue(capacity >= (8n + scriptOccupied(lock!) + (type === undefined ? 0n : scriptOccupied(type)) + BigInt(data[i]!.length)) * 100_000_000n,
-      "root output below occupied capacity");
-    return {capacity, lock: lock!, type, data: data[i]!};
-  });
-  requireValue(outputs.reduce((sum, output) => sum + output.capacity, 0n) <= MAX_U64, "root output capacity overflow");
-  const witnesses = dynamic(witnessVector!, MAX_FUNDING_BYTES / 8).map(byteVector);
-  requireValue(emptyMorphWitness || witnesses.length > 0, "missing transaction witness zero");
-  const witnessFields = emptyMorphWitness && (witnesses[0]?.length ?? 0) === 0
-    ? [new Uint8Array(), new Uint8Array(), new Uint8Array()] : table(witnesses[0]!, 3);
-  return {raw: body!, fields, witnesses, witnessFields, inputs, outputs, dependencies};
-}
-function validPublicKey(key: Uint8Array): boolean {
-  if (key.length !== 33) return false;
-  try { secp256k1.Point.fromBytes(key); return true; } catch { return false; }
-}
 function emptySignatureWitness(participants: [string, string]): Uint8Array {
   const keys = participants.map((key) => bytes(key, 33));
   requireValue(keys.every(validPublicKey) && participants[0] < participants[1], "invalid or unordered root participants");
@@ -525,7 +578,8 @@ function rootEvidence(draft: MultiAssetRootDraft): RootEvidence {
     funding_context_id: next.summary.funding_context_id, creation_digest: hex(domainHash("CKB_MORPH_MULTI_ASSET_ROOT_FUNDING_V1", bytes(creation.summary.package_id, 32), txHash)),
     exit_digest: next.summary.package_id, state_carrier_capacity: state.capacity.toString(), participants: [...draft.participants],
     participant_lock_hashes: [hex(creation.descriptor.slice(4, 36)), hex(creation.descriptor.slice(36, 68))], vault_outpoints: outpoints,
-    assets: next.summary.assets, payouts: creation.vaults.map((vault, i) => ({type_hash: vault.asset.kind === 0 ? null : hex(vault.asset.type),
+    assets: next.summary.assets, capability: next.capability.inspection,
+    payouts: creation.vaults.map((vault, i) => ({type_hash: vault.asset.kind === 0 ? null : hex(vault.asset.type),
       allocations: creation.payouts[i]!.map((value) => ({reserve: value.reserve.toString(), business_ckb: value.business.toString(), amount: value.amount.toString()})) as MultiAssetProposalInspection["payouts"][number]["allocations"]})),
     input_count: tx.inputs.length, output_count: tx.outputs.length};
   return {inspection, creation, exit, tx};
@@ -653,6 +707,7 @@ export interface MultiAssetSpliceInspection {
   vault_outpoints: Array<{tx_hash: string; index: number}>;
   assets: MultiAssetPackageSummary["assets"];
   payouts: MultiAssetProposalInspection["payouts"];
+  capability: MultiAssetSettlementCapabilityInspection;
   flows: Array<{type_hash: string | null; deposit: PublicAllocation; withdrawal: PublicAllocation}>;
 }
 export interface MultiAssetSpliceFunding {
@@ -754,6 +809,7 @@ function spliceEvidence(current: MultiAssetRecoveryPackage, draft: MultiAssetSpl
     funding_epoch: unsigned(next.header, 68, 8).toString(), old_state_outpoint: {tx_hash: hex(tx.inputs[0]!.slice(8, 40)), index: u32(tx.inputs[0]!, 40)},
     creation_digest: next.summary.package_id, recovery_digest: exit.summary.package_id, bridge_digest: hex(domainHash("CKB_MORPH_MULTI_ASSET_SPLICE_V1", bridgeHeader)),
     withdrawal_lock_hex: hex(withdrawal), vault_outpoints: points.map(point => ({tx_hash: hex(point.slice(0, 32)), index: u32(point, 32)})), assets: next.summary.assets,
+    capability: exit.capability.inspection,
     payouts: next.vaults.map((vault, i) => ({type_hash: vault.asset.kind === 0 ? null : hex(vault.asset.type), allocations: next.payouts[i]!.map(publicAllocation) as [PublicAllocation, PublicAllocation]})),
     flows: values.map(flow => ({type_hash: flow.id.kind === 0 ? null : hex(flow.id.type), deposit: publicAllocation(flow.deposit), withdrawal: publicAllocation(flow.withdrawal)}))};
   return {inspection, tx, old, next, recovery, bridgeHeader, withdrawal, flows};

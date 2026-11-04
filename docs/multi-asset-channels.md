@@ -1,240 +1,144 @@
-# Multi-Asset Channels
+# Current channels and Factory custody
 
-Status: implementation in progress, 2026-11-02. The candidate bilateral profile
-now has host validation, versioned State/Vault script paths, CKB-VM lifecycle
-evidence, lossless CLI/SDK recovery packages, and durable Hub import/export.
-The source release remains v3.0.0. Bilateral splice has native construction,
-durable signing and SDK verification; Factory custody, typed conditions, and
-full multi-channel watch orchestration remain implementation work.
-See [candidate wire profile](multi-asset-wire.md) for the implemented
-encoding and verification commands.
+Status: current unpublished implementation, 2026-11-05. Plain CKB, one xUDT and
+multiple xUDT types share one channel State/Vault-set lifecycle. The current
+Factory uses the same custody primitives with its own rights authority; it is
+not a second channel settlement implementation. Repository-wide CI, acceptance
+report refresh and release qualification remain in progress. See the
+[wire reference](multi-asset-wire.md), [coverage ledger](current-protocol-coverage.md)
+and [mainnet gates](mainnet-readiness.md).
 
-## Decision
+## What is shared
 
-Remove the architectural restriction to one xUDT type per channel. Use one
-signed State track to control a bounded set of physical Vault Cells, with
-canonical settlement outputs and independent accounting for each asset.
-Asset-count, Vault-count, output-count, witness-byte, and execution limits must
-remain explicit and measured. The protocol should support multiple registered
-xUDT types; operators may admit a smaller set through value-limit policy.
+A channel has one authentic State Cell and 1–8 physical Vaults. Each admitted
+xUDT Type occupies a separate typed Vault; an optional plain Vault holds CKB.
+A signed descriptor commits participant payouts, occupied-capacity reserves,
+business CKB and a separate State carrier refund. Token amounts are never
+summed across Type identities.
 
-## Paper and Current Implementation
+Content and provenance are different commitments. Root creation signs an
+unbound content manifest and the exact raw transaction. Before broadcasting,
+both participants retain a complete signed bound Settling/1 exit for its future
+Vault OutPoints. Permissionless activation binds those exact sibling Vaults in
+canonical dependency order and preserves the carrier. Updates preserve the
+funding context and require both signatures. Finalisation consumes the complete
+Vault set after canonical relative-block since and needs no fresh peer signature.
 
-The [paper source](https://github.com/a19q3/Research/blob/3c202ea30ad88c145dbcdba2513363cf09c81923/morph_channel/paper.tex)
-defines a funding bundle containing a channel identity Cell and a Vault set
-(section 5, Stable Funding Bundle). Vault validation checks membership and
-complete-set consumption/evidence before finalisation (section 6, Vault Lock
-Semantics). Partition conservation treats each xUDT type separately, identified
-by its canonical full Type Script identity (section 9).
+```mermaid
+stateDiagram-v2
+  [*] --> UnboundActive: exact-TX funding approval + saved initial exit
+  UnboundActive --> Active: permissionless complete-set activation
+  Active --> Settling: publish signed recovery
+  Settling --> Settling: higher signed state number
+  Settling --> Closed: mature delay + whole-set finalisation
+  Active --> Successor: exact-TX splice + new creation and initial exit
+  Successor --> Active: activate new context
+```
 
-These rules support a multi-asset construction. They are not a byte-level
-implementation or a ready-made production asset profile.
+The sole channel header is 318 bytes, State layout 2, descriptor 5. Direct
+StateType args are `anchor || since` (40 bytes); Factory child args are
+`anchor || FactoryTypeHash || since` (72 bytes). One shared parser validates
+both shapes and the canonical relative clock. Unsupported historical headers,
+descriptors and argument orderings are rejected; development state is reset.
 
-| Layer | Current code | Gap |
+Conditional CKB is a descriptor capability. Ordinary assets still use the same
+Vault-set and carrier rules. Pending transfers use CKB business value only;
+disputed finalisation materialises the sole bounded Batch executor with args
+binding channel, exact funding context, state number and terms. Other token
+lanes settle independently in the same transaction. See
+[conditional batches](conditional-batches.md). Typed conditions remain unsupported.
+
+## Explicit changes of funded context
+
+Channel splice uses one 200-byte bridge and up to 16 per-asset flows. It signs
+the complete raw transaction, exact withdrawal identities and both old/new
+contexts. New creation and complete initial recovery authorizations precede
+old-context bridge signing. Reservation irreversibly seals the old signer
+context; confirmed switching uses the same journal path and retains retired
+evidence. Native construction, exact replay and canonical handoff are described
+in [splice](multi-asset-splice.md) and [initial funding](runbooks/initial-funding.md).
+
+Factory custody changes reuse complete manifests, exact OutPoints, Type evidence,
+occupied capacity and actual external-funding equations. Factory reserve and
+business CKB conserve as separate global lanes across Vault Types; token
+quantities conserve separately for each Type. This permits an entire token
+withdrawal to leave peer CKB in plain retained custody. No Type can be minted
+by burning another or by describing an unfunded outside contribution.
+
+## Factory permissions
+
+The current Factory header is 306 bytes, layout 2. Type args are 44 bytes,
+`MORPHFT!` format 1 plus the Factory identity. Membership is a complete sorted
+2–16 member commitment. It cannot be silently changed by a reduced operation.
+
+| Capability | Authority | Custody behavior |
 | --- | --- | --- |
-| Host registry and accounting | `AssetRegistry.xudt_types` is a set; `PartitionTotals` uses maps keyed by Type hash. | Candidate manifest/descriptor validation now agrees with the new bounded script profile. |
-| Factory rights | `FactoryRightId.asset_type` identifies the asset; kind 8 checks non-increase separately for each asset. | Rights express multiple assets, but do not establish custody or multi-asset child settlement. |
-| Bilateral settlement | Legacy `BilateralCkbXudtSettlementDescriptor` v2 has one `xudt_type_hash` and two participant outputs. | Candidate descriptor 4 now supports per-asset canonical payouts. |
-| Vault authority | Legacy `validate_current_vault_commitment` rejects a second group input and binds one content hash and exact OutPoint. | Candidate State/Vault branches now independently verify whole-set activation and retirement. |
-| Splice and Factory reserve | Fixed descriptors have two asset slots; physical Vault paths admit CKB plus at most one xUDT type. | Version the descriptor, delta, reserve, and materialisation paths together. |
-| Conditional settlement | Descriptor v3 and Batch Lock settle only CKB. | Add typed conditions after ordinary multi-asset settlement has complete recovery evidence. |
+| `MORPHFS!` format-2 root | All members, exact transaction | Create unbound complete custody. |
+| `MORPHFS!` activation | Permissionless | Bind exact sibling Vaults; preserve carrier/value. |
+| `MORPHFS!` UPDATE | All members, dedicated exact-TX update domain | Metadata/rights-root change, unchanged bound custody. |
+| `MORPHFR!` `ReducedRights` | One touched member | Change 1–10 localized value rights; per-asset total cannot increase. |
+| `ReducedDeposit` / `ReducedRelease` | One touched member | Actual funded increase or exact release of own reserve claims. |
+| `ReducedChild` | One touched member | Canonical child materialisation plus retained custody. |
+| `FullCustody` | All members, exact transaction | Funded custody changes and withdrawals. |
+| `MORPHFM!` materialisation | All members, exact transaction | 1–4 children; optional retained custody or full parent retirement. |
 
-The decisive restriction is physical custody and settlement. An ordinary xUDT
-Cell has one Type Script; putting more Type hashes into a registry or increasing
-an array bound does not let that Cell hold several independent xUDT types.
+Physical reduced operations carry at most 9 changed claims and prove every
+changed right against both roots. Paired compact proofs prevent unlisted
+rights changing inside sibling subtrees. Runtime checks authenticate the actual
+StateType/StateLock and compare both headers, every source Vault, retained
+Vault, payout, source OutPoint and raw transaction. An offline proof verifier
+is not a replacement for those checks.
 
-## Proposed Construction
+Reduced operations require a retained successor and unchanged collective carrier.
+They do not unilaterally retire the last occupied Vault floor. Wallet outputs
+can merge actual outside CKB with a token-only or dust withdrawal without
+charging that addition to peers. Full-consent materialisation can retire the
+parent and refund its carrier. See [reduced operations](factory-multi-right.md).
 
-### Vault Set and Provenance
+## Child recovery and proof availability
 
-Start with one Vault per admitted xUDT type and, if needed, a plain CKB Vault.
-A typed Vault also holds CKB capacity, which must be accounted for separately
-from its token quantity. Keep one authentic live State Cell for the channel.
+A Factory child is an ordinary current bilateral channel after creation. Its
+72-byte StateType args preserve the originating Factory identity across splices.
+The authentic Factory at input zero authorizes birth; its continued existence
+is not required for subsequent child updates or a saved unilateral exit.
+Child parties may be outside the Factory roster. Their two keys are fixed by
+the signed child header and their private initial exits; being a recipient
+does not grant parent Factory signing authority. Provider routing admission
+that reserves a parent member's rights still requires its own owner/liquidity
+proof and does not automatically apply to an entirely external child.
 
-Commit a canonical bounded manifest of Vault contents at funding time. Every
-entry binds its asset identity, lock hash, optional Type hash, capacity, and
-data commitment. Define a strict order and reject duplicate assets or entries.
-After funding commits, activate against the complete canonical set of direct
-CellDeps and bind the exact OutPoint of every Vault. Preserve the two-stage
-activation rule: funding cannot sign its own final transaction hash.
+Private complete initial exits must reach both child parties before parent
+signers reserve approval. Independent child sessions and public possession
+attestations enforce the delivery ceremony. The on-chain intent contains public
+keys and Factory approval, never child exit signatures. Publishing those exit
+signatures would expose the ability to initiate a unilateral close.
 
-Keep content identity and exact provenance as distinct commitments. Define new
-domain-separated set commitments and a versioned State representation; do not
-reinterpret the existing single-Vault `vault_materialisation_root` or
-`vault_outpoint_commitment` in place. The multi-asset encoding has no embedded single-Vault header; historical
-multi-asset layouts are rejected.
+Each member also retains complete initial Factory rights data. Public localized
+transitions let an untouched member refresh their own proof without peer help.
+An arbitrary all-member replacement root requires delivery of the complete new
+rights snapshot. A root commitment alone cannot restore missing recovery data.
 
-### Settlement and Capacity
+## Tooling and qualification
 
-A multi-asset descriptor derives outputs by participant, asset identity, role,
-capacity, and amount. It must bind exact lock and Type Script identities and
-canonical output placement, reject duplicate output attribution, and define
-zero-balance handling. Each typed payout needs its own sufficient capacity.
+Current Factory requests are prepared from current custody evidence, reviewed
+and signed through independent durable `factory-session` journals. `devnet
+factory` provides root/transition preparation, wallet-group signing, keyless
+submission and custody activation. Private child delivery and confirmed child
+handoff use the same current packages. Old Factory package commands and private
+plan-as-public interfaces are removed; required fields have no migration aliases.
 
-Check the following lanes independently:
+Current payment and provider adapters use the same channel backend. CLI, SDK and
+Hub retain complete signed recovery packages. Continuous configured watch service
+uses the same canonical watcher as bounded passes; independent hosts/RPCs,
+pooled publication, terminal abort tracking and production resilience still
+require evidence. See the [watch service runbook](runbooks/current-watch-service.md).
 
-- business CKB;
-- each registered xUDT Type's quantity, using checked arithmetic;
-- channel reserve and explicitly authorised reserve refunds;
-- State carrier capacity and its refund;
-- sponsor capacity, whose deficit alone pays publication fees.
-
-Splitting one typed Vault into two participant payouts can require more
-occupied capacity. Allocate that reserve in the signed funding/settlement
-configuration. Reject underfunded configurations before participants accept a
-state. Any later reserve increase needs explicit funding authorisation; it
-cannot silently consume business balances or sponsor change.
-
-For the first profile, finalisation consumes the entire committed Vault set
-atomically, checks the challenge delay and authentic StateType/StateLock, and
-retires the State only after every Vault and every expected payout is
-accounted for. A partial-set exit must fail. Staged exits would need a separate
-remaining-value authority and are outside this first profile.
-
-### Updates, Splice, and Factory
-
-Ordinary updates preserve the registered asset set, Vault content set, and
-exact provenance. Adding/removing an asset or changing funded quantities needs
-an explicit signed re-anchor/splice with a new funding context. The new bridge
-must verify old-set consumption, signed per-asset deltas, new-set creation,
-withdrawal locks, and subsequent whole-set activation.
-
-Factory reserve custody and child materialisation need the same set semantics.
-Begin with all-participant authorisation. Extend reduced exits/splices only
-when proofs cover every touched asset/right and establish non-interference
-for untouched rights and reserve. Existing kind-8 quantity non-increase is
-per asset and single participant; it does not authorise arbitrary cross-party
-trades or mint one asset by burning another.
-
-The shared `factory_multi_asset` validator, host plans and Factory contracts
-support complete source custody, optional retained custody and 1–4 bilateral
-children, each with 1–8 Vaults. Reserve, business CKB and every Type's token
-quantity conserve separately. Occupied capacity, exact source OutPoints,
-transaction hash, output positions and external child carrier funding are
-checked against the actual transaction. The Factory carrier stays intact or
-refunds in full at output zero when custody closes.
-
-The multi-asset Factory profile has a 306-byte layout-2 State header and
-44-byte Type args (`MORPHFT!`, format, reserved bytes, Factory identity).
-`MORPHFS!` witnesses authorise transaction-bound N-of-N root creation,
-whole-set activation, and N-of-N metadata updates that preserve custody.
-`MORPHFM!` witnesses authorise complete materialisation with 2–16 members.
-Unknown formats and reserved bytes are rejected. These are distinct consensus
-profiles, with no format aliases or automatic conversion.
-
-Children use 72-byte State Type args: anchor, originating Factory Type hash,
-and challenge since. Creation requires the authentic Factory State at input
-zero and the Factory's complete materialisation approval; both child public
-keys must belong to that Factory. After creation, each child activates,
-updates, splices and exits under its own bilateral authority. The origin hash
-remains fixed through splices and does not require the parent to remain live.
-Directly funded bilateral channels retain their distinct 40-byte Type args.
-
-`morph-cli validate-factory-multi-asset-materialisation plan.json` checks
-`morph.factory_multi_asset_materialisation.v1` and emits a lossless JSON review
-with stage `offline_plan`. Required fields have no aliases or defaults.
-N-of-N approval uses `CKB_MORPH_FACTORY_MULTI_ASSET_MATERIALISATION_V1` and
-commits the exact source, retained allocation, child terms and raw transaction.
-Each child has `state_output_index` and a complete `recovery_package`.
-The host verifies both child signatures on its initial Settling/1 package
-before producing a Factory signing digest or witness.
-
-Recovery packages contain private pre-signed exits. Persist and deliver them
-to both child parties before Factory signing. Never publish these signatures
-in the transaction: the on-chain frame contains only Factory signatures and
-the two public keys for each child. Publishing child exit signatures would
-allow third parties to trigger premature unilateral closure.
-
-VM tests cover root creation, activation, metadata update, full and retained
-materialisation, rejection of freshly signed physical mismatches, and child
-exit after parent retirement. The 8-asset/4-child/16-member configuration with
-maximum-length asset and payout Scripts uses approximately 67.5 million cycles and 75,098 bytes
-in the test fixture, below a 70,000,000-cycle test limit. This measurement uses
-permissive test asset/wallet code; real asset and wallet verification costs
-still require deployment-specific qualification.
-
-Native Factory funding/submission remains disabled until independent durable
-signer histories, private recovery delivery, restart/reorg handling and live
-chain acceptance are implemented. Reduced rights, exits and splices also need
-separate proofs over every touched asset and untouched reserve.
-
-### Versions and Recovery
-
-Introduce explicit descriptor, State-layout, Vault-args, and witness versions
-where interpretation changes. Freeze their exact bytes only after the design
-and budget review. Update matching host/script domains, parity tests, fixtures,
-deployment hashes, and release manifests together. Support only the current
-package shape; reject missing required fields and unsupported shapes.
-Moving an existing channel requires an authorised migration/re-anchor or a
-close and reopen, not a parser upgrade alone.
-
-CLI, SDK, Hub, and watchtower packages must retain the full asset registry,
-Vault manifest, exact OutPoints, descriptor, signatures, dependencies, and
-funding context needed to reconstruct unilateral settlement. Test recovery
-after restart and canonical-chain reorganisation for the entire set.
-
-The [splice implementation](multi-asset-splice.md) now has bounded flow/header
-validation, exact-transaction binding, complete initial-exit prerequisites and
-durable signer freeze rules. The State/Vault execution path now has CKB-VM
-coverage through re-anchor, activation and full unilateral retirement. Exact
-native construction, offline draft signing/export and canonical-input/code-checked
-submission are implemented. Isolated-node acceptance covers 2→1→2 assets, exact
-keyless replay after reorg and final unilateral settlement. Confirmed
-same-session switching, root binding, exact keyless funding replay, explicit
-reorg refresh and bounded signer supervision are verified. Independent initial
-exit-before-creation signing and confirmed same-path handoff are implemented;
-see [initial funding](runbooks/initial-funding.md). Public root construction and
-per-wallet signing have real-node three-funder evidence, including exact
-SDK/HTTP Hub export parity and restart recovery for eight assets. SDK splice
-review and assembly verify all three authorisations against Rust fixtures and
-recorded asset admission/removal transactions. Failover, pooled
-publication and terminal abort tracking remain open.
-
-## Delivery Sequence and Acceptance
-
-| Step | Deliverable | Acceptance evidence |
-| --- | --- | --- |
-| 1 | Wire proposal and executable host invariants. | Canonical encoding, host/script hash parity, bounded sizes, and explicit capacity allocation. Choose numeric profile limits from measured worst-case budgets. |
-| 2 | Directly funded bilateral multi-asset channels. | CKB plus at least two distinct xUDT types through fund, activate, publish, supersede, and unilateral full-set finalise; balanced and one-sided payouts for every asset. |
-| 3 | Multi-asset splice and Factory custody/materialisation. | Signed asset admission/removal and deltas, full-authority Factory exits, then separately evidenced reduced paths. Unsupported combinations remain rejected. |
-| 4 | Recovery tooling and release candidate. | CLI/SDK/Hub/watchtower round trips, durable packages, restart/reorg recovery, devnet/stateful reports, reviewed ELFs, and independent review. |
-| 5 | Conditional xUDT extension. | Asset-bound preimage/refund leaves, typed Batch custody and payouts, capacity budgets, and independent force-resolution evidence. |
-
-Current evidence: steps 1–2 have bilateral host and CKB-VM coverage, and real
-two/eight-xUDT node lifecycles. Step 4 has CLI/SDK/Hub persistence and lossless
-cross-language fixtures. Canonical multi-asset dispute watch passes now have
-late-package and real reorg/republication evidence. Factory custody in step 3,
-step 5, full service
-orchestration, reviewed release artifacts and independent review remain open.
-
-Standalone package-based activation/publication/finalisation now validates canonical live
-inputs, code dependencies and approved Morph artifacts, durably stores recovery
-evidence, and supports the existing bounded fee/RBF publication controller.
-The acceptance harness reuses this operator path. Native backend proposals,
-durable local signing reservations, dual-signature commit and lost-response recovery are implemented through the offline signing
-session CLI. Explicit wallet/sponsor operator authorization is implemented. Application
-payment/Hub orchestration and the production transaction/release gate remain
-work. Two/eight-asset SponsorCell publication and real rollback recovery have
-node acceptance evidence; an independent CLI process also publishes with all
-Morph private-key environment variables removed.
-Multi-asset watch passes enforce canonical block hashes and parent linkage,
-clear orphanable funding/observation state after reorgs, and rescan from the
-configured creation origin. Passive monitoring leaves Active channels open.
-Manual unactivated funding recovery is implemented from original creation
-evidence and a saved latest recovery package, without participant keys. Watch
-automation for that phase, multi-channel service/health orchestration and
-finalisation monitoring remain integration work.
-
-Required negative cases include missing or extra Vaults; substituted
-byte-identical Vaults with different OutPoints; duplicate manifest entries;
-mixed channels or funding epochs; partial State retirement; unregistered or
-wrong Type Scripts; swapped asset amounts; per-type minting masked by burning
-another type; overflow; insufficient payout capacity; duplicate output use;
-reserve/carrier leakage into fees or sponsor change; stale pre-splice
-packages; malformed set proofs; and missing recovery data.
-
-Before fixing limits, record transaction bytes, witnesses, CellDeps, CKB-VM
-cycles, occupied capacity, and fee-bump headroom for the largest accepted set
-and its worst-case payout shape. Run the existing local gates plus the new
-contract and devnet/stateful scenarios. Production approval also requires the
-evidence in [mainnet readiness](mainnet-readiness.md).
+Actual-node Factory acceptance also verifies reduced escape, public proof
+refresh, independent child exits and parent retirement. The [coverage ledger](current-protocol-coverage.md) records 77 current CKB-VM
+cases, host/property negatives and resource measurements up to 8 assets,
+4 children and 16 members. These are local accepted fixtures, with test
+asset/wallet code, not a universal execution or fee guarantee. Public-network
+latency/reorg/fee evidence, independent release rebuild, external review and
+real-asset value limits remain open. Cooperative channel close without the
+challenge delay, typed conditional execution and member rotation remain separate
+protocol work; none is implied by this consolidation.

@@ -1,269 +1,188 @@
 {
-  "schema": "morph.devnet_audit_profile",
-  "description": "Audit profile schema is a devnet evidence taxonomy label. The schema suffix does not denote the active protocol baseline; factory authorisation is interpreted through bounded WitnessEnvelope kind/body/digest envelopes on the current witness-envelope implementation line.",
+  "schema": "morph.current_stateful_audit.v1",
   "families": [
     {
       "id": "state_authority_authenticity",
       "severity": "P0",
-      "principle": "Vault and watchtower state authority is an authentic Morph StateCell identity, not parseable StateHeader bytes.",
+      "principle": "Current State and Factory authority is bound to approved script identities, exact source cells and the intended participant keys.",
       "required_coverage_tags": [
         "state_authority_authenticity"
       ],
       "required_scenarios": [
-        "bilateral_supersede_watchtower_finalise",
-        "watchtower_operations"
+        "root_funding",
+        "factory_children"
       ],
       "required_committed_checks": [
-        "supersede-smoke",
-        "watch-auto-sponsor/finalise"
+        "bilateral_shared",
+        "factory_custody_and_children"
       ],
       "required_expected_failures": []
     },
     {
       "id": "canonical_relative_maturity",
       "severity": "P0",
-      "principle": "Finalisation maturity is a canonical relative CKB since condition, not a raw integer threshold.",
+      "principle": "Unilateral finalisation consumes a canonical relative-block maturity policy and the last publishable state.",
       "required_coverage_tags": [
         "canonical_relative_maturity"
       ],
       "required_scenarios": [
-        "bilateral_supersede_watchtower_finalise",
-        "negative_attack_matrix"
+        "bilateral_unilateral_close",
+        "factory_terminal_materialisation"
       ],
       "required_committed_checks": [
-        "supersede-smoke"
+        "bilateral_shared",
+        "factory_custody_and_children"
       ],
-      "required_expected_failures": [
-        {
-          "check": "finalise-since-negative-smoke",
-          "morph_error": "StateSinceNotMature",
-          "error_code": 16
-        }
-      ]
+      "required_expected_failures": []
     },
     {
       "id": "state_retirement_non_orphaning",
       "severity": "P0",
-      "principle": "StateCell retirement cannot orphan channel or child-channel value.",
+      "principle": "Current Vault sets are fully accounted for during splice, channel finalisation and terminal Factory carrier refund.",
       "required_coverage_tags": [
         "state_retirement_non_orphaning"
       ],
       "required_scenarios": [
-        "bilateral_direct_publish_finalise",
-        "factory_lifecycle_matrix"
+        "bilateral_splice",
+        "bilateral_unilateral_close",
+        "factory_children",
+        "factory_terminal_materialisation"
       ],
       "required_committed_checks": [
-        "manual-channel/finalise",
-        "factory/child-finalise"
+        "bilateral_splice",
+        "factory_custody_and_children"
       ],
       "required_expected_failures": []
     },
     {
       "id": "signed_descriptor_evolution",
       "severity": "P0",
-      "principle": "Settlement descriptors are signed current-state context and may not drift during supersession.",
+      "principle": "A new signed settlement changes only its authorised progress while exact custody and splice contexts remain bound.",
       "required_coverage_tags": [
         "signed_descriptor_evolution"
       ],
       "required_scenarios": [
-        "splice_lifecycle_matrix",
-        "factory_splice_then_exit"
+        "bilateral_splice"
       ],
       "required_committed_checks": [
-        "splice-in-smoke",
-        "xudt-splice-out-smoke",
-        "factory-splice-in-smoke"
+        "bilateral_splice"
       ],
       "required_expected_failures": []
     },
     {
       "id": "non_interference_not_authorisation",
       "severity": "P0",
-      "principle": "Merkle or non-interference evidence localises a change; it does not authorise value creation.",
+      "principle": "A reduced proof localises changes, while a distinct participant signature supplies spending authority; withheld all-member approval cannot prevent an explicit reduced escape.",
       "required_coverage_tags": [
         "non_interference_not_authorisation"
       ],
       "required_scenarios": [
-        "factory_lifecycle_matrix"
+        "factory_reduced_escape"
       ],
       "required_committed_checks": [
-        "factory-reduced-rights-smoke",
-        "factory-merkle-update-smoke"
+        "factory_custody_and_children"
       ],
       "required_expected_failures": []
     },
     {
       "id": "factory_value_delta_binding",
       "severity": "P0",
-      "principle": "ReserveClaim, Balance, FactoryVault, and child-vault deltas must be exactly bound.",
+      "principle": "Each current Factory deposit, release and child allocation preserves global reserve/business CKB lanes and independent per-Type token quantities.",
       "required_coverage_tags": [
         "factory_value_delta_binding"
       ],
       "required_scenarios": [
-        "factory_lifecycle_matrix",
-        "factory_splice_then_exit",
-        "negative_attack_matrix"
+        "factory_reduced_escape",
+        "factory_deposit",
+        "factory_children",
+        "factory_terminal_materialisation"
       ],
       "required_committed_checks": [
-        "factory-reduced-exit-smoke",
-        "factory-reduced-xudt-exit-smoke",
-        "factory-splice-in-smoke"
+        "factory_custody_and_children"
       ],
-      "required_expected_failures": [
-        {
-          "check": "factory-reduced-xudt-negative-exit-smoke",
-          "morph_error": "SettlementOutputMismatch",
-          "error_code": 28
-        }
-      ]
+      "required_expected_failures": []
     },
     {
       "id": "typed_asset_binding",
       "severity": "P0",
-      "principle": "xUDT type hash, token amount, child vault, FactoryVault typed change, and descriptor commitment must bind the same typed asset.",
+      "principle": "The complete typed Vault set binds each Type Script and exact token quantity through native funding, splice, persistence and settlement.",
       "required_coverage_tags": [
         "typed_asset_binding"
       ],
       "required_scenarios": [
-        "splice_lifecycle_matrix",
-        "factory_lifecycle_matrix",
-        "negative_attack_matrix",
-        "extreme_state_value_cases"
+        "bilateral_splice",
+        "maximum_asset_lifecycle"
       ],
       "required_committed_checks": [
-        "xudt-smoke",
-        "xudt-splice-out-smoke",
-        "factory-reduced-xudt-exit-smoke",
-        "factory-xudt/smoke"
+        "bilateral_splice",
+        "maximum_asset_lifecycle"
       ],
-      "required_expected_failures": [
-        {
-          "check": "xudt-negative-smoke",
-          "morph_error": "SettlementOutputMismatch",
-          "error_code": 28
-        },
-        {
-          "check": "factory-xudt-negative/smoke",
-          "morph_error": "SettlementOutputMismatch",
-          "error_code": 28
-        },
-        {
-          "check": "factory-reduced-xudt-negative-exit-smoke",
-          "morph_error": "SettlementOutputMismatch",
-          "error_code": 28
-        }
-      ]
+      "required_expected_failures": []
     },
     {
       "id": "sponsor_policy_boundary",
       "severity": "P1",
-      "principle": "Script-enforced sponsor bounds are separated from operator/watchtower policy bounds.",
+      "principle": "Current sponsor fee attribution and immutable budget bounds remain distinct from the watcher publication policy.",
       "required_coverage_tags": [
         "sponsor_policy_boundary"
       ],
       "required_scenarios": [
-        "sponsor_fee_pressure",
-        "negative_attack_matrix"
+        "watch_service_reorg"
       ],
       "required_committed_checks": [
-        "manual-sponsor/fund",
-        "manual-sponsor/publish"
+        "watch_service_reorg"
       ],
-      "required_expected_failures": [
-        {
-          "check": "sponsor-policy-negative-smoke",
-          "morph_error": "SponsorStateOutOfRange",
-          "error_code": 29
-        },
-        {
-          "check": "sponsor-budget-negative-smoke",
-          "morph_error": "SponsorFeeTooHigh",
-          "error_code": 17
-        }
-      ]
+      "required_expected_failures": []
     },
     {
       "id": "watchtower_authority_and_cursor",
       "severity": "P2",
-      "principle": "Watchtower detection, publication, cursor recovery, and stale-package handling are funding-context aware, with funding-anchor fallback for older packages.",
+      "principle": "The current watcher detects canonical rollback, retains saved package evidence and corrects older signed states in the exact funding context.",
       "required_coverage_tags": [
         "watchtower_authority_and_cursor"
       ],
       "required_scenarios": [
-        "watchtower_operations",
-        "splice_lifecycle_matrix"
+        "watch_service_reorg"
       ],
       "required_committed_checks": [
-        "watch-direct-sponsor/watch",
-        "watch-config-loop/finalise",
-        "watch-splice-stale/apply"
+        "watch_service_reorg"
       ],
       "required_expected_failures": []
     },
     {
       "id": "negative_recovery_continuity",
       "severity": "P1",
-      "principle": "Expected failures reject exact attack-shaped transactions and later valid transitions still commit.",
+      "principle": "Actual failed authorisation, incomplete delivery and provenance checks preserve durable signing authority, followed by valid committed operations.",
       "required_coverage_tags": [
         "negative_recovery_continuity"
       ],
       "required_scenarios": [
-        "negative_attack_matrix",
-        "bilateral_supersede_watchtower_finalise",
-        "sponsor_fee_pressure"
+        "root_funding",
+        "factory_reduced_escape",
+        "factory_children",
+        "watch_service_reorg"
       ],
       "required_committed_checks": [
-        "manual-sponsor/finalise",
-        "factory/child-finalise",
-        "watch-auto-sponsor/finalise"
+        "bilateral_shared",
+        "factory_custody_and_children",
+        "watch_service_reorg"
       ],
-      "required_expected_failures": [
-        {
-          "check": "finalise-since-negative-smoke",
-          "morph_error": "StateSinceNotMature",
-          "error_code": 16
-        },
-        {
-          "check": "sponsor-policy-negative-smoke",
-          "morph_error": "SponsorStateOutOfRange",
-          "error_code": 29
-        },
-        {
-          "check": "sponsor-budget-negative-smoke",
-          "morph_error": "SponsorFeeTooHigh",
-          "error_code": 17
-        },
-        {
-          "check": "xudt-negative-smoke",
-          "morph_error": "SettlementOutputMismatch",
-          "error_code": 28
-        },
-        {
-          "check": "factory-xudt-negative/smoke",
-          "morph_error": "SettlementOutputMismatch",
-          "error_code": 28
-        },
-        {
-          "check": "factory-reduced-xudt-negative-exit-smoke",
-          "morph_error": "SettlementOutputMismatch",
-          "error_code": 28
-        }
-      ]
+      "required_expected_failures": []
     },
     {
       "id": "budget_regression",
       "severity": "P2",
-      "principle": "Cycles, transaction bytes, witness lengths, and proof profiles are bounded by a budget gate.",
+      "principle": "Actual current-node transactions and checked current Factory proofs remain inside explicitly configured cycle, byte and proof bounds.",
       "required_coverage_tags": [
         "budget_regression"
       ],
       "required_scenarios": [
-        "extreme_state_value_cases",
-        "factory_splice_then_exit"
+        "bilateral_splice",
+        "maximum_asset_lifecycle"
       ],
       "required_committed_checks": [
-        "factory-reduced-xudt-splice-out-smoke",
-        "factory-reduced-exit-smoke"
+        "bilateral_splice",
+        "maximum_asset_lifecycle"
       ],
       "required_expected_failures": []
     }

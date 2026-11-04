@@ -178,9 +178,37 @@ pub fn verify_multi_asset_settlement_outputs(
     state_source: Source,
 ) -> Result<()> {
     let descriptor = evidence.descriptor();
+    let batch_lock = if let Some(conditional) = descriptor.conditional()? {
+        let raw =
+            load_cell_data(state_input_index, state_source).map_err(|_| ScriptError::Encoding)?;
+        let header = crate::multi_asset::MultiAssetStateHeader::parse(&raw)?;
+        if header.state_number() == 0 {
+            return Err(ScriptError::ConditionalBatchLockMismatch);
+        }
+        Some(conditional.batch_lock_hash(
+            header.channel_id(),
+            &header.funding_context_id()?,
+            header.state_number(),
+        )?)
+    } else {
+        None
+    };
     let mut output_index = 0;
     for i in 0..descriptor.count() {
         let payout = descriptor.entry(i)?;
+        if payout.asset == MultiAssetId::CKB
+            && let Some(lock_hash) = batch_lock
+        {
+            verify_value(
+                output_index,
+                Source::Output,
+                &lock_hash,
+                MultiAssetId::CKB,
+                evidence.manifest().entry(i)?.allocation,
+            )?;
+            output_index += 1;
+            continue;
+        }
         for participant in 0..2 {
             let allocation = payout.allocations[participant];
             if allocation.capacity()? == 0 {
@@ -226,7 +254,7 @@ pub fn verify_multi_asset_settlement_outputs(
                 // allocation and the complete carrier refund. Plain fee
                 // change may share a recipient address without being counted
                 // a second time toward those lanes.
-                if lock == vault_lock {
+                if lock == vault_lock || batch_lock == Some(lock) {
                     return Err(ScriptError::MultiAssetConservationMismatch);
                 }
                 let asset = actual_asset(index, Source::Output)?;

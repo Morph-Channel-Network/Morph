@@ -38,11 +38,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-for tool in cargo curl jq node npm sed; do
+for tool in cargo curl jq node npm sed sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing required tool: $tool"
 done
 
-mkdir -p "$OUT_DIR"
+mkdir -p "$OUT_DIR/bin"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 
 rpc() {
   local url="$1"
@@ -99,6 +100,8 @@ wait_for_agent() {
 log "building Morph Agent and TypeScript SDK"
 (cd "$ROOT_DIR" && cargo build -p morph-agent) >"$OUT_DIR/morph-agent-build.log" 2>&1
 (cd "$ROOT_DIR/sdk/typescript" && npm run build) >"$OUT_DIR/typescript-sdk-build.log" 2>&1
+cp "$AGENT_BIN" "$OUT_DIR/bin/morph-agent"
+AGENT_BIN="$OUT_DIR/bin/morph-agent"
 
 ckb_network_id="$(rpc_result "$FIBER_CKB_RPC_URL" get_block_hash '["0x0"]' | jq -er '.')"
 node1_pubkey="$(rpc_result "$FIBER_NODE1_RPC_URL" node_info '[]' | jq -er '.pubkey')"
@@ -181,6 +184,8 @@ jq -n \
   --arg status "passed" \
   --arg finished_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg git_commit "$(git -C "$ROOT_DIR" rev-parse --short HEAD)" \
+  --arg agent_binary_sha256 "$(sha256sum "$AGENT_BIN" | cut -d' ' -f1)" \
+  --arg sdk_index_sha256 "$(sha256sum "$ROOT_DIR/sdk/typescript/dist/index.js" | cut -d' ' -f1)" \
   --arg ckb_network_id "$ckb_network_id" \
   --arg fiber_node1_pubkey "$node1_pubkey" \
   --arg fiber_node2_pubkey "$node2_pubkey" \
@@ -193,6 +198,10 @@ jq -n \
     status:$status,
     finished_at_utc:$finished_at_utc,
     git_commit:$git_commit,
+    agent_binary_sha256:$agent_binary_sha256,
+    sdk_index_sha256:$sdk_index_sha256,
+    proof_scope:"fiber_provider_route",
+    morph_custody_backing_proven:false,
     ckb_network_id:$ckb_network_id,
     fiber_node1_pubkey:$fiber_node1_pubkey,
     fiber_node2_pubkey:$fiber_node2_pubkey,

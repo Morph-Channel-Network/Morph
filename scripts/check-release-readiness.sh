@@ -9,6 +9,7 @@ required_files=(
   "release/factory-preproduction/envelope.json"
   "release/factory-preproduction/README.md"
   "release/factory-preproduction/watch-policy.json"
+  "release/factory-preproduction/publication-profile.json"
   "release/factory-preproduction/watch-config.example.json"
   "docs/preproduction-envelope.md"
   "docs/runbooks/README.md"
@@ -34,4 +35,4 @@ cargo run -q -p morph-cli -- validate-watch-policy \
 cargo run -q -p morph-cli -- validate-watch-config \
   release/factory-preproduction/watch-config.example.json
 
-echo "Morph v3 conditional-batch release-readiness documents verified"
+echo "Morph current custody release-readiness documents verified"

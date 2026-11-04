@@ -116,7 +116,7 @@ impl WatchtowerAlert {
 }
 
 pub fn append_watchtower_alert(path: &Path, alert: &WatchtowerAlert) -> Result<()> {
-    crate::packages::append_private_jsonl(path, alert)
+    crate::persistence::append_private_jsonl(path, alert)
 }
 
 pub fn post_watchtower_alert_webhook_with_secret(

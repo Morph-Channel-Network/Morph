@@ -5,7 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, ensure};
 use morph_script_common::{
     CONDITIONAL_TRANSFER_MAX_COUNT, FACTORY_MAX_PARTICIPANTS, FACTORY_MIN_PARTICIPANTS,
-    FACTORY_REDUCED_RIGHTS_COUNT,
+};
+use morph_script_common::{
+    factory_multi_asset::FACTORY_MULTI_ASSET_MAX_CHILDREN, multi_asset::MULTI_ASSET_MAX_VAULTS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +16,8 @@ use crate::release::FACTORY_RELEASE_PROFILE;
 pub const PREPRODUCTION_ENVELOPE_SCHEMA: &str = "morph.preproduction_envelope";
 
 const MAX_ACTIVE_FACTORIES: u32 = 4;
-const MAX_CHILDREN_PER_FACTORY: u32 = FACTORY_REDUCED_RIGHTS_COUNT as u32;
+// Operator-maintained lifetime admission cap; no on-chain cumulative counter.
+const MAX_CHILDREN_PER_FACTORY: u32 = 10;
 const MAX_CHANNEL_CAPACITY_SHANNONS: u64 = 100_000_000_000;
 const MAX_FACTORY_CAPACITY_SHANNONS: u64 = 1_000_000_000_000;
 const MAX_SPONSOR_CAPACITY_SHANNONS: u64 = 50_000_000_000;
@@ -50,6 +53,8 @@ pub struct FactoryLimits {
     pub max_participant_count: u32,
     pub max_active_factories: u32,
     pub max_children_per_factory: u32,
+    pub max_children_per_transaction: u32,
+    pub max_vaults_per_state: u32,
     pub max_capacity_shannons: u64,
 }
 
@@ -169,7 +174,15 @@ impl PreproductionEnvelope {
         );
         ensure!(
             (1..=MAX_CHILDREN_PER_FACTORY).contains(&self.factory.max_children_per_factory),
-            "max_children_per_factory exceeds the fixed rights profile {MAX_CHILDREN_PER_FACTORY}"
+            "max_children_per_factory exceeds the operator lifetime cap {MAX_CHILDREN_PER_FACTORY}"
+        );
+        ensure!(
+            self.factory.max_children_per_transaction == FACTORY_MULTI_ASSET_MAX_CHILDREN as u32,
+            "Factory transaction child bound must match the current wire"
+        );
+        ensure!(
+            self.factory.max_vaults_per_state == MULTI_ASSET_MAX_VAULTS as u32,
+            "Factory Vault-set bound must match the current wire"
         );
         ensure_nonzero_at_most(
             self.factory.max_capacity_shannons,
@@ -191,7 +204,7 @@ impl PreproductionEnvelope {
         );
         ensure!(
             self.conditional_batch.ckb_only,
-            "the reviewed v3 conditional batch profile is CKB-only"
+            "the current conditional Batch capability is CKB-only"
         );
         ensure!(
             self.conditional_batch.max_transfers == CONDITIONAL_TRANSFER_MAX_COUNT as u32,
@@ -235,8 +248,8 @@ impl PreproductionEnvelope {
             "only morph-devnet-xudt is admitted in the current envelope"
         );
         ensure!(
-            self.xudt.max_asset_types_per_factory == 1,
-            "current Factory descriptor profile admits one devnet xUDT type"
+            (1..=MULTI_ASSET_MAX_VAULTS as u32).contains(&self.xudt.max_asset_types_per_factory),
+            "Factory asset admission exceeds the current Vault-set bound"
         );
         ensure!(
             (1..=MAX_DEVNET_XUDT_UNITS_PER_FACTORY).contains(&self.xudt.max_units_per_factory),
@@ -322,6 +335,8 @@ mod tests {
                 max_participant_count: FACTORY_MAX_PARTICIPANTS as u32,
                 max_active_factories: 4,
                 max_children_per_factory: 10,
+                max_children_per_transaction: FACTORY_MULTI_ASSET_MAX_CHILDREN as u32,
+                max_vaults_per_state: MULTI_ASSET_MAX_VAULTS as u32,
                 max_capacity_shannons: MAX_FACTORY_CAPACITY_SHANNONS,
             },
             channel: ChannelLimits {
@@ -341,7 +356,7 @@ mod tests {
             },
             xudt: XudtLimits {
                 allowed_scripts: vec!["morph-devnet-xudt".to_string()],
-                max_asset_types_per_factory: 1,
+                max_asset_types_per_factory: MULTI_ASSET_MAX_VAULTS as u32,
                 max_units_per_factory: MAX_DEVNET_XUDT_UNITS_PER_FACTORY,
             },
             watchtower: WatchtowerLimits {

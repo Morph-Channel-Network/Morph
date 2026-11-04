@@ -49,22 +49,6 @@ require_manifest_status() {
   grep -qx 'status=passed' "$path" || fail "manifest does not contain status=passed: $path"
 }
 
-require_morph_scenario() {
-  local path="$1"
-  local scenario_id="$2"
-  jq -e --arg scenario_id "$scenario_id" \
-    '.scenarios[] | select(.scenario_id == $scenario_id)' "$path" >/dev/null ||
-    fail "missing required Morph scenario: $scenario_id"
-}
-
-require_audit_family() {
-  local path="$1"
-  local family_id="$2"
-  jq -e --arg family_id "$family_id" \
-    '.audit_families[] | select(.id == $family_id and .passed == true)' "$path" >/dev/null ||
-    fail "missing or failing Morph audit family: $family_id"
-}
-
 require_fiber_result() {
   local run_dir="$1"
   local file_name="$2"
@@ -177,6 +161,9 @@ require_morph_agent_fiber_evidence() {
      .status == "passed" and
      .result == "result.json" and
      .secrets_recorded == false and
+     .proof_scope == "fiber_provider_route" and .morph_custody_backing_proven == false and
+     (.agent_binary_sha256 | test("^[0-9a-f]{64}$")) and
+     (.sdk_index_sha256 | test("^[0-9a-f]{64}$")) and
      .tracked_worktree_clean == true and
      (.ckb_network_id | test("^0x[0-9a-f]{64}$")) and
      (.fiber_node1_pubkey | test("^[0-9a-f]{66}$")) and
@@ -199,64 +186,82 @@ require_morph_agent_fiber_evidence() {
 
 verify_morph_stateful() {
   local run_dir="$1"
-  local summary_check="$run_dir/morph-stateful/scenarios/summary-check.json"
-  local summary="$run_dir/morph-stateful/scenarios/summary.json"
-
-  require_file "$summary_check"
-  require_file "$summary"
-
-  jq_check "$summary_check" '.scenario_count >= 9' 'Morph stateful scenario count is below the strict matrix'
-  jq_check "$summary_check" '.required_scenarios >= 9' 'Morph required scenario count is incomplete'
-  jq_check "$summary_check" '.audit_families >= 11' 'Morph audit family count is incomplete'
-  jq_check "$summary_check" '.audit_families_passed == .audit_families' 'not all Morph audit families passed'
-  jq_check "$summary_check" '(.unknown_coverage_tags | length) == 0' 'Morph summary has unknown coverage tags'
-  jq_check "$summary_check" '.referenced_artifacts >= 87' 'Morph referenced artifact evidence is below the strict floor'
-  jq_check "$summary_check" '.required_committed_checks >= 62' 'Morph committed check evidence is below the strict floor'
-  jq_check "$summary_check" '.expected_failures >= 9' 'Morph negative-path evidence is below the strict floor'
-  jq_check "$summary_check" '.smoke.transaction_count >= 190' 'Morph committed transaction matrix is below the strict floor'
-  jq_check "$summary_check" '.smoke.committed_count >= 190' 'Morph committed transaction count is below the strict floor'
-  jq_check "$summary_check" '.smoke.deployed_script_hashes_verified == true' 'Morph deployed script hashes were not verified'
-  jq_check "$summary_check" '.smoke.watchtower_alerts >= 9' 'Morph watchtower alert evidence is incomplete'
-  jq_check "$summary_check" '.smoke.factory_reduced_rights_updates >= 4' 'Morph reduced-rights update evidence is incomplete'
-  jq_check "$summary_check" '.smoke.factory_merkle_updates >= 4' 'Morph sparse Merkle update evidence is incomplete'
-  jq_check "$summary_check" '.smoke.factory_reduced_exits >= 5' 'Morph reduced-exit evidence is incomplete'
-  jq_check "$summary_check" '.smoke.factory_local_exits >= 24' 'Morph local-exit evidence is incomplete'
-  jq_check "$summary_check" '.smoke.factory_splices >= 32' 'Morph factory splice evidence is incomplete'
-  jq_check "$summary_check" '.smoke.splice_payouts >= 9' 'Morph splice payout evidence is incomplete'
-  jq_check "$summary" '(.scenarios | length) >= 9' 'Morph scenario summary is incomplete'
-  jq_check "$summary" '(.audit_families | length) >= 11' 'Morph audit family summary is incomplete'
-
-  local scenario
-  for scenario in \
-    bilateral_direct_publish_finalise \
-    bilateral_supersede_watchtower_finalise \
-    sponsor_fee_pressure \
-    splice_lifecycle_matrix \
-    factory_lifecycle_matrix \
-    factory_splice_then_exit \
-    watchtower_operations \
-    extreme_state_value_cases \
-    negative_attack_matrix
-  do
-    require_morph_scenario "$summary" "$scenario"
-  done
-
-  local family
-  for family in \
-    state_authority_authenticity \
-    canonical_relative_maturity \
-    state_retirement_non_orphaning \
-    signed_descriptor_evolution \
-    non_interference_not_authorisation \
-    factory_value_delta_binding \
-    typed_asset_binding \
-    sponsor_policy_boundary \
-    watchtower_authority_and_cursor \
-    negative_recovery_continuity \
-    budget_regression
-  do
-    require_audit_family "$summary" "$family"
-  done
+  local current="$run_dir/morph-stateful"
+  local scenarios="$current/scenarios"
+  local matrix_dir="$scenarios/smoke"
+  local morph_bin="${MORPH_BIN:-$ROOT_DIR/target/debug/morph-cli}"
+  [ -x "$morph_bin" ] || fail "build the current morph-cli before auditing"
+  require_file "$scenarios/summary-check.json"
+  require_file "$scenarios/summary.json"
+  require_file "$matrix_dir/matrix.json"
+  require_file "$current/evidence.json"
+  require_file "$run_dir/fiber-coexistence-genesis.json"
+  # The sole current stateful verifier owns scenario dimensions, negative
+  # evidence, code identity, budget checks and source freshness. Do not retain
+  # the retired implementation's transaction-count/proof-profile thresholds.
+  (cd "$ROOT_DIR" && "$morph_bin" devnet-stateful-assert --dir "$scenarios" \
+    --contracts-dir "$matrix_dir/contracts" --json) >"$current/current-assertion.json"
+  python3 - "$current" "$run_dir/fiber-coexistence-genesis.json" "$morph_bin" "$run_dir/manifest.txt" <<'CURRENT_MATRIX_PY'
+from pathlib import Path
+import json,subprocess,sys
+root=Path(sys.argv[1]).resolve(); matrix_dir=root/'scenarios/smoke'
+def read(path):
+    return json.loads(path.read_text())
+def check(condition,message):
+    if not condition: raise SystemExit(message)
+evidence=read(root/'evidence.json'); observed=read(Path(sys.argv[2]))
+check(evidence.get('descriptor_version')==5,'current descriptor evidence missing')
+check(evidence.get('genesis_hash')==observed.get('result'),'Morph/Fiber genesis mismatch')
+manifest=dict(line.split('=',1) for line in Path(sys.argv[4]).read_text().splitlines() if '=' in line)
+check(evidence.get('rpc_url')==manifest.get('fiber_ckb_rpc_url'),'Morph/Fiber RPC endpoint mismatch')
+matrix=read(matrix_dir/'matrix.json')
+check(matrix.get('schema')=='morph.current_acceptance_matrix.v1','wrong current matrix schema')
+expected={'bilateral_shared':'bilateral_shared','bilateral_splice':'splice',
+'factory_custody_and_children':'factory','watch_service_reorg':'watch_service',
+'maximum_asset_lifecycle':'bilateral_max_assets'}
+cases=matrix.get('cases',[])
+check(len(cases)==len(expected) and {c.get('name') for c in cases}==set(expected),'current case set mismatch')
+reports={}
+for case in cases:
+    check(case.get('kind')==expected[case['name']],'wrong current case kind')
+    path=(matrix_dir/case['report_path']).resolve()
+    check(path.is_relative_to(matrix_dir),'report path leaves captured current matrix')
+    reports[case['name']]=read(path)
+shared=reports['bilateral_shared']; splice=reports['bilateral_splice']
+factory=reports['factory_custody_and_children']; watch=reports['watch_service_reorg']
+maximum=reports['maximum_asset_lifecycle']
+packages=set()
+for report in [shared,watch,maximum]:
+    check(report.get('schema')=='morph.multi_asset_devnet_acceptance.v1','wrong current channel report')
+    check(report['finalise']['status']=='Committed','complete-set finalisation missing')
+    check(len(report['recovery_packages'])==2,'current channel recovery evidence missing')
+    packages.update(report['recovery_packages'])
+check(splice.get('schema')=='morph.current_splice_devnet_acceptance.v1','wrong current splice report')
+check(splice['fund']['status']=='Committed' and splice['activation']['status']=='Committed','splice funding/activation missing')
+packages.add(splice['fund']['durable_package'])
+packages.add(splice['activation']['durable_package'])
+for operation in splice['transitions']['operations']:
+    check(operation['submission']['status']=='Committed' and operation['activation']['status']=='Committed','splice submission/activation missing')
+    packages.update([operation['submission']['old_recovery_package'],operation['submission']['new_recovery_package']])
+for terminal in splice['transitions']['terminal']:
+    packages.add(terminal['durable_package'])
+for path in packages:
+    path=Path(path).resolve()
+    check(path.is_relative_to(root),'recovery artifact leaves captured current run')
+    package=read(path)
+    check(len(bytes.fromhex(package['header_hex'].removeprefix('0x')))==318,'not a current State header')
+    subprocess.run([sys.argv[3],'validate-multi-asset-package',str(path),'--json'],check=True,stdout=subprocess.DEVNULL)
+check(shared['shared_funding'] and maximum['shared_funding'] and maximum['asset_count']==8,'funding/max asset evidence missing')
+check(len(splice['transitions']['operations'])==2 and all(x['withheld_bridge_receipt_reconciled'] for x in splice['transitions']['operations']),'splice recovery evidence missing')
+check(len(splice['transitions']['terminal'])==2 and all(x['status']=='Committed' for x in splice['transitions']['terminal']),'splice terminal evidence missing')
+check(factory['root']['report']['status']=='Committed' and factory['activation']['report']['status']=='Committed','native Factory funding/activation missing')
+check(factory['canonical_replay']['canonical_replay'] and factory['same_path_handoff'],'Factory canonical journal handoff missing')
+check(factory['transitions']['withheld_full_consent_escaped'] and factory['transitions']['peer_refreshed_from_public_changes'],'Factory unilateral/proof-data evidence missing')
+check(factory['transitions']['child']['reduced']['finalise']['status']=='Committed','reduced child exit missing')
+check(factory['transitions']['child']['terminal']['finalise']['status']=='Committed' and factory['transitions']['child']['terminal']['retained_factory']['retired'],'parent retirement and child exit missing')
+check(any(p.get('reorg_recovery') for p in watch['watch_passes']),'canonical watch rollback evidence missing')
+check(any(p.get('service',{}).get('published_count')==1 for p in watch['watch_passes']),'current watch service publication missing')
+CURRENT_MATRIX_PY
 }
 
 write_report() {
@@ -328,15 +333,11 @@ write_report() {
             }
           ] else [] end)
           + (if $include_morph == 1 then [
-            {id: "morph_bilateral_direct_publish_finalise", system: "morph", scenario_id: "bilateral_direct_publish_finalise", evidence: [$morph_summary]},
-            {id: "morph_bilateral_supersede_watchtower_finalise", system: "morph", scenario_id: "bilateral_supersede_watchtower_finalise", evidence: [$morph_summary]},
-            {id: "morph_sponsor_fee_pressure", system: "morph", scenario_id: "sponsor_fee_pressure", evidence: [$morph_summary]},
-            {id: "morph_splice_lifecycle_matrix", system: "morph", scenario_id: "splice_lifecycle_matrix", evidence: [$morph_summary]},
-            {id: "morph_factory_lifecycle_matrix", system: "morph", scenario_id: "factory_lifecycle_matrix", evidence: [$morph_summary]},
-            {id: "morph_factory_splice_then_exit", system: "morph", scenario_id: "factory_splice_then_exit", evidence: [$morph_summary]},
-            {id: "morph_watchtower_operations", system: "morph", scenario_id: "watchtower_operations", evidence: [$morph_summary]},
-            {id: "morph_extreme_state_value_cases", system: "morph", scenario_id: "extreme_state_value_cases", evidence: [$morph_summary]},
-            {id: "morph_negative_attack_matrix", system: "morph", scenario_id: "negative_attack_matrix", evidence: [$morph_summary]}
+            {id: "morph_current_shared_funding_and_settlement", system: "morph", case_id: "bilateral_shared", evidence: [$morph_summary]},
+            {id: "morph_current_splice_and_recovery", system: "morph", case_id: "bilateral_splice", evidence: [$morph_summary]},
+            {id: "morph_current_factory_custody_and_children", system: "morph", case_id: "factory_custody_and_children", evidence: [$morph_summary]},
+            {id: "morph_current_watch_service_and_reorg", system: "morph", case_id: "watch_service_reorg", evidence: [$morph_summary]},
+            {id: "morph_current_maximum_asset_lifecycle", system: "morph", case_id: "maximum_asset_lifecycle", evidence: [$morph_summary]}
           ] else [] end)
           + (if $include_coexistence_fiber == 1 then [
             {id: "fiber_external_funding_open", system: "fiber", suite: "e2e/external-funding-open", evidence: [$fiber_external]},
@@ -398,15 +399,11 @@ write_report() {
       minimum_evidence:
         (
           (if $include_morph == 1 then {
-            morph_scenarios: 9,
-            morph_security_families: 11,
-            morph_referenced_artifacts: 87,
-            morph_committed_checks: 62,
-            morph_expected_failures: 9,
-            morph_committed_transactions: 190,
-            morph_factory_splices: 32,
-            morph_factory_local_exits: 24,
-            morph_watchtower_alerts: 9
+            morph_current_case_ids: ["bilateral_shared", "bilateral_splice", "factory_custody_and_children", "watch_service_reorg", "maximum_asset_lifecycle"],
+            morph_descriptor_version: 5,
+            morph_state_header_bytes: 318,
+            morph_stateful_assertion: "morph-stateful/current-assertion.json",
+            evidence_scope: "actual current reports, independent journals, same Fiber genesis; not production approval"
           } else {} end)
           + (if $include_extended_fiber == 1 then {
             fiber_required_business_flows: (17 + (if $include_coexistence_fiber == 1 then 2 else 0 end)),
@@ -424,6 +421,7 @@ write_report() {
 }
 
 main() {
+  require_tool python3
   require_tool jq
   require_tool grep
   require_tool find

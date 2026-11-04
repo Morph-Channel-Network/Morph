@@ -26,7 +26,6 @@ FIBER_BRUNO_SUITES="${FIBER_BRUNO_SUITES:-$DEFAULT_FIBER_BRUNO_SUITES}"
 FIBER_FUNDING_TX_VERIFICATION_CASES="${FIBER_FUNDING_TX_VERIFICATION_CASES:-remove_change modify_change fund_from_peer missing_inputs}"
 FIBER_ACCEPTANCE_TCP_PORTS="${FIBER_ACCEPTANCE_TCP_PORTS:-8114 8115 21714 21715 21716 8343 8344 8345 8346}"
 BRUNO_CLI_SPEC="${BRUNO_CLI_SPEC:-@usebruno/cli@1.20.0}"
-BUILD_MORPH_CONTRACTS="${BUILD_MORPH_CONTRACTS:-1}"
 RUN_FIBER_RESTART_REGRESSION="1"
 FIBER_STACK_START_ATTEMPTS="${FIBER_STACK_START_ATTEMPTS:-3}"
 # ckb-librocksdb-sys 8.5.4 relies on transitive fixed-width integer includes;
@@ -124,7 +123,7 @@ assert_clean_for_production() {
   local morph_status
   morph_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no)"
   if [ -n "$morph_status" ]; then
-    fail "Morph tracked worktree is dirty; production acceptance requires committed tracked inputs because devnet-stateful-assert enforces freshness"
+    fail "Morph tracked worktree is dirty; production acceptance requires committed tracked inputs because acceptance binds current source and executed artifacts"
   fi
   local fiber_status
   fiber_status="$(git -C "$FIBER_DIR" status --porcelain --untracked-files=no)"
@@ -228,7 +227,6 @@ fiber_agent_router_suite=$FIBER_AGENT_ROUTER_SUITE
 fiber_bruno_suites=$FIBER_BRUNO_SUITES
 fiber_funding_tx_verification_cases=$FIBER_FUNDING_TX_VERIFICATION_CASES
 fiber_acceptance_tcp_ports=$FIBER_ACCEPTANCE_TCP_PORTS
-build_morph_contracts=$BUILD_MORPH_CONTRACTS
 run_fiber_restart_regression=$RUN_FIBER_RESTART_REGRESSION
 fiber_stack_start_attempts=$FIBER_STACK_START_ATTEMPTS
 fiber_cxxflags=$FIBER_CXXFLAGS
@@ -644,40 +642,36 @@ run_period_check_expiry_suite() {
   stop_fiber_stack
 }
 
-build_morph_contracts() {
-  if [ "$BUILD_MORPH_CONTRACTS" != "1" ]; then
-    log "Morph contract build skipped by BUILD_MORPH_CONTRACTS=$BUILD_MORPH_CONTRACTS"
-    return
-  fi
-  log "building Morph RISC-V contracts"
-  (cd "$ROOT_DIR" && make build-contracts) >"$LOG_DIR/morph-build-contracts.log" 2>&1
-}
-
 run_morph_stateful_on_fiber_ckb() {
-  local scenario_dir="$OUT_DIR/morph-stateful/scenarios"
+  local current_dir="$OUT_DIR/morph-stateful"
   local deployer_key alice_key bob_key
   deployer_key="$(read_devnet_fixture_key "$MORPH_FIBER_DEPLOYER_KEY_FILE")"
   alice_key="$(read_devnet_fixture_key "$MORPH_FIBER_ALICE_KEY_FILE")"
   bob_key="$(read_devnet_fixture_key "$MORPH_FIBER_BOB_KEY_FILE")"
-  mkdir -p "$scenario_dir"
-  build_morph_contracts
-  log "running Morph strict stateful channel/factory matrix on Fiber CKB devnet"
+  # The runner owns its fresh output directory and never starts/stops the
+  # external Fiber chain. Preserve an independent same-genesis observation.
+  [ ! -e "$current_dir" ] || fail "current Morph evidence already exists: $current_dir"
+  curl -fsS -H 'content-type: application/json' \
+    -d '{"id":1,"jsonrpc":"2.0","method":"get_block_hash","params":["0x0"]}' \
+    "$FIBER_CKB_RPC_URL" >"$OUT_DIR/fiber-coexistence-genesis.json"
+  jq -e '.error == null and (.result | test("^0x[0-9a-f]{64}$"))' \
+    "$OUT_DIR/fiber-coexistence-genesis.json" >/dev/null || fail "Fiber genesis observation failed"
+  log "running the sole current Morph matrix on Fiber's actual CKB RPC"
   (
     cd "$ROOT_DIR"
-    MORPH_CKB_RPC="$FIBER_CKB_RPC_URL" \
-    CKB_BIN="$CKB_BIN" \
-    CKB_SOURCE_DIR="$CKB_SOURCE_DIR" \
+    EXTERNAL_RPC_URL="$FIBER_CKB_RPC_URL" \
+    CKB_BIN="$CKB_BIN" FIBER_DIR="$FIBER_DIR" \
     MORPH_DEVNET_PRIVATE_KEY="$deployer_key" \
     MORPH_ALICE_PRIVATE_KEY="$alice_key" \
     MORPH_BOB_PRIVATE_KEY="$bob_key" \
-    OUT_DIR="$scenario_dir" \
-    LATEST_LINK="$OUT_DIR/morph-stateful/latest" \
-    MORPH_DEVNET_AUDIT_PROFILE="docs/devnet-audit-profile.example.json" \
-    MORPH_DEVNET_STATEFUL_BUDGET_PROFILE="docs/devnet-stateful-budget.example.json" \
-    MORPH_DEVNET_SMOKE_SKIP_LOCAL_CHECKS=1 \
-      scripts/devnet-stateful-scenarios.sh
+    OUT_DIR="$current_dir" \
+      scripts/devnet-current-e2e.sh
   ) >"$LOG_DIR/morph-stateful-on-fiber-ckb.log" 2>&1
-  log "Morph stateful artifacts -> $scenario_dir"
+  jq -e --slurpfile observed "$OUT_DIR/fiber-coexistence-genesis.json" \
+    --arg rpc "$FIBER_CKB_RPC_URL" \
+    '.rpc_url == $rpc and .genesis_hash == $observed[0].result and .descriptor_version == 5' \
+    "$current_dir/evidence.json" >/dev/null || fail "current runner did not use Fiber's exact chain"
+  log "current Morph matrix -> $current_dir/scenarios/smoke/matrix.json"
 }
 
 run_fiber_restart_regression() {
@@ -794,11 +788,12 @@ write_acceptance_matrix() {
               id: "morph_channel_factory_matrix",
               required: true,
               evidence: [
-                "Morph devnet-stateful-assert on Fiber CKB RPC",
-                "factory_lifecycle_matrix",
-                "factory_splice_then_exit",
-                "extreme_state_value_cases",
-                "negative_attack_matrix"
+                "Current Morph devnet-stateful-assert on the same Fiber CKB RPC",
+                "bilateral_shared",
+                "bilateral_splice",
+                "factory_custody_and_children",
+                "watch_service_reorg",
+                "maximum_asset_lifecycle"
               ]
             },
             {

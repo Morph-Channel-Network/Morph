@@ -36,6 +36,7 @@ full-test: test fixture-checks contract-tests
 
 test:
 	$(CARGO) test --workspace --all-features
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
 lint:
 	$(CARGO) clippy --workspace --all-features --all-targets -- -D warnings
@@ -47,7 +48,7 @@ fmt-check:
 	$(CARGO) fmt --all -- --check
 
 source-hygiene:
-	bash -n scripts/*.sh
+	@for script in scripts/*.sh; do bash -n "$$script" || exit; done
 	! grep -n "registry.npmmirror.com" sdk/typescript/package-lock.json ui/morph-hub/package-lock.json
 	! grep -R -n "VITE_MORPH_HUB_AUTH_TOKEN" ui/morph-hub/src
 	$(CARGO) clippy --workspace --all-features --bins --lib -- -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic
@@ -64,49 +65,35 @@ smoke:
 	$(CARGO) test --workspace
 	$(CARGO) run -p morph-cli -- validate-fixture
 
+.PHONY: devnet-current-e2e
+devnet-current-e2e:
+	bash scripts/devnet-current-e2e.sh
+
 fixture-checks:
 	mkdir -p target/fixture-checks
 	$(CARGO) run -q -p morph-cli -- validate-fixture
-	$(CARGO) run -q -p morph-cli -- print-multi-asset-fixture > target/fixture-checks/multi-asset.json
-	$(CARGO) run -q -p morph-cli -- validate-multi-asset-package target/fixture-checks/multi-asset.json --json > target/fixture-checks/multi-asset-summary.json
+	$(CARGO) run -q -p morph-cli -- print-fixture > target/fixture-checks/bilateral.json
+	$(CARGO) run -q -p morph-cli -- validate-multi-asset-package target/fixture-checks/bilateral.json --json > target/fixture-checks/bilateral-summary.json
 	$(CARGO) run -q -p morph-cli -- print-conditional-batch-fixture > target/fixture-checks/conditional-batch.json
 	$(CARGO) run -q -p morph-cli -- validate-conditional-batch-package target/fixture-checks/conditional-batch.json --json > target/fixture-checks/conditional-batch-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-fixture > target/fixture-checks/factory-update.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-package target/fixture-checks/factory-update.json --json > target/fixture-checks/factory-update-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-state-fixture > target/fixture-checks/factory-state.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-state-package target/fixture-checks/factory-state.json --json > target/fixture-checks/factory-state-summary.json
-	$(CARGO) run -q -p morph-cli -- print-reduced-factory-state-fixture > target/fixture-checks/factory-state-reduced.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-state-package target/fixture-checks/factory-state-reduced.json --json > target/fixture-checks/factory-state-reduced-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-reduced-rights-fixture > target/fixture-checks/factory-reduced-rights.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-reduced-rights-package target/fixture-checks/factory-reduced-rights.json --json > target/fixture-checks/factory-reduced-rights-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-reduced-exit-fixture > target/fixture-checks/factory-reduced-exit.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-reduced-exit-package target/fixture-checks/factory-reduced-exit.json --json > target/fixture-checks/factory-reduced-exit-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-merkle-update-fixture > target/fixture-checks/factory-merkle-update.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-merkle-update-package target/fixture-checks/factory-merkle-update.json --json > target/fixture-checks/factory-merkle-update-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-multi-right-update-fixture > target/fixture-checks/factory-multi-right-update.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-multi-right-update-package target/fixture-checks/factory-multi-right-update.json --json > target/fixture-checks/factory-multi-right-update-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-local-exit-fixture > target/fixture-checks/factory-local-exit.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-local-exit-package target/fixture-checks/factory-local-exit.json --json > target/fixture-checks/factory-local-exit-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-splice-fixture --kind splice-in > target/fixture-checks/factory-splice-in.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-splice-package target/fixture-checks/factory-splice-in.json --json > target/fixture-checks/factory-splice-in-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-splice-fixture --kind xudt-splice-out > target/fixture-checks/factory-xudt-splice-out.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-splice-package target/fixture-checks/factory-xudt-splice-out.json --json > target/fixture-checks/factory-xudt-splice-out-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-reduced-splice-fixture --kind splice-in > target/fixture-checks/factory-reduced-splice-in.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-reduced-splice-package target/fixture-checks/factory-reduced-splice-in.json --json > target/fixture-checks/factory-reduced-splice-in-summary.json
-	$(CARGO) run -q -p morph-cli -- print-factory-reduced-splice-fixture --kind xudt-splice-out > target/fixture-checks/factory-reduced-xudt-splice-out.json
-	$(CARGO) run -q -p morph-cli -- validate-factory-reduced-splice-package target/fixture-checks/factory-reduced-xudt-splice-out.json --json > target/fixture-checks/factory-reduced-xudt-splice-out-summary.json
-	$(CARGO) run -q -p morph-cli -- print-watch-policy-fixture > target/fixture-checks/watch-policy.json
-	$(CARGO) run -q -p morph-cli -- validate-watch-policy target/fixture-checks/watch-policy.json --json > target/fixture-checks/watch-policy-summary.json
+	jq '.cases[0].request' sdk/typescript/test/fixtures/factory-packets.json > target/fixture-checks/factory-root-request.json
+	$(CARGO) run -q -p morph-cli -- inspect-factory-request target/fixture-checks/factory-root-request.json > target/fixture-checks/factory-root-summary.json
+	jq '.cases[-1].request' sdk/typescript/test/fixtures/factory-packets.json > target/fixture-checks/factory-child-request.json
+	$(CARGO) run -q -p morph-cli -- inspect-factory-request target/fixture-checks/factory-child-request.json > target/fixture-checks/factory-child-summary.json
+	for index in 0 1 2 3 4; do jq ".cases[$$index].package" sdk/typescript/test/fixtures/factory-transitions.json > target/fixture-checks/factory-transition-$$index.json; $(CARGO) run -q -p morph-cli -- inspect-factory-transition target/fixture-checks/factory-transition-$$index.json > target/fixture-checks/factory-transition-$$index-summary.json; done
 	$(CARGO) run -q -p morph-cli -- print-value-limit-policy-fixture > target/fixture-checks/value-limit-policy.json
 	$(CARGO) run -q -p morph-cli -- validate-value-limit-policy target/fixture-checks/value-limit-policy.json --json > target/fixture-checks/value-limit-policy-summary.json
-	$(CARGO) run -q -p morph-cli -- value-limit-check --policy target/fixture-checks/value-limit-policy.json --package target/fixture-checks/factory-splice-in.json > target/fixture-checks/value-limit-check-factory-splice-in.txt
+	$(CARGO) run -q -p morph-cli -- value-limit-check --policy target/fixture-checks/value-limit-policy.json --package target/fixture-checks/factory-root-request.json > target/fixture-checks/value-limit-check.txt
+	$(CARGO) run -q -p morph-cli -- print-watch-policy-fixture > target/fixture-checks/watch-policy.json
+	$(CARGO) run -q -p morph-cli -- validate-watch-policy target/fixture-checks/watch-policy.json --json > target/fixture-checks/watch-policy-summary.json
 	$(CARGO) run -q -p morph-cli -- print-watch-config-fixture > target/fixture-checks/watch-config.json
+	$(CARGO) run -q -p morph-cli --features devnet -- devnet --devnet-only publication-profile-fixture --json > target/fixture-checks/publication-profile.json
 	$(CARGO) run -q -p morph-cli -- validate-watch-config target/fixture-checks/watch-config.json --json > target/fixture-checks/watch-config-summary.json
 
 sdk-check:
 	cd sdk/typescript && npm ci && npm audit --registry=https://registry.npmjs.org --audit-level=high && npm run check && npm test
 
-hub-ui-check:
+hub-ui-check: sdk-check
 	cd ui/morph-hub && npm ci && npm audit --registry=https://registry.npmjs.org --audit-level=high && npm test && npm run build
 
 build-contracts:

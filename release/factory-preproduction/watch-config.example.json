@@ -1,5 +1,5 @@
 {
-  "schema": "morph.watchtower_config",
+  "schema": "morph.watchtower_config.v1",
   "operator_id": "morph-example-operator",
   "defaults": {
     "store_dir": "operator-data/packages",
@@ -12,7 +12,9 @@
     "fee": 100000000,
     "mine_blocks": 4,
     "auto_fund_sponsor": true,
-    "auto_sponsor_capacity": 50000000000
+    "auto_sponsor_capacity": 50000000000,
+    "publication_profile": "publication-profile.json",
+    "publication_attempt_log": "operator-data/watch-publication-attempts.jsonl"
   },
   "channels": [
     {
@@ -30,7 +32,9 @@
       "fee": null,
       "mine_blocks": null,
       "auto_fund_sponsor": null,
-      "auto_sponsor_capacity": null
+      "auto_sponsor_capacity": null,
+      "publication_profile": null,
+      "publication_attempt_log": null
     }
   ]
 }

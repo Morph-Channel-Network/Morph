@@ -90,7 +90,7 @@ The full gate performs these phases:
 1. Records Morph, Fiber, CKB, and ckb-cli repository state.
 2. Starts Fiber's three-node local devnet stack.
 3. Builds Morph RISC-V CKB scripts.
-4. Runs Morph's strict stateful scenario matrix against Fiber's CKB RPC.
+4. Runs the sole current matrix with `EXTERNAL_RPC_URL` against Fiber's CKB RPC, capturing actual genesis/code evidence without starting or killing another chain.
 5. Runs Fiber external funding on the same CKB devnet.
 6. Runs the Fiber external-funding restart regression.
 7. Starts a fresh Fiber `router-pay` topology and runs its Bruno suite.
@@ -138,9 +138,14 @@ the expected files and log markers are present.
 | Extreme state value cases | Asymmetric capacities and one-sided xUDT paths remain valid. | Edge-value cases do not bypass typed-asset or budget checks. |
 | Negative attack matrix | Known attack-shaped transactions fail with exact expected errors, then later valid transitions still commit. | Rejection paths are precise and recovery continues afterwards. |
 
-The Morph stateful assertion also enforces minimum evidence floors, including
-committed transactions, factory splices, factory local exits, watchtower alerts,
-referenced artefacts, and exact expected failures.
+The Morph stateful assertion now consumes the sole current runner's strict
+ledger and code-bound evidence. Its five physical case reports are
+`bilateral_shared`, `bilateral_splice`, `factory_custody_and_children`,
+`watch_service_reorg` and `maximum_asset_lifecycle`. The audit verifies real
+current report outcomes, complete recovery through the current Rust parser,
+captured contracts, and exact same-genesis observations. It does not reuse
+transaction counts or separate proof-profile counters from the retired physical
+implementation. See [current coverage](current-protocol-coverage.md).
 
 ### Morph Agent Business Flows
 
@@ -230,6 +235,9 @@ Then inspect subsystem evidence:
 ```text
 target/fiber-morph-devnet-acceptance/<run-id>/morph-stateful/scenarios/summary.json
 target/fiber-morph-devnet-acceptance/<run-id>/morph-stateful/scenarios/summary-check.json
+target/fiber-morph-devnet-acceptance/<run-id>/morph-stateful/scenarios/smoke/matrix.json
+target/fiber-morph-devnet-acceptance/<run-id>/morph-stateful/evidence.json
+target/fiber-morph-devnet-acceptance/<run-id>/fiber-coexistence-genesis.json
 target/fiber-morph-devnet-acceptance/<run-id>/logs/morph-stateful-on-fiber-ckb.log
 target/fiber-morph-devnet-acceptance/<run-id>/morph-agent-fiber-e2e/result.json
 target/fiber-morph-devnet-acceptance/<run-id>/morph-agent-fiber-e2e/manifest.json
@@ -299,9 +307,8 @@ FIBER_MORPH_ACCEPTANCE_MODE=fiber \
 scripts/fiber-morph-devnet-acceptance.sh
 ```
 
-```sh
-BUILD_MORPH_CONTRACTS=0 make fiber-morph-devnet-acceptance
-```
+The current Morph phase always builds and captures its intended ELFs through
+the sole current runner.
 
 When the debug run passes, rerun the canonical full gate before declaring the
 candidate accepted.
@@ -326,3 +333,20 @@ following are true:
 This is a local devnet acceptance gate. It proves the committed same-devnet
 business-flow and security matrix, not mainnet readiness or cross-repository
 protocol merger by itself.
+
+## Evidence scope after current-protocol consolidation
+
+The same-chain Morph phase and the restarted Fiber Agent routing phase are
+separate recorded phases. Preserve all Bruno/restart logs and actual terminal
+Agent receipts. The Agent manifest records its executed binary and SDK digest
+and explicitly says that routed Fiber traffic does not prove Morph custody
+backing. The current Factory can create children whose parties are outside
+its membership; this does not turn those parties into Factory authorizers or
+remove provider-specific reservation/liquidity admission requirements.
+
+Use [current publication reliability](runbooks/current-publication-reliability.md)
+for bounded fees/RBF/reconciliation/health/reorg evidence on the current channel
+profile. A historical acceptance directory is not current-code evidence.
+A missing Fiber binary/RPC or a failing clean-worktree check prevents a full
+cross-stack run; shell syntax and unit tests alone must not be labeled as a
+completed Fiber acceptance run.

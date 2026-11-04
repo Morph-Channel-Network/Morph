@@ -68,7 +68,11 @@ a signed package in place.
 
 ## 4. Start and Monitor the Watchtower
 
-Validate policy and configuration first:
+Use the [current watch service runbook](current-watch-service.md) to configure
+current recovery stores, bounded publication and sponsor policy. The Once,
+Loop and Service coordinators share one current watcher; local signer
+authority is not part of a watch configuration. Validate policy and
+configuration first:
 
 ```sh
 cargo run -p morph-cli -- validate-watch-policy target/watch-policy.json

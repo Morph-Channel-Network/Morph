@@ -239,7 +239,7 @@ fn factory_partition_rejects_cross_asset_minting_reserve_subsidies_and_custody_o
     assert!(bad.validate_contents().is_err());
 }
 #[test]
-fn factory_partition_requires_child_signers_to_belong_to_the_factory() {
+fn factory_partition_accepts_outside_child_parties_but_preserves_parent_and_exit_authority() {
     let mut plan = plan(2, 1, true);
     let (members, mut auth) = factory_authorization(&plan, 2);
     let digest = plan.signing_digest().unwrap();
@@ -269,8 +269,18 @@ fn factory_partition_requires_child_signers_to_belong_to_the_factory() {
         let signature: Signature = key.sign_prehash(&digest).unwrap();
         sig.signature = signature.to_bytes().to_vec();
     }
-    assert!(plan.verify_authorization(&foreign_members, &auth).is_err());
+    // The committed parent roster is 10/11 while the independently signed
+    // child is 1/2. Receiving the released value needs no parent membership.
+    plan.verify_authorization(&foreign_members, &auth).unwrap();
     assert!(plan.verify_authorization(&members, &auth).is_err());
+    let mut wrong_parent_signature = auth.clone();
+    wrong_parent_signature[0].signature[0] ^= 1;
+    assert!(
+        plan.verify_authorization(&foreign_members, &wrong_parent_signature)
+            .is_err()
+    );
+    plan.children[0].recovery.authorization.signatures[0].signature[0] ^= 1;
+    assert!(plan.verify_authorization(&foreign_members, &auth).is_err());
 }
 
 #[test]

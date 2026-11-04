@@ -3,13 +3,11 @@
 //! A routing provider mirrors `ProviderEdgeDescriptor`; it is never the source
 //! of truth for Factory rights, Morph script identity, or channel settlement.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use k256::ecdsa::VerifyingKey;
-use morph_script_common::{
-    BILATERAL_CKB_DESCRIPTOR_LEN, BILATERAL_CKB_XUDT_DESCRIPTOR_LEN,
-    BilateralCkbSettlementDescriptor, BilateralCkbXudtSettlementDescriptor,
-    settlement_descriptor_commitment, vault_cell_commitment,
+use morph_script_common::multi_asset::{
+    MultiAssetStateHeader, multi_asset_occupied_capacity, multi_asset_script_occupied_bytes,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -17,11 +15,10 @@ use thiserror::Error;
 use crate::agent::AgentAsset;
 use crate::backend::{ChannelParticipant, validate_participant_identities};
 use crate::rgbpp::CkbOutPoint;
-use crate::validation::{MorphError, validate_state_authorization};
 use crate::{
-    Amount, Bytes32, FactoryRightId, FactoryRightKind, FactoryRightMerkleProof, Mode, Phase,
-    StateAuthorization, StateCell, blake2b256, factory_right_leaf_hash,
-    verify_factory_right_merkle_proof,
+    Amount, Bytes32, FactoryRightId, FactoryRightKind, FactoryRightMerkleProof, Mode,
+    MultiAssetError, MultiAssetRecoveryPackage, Phase, StateAuthorization, VaultAsset, blake2b256,
+    factory_right_leaf_hash, verify_factory_right_merkle_proof,
 };
 
 const DEPLOYMENT_ID_DOMAIN: &[u8] = b"CKB_MORPH_DEPLOYMENT_ID_V1";
@@ -30,43 +27,67 @@ const FACTORY_RIGHT_PROOF_DOMAIN: &[u8] = b"CKB_MORPH_FACTORY_RIGHT_PROOF_V1";
 const EDGE_DESCRIPTOR_DOMAIN: &[u8] = b"CKB_MORPH_PROVIDER_EDGE_V1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TrustedMorphDeployment {
-    pub ckb_genesis_hash: Bytes32,
-    pub state_type_code_hash: Bytes32,
-    pub state_lock_code_hash: Bytes32,
-    pub vault_lock_code_hash: Bytes32,
-    pub factory_type_code_hash: Bytes32,
-    pub factory_vault_lock_code_hash: Bytes32,
+#[serde(deny_unknown_fields)]
+pub struct TrustedScriptIdentity {
+    pub code_hash: Bytes32,
+    pub hash_type: u8,
 }
-
-impl TrustedMorphDeployment {
-    pub fn validate(&self) -> BridgeResult<()> {
-        if [
-            self.ckb_genesis_hash,
-            self.state_type_code_hash,
-            self.state_lock_code_hash,
-            self.vault_lock_code_hash,
-            self.factory_type_code_hash,
-            self.factory_vault_lock_code_hash,
-        ]
-        .iter()
-        .any(is_zero)
-        {
+impl TrustedScriptIdentity {
+    fn validate(&self) -> BridgeResult<()> {
+        if is_zero(&self.code_hash) || !matches!(self.hash_type, 0 | 1 | 2 | 4) {
             return Err(BridgeError::InvalidDeployment);
         }
         Ok(())
     }
+    fn matches(&self, script: &[u8]) -> BridgeResult<()> {
+        multi_asset_script_occupied_bytes(script).map_err(|_| BridgeError::UntrustedDeployment)?;
+        if script[16..48] != self.code_hash || script[48] != self.hash_type {
+            return Err(BridgeError::UntrustedDeployment);
+        }
+        Ok(())
+    }
+}
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrustedMorphDeployment {
+    pub ckb_genesis_hash: Bytes32,
+    pub state_type: TrustedScriptIdentity,
+    pub state_lock: TrustedScriptIdentity,
+    pub vault_lock: TrustedScriptIdentity,
+    pub factory_type: TrustedScriptIdentity,
+    pub factory_vault_lock: TrustedScriptIdentity,
+}
+impl TrustedMorphDeployment {
+    pub fn validate(&self) -> BridgeResult<()> {
+        if is_zero(&self.ckb_genesis_hash) {
+            return Err(BridgeError::InvalidDeployment);
+        }
+        for identity in [
+            &self.state_type,
+            &self.state_lock,
+            &self.vault_lock,
+            &self.factory_type,
+            &self.factory_vault_lock,
+        ] {
+            identity.validate()?;
+        }
+        Ok(())
+    }
     pub fn deployment_id(&self) -> BridgeResult<Bytes32> {
         self.validate()?;
-        let mut raw = Vec::with_capacity(DEPLOYMENT_ID_DOMAIN.len() + 192);
-        raw.extend_from_slice(DEPLOYMENT_ID_DOMAIN);
+        let mut raw = DEPLOYMENT_ID_DOMAIN.to_vec();
         raw.extend_from_slice(&self.ckb_genesis_hash);
-        raw.extend_from_slice(&self.state_type_code_hash);
-        raw.extend_from_slice(&self.state_lock_code_hash);
-        raw.extend_from_slice(&self.vault_lock_code_hash);
-        raw.extend_from_slice(&self.factory_type_code_hash);
-        raw.extend_from_slice(&self.factory_vault_lock_code_hash);
+        for identity in [
+            &self.state_type,
+            &self.state_lock,
+            &self.vault_lock,
+            &self.factory_type,
+            &self.factory_vault_lock,
+        ] {
+            raw.extend_from_slice(&identity.code_hash);
+            raw.push(identity.hash_type);
+        }
         Ok(blake2b256(&raw))
     }
 }
@@ -170,60 +191,73 @@ pub fn factory_right_proof_commitment(proof: &FactoryRightMerkleProof) -> Bytes3
     blake2b256(&raw)
 }
 
+/// Actual full Cell returned by the canonical-chain observer. Hash-only claims
+/// cannot establish either script identity or occupied capacity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MaterializedCellEvidence {
     pub out_point: CkbOutPoint,
-    pub lock_hash: Bytes32,
-    pub type_hash: Option<Bytes32>,
+    pub lock: Vec<u8>,
+    #[serde(deserialize_with = "required_option")]
+    pub type_script: Option<Vec<u8>>,
     pub capacity: u64,
     pub data: Vec<u8>,
 }
-
 impl MaterializedCellEvidence {
-    fn commitment(&self) -> Bytes32 {
-        vault_cell_commitment(
-            &self.lock_hash,
-            self.capacity,
-            self.type_hash.as_ref().map(|hash| hash.as_slice()),
-            &self.data,
-        )
-    }
-
     fn validate(&self) -> BridgeResult<()> {
-        if is_zero(&self.out_point.tx_hash)
-            || is_zero(&self.lock_hash)
-            || self.type_hash.is_some_and(|hash| is_zero(&hash))
-        {
+        let occupied = multi_asset_occupied_capacity(
+            &self.lock,
+            self.type_script.as_deref(),
+            self.data.len() as u64,
+        )
+        .map_err(|_| BridgeError::InvalidMaterialisation)?;
+        if is_zero(&self.out_point.tx_hash) || self.capacity < occupied {
             return Err(BridgeError::InvalidMaterialisation);
         }
         Ok(())
     }
 }
 
+/// Child Type args commit the full Factory Type hash. The canonical-chain
+/// observer also establishes the reserve script's association with that
+/// materialisation history; its bytes and arguments are checked here. No live
+/// parent or fresh parent signature is required to use the independent child.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DeploymentEvidence {
-    pub state_type_code_hash: Bytes32,
-    pub state_lock_code_hash: Bytes32,
-    pub vault_lock_code_hash: Bytes32,
-    pub factory_type_code_hash: Option<Bytes32>,
-    pub factory_vault_lock_code_hash: Option<Bytes32>,
+#[serde(deny_unknown_fields)]
+pub struct FactoryOriginEvidence {
+    /// Historical canonical source, retained after the parent is spent.
+    pub source: crate::FactoryCustody,
+    pub members: Vec<crate::FactoryParticipantKey>,
 }
 
+/// Complete current custody plus latest private co-signed recovery. The caller
+/// must establish that `state` and every Vault are live in the named canonical
+/// block and supply independently checked confirmations. This pure host model
+/// validates content and authority; it is not a CKB RPC/chain oracle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MaterializedChannelEvidence {
-    pub state: StateCell,
-    pub authorization: StateAuthorization,
-    pub state_out_point: CkbOutPoint,
-    pub vault: MaterializedCellEvidence,
-    pub settlement_descriptor: Vec<u8>,
+    pub recovery: MultiAssetRecoveryPackage,
+    pub state: MaterializedCellEvidence,
+    /// Exact manifest order, with no extra, missing or substituted Cell.
+    pub vaults: Vec<MaterializedCellEvidence>,
     pub participants: [ChannelParticipant; 2],
     pub asset: AgentAsset,
+    #[serde(deserialize_with = "required_option")]
     pub factory_reservation_id: Option<Bytes32>,
-    pub deployment: DeploymentEvidence,
+    #[serde(deserialize_with = "required_option")]
+    pub factory_origin: Option<FactoryOriginEvidence>,
     pub committed_block_hash: Bytes32,
     pub committed_block_number: u64,
     pub confirmations: u64,
+    #[serde(deserialize_with = "required_option")]
     pub rgbpp_proof_commitment: Option<Bytes32>,
+}
+
+fn required_option<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    Option::<T>::deserialize(deserializer)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -303,6 +337,42 @@ impl ProviderEdgeDescriptor {
     }
 }
 
+/// Validate a coherent batch of provider projections. Each item still needs
+/// verified custody as its source; this structural check prevents adapters from
+/// combining two states of one channel or counting the same physical Type twice.
+pub fn validate_provider_edge_set(edges: &[ProviderEdgeDescriptor]) -> BridgeResult<()> {
+    let mut assets = BTreeSet::new();
+    let mut channels: BTreeMap<Bytes32, &ProviderEdgeDescriptor> = BTreeMap::new();
+    for edge in edges {
+        if edge.edge_id != edge.derive_id()? {
+            return Err(BridgeError::InvalidMaterialisation);
+        }
+        if !assets.insert((edge.channel_id, routing_asset_commitment(&edge.asset)?)) {
+            return Err(BridgeError::AssetAliasConflict);
+        }
+        if let Some(previous) = channels.insert(edge.channel_id, edge) {
+            let mut before = previous.participants;
+            let mut after = edge.participants;
+            before.sort();
+            after.sort();
+            if previous.funding_context_id != edge.funding_context_id
+                || previous.funding_epoch != edge.funding_epoch
+                || previous.deployment_id != edge.deployment_id
+                || asset_ckb_genesis_hash(&previous.asset) != asset_ckb_genesis_hash(&edge.asset)
+                || before != after
+            {
+                return Err(BridgeError::ActiveEdgeConflict);
+            }
+            if previous.state_number != edge.state_number
+                || previous.opaque_morph_commitment != edge.opaque_morph_commitment
+            {
+                return Err(BridgeError::StaleEdgeEvidence);
+            }
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EdgeLifecycle {
     Reserved,
@@ -321,12 +391,48 @@ pub enum EdgeLifecycle {
     },
 }
 
+type ChannelAssetKey = (Bytes32, Bytes32);
+
+// Private durable maps are explicit entry arrays. Byte32/tuple JSON object
+// keys are not valid serde_json maps; duplicate entries remain rejected.
+mod map_entries {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+    use std::collections::BTreeMap;
+    pub fn serialize<S: Serializer, K: Serialize, V: Serialize>(
+        map: &BTreeMap<K, V>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(map.iter())
+    }
+    pub fn deserialize<
+        'de,
+        D: Deserializer<'de>,
+        K: Deserialize<'de> + Ord,
+        V: Deserialize<'de>,
+    >(
+        deserializer: D,
+    ) -> Result<BTreeMap<K, V>, D::Error> {
+        let entries = Vec::<(K, V)>::deserialize(deserializer)?;
+        let count = entries.len();
+        let map: BTreeMap<_, _> = entries.into_iter().collect();
+        if map.len() != count {
+            return Err(D::Error::custom("duplicate registry map key"));
+        }
+        Ok(map)
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SovereignEdgeRegistry {
+    #[serde(with = "map_entries")]
     reservations: BTreeMap<Bytes32, FactoryRightReservation>,
+    #[serde(with = "map_entries")]
     reservation_idempotency: BTreeMap<Bytes32, Bytes32>,
+    #[serde(with = "map_entries")]
     lifecycles: BTreeMap<Bytes32, EdgeLifecycle>,
-    channel_edges: BTreeMap<Bytes32, Bytes32>,
+    #[serde(with = "map_entries")]
+    channel_edges: BTreeMap<ChannelAssetKey, Bytes32>,
 }
 
 impl SovereignEdgeRegistry {
@@ -356,7 +462,6 @@ impl SovereignEdgeRegistry {
             .insert(reservation.reservation_id, reservation.clone());
         Ok(reservation.reservation_id)
     }
-
     pub fn begin_materialisation(&mut self, reservation_id: &Bytes32) -> BridgeResult<()> {
         match self.lifecycles.get_mut(reservation_id) {
             Some(lifecycle @ EdgeLifecycle::Reserved) => {
@@ -366,7 +471,6 @@ impl SovereignEdgeRegistry {
             _ => Err(BridgeError::InvalidLifecycle),
         }
     }
-
     pub fn activate(
         &mut self,
         evidence: MaterializedChannelEvidence,
@@ -374,19 +478,23 @@ impl SovereignEdgeRegistry {
         minimum_confirmations: u64,
         now_unix: u64,
     ) -> BridgeResult<ProviderEdgeDescriptor> {
-        let reservation = match evidence.factory_reservation_id {
-            Some(id) => Some(
+        let reservation = evidence
+            .factory_reservation_id
+            .map(|id| {
                 self.reservations
                     .get(&id)
-                    .ok_or(BridgeError::ReservationNotFound)?,
-            ),
-            None => None,
-        };
+                    .ok_or(BridgeError::ReservationNotFound)
+            })
+            .transpose()?;
         if let Some(reservation) = reservation {
             reservation.validate(now_unix)?;
             if !matches!(
                 self.lifecycles.get(&reservation.reservation_id),
-                Some(EdgeLifecycle::Materializing)
+                Some(
+                    EdgeLifecycle::Materializing
+                        | EdgeLifecycle::Active(_)
+                        | EdgeLifecycle::Draining(_)
+                )
             ) {
                 return Err(BridgeError::InvalidLifecycle);
             }
@@ -398,62 +506,67 @@ impl SovereignEdgeRegistry {
             minimum_confirmations,
             true,
         )?;
-        if let Some(existing_edge_id) = self.channel_edges.get(&edge.channel_id)
-            && existing_edge_id != &edge.edge_id
-            && matches!(
-                self.lifecycles.get(existing_edge_id),
-                Some(EdgeLifecycle::Active(_) | EdgeLifecycle::Draining(_))
-            )
+        self.require_current_channel_view(&edge)?;
+        let key = (edge.channel_id, routing_asset_commitment(&edge.asset)?);
+        if let Some(existing) = self.channel_edges.get(&key)
+            && let Some(EdgeLifecycle::Active(previous) | EdgeLifecycle::Draining(previous)) =
+                self.lifecycles.get(existing)
         {
-            return Err(BridgeError::ActiveEdgeConflict);
+            return if previous == &edge {
+                Ok(previous.clone())
+            } else {
+                Err(BridgeError::ActiveEdgeConflict)
+            };
         }
         let lifecycle_key = evidence.factory_reservation_id.unwrap_or(edge.edge_id);
-        self.channel_edges.insert(edge.channel_id, lifecycle_key);
+        self.channel_edges.insert(key, lifecycle_key);
         self.lifecycles
             .insert(lifecycle_key, EdgeLifecycle::Active(edge.clone()));
         Ok(edge)
     }
-
-    pub fn begin_draining(&mut self, channel_id: &Bytes32) -> BridgeResult<()> {
-        let edge_id = *self
+    pub fn begin_draining(&mut self, channel_id: &Bytes32, asset: &AgentAsset) -> BridgeResult<()> {
+        let key = *self
             .channel_edges
-            .get(channel_id)
+            .get(&(*channel_id, routing_asset_commitment(asset)?))
             .ok_or(BridgeError::EdgeNotFound)?;
-        let edge = match self.lifecycles.get(&edge_id) {
+        let edge = match self.lifecycles.get(&key) {
             Some(EdgeLifecycle::Active(edge)) => edge.clone(),
             _ => return Err(BridgeError::InvalidLifecycle),
         };
-        self.lifecycles
-            .insert(edge_id, EdgeLifecycle::Draining(edge));
+        if edge.asset != *asset {
+            return Err(BridgeError::AssetAliasConflict);
+        }
+        self.lifecycles.insert(key, EdgeLifecycle::Draining(edge));
         Ok(())
     }
-
-    /// Refresh liquidity/state evidence without changing the stable provider
-    /// edge identity. A splice has a new funding context and must instead use
-    /// the explicit drain/disable/activate path.
+    /// Liquidity refresh preserves stable identity. A splice needs explicit
+    /// drain/disable/activate for this asset; another asset is a distinct edge.
     pub fn refresh(
         &mut self,
         evidence: MaterializedChannelEvidence,
         deployment: &TrustedMorphDeployment,
         minimum_confirmations: u64,
     ) -> BridgeResult<ProviderEdgeDescriptor> {
-        let lifecycle_key = *self
+        let key = *self
             .channel_edges
-            .get(&evidence.state.header.channel_id)
+            .get(&(
+                evidence.recovery.state.header.channel_id,
+                routing_asset_commitment(&evidence.asset)?,
+            ))
             .ok_or(BridgeError::EdgeNotFound)?;
-        let (previous, draining) = match self.lifecycles.get(&lifecycle_key) {
+        let (previous, draining) = match self.lifecycles.get(&key) {
             Some(EdgeLifecycle::Active(edge)) => (edge.clone(), false),
             Some(EdgeLifecycle::Draining(edge)) => (edge.clone(), true),
             _ => return Err(BridgeError::InvalidLifecycle),
         };
-        let reservation = match evidence.factory_reservation_id {
-            Some(id) => Some(
+        let reservation = evidence
+            .factory_reservation_id
+            .map(|id| {
                 self.reservations
                     .get(&id)
-                    .ok_or(BridgeError::ReservationNotFound)?,
-            ),
-            None => None,
-        };
+                    .ok_or(BridgeError::ReservationNotFound)
+            })
+            .transpose()?;
         let refreshed = derive_edge(
             &evidence,
             reservation,
@@ -461,6 +574,7 @@ impl SovereignEdgeRegistry {
             minimum_confirmations,
             false,
         )?;
+        self.require_current_channel_view(&refreshed)?;
         if refreshed.edge_id != previous.edge_id
             || refreshed.funding_context_id != previous.funding_context_id
             || refreshed.state_number <= previous.state_number
@@ -469,7 +583,7 @@ impl SovereignEdgeRegistry {
             return Err(BridgeError::StaleEdgeEvidence);
         }
         self.lifecycles.insert(
-            lifecycle_key,
+            key,
             if draining {
                 EdgeLifecycle::Draining(refreshed.clone())
             } else {
@@ -478,26 +592,27 @@ impl SovereignEdgeRegistry {
         );
         Ok(refreshed)
     }
-
     pub fn disable(
         &mut self,
         channel_id: &Bytes32,
+        asset: &AgentAsset,
         reason: String,
         disabled_at_unix: u64,
     ) -> BridgeResult<()> {
-        if reason.trim().is_empty() || reason.len() > 256 {
-            return Err(BridgeError::InvalidReason);
-        }
-        let edge_id = *self
+        validate_reason(&reason)?;
+        let key = *self
             .channel_edges
-            .get(channel_id)
+            .get(&(*channel_id, routing_asset_commitment(asset)?))
             .ok_or(BridgeError::EdgeNotFound)?;
-        let edge = match self.lifecycles.get(&edge_id) {
+        let edge = match self.lifecycles.get(&key) {
             Some(EdgeLifecycle::Active(edge) | EdgeLifecycle::Draining(edge)) => edge.clone(),
             _ => return Err(BridgeError::InvalidLifecycle),
         };
+        if edge.asset != *asset {
+            return Err(BridgeError::AssetAliasConflict);
+        }
         self.lifecycles.insert(
-            edge_id,
+            key,
             EdgeLifecycle::Disabled {
                 edge,
                 reason,
@@ -506,21 +621,19 @@ impl SovereignEdgeRegistry {
         );
         Ok(())
     }
-
     pub fn invalidate(
         &mut self,
         channel_id: &Bytes32,
+        asset: &AgentAsset,
         reason: String,
         invalidated_at_unix: u64,
     ) -> BridgeResult<()> {
-        if reason.trim().is_empty() || reason.len() > 256 {
-            return Err(BridgeError::InvalidReason);
-        }
-        let edge_id = *self
+        validate_reason(&reason)?;
+        let key = *self
             .channel_edges
-            .get(channel_id)
+            .get(&(*channel_id, routing_asset_commitment(asset)?))
             .ok_or(BridgeError::EdgeNotFound)?;
-        let edge = match self.lifecycles.get(&edge_id) {
+        let edge = match self.lifecycles.get(&key) {
             Some(
                 EdgeLifecycle::Active(edge)
                 | EdgeLifecycle::Draining(edge)
@@ -528,8 +641,11 @@ impl SovereignEdgeRegistry {
             ) => edge.clone(),
             _ => return Err(BridgeError::InvalidLifecycle),
         };
+        if edge.asset != *asset {
+            return Err(BridgeError::AssetAliasConflict);
+        }
         self.lifecycles.insert(
-            edge_id,
+            key,
             EdgeLifecycle::Invalidated {
                 edge,
                 reason,
@@ -538,21 +654,86 @@ impl SovereignEdgeRegistry {
         );
         Ok(())
     }
-
     pub fn lifecycle(&self, key: &Bytes32) -> Option<&EdgeLifecycle> {
         self.lifecycles.get(key)
     }
-
-    pub fn edge_for_channel(&self, channel_id: &Bytes32) -> Option<&ProviderEdgeDescriptor> {
-        let key = self.channel_edges.get(channel_id)?;
-        match self.lifecycles.get(key)? {
-            EdgeLifecycle::Active(edge)
-            | EdgeLifecycle::Draining(edge)
-            | EdgeLifecycle::Disabled { edge, .. }
-            | EdgeLifecycle::Invalidated { edge, .. } => Some(edge),
+    pub fn edge_for_channel(
+        &self,
+        channel_id: &Bytes32,
+        asset: &AgentAsset,
+    ) -> BridgeResult<Option<&ProviderEdgeDescriptor>> {
+        let Some(key) = self
+            .channel_edges
+            .get(&(*channel_id, routing_asset_commitment(asset)?))
+        else {
+            return Ok(None);
+        };
+        let edge = match self.lifecycles.get(key) {
+            Some(
+                EdgeLifecycle::Active(edge)
+                | EdgeLifecycle::Draining(edge)
+                | EdgeLifecycle::Disabled { edge, .. }
+                | EdgeLifecycle::Invalidated { edge, .. },
+            ) => Some(edge),
             _ => None,
+        };
+        if let Some(edge) = edge {
+            if edge.asset != *asset {
+                return Err(BridgeError::AssetAliasConflict);
+            }
+            self.require_current_channel_view(edge)?;
         }
+        Ok(edge)
     }
+    /// Every asset shares one signed State track. A newer complete state seen
+    /// through one edge makes older views of every other asset stale; callers
+    /// must refresh those projections before advertising them again.
+    fn require_current_channel_view(&self, proposed: &ProviderEdgeDescriptor) -> BridgeResult<()> {
+        for ((channel_id, _), key) in &self.channel_edges {
+            if *channel_id != proposed.channel_id {
+                continue;
+            }
+            let (known, live) = match self.lifecycles.get(key) {
+                Some(EdgeLifecycle::Active(edge) | EdgeLifecycle::Draining(edge)) => (edge, true),
+                Some(
+                    EdgeLifecycle::Disabled { edge, .. } | EdgeLifecycle::Invalidated { edge, .. },
+                ) => (edge, false),
+                _ => continue,
+            };
+            if known.funding_context_id != proposed.funding_context_id {
+                if live {
+                    return Err(BridgeError::ActiveEdgeConflict);
+                }
+                continue;
+            }
+            if known.state_number > proposed.state_number
+                || (known.state_number == proposed.state_number
+                    && known.opaque_morph_commitment != proposed.opaque_morph_commitment)
+            {
+                return Err(BridgeError::StaleEdgeEvidence);
+            }
+        }
+        Ok(())
+    }
+}
+fn validate_reason(reason: &str) -> BridgeResult<()> {
+    if reason.trim().is_empty() || reason.len() > 256 {
+        return Err(BridgeError::InvalidReason);
+    }
+    Ok(())
+}
+
+/// RGB++ and a native xUDT view of the same Type share one physical balance.
+/// They must never each advertise that full balance as separate liquidity.
+fn routing_asset_commitment(asset: &AgentAsset) -> BridgeResult<Bytes32> {
+    let physical = match asset {
+        AgentAsset::Rgbpp(asset) => AgentAsset::Xudt {
+            ckb_genesis_hash: asset.ckb_genesis_hash,
+            type_script_hash: asset.xudt_type_script_hash,
+        },
+        _ => asset.clone(),
+    };
+    Ok(physical.commitment()?)
 }
 
 fn derive_edge(
@@ -564,136 +745,242 @@ fn derive_edge(
 ) -> BridgeResult<ProviderEdgeDescriptor> {
     deployment.validate()?;
     evidence.asset.validate()?;
-    evidence.vault.validate()?;
-    if evidence.confirmations < minimum_confirmations || minimum_confirmations == 0 {
+    if minimum_confirmations == 0 || evidence.confirmations < minimum_confirmations {
         return Err(BridgeError::InsufficientConfirmations);
     }
-    if is_zero(&evidence.state_out_point.tx_hash)
-        || is_zero(&evidence.committed_block_hash)
-        || evidence.committed_block_number == 0
-        || !evidence.state.capacity_sufficient()
-        || evidence.state_out_point == evidence.vault.out_point
-        || evidence.participants[0].node_id == evidence.participants[1].node_id
+    if is_zero(&evidence.committed_block_hash) || evidence.committed_block_number == 0 {
+        return Err(BridgeError::InvalidMaterialisation);
+    }
+    let recovery = &evidence.recovery;
+    recovery.validate()?;
+    if recovery.state.header.phase != Phase::Settling
+        || recovery.outpoints.len() != recovery.manifest.vaults.len()
     {
         return Err(BridgeError::InvalidMaterialisation);
     }
-    if evidence.state.header.chain_id != deployment.ckb_genesis_hash
+    if recovery.state.header.chain_id != deployment.ckb_genesis_hash
         || asset_ckb_genesis_hash(&evidence.asset) != &deployment.ckb_genesis_hash
     {
         return Err(BridgeError::WrongNetwork);
     }
-    if evidence.deployment.state_type_code_hash != deployment.state_type_code_hash
-        || evidence.deployment.state_lock_code_hash != deployment.state_lock_code_hash
-        || evidence.deployment.vault_lock_code_hash != deployment.vault_lock_code_hash
-    {
-        return Err(BridgeError::UntrustedDeployment);
+    if recovery.state.header.mode != Mode::BilateralPlain {
+        return Err(BridgeError::InvalidMaterialisation);
     }
-    validate_state_authorization(&evidence.state.header, &evidence.authorization)?;
-    validate_participant_identities(&evidence.authorization, &evidence.participants)
+    deployment
+        .state_type
+        .matches(&recovery.scripts.state_type)?;
+    deployment
+        .state_lock
+        .matches(&recovery.scripts.state_lock)?;
+    deployment
+        .vault_lock
+        .matches(&recovery.scripts.vault_lock)?;
+    evidence.state.validate()?;
+    if evidence.state.lock != recovery.scripts.state_lock
+        || evidence.state.type_script.as_ref() != Some(&recovery.scripts.state_type)
+        || evidence.state.capacity != recovery.state_carrier_capacity
+    {
+        return Err(BridgeError::InvalidMaterialisation);
+    }
+    let actual = MultiAssetStateHeader::parse(&evidence.state.data)
         .map_err(|_| BridgeError::InvalidMaterialisation)?;
-    if settlement_descriptor_commitment(&evidence.settlement_descriptor)
-        != evidence.state.header.settlement_descriptor_commitment
-        || descriptor_version(&evidence.settlement_descriptor)?
-            != evidence.state.header.descriptor_version
-        || evidence.vault.commitment() != evidence.state.header.vault_materialisation_root
-        || crate::vault_outpoint_commitment(
-            &evidence.vault.out_point.tx_hash,
-            evidence.vault.out_point.index,
-        ) != evidence.state.header.vault_outpoint_commitment
+    let saved_raw = recovery.state.encode()?;
+    let saved = MultiAssetStateHeader::parse(&saved_raw)
+        .map_err(|_| BridgeError::InvalidMaterialisation)?;
+    if !actual.vaults_are_bound()
+        || !actual.same_context_except_progress(&saved)
+        || actual.state_number() > saved.state_number()
+        || (actual.state_number() == saved.state_number() && actual.as_bytes() != saved.as_bytes())
     {
         return Err(BridgeError::InvalidMaterialisation);
     }
-    if !matches!(evidence.state.header.phase, Phase::Active | Phase::Settling) {
+    validate_complete_vaults(evidence)?;
+    validate_participant_identities(&recovery.authorization, &evidence.participants)
+        .map_err(|_| BridgeError::InvalidMaterialisation)?;
+    let allocation = directional_asset_liquidity(recovery, &evidence.asset)?;
+    let participant_liquidity = |participant: &ChannelParticipant| -> BridgeResult<Amount> {
+        let index = recovery
+            .settlement
+            .participant_lock_hashes
+            .iter()
+            .position(|lock| *lock == participant.settlement_lock_hash)
+            .ok_or(BridgeError::InvalidMaterialisation)?;
+        Ok(allocation[index])
+    };
+    if evidence.participants[0].settlement_lock_hash
+        == evidence.participants[1].settlement_lock_hash
+    {
         return Err(BridgeError::InvalidMaterialisation);
     }
-    let descriptor_liquidity =
-        descriptor_amounts(&evidence.settlement_descriptor, &evidence.asset)?;
-    validate_vault_asset(
-        &evidence.vault,
-        &evidence.settlement_descriptor,
-        &evidence.asset,
-        descriptor_liquidity,
-    )?;
-    let locks = descriptor_locks(&evidence.settlement_descriptor)?;
-    let participant_liquidity = |participant: &ChannelParticipant| -> BridgeResult<Amount> {
-        let index = locks
-            .iter()
-            .position(|lock| lock == &participant.settlement_lock_hash)
-            .ok_or(BridgeError::InvalidMaterialisation)?;
-        Ok(descriptor_liquidity[index])
-    };
     let directional_liquidity = [
         participant_liquidity(&evidence.participants[0])?,
         participant_liquidity(&evidence.participants[1])?,
     ];
-    match (reservation, evidence.state.header.mode) {
-        (Some(reservation), Mode::FactoryProof) => {
-            if evidence.deployment.factory_type_code_hash != Some(deployment.factory_type_code_hash)
-                || evidence.deployment.factory_vault_lock_code_hash
-                    != Some(deployment.factory_vault_lock_code_hash)
-                || reservation.right.subchannel != evidence.state.header.channel_id
-                || reservation_asset_type(&reservation.right) != asset_type_hash(&evidence.asset)
-            {
-                return Err(BridgeError::FactoryOriginMismatch);
-            }
-            let participant_index = evidence
-                .participants
-                .iter()
-                .position(|participant| participant.node_id == reservation.right.participant)
-                .ok_or(BridgeError::FactoryOriginMismatch)?;
-            if enforce_reservation_quantity
-                && reservation.quantity > directional_liquidity[participant_index]
-            {
-                return Err(BridgeError::FactoryOriginMismatch);
-            }
-        }
-        (None, Mode::BilateralPlain) => {
-            if evidence.deployment.factory_type_code_hash.is_some()
-                || evidence.deployment.factory_vault_lock_code_hash.is_some()
-            {
-                return Err(BridgeError::FactoryOriginMismatch);
-            }
-        }
-        _ => return Err(BridgeError::FactoryOriginMismatch),
-    }
+    validate_factory_origin(
+        evidence,
+        reservation,
+        deployment,
+        directional_liquidity,
+        enforce_reservation_quantity,
+    )?;
     match (&evidence.asset, evidence.rgbpp_proof_commitment) {
         (AgentAsset::Rgbpp(_), Some(commitment)) if !is_zero(&commitment) => {}
-        (AgentAsset::Rgbpp(_), _) | (_, Some(_)) => {
-            return Err(BridgeError::RgbppProofMismatch);
-        }
+        (AgentAsset::Rgbpp(_), _) | (_, Some(_)) => return Err(BridgeError::RgbppProofMismatch),
         _ => {}
     }
-
-    let factory_id = reservation.map(|reservation| reservation.factory_id);
-    let factory_update_number = reservation.map(|reservation| reservation.factory_update_number);
-    let factory_reservation_id = reservation.map(|reservation| reservation.reservation_id);
-    let participant_pubkeys_sec1 = [
-        signer_pubkey_for_node(&evidence.authorization, &evidence.participants[0].node_id)?,
-        signer_pubkey_for_node(&evidence.authorization, &evidence.participants[1].node_id)?,
-    ];
     let mut edge = ProviderEdgeDescriptor {
         edge_id: [0; 32],
-        channel_id: evidence.state.header.channel_id,
-        funding_context_id: evidence.state.header.funding_context_id(),
-        funding_epoch: evidence.state.header.funding_epoch,
-        state_number: evidence.state.header.state_number,
-        participants: [
-            evidence.participants[0].node_id,
-            evidence.participants[1].node_id,
+        channel_id: recovery.state.header.channel_id,
+        funding_context_id: recovery.state.funding_context_id()?,
+        funding_epoch: recovery.state.header.funding_epoch,
+        state_number: recovery.state.header.state_number,
+        participants: evidence
+            .participants
+            .each_ref()
+            .map(|participant| participant.node_id),
+        participant_pubkeys_sec1: [
+            signer_pubkey_for_node(&recovery.authorization, &evidence.participants[0].node_id)?,
+            signer_pubkey_for_node(&recovery.authorization, &evidence.participants[1].node_id)?,
         ],
-        participant_pubkeys_sec1,
         asset: evidence.asset.clone(),
         directional_liquidity,
         deployment_id: deployment.deployment_id()?,
-        factory_id,
-        factory_update_number,
-        factory_reservation_id,
+        factory_id: reservation.map(|reservation| reservation.factory_id),
+        factory_update_number: reservation.map(|reservation| reservation.factory_update_number),
+        factory_reservation_id: reservation.map(|reservation| reservation.reservation_id),
         evidence_block_hash: evidence.committed_block_hash,
         evidence_block_number: evidence.committed_block_number,
-        opaque_morph_commitment: evidence.state.header.signing_digest(),
+        opaque_morph_commitment: recovery.state.signing_digest()?,
     };
     edge.edge_id = edge.derive_id()?;
     Ok(edge)
+}
+
+fn validate_complete_vaults(evidence: &MaterializedChannelEvidence) -> BridgeResult<()> {
+    let recovery = &evidence.recovery;
+    if evidence.vaults.len() != recovery.manifest.vaults.len() {
+        return Err(BridgeError::InvalidMaterialisation);
+    }
+    for ((actual, vault), point) in evidence
+        .vaults
+        .iter()
+        .zip(&recovery.manifest.vaults)
+        .zip(&recovery.outpoints)
+    {
+        actual.validate()?;
+        let expected_type = match vault.asset {
+            VaultAsset::Ckb => None,
+            VaultAsset::Xudt(hash) => Some(
+                &recovery
+                    .scripts
+                    .type_scripts
+                    .iter()
+                    .find(|entry| entry.type_hash == hash)
+                    .ok_or(BridgeError::InvalidMaterialisation)?
+                    .script,
+            ),
+        };
+        let expected_data = match vault.asset {
+            VaultAsset::Ckb => vec![],
+            VaultAsset::Xudt(_) => vault.value.amount.to_le_bytes().to_vec(),
+        };
+        if actual.out_point.tx_hash != point.tx_hash
+            || actual.out_point.index != point.index
+            || actual.out_point == evidence.state.out_point
+            || actual.lock != recovery.scripts.vault_lock
+            || actual.type_script.as_ref() != expected_type
+            || actual.capacity != vault.value.capacity()?
+            || actual.data != expected_data
+        {
+            return Err(BridgeError::InvalidMaterialisation);
+        }
+    }
+    Ok(())
+}
+
+fn directional_asset_liquidity(
+    recovery: &MultiAssetRecoveryPackage,
+    asset: &AgentAsset,
+) -> BridgeResult<[Amount; 2]> {
+    if let Some(hash) = asset_type_hash(asset) {
+        let payout = recovery
+            .settlement
+            .payouts
+            .iter()
+            .find(|payout| payout.asset == VaultAsset::Xudt(hash))
+            .ok_or(BridgeError::InvalidDescriptor)?;
+        return Ok(payout.values.map(|value| value.amount));
+    }
+    let mut amounts = [0u128; 2];
+    for payout in &recovery.settlement.payouts {
+        for (amount, value) in amounts.iter_mut().zip(payout.values) {
+            *amount = amount
+                .checked_add(u128::from(value.business_ckb))
+                .ok_or(BridgeError::InvalidDescriptor)?;
+        }
+    }
+    Ok(amounts)
+}
+
+fn validate_factory_origin(
+    evidence: &MaterializedChannelEvidence,
+    reservation: Option<&FactoryRightReservation>,
+    deployment: &TrustedMorphDeployment,
+    liquidity: [Amount; 2],
+    enforce_quantity: bool,
+) -> BridgeResult<()> {
+    let args = morph_script_common::multi_asset::MultiAssetStateTypeArgs::parse(
+        &evidence.recovery.scripts.state_type[53..],
+    )
+    .map_err(|_| BridgeError::FactoryOriginMismatch)?;
+    match (reservation, &evidence.factory_origin, args.factory_origin()) {
+        (None, None, None) => Ok(()),
+        (Some(reservation), Some(origin), Some(committed_origin)) => {
+            deployment.factory_type.matches(&origin.source.state_type)?;
+            deployment
+                .factory_vault_lock
+                .matches(&origin.source.vault_lock)?;
+            deployment.state_lock.matches(&origin.source.state_lock)?;
+            origin
+                .source
+                .validate()
+                .map_err(|_| BridgeError::FactoryOriginMismatch)?;
+            let source = origin
+                .source
+                .state()
+                .map_err(|_| BridgeError::FactoryOriginMismatch)?;
+            let membership = crate::factory_membership_commitment(&origin.members)
+                .map_err(|_| BridgeError::FactoryOriginMismatch)?;
+            let factory_hash = blake2b256(&origin.source.state_type);
+            if source.factory_id() != reservation.factory_id
+                || source.chain_id() != evidence.recovery.state.header.chain_id
+                || source.participants_commitment() != membership
+                || source.state_root() != reservation.factory_state_root
+                || source.update_number() != reservation.factory_update_number
+                || committed_origin != factory_hash
+                || reservation.right.subchannel != evidence.recovery.state.header.channel_id
+                || reservation.right.asset_type != asset_type_hash(&evidence.asset)
+            {
+                return Err(BridgeError::FactoryOriginMismatch);
+            }
+            let owner = origin
+                .members
+                .iter()
+                .find(|member| member.participant == reservation.right.participant)
+                .ok_or(BridgeError::FactoryOriginMismatch)?;
+            let node_id = blake2b256(&owner.pubkey_sec1);
+            let member = evidence
+                .participants
+                .iter()
+                .position(|member| member.node_id == node_id)
+                .ok_or(BridgeError::FactoryOriginMismatch)?;
+            if enforce_quantity && reservation.quantity > liquidity[member] {
+                return Err(BridgeError::FactoryOriginMismatch);
+            }
+            Ok(())
+        }
+        _ => Err(BridgeError::FactoryOriginMismatch),
+    }
 }
 
 fn signer_pubkey_for_node(
@@ -707,7 +994,6 @@ fn signer_pubkey_for_node(
         .map(|signature| signature.pubkey_sec1.clone())
         .ok_or(BridgeError::InvalidMaterialisation)
 }
-
 fn asset_ckb_genesis_hash(asset: &AgentAsset) -> &Bytes32 {
     match asset {
         AgentAsset::Ckb { ckb_genesis_hash }
@@ -717,7 +1003,6 @@ fn asset_ckb_genesis_hash(asset: &AgentAsset) -> &Bytes32 {
         AgentAsset::Rgbpp(asset) => &asset.ckb_genesis_hash,
     }
 }
-
 fn asset_type_hash(asset: &AgentAsset) -> Option<Bytes32> {
     match asset {
         AgentAsset::Ckb { .. } => None,
@@ -726,147 +1011,6 @@ fn asset_type_hash(asset: &AgentAsset) -> Option<Bytes32> {
         } => Some(*type_script_hash),
         AgentAsset::Rgbpp(asset) => Some(asset.xudt_type_script_hash),
     }
-}
-
-fn reservation_asset_type(right: &FactoryRightId) -> Option<Bytes32> {
-    right.asset_type
-}
-
-fn validate_vault_asset(
-    vault: &MaterializedCellEvidence,
-    descriptor_raw: &[u8],
-    asset: &AgentAsset,
-    liquidity: [Amount; 2],
-) -> BridgeResult<()> {
-    let total_liquidity = liquidity[0]
-        .checked_add(liquidity[1])
-        .ok_or(BridgeError::InvalidMaterialisation)?;
-    match asset {
-        AgentAsset::Ckb { .. } => {
-            if vault.type_hash.is_some()
-                || !vault.data.is_empty()
-                || u128::from(vault.capacity) != total_liquidity
-            {
-                return Err(BridgeError::InvalidMaterialisation);
-            }
-        }
-        AgentAsset::Xudt {
-            type_script_hash, ..
-        } => validate_xudt_vault(vault, descriptor_raw, type_script_hash, total_liquidity)?,
-        AgentAsset::Rgbpp(asset) => validate_xudt_vault(
-            vault,
-            descriptor_raw,
-            &asset.xudt_type_script_hash,
-            total_liquidity,
-        )?,
-    }
-    Ok(())
-}
-
-fn validate_xudt_vault(
-    vault: &MaterializedCellEvidence,
-    descriptor_raw: &[u8],
-    expected_type_hash: &Bytes32,
-    total_liquidity: Amount,
-) -> BridgeResult<()> {
-    let descriptor = BilateralCkbXudtSettlementDescriptor::parse(descriptor_raw)
-        .map_err(|_| BridgeError::InvalidDescriptor)?;
-    let total_capacity = descriptor
-        .capacity(0)
-        .checked_add(descriptor.capacity(1))
-        .ok_or(BridgeError::InvalidDescriptor)?;
-    if vault.type_hash != Some(*expected_type_hash)
-        || vault.capacity != total_capacity
-        || vault.data.len() != 16
-        || u128::from_le_bytes(
-            vault
-                .data
-                .as_slice()
-                .try_into()
-                .map_err(|_| BridgeError::InvalidMaterialisation)?,
-        ) != total_liquidity
-    {
-        return Err(BridgeError::InvalidMaterialisation);
-    }
-    Ok(())
-}
-
-fn descriptor_locks(raw: &[u8]) -> BridgeResult<[Bytes32; 2]> {
-    match raw.len() {
-        BILATERAL_CKB_DESCRIPTOR_LEN => {
-            let descriptor = BilateralCkbSettlementDescriptor::parse(raw)
-                .map_err(|_| BridgeError::InvalidDescriptor)?;
-            Ok([
-                descriptor
-                    .lock_hash(0)
-                    .try_into()
-                    .map_err(|_| BridgeError::InvalidDescriptor)?,
-                descriptor
-                    .lock_hash(1)
-                    .try_into()
-                    .map_err(|_| BridgeError::InvalidDescriptor)?,
-            ])
-        }
-        BILATERAL_CKB_XUDT_DESCRIPTOR_LEN => {
-            let descriptor = BilateralCkbXudtSettlementDescriptor::parse(raw)
-                .map_err(|_| BridgeError::InvalidDescriptor)?;
-            Ok([
-                descriptor
-                    .lock_hash(0)
-                    .try_into()
-                    .map_err(|_| BridgeError::InvalidDescriptor)?,
-                descriptor
-                    .lock_hash(1)
-                    .try_into()
-                    .map_err(|_| BridgeError::InvalidDescriptor)?,
-            ])
-        }
-        _ => Err(BridgeError::InvalidDescriptor),
-    }
-}
-
-fn descriptor_version(raw: &[u8]) -> BridgeResult<u16> {
-    match raw.len() {
-        BILATERAL_CKB_DESCRIPTOR_LEN => BilateralCkbSettlementDescriptor::parse(raw)
-            .map(|descriptor| descriptor.version())
-            .map_err(|_| BridgeError::InvalidDescriptor),
-        BILATERAL_CKB_XUDT_DESCRIPTOR_LEN => BilateralCkbXudtSettlementDescriptor::parse(raw)
-            .map(|descriptor| descriptor.version())
-            .map_err(|_| BridgeError::InvalidDescriptor),
-        _ => Err(BridgeError::InvalidDescriptor),
-    }
-}
-
-fn descriptor_amounts(raw: &[u8], asset: &AgentAsset) -> BridgeResult<[Amount; 2]> {
-    match (raw.len(), asset) {
-        (BILATERAL_CKB_DESCRIPTOR_LEN, AgentAsset::Ckb { .. }) => {
-            let descriptor = BilateralCkbSettlementDescriptor::parse(raw)
-                .map_err(|_| BridgeError::InvalidDescriptor)?;
-            Ok([
-                u128::from(descriptor.capacity(0)),
-                u128::from(descriptor.capacity(1)),
-            ])
-        }
-        (
-            BILATERAL_CKB_XUDT_DESCRIPTOR_LEN,
-            AgentAsset::Xudt {
-                type_script_hash, ..
-            },
-        ) => xudt_amounts(raw, type_script_hash),
-        (BILATERAL_CKB_XUDT_DESCRIPTOR_LEN, AgentAsset::Rgbpp(asset)) => {
-            xudt_amounts(raw, &asset.xudt_type_script_hash)
-        }
-        _ => Err(BridgeError::InvalidDescriptor),
-    }
-}
-
-fn xudt_amounts(raw: &[u8], expected_type_hash: &Bytes32) -> BridgeResult<[Amount; 2]> {
-    let descriptor = BilateralCkbXudtSettlementDescriptor::parse(raw)
-        .map_err(|_| BridgeError::InvalidDescriptor)?;
-    if descriptor.xudt_type_hash() != expected_type_hash {
-        return Err(BridgeError::InvalidDescriptor);
-    }
-    Ok([descriptor.xudt_amount(0), descriptor.xudt_amount(1)])
 }
 
 fn encode_right_id(right: &FactoryRightId, out: &mut Vec<u8>) {
@@ -918,6 +1062,8 @@ pub enum BridgeError {
     InvalidLifecycle,
     #[error("another active funding context already owns this channel edge")]
     ActiveEdgeConflict,
+    #[error("the physical asset balance is registered under a different asset identity")]
+    AssetAliasConflict,
     #[error("provider edge refresh is stale or changes stable edge identity")]
     StaleEdgeEvidence,
     #[error("provider edge was not found")]
@@ -941,332 +1087,11 @@ pub enum BridgeError {
     #[error(transparent)]
     Agent(#[from] crate::agent::AgentError),
     #[error(transparent)]
-    Morph(#[from] MorphError),
+    Evidence(#[from] MultiAssetError),
 }
 
 pub type BridgeResult<T> = Result<T, BridgeError>;
 
 fn is_zero(value: &Bytes32) -> bool {
     value.iter().all(|byte| *byte == 0)
-}
-
-#[cfg(test)]
-mod tests {
-    use k256::ecdsa::signature::hazmat::PrehashSigner;
-    use k256::ecdsa::{Signature, SigningKey};
-    use morph_script_common::{
-        BILATERAL_CKB_DESCRIPTOR_OUTPUT_COUNT, BILATERAL_CKB_DESCRIPTOR_VERSION,
-    };
-
-    use super::*;
-    use crate::{ParticipantSignature, StateHeader, participants_commitment};
-
-    fn deployment() -> TrustedMorphDeployment {
-        TrustedMorphDeployment {
-            ckb_genesis_hash: [1; 32],
-            state_type_code_hash: [2; 32],
-            state_lock_code_hash: [3; 32],
-            vault_lock_code_hash: [4; 32],
-            factory_type_code_hash: [5; 32],
-            factory_vault_lock_code_hash: [6; 32],
-        }
-    }
-
-    fn participant_node_id(seed: u8) -> Bytes32 {
-        let key = SigningKey::from_slice(&[seed; 32]).unwrap();
-        blake2b256(key.verifying_key().to_encoded_point(true).as_bytes())
-    }
-
-    fn reservation(now: u64) -> FactoryRightReservation {
-        let right_id = FactoryRightId {
-            participant: participant_node_id(31),
-            subchannel: [9; 32],
-            kind: FactoryRightKind::Balance,
-            asset_type: None,
-        };
-        let rights = vec![crate::FactoryRight {
-            id: right_id.clone(),
-            quantity: 6_000,
-        }];
-        let right_proof = crate::factory_right_sparse_proof(&rights, &right_id).unwrap();
-        let factory_state_root = crate::factory_right_sparse_root(&rights).unwrap();
-        let proof_commitment = factory_right_proof_commitment(&right_proof);
-        let mut reservation = FactoryRightReservation {
-            reservation_id: [0; 32],
-            factory_id: [7; 32],
-            factory_update_number: 9,
-            right: right_id,
-            quantity: 6_000,
-            factory_state_root,
-            access_manifest_root: [11; 32],
-            right_proof,
-            proof_commitment,
-            idempotency_key: [13; 32],
-            reserved_at_unix: now,
-            expires_at_unix: now + 100,
-        };
-        reservation.reservation_id = reservation.derive_id().unwrap();
-        reservation
-    }
-
-    fn descriptor() -> Vec<u8> {
-        let mut raw = vec![0; BILATERAL_CKB_DESCRIPTOR_LEN];
-        raw[0..2].copy_from_slice(&BILATERAL_CKB_DESCRIPTOR_VERSION.to_le_bytes());
-        raw[2] = BILATERAL_CKB_DESCRIPTOR_OUTPUT_COUNT;
-        raw[4..36].copy_from_slice(&[21; 32]);
-        raw[36..44].copy_from_slice(&6_000u64.to_le_bytes());
-        raw[44..76].copy_from_slice(&[22; 32]);
-        raw[76..84].copy_from_slice(&4_000u64.to_le_bytes());
-        raw
-    }
-
-    fn evidence(reservation_id: Bytes32) -> MaterializedChannelEvidence {
-        let keys = [
-            SigningKey::from_slice(&[31; 32]).unwrap(),
-            SigningKey::from_slice(&[32; 32]).unwrap(),
-        ];
-        let mut pubkeys = keys
-            .iter()
-            .map(|key| {
-                key.verifying_key()
-                    .to_encoded_point(true)
-                    .as_bytes()
-                    .to_vec()
-            })
-            .collect::<Vec<_>>();
-        pubkeys.sort();
-        let vault = MaterializedCellEvidence {
-            out_point: CkbOutPoint {
-                tx_hash: [40; 32],
-                index: 1,
-            },
-            lock_hash: [41; 32],
-            type_hash: None,
-            capacity: 10_000,
-            data: vec![],
-        };
-        let descriptor = descriptor();
-        let header = StateHeader {
-            protocol_version: 1,
-            chain_id: [1; 32],
-            signature_scheme_id: 1,
-            channel_id: [9; 32],
-            funding_epoch: 0,
-            funding_anchor: [42; 32],
-            vault_set_commitment: [43; 32],
-            state_number: 0,
-            mode: Mode::FactoryProof,
-            phase: Phase::Active,
-            participants_commitment: participants_commitment(
-                2,
-                &[pubkeys[0].as_slice(), pubkeys[1].as_slice()],
-            ),
-            asset_registry_commitment: [44; 32],
-            settlement_descriptor_commitment: settlement_descriptor_commitment(&descriptor),
-            descriptor_version: BILATERAL_CKB_DESCRIPTOR_VERSION,
-            vault_materialisation_root: vault.commitment(),
-            vault_outpoint_commitment: crate::vault_outpoint_commitment(
-                &vault.out_point.tx_hash,
-                vault.out_point.index,
-            ),
-            challenge_policy_commitment: [45; 32],
-            state_layout_version: 1,
-        };
-        let mut signatures = keys
-            .iter()
-            .map(|key| {
-                let signature: Signature = key.sign_prehash(&header.signing_digest()).unwrap();
-                ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
-                    signature: signature.to_bytes().to_vec(),
-                }
-            })
-            .collect::<Vec<_>>();
-        signatures.sort_by(|left, right| left.pubkey_sec1.cmp(&right.pubkey_sec1));
-        MaterializedChannelEvidence {
-            state: StateCell {
-                header,
-                capacity: 1_000,
-                occupied_capacity: 1_000,
-            },
-            authorization: StateAuthorization {
-                threshold: 2,
-                signatures,
-            },
-            state_out_point: CkbOutPoint {
-                tx_hash: [46; 32],
-                index: 0,
-            },
-            vault,
-            settlement_descriptor: descriptor,
-            participants: [
-                ChannelParticipant {
-                    node_id: participant_node_id(31),
-                    settlement_lock_hash: [21; 32],
-                },
-                ChannelParticipant {
-                    node_id: participant_node_id(32),
-                    settlement_lock_hash: [22; 32],
-                },
-            ],
-            asset: AgentAsset::Ckb {
-                ckb_genesis_hash: [1; 32],
-            },
-            factory_reservation_id: Some(reservation_id),
-            deployment: DeploymentEvidence {
-                state_type_code_hash: [2; 32],
-                state_lock_code_hash: [3; 32],
-                vault_lock_code_hash: [4; 32],
-                factory_type_code_hash: Some([5; 32]),
-                factory_vault_lock_code_hash: Some([6; 32]),
-            },
-            committed_block_hash: [47; 32],
-            committed_block_number: 100,
-            confirmations: 6,
-            rgbpp_proof_commitment: None,
-        }
-    }
-
-    #[test]
-    fn factory_right_materialises_into_a_verified_edge() {
-        let mut registry = SovereignEdgeRegistry::default();
-        let reservation = reservation(100);
-        assert_eq!(
-            reservation.validate(99),
-            Err(BridgeError::ReservationNotYetValid)
-        );
-        let reservation_id = registry.reserve(reservation, 100).unwrap();
-        registry.begin_materialisation(&reservation_id).unwrap();
-        let edge = registry
-            .activate(evidence(reservation_id), &deployment(), 6, 101)
-            .unwrap();
-        assert_eq!(edge.factory_id, Some([7; 32]));
-        assert_eq!(edge.directional_liquidity, [6_000, 4_000]);
-        assert!(matches!(
-            registry.lifecycle(&reservation_id),
-            Some(EdgeLifecycle::Active(_))
-        ));
-    }
-
-    #[test]
-    fn edge_liquidity_is_aligned_with_participant_order() {
-        let mut registry = SovereignEdgeRegistry::default();
-        let reservation = reservation(100);
-        let reservation_id = registry.reserve(reservation, 100).unwrap();
-        registry.begin_materialisation(&reservation_id).unwrap();
-        let mut materialized = evidence(reservation_id);
-        materialized.participants.reverse();
-        let edge = registry
-            .activate(materialized, &deployment(), 6, 101)
-            .unwrap();
-        assert_eq!(
-            edge.participants,
-            [participant_node_id(32), participant_node_id(31)]
-        );
-        assert_eq!(edge.directional_liquidity, [4_000, 6_000]);
-    }
-
-    #[test]
-    fn untrusted_code_hash_never_becomes_a_provider_edge() {
-        let mut registry = SovereignEdgeRegistry::default();
-        let reservation = reservation(100);
-        let reservation_id = registry.reserve(reservation, 100).unwrap();
-        registry.begin_materialisation(&reservation_id).unwrap();
-        let mut evidence = evidence(reservation_id);
-        evidence.deployment.vault_lock_code_hash = [99; 32];
-        assert_eq!(
-            registry.activate(evidence, &deployment(), 6, 101),
-            Err(BridgeError::UntrustedDeployment)
-        );
-    }
-
-    #[test]
-    fn byte_identical_clone_vault_never_becomes_a_provider_edge() {
-        let mut registry = SovereignEdgeRegistry::default();
-        let reservation = reservation(100);
-        let reservation_id = registry.reserve(reservation, 100).unwrap();
-        registry.begin_materialisation(&reservation_id).unwrap();
-        let mut cloned = evidence(reservation_id);
-        cloned.vault.out_point.tx_hash = [99; 32];
-        assert_eq!(
-            registry.activate(cloned, &deployment(), 6, 101),
-            Err(BridgeError::InvalidMaterialisation)
-        );
-    }
-
-    #[test]
-    fn edge_must_disable_before_a_new_funding_context_can_activate() {
-        let mut registry = SovereignEdgeRegistry::default();
-        let reservation = reservation(100);
-        let reservation_id = registry.reserve(reservation, 100).unwrap();
-        registry.begin_materialisation(&reservation_id).unwrap();
-        registry
-            .activate(evidence(reservation_id), &deployment(), 6, 101)
-            .unwrap();
-        registry.begin_draining(&[9; 32]).unwrap();
-        registry
-            .disable(&[9; 32], "splice".to_string(), 102)
-            .unwrap();
-        assert!(matches!(
-            registry.lifecycle(&reservation_id),
-            Some(EdgeLifecycle::Disabled { .. })
-        ));
-    }
-
-    #[test]
-    fn signed_liquidity_refresh_preserves_stable_edge_identity() {
-        let mut registry = SovereignEdgeRegistry::default();
-        let reservation = reservation(100);
-        let reservation_id = registry.reserve(reservation, 100).unwrap();
-        registry.begin_materialisation(&reservation_id).unwrap();
-        let original = registry
-            .activate(evidence(reservation_id), &deployment(), 6, 101)
-            .unwrap();
-
-        let mut refreshed_evidence = evidence(reservation_id);
-        refreshed_evidence.state.header.state_number = 1;
-        refreshed_evidence.state.header.phase = Phase::Settling;
-        refreshed_evidence.settlement_descriptor[36..44].copy_from_slice(&5_500u64.to_le_bytes());
-        refreshed_evidence.settlement_descriptor[76..84].copy_from_slice(&4_500u64.to_le_bytes());
-        refreshed_evidence
-            .state
-            .header
-            .settlement_descriptor_commitment =
-            settlement_descriptor_commitment(&refreshed_evidence.settlement_descriptor);
-        let keys = [
-            SigningKey::from_slice(&[31; 32]).unwrap(),
-            SigningKey::from_slice(&[32; 32]).unwrap(),
-        ];
-        let mut signatures = keys
-            .iter()
-            .map(|key| {
-                let signature: Signature = key
-                    .sign_prehash(&refreshed_evidence.state.header.signing_digest())
-                    .unwrap();
-                ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
-                    signature: signature.to_bytes().to_vec(),
-                }
-            })
-            .collect::<Vec<_>>();
-        signatures.sort_by(|left, right| left.pubkey_sec1.cmp(&right.pubkey_sec1));
-        refreshed_evidence.authorization = StateAuthorization {
-            threshold: 2,
-            signatures,
-        };
-        let refreshed = registry
-            .refresh(refreshed_evidence, &deployment(), 6)
-            .unwrap();
-        assert_eq!(refreshed.edge_id, original.edge_id);
-        assert_eq!(refreshed.directional_liquidity, [5_500, 4_500]);
-        assert_eq!(refreshed.state_number, 1);
-    }
 }

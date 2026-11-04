@@ -1,5 +1,11 @@
 # Factory Runbook Rehearsal — 2026-08-15
 
+Historical record: the wire lengths, commands and release baseline below
+belong to the dated rehearsal. They are not current parser acceptance or a
+current release gate. Use [current coverage](../current-protocol-coverage.md),
+the [current devnet guide](../devnet.md), and the
+[current reset runbook](upgrade-and-migration.md) for today's profile.
+
 This is the repository-side rehearsal for the controlled-devnet
 `factory-dynamic-n` candidate after the signed-withdrawal wire update. It is not
 the independent multi-operator rehearsal required for a production claim.

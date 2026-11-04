@@ -58,7 +58,7 @@ issuance, automatic input selection, signing or broadcast. The terms contain:
 | `participants` | Two distinct compressed keys in raw key order. |
 | `participant_locks_hex` | Two actual payout Scripts, in the descriptor's sorted lock-hash order. This ordering is independent of public-key order. |
 | `carrier_refund_lock_hex` | Actual Script receiving the exact State carrier on exit. |
-| `descriptor_hex` | Canonical descriptor-4 initial allocations; Vault totals are derived from them. |
+| `descriptor_hex` | Canonical descriptor-5 allocations with an explicit ordinary/CKB-conditional capability; Vault totals include the derived pending CKB lane. |
 | `challenge_blocks` | Positive canonical decimal relative-block count. |
 | `type_scripts_hex` | Complete actual xUDT Scripts in Type-hash order; omit for plain CKB only. |
 | `cell_deps` | Explicit canonical code/dep-group records `{tx_hash,index,dep_type}`, sorted by OutPoint. |

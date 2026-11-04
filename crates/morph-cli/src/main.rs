@@ -1,6 +1,5 @@
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -13,37 +12,39 @@ use anyhow::{Context, Result, ensure};
 use ckb_types::H256;
 use clap::{Parser, Subcommand, ValueEnum};
 #[cfg(feature = "devnet")]
-use devnet::{
-    ApplyFactoryReducedSpliceOptions, ApplyFactorySpliceOptions, ApplySpliceOptions,
-    CompetingSpendSmokeOptions, DeployContractsOptions, DevnetSpliceAsset, DevnetSpliceKind,
-    FactoryExitAuthorisation, FactoryExitChannelOptions, FactoryExitChannelTamper,
-    FactoryMerkleUpdateSmokeOptions, FactoryReducedExitSmokeOptions,
-    FactoryReducedRightsSmokeOptions, FactoryReducedXudtExitSmokeOptions,
-    FactoryReducedXudtNegativeExitSmokeOptions, FactorySmokeOptions, FactorySpliceSmokeOptions,
-    FactoryXudtNegativeSmokeOptions, FactoryXudtSmokeOptions, FactoryXudtSpliceSmokeOptions,
-    FinaliseChannelOptions, FinaliseSinceNegativeSmokeOptions, FundSponsorOptions,
-    OpenChannelOptions, OpenFactoryOptions, PublishLatestStatePackageOptions, PublishStateOptions,
-    SaveFactoryMerkleUpdatePackageOptions, SaveFactoryReducedRightsPackageOptions,
-    SaveFactoryReducedSplicePackageOptions, SaveFactorySplicePackageOptions,
-    SaveFactoryStatePackageOptions, SaveSplicePackageOptions, SaveStatePackageOptions,
-    SpliceNegativeSmokeOptions, SpliceSmokeOptions, SponsorBudgetNegativeSmokeOptions,
-    SponsorPolicyNegativeSmokeOptions, SupersedeSmokeOptions, UpdateFactoryOptions,
-    WatchLatestStatePackageOptions, XudtNegativeSmokeOptions, XudtSmokeOptions,
-    XudtSpliceSmokeOptions,
-};
-use k256::ecdsa::signature::hazmat::PrehashSigner;
-use k256::ecdsa::{Signature, SigningKey};
+use devnet::{DeployContractsOptions, FundSponsorOptions};
+use k256::ecdsa::SigningKey;
 use morph_core::*;
 #[cfg(feature = "devnet")]
 use rpc::{CkbRpcClient, HeaderView};
 
+mod canonical_fields;
+#[cfg(any(feature = "devnet", test))]
+mod channel_creation;
 mod conditional_packages;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
 mod devnet;
 #[cfg(feature = "devnet")]
 mod devnet_dispatch;
-mod factory_multi_asset_packages;
-mod factory_packages;
+mod factory_artifacts;
+mod factory_child_origin;
+mod factory_child_session;
+mod factory_context;
+mod factory_delivery;
+#[cfg(test)]
+#[path = "../../morph-core/tests/support/factory_journal.rs"]
+mod factory_journal_fixture;
+mod factory_packets;
+#[cfg(any(feature = "devnet", test))]
+mod factory_root_transaction;
+mod factory_session;
+#[cfg(any(feature = "devnet", test))]
+mod factory_transaction;
+mod factory_transition_packages;
+#[cfg(test)]
+mod fixture_exports;
+#[cfg(any(feature = "devnet", test))]
+mod funding_wallets;
 mod hub;
 mod multi_asset_funding;
 mod multi_asset_funding_session;
@@ -56,7 +57,7 @@ mod multi_asset_signatures;
 mod multi_asset_splice_transaction;
 #[cfg(feature = "devnet")]
 mod multi_asset_supervision;
-mod packages;
+mod persistence;
 mod preproduction;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
 mod publication;
@@ -64,13 +65,13 @@ mod release;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
 mod rpc;
 mod smoke_report;
-mod splice_packages;
 mod stateful_report;
 mod value_limit;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
 mod watch_alert;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
 mod watch_config;
+mod watch_cursor;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
 mod watch_policy;
 
@@ -81,41 +82,6 @@ mod watch_policy;
 struct Cli {
     #[command(subcommand)]
     command: Command,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum SpliceFixtureKindArg {
-    SpliceIn,
-    SpliceOut,
-    XudtSpliceIn,
-    XudtSpliceOut,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum FactorySpliceFixtureKindArg {
-    SpliceIn,
-    SpliceOut,
-    XudtSpliceIn,
-    XudtSpliceOut,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum CkbSpliceKindArg {
-    SpliceIn,
-    SpliceOut,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum SpliceAssetArg {
-    Ckb,
-    Xudt,
-}
-
-#[cfg(feature = "devnet")]
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum FactoryExitAuthorisationArg {
-    FullParticipants,
-    ReducedReserveClaim,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -134,6 +100,38 @@ enum InvoiceAssetArg {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Inspect a current signed Factory transition; live source/code checks remain native obligations.
+    InspectFactoryTransition {
+        path: PathBuf,
+        #[arg(long)]
+        source: Option<PathBuf>,
+    },
+    /// Independently authorize a fixed Factory child's initial exit before parent funding.
+    FactoryChildSession {
+        #[arg(long)]
+        session: PathBuf,
+        #[command(subcommand)]
+        command: factory_child_session::FactoryChildSessionCommand,
+    },
+    /// Private child recovery delivery and public possession attestations.
+    FactoryChildDelivery {
+        #[command(subcommand)]
+        command: factory_delivery::DeliveryCommand,
+    },
+    InspectFactoryCustody {
+        path: PathBuf,
+    },
+    /// Review and sign current Factory requests through one independent durable authority.
+    FactorySession {
+        #[arg(long)]
+        session: PathBuf,
+        #[command(subcommand)]
+        command: factory_session::FactorySessionCommand,
+    },
+    /// Inspect one canonical current Factory request without reserving authority.
+    InspectFactoryRequest {
+        path: PathBuf,
+    },
     /// Verify a public funding bundle and durably extract its exit before the binary.
     ImportRootFunding {
         bundle: PathBuf,
@@ -182,9 +180,9 @@ enum Command {
         #[arg(long)]
         health_file: PathBuf,
     },
-    /// Validate the built-in bilateral-channel fixture.
+    /// Validate current custody, signed recovery and update reservation fixtures.
     ValidateFixture,
-    /// Print a JSON state header fixture and signing digest.
+    /// Print the current signed recovery package fixture.
     PrintFixture,
     /// Create a Morph-native invoice. This is not a Fiber or Lightning invoice.
     NewInvoice {
@@ -282,46 +280,12 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Print a valid host-side factory non-interference package fixture.
-    PrintFactoryFixture,
     /// Print a bounded CKB conditional-batch force-resolution package fixture.
     PrintConditionalBatchFixture,
     /// Print a complete signed two-xUDT recovery package fixture.
     PrintMultiAssetFixture,
-    /// Print a conservative all-participant signed factory state package fixture.
-    PrintFactoryStateFixture,
-    /// Print a host-side authorised-participant signed factory state package fixture.
-    PrintReducedFactoryStateFixture,
-    /// Print an on-chain reduced-rights factory update package fixture.
-    PrintFactoryReducedRightsFixture,
-    /// Print a host-side reduced factory-exit package fixture.
-    PrintFactoryReducedExitFixture,
-    /// Print a host-side single-right sparse Merkle factory update package fixture.
-    PrintFactoryMerkleUpdateFixture,
-    /// Print a host-side multi-right compact sparse Merkle factory update package fixture.
-    PrintFactoryMultiRightUpdateFixture,
     /// Print an operator value-limit policy fixture.
     PrintValueLimitPolicyFixture,
-    /// Print a valid factory local-exit evidence package fixture.
-    PrintFactoryLocalExitFixture,
-    /// Print a valid conservative factory splice package fixture.
-    PrintFactorySpliceFixture {
-        /// Fixture shape to print.
-        #[arg(long, value_enum, default_value = "splice-in")]
-        kind: FactorySpliceFixtureKindArg,
-    },
-    /// Print a sparse-Merkle reduced factory splice package fixture.
-    PrintFactoryReducedSpliceFixture {
-        /// Fixture shape to print.
-        #[arg(long, value_enum, default_value = "splice-in")]
-        kind: FactorySpliceFixtureKindArg,
-    },
-    /// Print a valid bilateral splice package fixture.
-    PrintSpliceFixture {
-        /// Fixture shape to print.
-        #[arg(long, value_enum, default_value = "splice-in")]
-        kind: SpliceFixtureKindArg,
-    },
     /// Print a sample watchtower operator policy.
     PrintWatchPolicyFixture,
     /// Print a sample multi-channel watchtower config.
@@ -342,14 +306,6 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Validate a host-side factory non-interference package.
-    ValidateFactoryPackage {
-        /// Path to the factory update package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
     /// Validate a conditional-batch force-resolution package.
     ValidateConditionalBatchPackage {
         /// Path to the conditional-batch package JSON.
@@ -364,53 +320,11 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Verify an offline multi-asset Factory partition and all-participant approval.
-    ValidateFactoryMultiAssetMaterialisation { path: PathBuf },
     /// Validate and atomically retain a multi-asset recovery package.
     StoreMultiAssetPackage {
         path: PathBuf,
         #[arg(long)]
         store_dir: PathBuf,
-    },
-    /// Validate a conservative all-participant signed factory state package.
-    ValidateFactoryStatePackage {
-        /// Path to the factory state package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Validate an on-chain reduced-rights factory update package.
-    ValidateFactoryReducedRightsPackage {
-        /// Path to the factory reduced-rights package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Validate a host-side reduced factory-exit package.
-    ValidateFactoryReducedExitPackage {
-        /// Path to the factory reduced-exit package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Validate a host-side single-right sparse Merkle factory update package.
-    ValidateFactoryMerkleUpdatePackage {
-        /// Path to the factory Merkle update package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Validate a host-side multi-right compact sparse Merkle factory update package.
-    ValidateFactoryMultiRightUpdatePackage {
-        /// Path to the factory multi-right update package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
     },
     /// Validate an operator value-limit policy file.
     ValidateValueLimitPolicy {
@@ -425,9 +339,12 @@ enum Command {
         /// Path to the value-limit policy JSON.
         #[arg(long)]
         policy: std::path::PathBuf,
-        /// Path to a value-bearing package JSON (bilateral or factory splice family).
+        /// Current signed recovery, funding, conditional or Factory custody package.
         #[arg(long)]
         package: Option<std::path::PathBuf>,
+        /// Exact signed source recovery required by a current splice funding bundle.
+        #[arg(long, requires = "package")]
+        old_package: Option<std::path::PathBuf>,
         /// Explicit CKB capacity to check, in base units.
         #[arg(long, conflicts_with = "package")]
         ckb: Option<u64>,
@@ -439,42 +356,13 @@ enum Command {
         )]
         xudt: Vec<String>,
     },
-    /// Validate a factory local-exit evidence package.
-    ValidateFactoryLocalExitPackage {
-        /// Path to the factory local-exit package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Validate a conservative factory splice package.
-    ValidateFactorySplicePackage {
-        /// Path to the factory splice package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Validate a sparse-Merkle reduced factory splice package.
-    ValidateFactoryReducedSplicePackage {
-        /// Path to the reduced factory splice package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Validate a bilateral splice package.
-    ValidateSplicePackage {
-        /// Path to the splice package JSON.
-        path: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
     /// Summarise a completed scripts/devnet-smoke.sh output directory.
     DevnetSmokeReport {
         /// Directory produced by scripts/devnet-smoke.sh.
-        #[arg(long, default_value = "target/devnet-smoke/latest")]
+        #[arg(
+            long,
+            default_value = "target/current-protocol-e2e/latest/scenarios/smoke"
+        )]
         dir: std::path::PathBuf,
         /// Emit machine-readable JSON instead of Markdown.
         #[arg(long)]
@@ -483,7 +371,10 @@ enum Command {
     /// Assert that a completed devnet smoke directory covers required paths.
     DevnetSmokeAssert {
         /// Directory produced by scripts/devnet-smoke.sh.
-        #[arg(long, default_value = "target/devnet-smoke/latest")]
+        #[arg(
+            long,
+            default_value = "target/current-protocol-e2e/latest/scenarios/smoke"
+        )]
         dir: std::path::PathBuf,
         /// Directory containing the built RISC-V contract binaries.
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
@@ -540,7 +431,7 @@ enum Command {
     /// Summarise a completed scripts/devnet-stateful-scenarios.sh output directory.
     DevnetStatefulReport {
         /// Directory produced by scripts/devnet-stateful-scenarios.sh.
-        #[arg(long, default_value = "target/devnet-stateful-e2e/latest/scenarios")]
+        #[arg(long, default_value = "target/current-protocol-e2e/latest/scenarios")]
         dir: std::path::PathBuf,
         /// JSON file defining generalized devnet audit family requirements.
         #[arg(long, default_value = "docs/devnet-audit-profile.example.json")]
@@ -552,7 +443,7 @@ enum Command {
     /// Assert that a completed devnet stateful scenario directory covers required paths.
     DevnetStatefulAssert {
         /// Directory produced by scripts/devnet-stateful-scenarios.sh.
-        #[arg(long, default_value = "target/devnet-stateful-e2e/latest/scenarios")]
+        #[arg(long, default_value = "target/current-protocol-e2e/latest/scenarios")]
         dir: std::path::PathBuf,
         /// JSON file with absolute stateful budgets for totals and named transactions.
         #[arg(long)]
@@ -654,6 +545,11 @@ enum HubCommand {
 #[cfg(feature = "devnet")]
 #[derive(Debug, Subcommand)]
 enum DevnetCommand {
+    /// Native current Factory lifecycle with independent signer journals.
+    Factory {
+        #[command(subcommand)]
+        command: devnet::factory_operator::FactoryCommand,
+    },
     /// Scan canonical multi-asset State Cells and publish saved newer recovery evidence.
     MultiAssetWatch {
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
@@ -816,6 +712,9 @@ enum DevnetCommand {
         /// Fund assets from both participants and use a third fee/carrier wallet.
         #[arg(long)]
         shared_funding: bool,
+        /// Exercise real 2-to-1 removal and 1-to-2 admission, including a withheld bridge receipt.
+        #[arg(long, conflicts_with_all = ["watch_publication", "sponsor_publication"])]
+        splice_transitions: bool,
         #[arg(long, default_value_t = 100_000_000)]
         fee: u64,
         #[arg(long, default_value_t = 4)]
@@ -947,1539 +846,6 @@ enum DevnetCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Open a bilateral Morph channel on local devnet using deployed Morph scripts.
-    OpenChannel {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls a funded local-devnet cell.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the channel vault lock, in shannons.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under the sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Lowest state number the initial SponsorCell may pay for.
-        #[arg(long, default_value_t = devnet::DEFAULT_SPONSOR_MIN_STATE_NUMBER)]
-        sponsor_min_state_number: u64,
-        /// Highest state number the initial SponsorCell may pay for.
-        #[arg(long, default_value_t = devnet::DEFAULT_SPONSOR_MAX_STATE_NUMBER)]
-        sponsor_max_state_number: u64,
-        /// Reject sponsor policies outside the bounded default state-number window.
-        #[arg(long)]
-        strict_sponsor_range: bool,
-        /// Maximum fee this SponsorCell may pay in one publication transaction.
-        #[arg(long)]
-        sponsor_max_fee_per_tx: Option<u64>,
-        /// Maximum total fee this SponsorCell may pay.
-        #[arg(long)]
-        sponsor_max_total_fee: Option<u64>,
-        /// Absolute fee to reserve for the open-channel transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Open a conservative 2-16 participant Morph factory state cell on local devnet.
-    OpenFactory {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls a funded local-devnet cell.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Additional factory signing key for participant 3 onward. Repeat up to 14 times.
-        #[arg(long = "participant-private-key", hide_env_values = true)]
-        additional_participant_private_keys: Vec<String>,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Optional devnet xUDT amount placed under the FactoryVaultCell.
-        #[arg(long)]
-        factory_vault_xudt_amount: Option<u128>,
-        /// Optional 32-byte state root for the initial factory state.
-        #[arg(long)]
-        state_root: Option<String>,
-        /// Optional 32-byte access-manifest root for the initial factory state.
-        #[arg(long)]
-        access_manifest_root: Option<String>,
-        /// Optional 32-byte non-interference digest for the initial factory state.
-        #[arg(long)]
-        non_interference_digest: Option<String>,
-        /// Absolute fee to reserve for the open-factory transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Advance a Morph factory state cell using all-participant signatures.
-    UpdateFactory {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that pays the independent fee input.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Additional factory signing key for participant 3 onward. Repeat up to 14 times.
-        #[arg(long = "participant-private-key", hide_env_values = true)]
-        additional_participant_private_keys: Vec<String>,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// New update number. Defaults to old_update_number + 1.
-        #[arg(long)]
-        update_number: Option<u64>,
-        /// Optional 32-byte replacement state root.
-        #[arg(long)]
-        state_root: Option<String>,
-        /// Optional 32-byte replacement access-manifest root.
-        #[arg(long)]
-        access_manifest_root: Option<String>,
-        /// Optional 32-byte replacement non-interference digest.
-        #[arg(long)]
-        non_interference_digest: Option<String>,
-        /// Signed factory state package JSON. When set, Alice/Bob keys and root overrides are not used.
-        #[arg(
-            long,
-            conflicts_with_all = [
-                "update_number",
-                "state_root",
-                "access_manifest_root",
-                "non_interference_digest"
-            ]
-        )]
-        factory_state_package: Option<std::path::PathBuf>,
-        /// Absolute fee paid by a normal owner cell, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Save a signed factory state package without broadcasting it.
-    SaveFactoryStatePackage {
-        /// Devnet Alice factory signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Additional factory signing key for participant 3 onward. Repeat up to 14 times.
-        #[arg(long = "participant-private-key", hide_env_values = true)]
-        additional_participant_private_keys: Vec<String>,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// New update number. Defaults to old_update_number + 1.
-        #[arg(long)]
-        update_number: Option<u64>,
-        /// Optional 32-byte replacement state root.
-        #[arg(long)]
-        state_root: Option<String>,
-        /// Optional 32-byte replacement access-manifest root.
-        #[arg(long)]
-        access_manifest_root: Option<String>,
-        /// Optional 32-byte replacement non-interference digest.
-        #[arg(long)]
-        non_interference_digest: Option<String>,
-        /// Directory where signed factory state packages are stored.
-        #[arg(long, default_value = "target/morph-factory-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Save a reduced-rights factory update package without broadcasting it.
-    SaveFactoryReducedRightsPackage {
-        /// Devnet Alice factory signing key. Alice is the touched participant in the bounded reduced-rights proof body.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory key used to prove full factory membership. Bob does not sign the reduced update.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Additional membership key for participant 3 onward. Only Alice signs this update.
-        #[arg(long = "participant-private-key", hide_env_values = true)]
-        additional_participant_private_keys: Vec<String>,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// New update number. Defaults to old_update_number + 1.
-        #[arg(long)]
-        update_number: Option<u64>,
-        /// New Alice balance quantity in the bounded rights fixture. Must be lower than 100.
-        #[arg(long, default_value_t = 90)]
-        touched_after_balance: u128,
-        /// Directory where reduced-rights factory packages are stored.
-        #[arg(long, default_value = "target/morph-factory-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Save a conservative factory splice package from the live FactoryStateCell/FactoryVaultCell pair.
-    SaveFactorySplicePackage {
-        /// Devnet Alice factory signing key. Alice owns the touched reserve claim in the factory splice body.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Additional factory signing key for participant 3 onward. Repeat up to 14 times.
-        #[arg(long = "participant-private-key", hide_env_values = true)]
-        additional_participant_private_keys: Vec<String>,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// Current FactoryVaultCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_vault_out_point: String,
-        /// Factory splice direction.
-        #[arg(long, value_enum, default_value = "splice-in")]
-        kind: CkbSpliceKindArg,
-        /// Asset delta to encode in the factory splice package.
-        #[arg(long, value_enum, default_value = "ckb")]
-        asset: SpliceAssetArg,
-        /// Net CKB amount added to or withdrawn from the factory vault, in shannons.
-        #[arg(long, default_value_t = 1_000_000_000)]
-        ckb_amount: u64,
-        /// Net xUDT amount added to or withdrawn from the factory vault. Required with --asset xudt.
-        #[arg(long)]
-        xudt_amount: Option<u128>,
-        /// New factory update number. Defaults to old_update_number + 1.
-        #[arg(long)]
-        update_number: Option<u64>,
-        /// Directory where factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Save a reduced sparse-Merkle factory splice package from the live FactoryStateCell/FactoryVaultCell pair.
-    SaveFactoryReducedSplicePackage {
-        /// Devnet Alice factory signing key. Alice owns the touched reserve claim in the reduced-splice body.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory key used to prove full factory membership. Bob does not sign the reduced splice.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Additional membership key for participant 3 onward. Only Alice signs this splice.
-        #[arg(long = "participant-private-key", hide_env_values = true)]
-        additional_participant_private_keys: Vec<String>,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// Current FactoryVaultCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_vault_out_point: String,
-        /// Factory splice direction.
-        #[arg(long, value_enum, default_value = "splice-in")]
-        kind: CkbSpliceKindArg,
-        /// Asset delta to encode in the reduced factory splice package.
-        #[arg(long, value_enum, default_value = "ckb")]
-        asset: SpliceAssetArg,
-        /// Net CKB amount added to or withdrawn from the factory vault, in shannons.
-        #[arg(long, default_value_t = 1_000_000_000)]
-        ckb_amount: u64,
-        /// Net xUDT amount added to or withdrawn from the factory vault. Required with --asset xudt.
-        #[arg(long)]
-        xudt_amount: Option<u128>,
-        /// New factory update number. Defaults to old_update_number + 1.
-        #[arg(long)]
-        update_number: Option<u64>,
-        /// Directory where reduced factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Apply a validated conservative factory splice package.
-    ApplyFactorySplice {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that pays independent transaction fees.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// Current FactoryVaultCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_vault_out_point: String,
-        /// Signed factory splice package JSON.
-        #[arg(long)]
-        factory_splice_package: std::path::PathBuf,
-        /// External owner-controlled xUDT input, formatted as <tx-hash>:<index>. Required for xUDT splice-in.
-        #[arg(long)]
-        xudt_input_out_point: Option<String>,
-        /// Absolute transaction fee, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Apply a validated reduced sparse-Merkle factory splice package.
-    ApplyFactoryReducedSplice {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that pays independent transaction fees.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// Current FactoryVaultCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_vault_out_point: String,
-        /// Signed reduced factory splice package JSON.
-        #[arg(long)]
-        factory_reduced_splice_package: std::path::PathBuf,
-        /// External owner-controlled xUDT input, formatted as <tx-hash>:<index>. Required for xUDT splice-in.
-        #[arg(long)]
-        xudt_input_out_point: Option<String>,
-        /// Absolute transaction fee, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Save a sparse Merkle factory update package without broadcasting it.
-    SaveFactoryMerkleUpdatePackage {
-        /// Devnet Alice factory signing key. Alice is the touched participant in the single-right proof.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory key used to prove full membership. Bob does not sign the Merkle update.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Additional membership key for participant 3 onward. Only Alice signs this update.
-        #[arg(long = "participant-private-key", hide_env_values = true)]
-        additional_participant_private_keys: Vec<String>,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// New factory update number. Defaults to old_update_number + 1.
-        #[arg(long)]
-        update_number: Option<u64>,
-        /// New Alice balance quantity in the sparse Merkle fixture. Must be lower than 1000.
-        #[arg(long, default_value_t = 900)]
-        touched_after_balance: u128,
-        /// Directory where sparse Merkle factory packages are stored.
-        #[arg(long, default_value = "target/morph-factory-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// List saved signed factory state packages.
-    ListFactoryStatePackages {
-        /// Directory where signed factory state packages are stored.
-        #[arg(long, default_value = "target/morph-factory-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Optional factory id filter.
-        #[arg(long)]
-        factory_id: Option<String>,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Select the highest-numbered saved factory state package.
-    LatestFactoryStatePackage {
-        /// Directory where signed factory state packages are stored.
-        #[arg(long, default_value = "target/morph-factory-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Factory id to select.
-        #[arg(long)]
-        factory_id: String,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> save package -> package update for a conservative factory.
-    FactorySmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where signed factory state packages are stored.
-        #[arg(long, default_value = "target/morph-factory-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> save reduced-rights package -> package update for a bounded reduced factory proof.
-    FactoryReducedRightsSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key. Alice signs the reduced update.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory key used to prove full membership.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// New Alice balance quantity in the bounded rights fixture. Must be lower than 100.
-        #[arg(long, default_value_t = 90)]
-        touched_after_balance: u128,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where reduced-rights factory packages are stored.
-        #[arg(long, default_value = "target/morph-factory-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> save factory splice package -> apply -> child exit for CKB reserve addition.
-    FactorySpliceInSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Initial reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// CKB amount added to the factory vault, in shannons.
-        #[arg(long, default_value_t = 1_000_000_000)]
-        splice_amount: u64,
-        /// Capacity released from the post-splice factory reserve into the child channel vault.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> save factory splice package -> apply -> child exit for CKB reserve withdrawal.
-    FactorySpliceOutSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Initial reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// CKB amount withdrawn from the factory vault, in shannons.
-        #[arg(long, default_value_t = 7_000_000_000)]
-        splice_amount: u64,
-        /// Capacity released from the post-splice factory reserve into the child channel vault.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> save reduced factory splice package -> apply -> child exit for CKB reserve addition.
-    FactoryReducedSpliceInSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Initial reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// CKB amount added to the factory vault, in shannons.
-        #[arg(long, default_value_t = 1_000_000_000)]
-        splice_amount: u64,
-        /// Capacity released from the post-splice factory reserve into the child channel vault.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where reduced factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> save reduced factory splice package -> apply -> child exit for CKB reserve withdrawal.
-    FactoryReducedSpliceOutSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Initial reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// CKB amount withdrawn from the factory vault, in shannons.
-        #[arg(long, default_value_t = 7_000_000_000)]
-        splice_amount: u64,
-        /// Capacity released from the post-splice factory reserve into the child channel vault.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where reduced factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> xUDT factory splice package -> apply -> typed child exit for reserve addition.
-    FactoryXudtSpliceInSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Net xUDT amount added to the factory vault.
-        #[arg(long, default_value_t = 100_000u128)]
-        splice_xudt_amount: u128,
-        /// Capacity released from the post-splice factory reserve into the child xUDT vault.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's initial xUDT reserve amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's initial xUDT reserve amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> xUDT factory splice package -> apply -> typed child exit for reserve withdrawal.
-    FactoryXudtSpliceOutSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Net xUDT amount withdrawn from the factory vault.
-        #[arg(long, default_value_t = 100_000u128)]
-        splice_xudt_amount: u128,
-        /// Capacity released from the post-splice factory reserve into the child xUDT vault.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's initial xUDT reserve amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's initial xUDT reserve amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> reduced xUDT factory splice package -> apply -> typed child exit for reserve addition.
-    FactoryReducedXudtSpliceInSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Net xUDT amount added to the factory vault.
-        #[arg(long, default_value_t = 100_000u128)]
-        splice_xudt_amount: u128,
-        /// Capacity released from the post-splice factory reserve into the child xUDT vault.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's initial xUDT reserve amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's initial xUDT reserve amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where reduced factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> reduced xUDT factory splice package -> apply -> typed child exit for reserve withdrawal.
-    FactoryReducedXudtSpliceOutSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Net xUDT amount withdrawn from the factory vault.
-        #[arg(long, default_value_t = 100_000u128)]
-        splice_xudt_amount: u128,
-        /// Capacity released from the post-splice factory reserve into the child xUDT vault.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's initial xUDT reserve amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's initial xUDT reserve amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where reduced factory splice packages are stored.
-        #[arg(long, default_value = "target/morph-factory-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> sparse Merkle package -> package update for a larger factory rights tree.
-    FactoryMerkleUpdateSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory signing key. Alice signs the Merkle update.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory key used to prove full membership.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// New Alice balance quantity in the sparse Merkle fixture. Must be lower than 1000.
-        #[arg(long, default_value_t = 900)]
-        touched_after_balance: u128,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where sparse Merkle factory packages are stored.
-        #[arg(long, default_value = "target/morph-factory-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> reduced reserve-claim exit -> publish/finalise child channel.
-    FactoryReducedExitSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key. Alice signs the reduced exit.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel key used to prove full membership.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Capacity released from the factory reserve into the child vault.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> reduced reserve-claim CKB+xUDT exit -> publish/finalise child channel.
-    FactoryReducedXudtExitSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key. Alice signs the reduced exit.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel key used to prove full membership.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Capacity released from the factory reserve into the child xUDT vault.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's final xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's final xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Extra xUDT kept in the factory vault change after the child vault release.
-        #[arg(long, default_value_t = 0u128)]
-        factory_vault_xudt_surplus: u128,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run reduced CKB+xUDT child-vault amount mismatch rejection smoke.
-    FactoryReducedXudtNegativeExitSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key. Alice signs the reduced exit.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel key used to prove full membership.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Capacity released from the factory reserve into the child xUDT vault.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's final xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's final xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after accepted broadcasts. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run a conservative factory-local CKB+xUDT child-channel smoke.
-    FactoryXudtSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Capacity released from the factory reserve into the child xUDT vault.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's final xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's final xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where signed factory state packages are stored.
-        #[arg(long, default_value = "target/morph-factory-xudt-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prove devnet rejects a factory-local xUDT exit with a tampered child vault amount.
-    FactoryXudtNegativeSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls funded local-devnet cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob factory/channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the FactoryStateCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        factory_capacity: u64,
-        /// Reserve capacity placed under the FactoryVaultCell, in shannons.
-        #[arg(long, default_value_t = 300_000_000_000)]
-        factory_vault_capacity: u64,
-        /// Capacity released from the factory reserve into the child xUDT vault.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        child_vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's final xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's final xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each accepted broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where signed factory state packages are stored.
-        #[arg(
-            long,
-            default_value = "target/morph-factory-xudt-negative-state-packages"
-        )]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Materialise a bilateral child channel from a conservative factory reserve.
-    FactoryExitChannel {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that pays the independent fee input.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice factory/channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Bob's factory/channel signing key. Required for full-participant authorisation.
-        #[arg(
-            long,
-            env = "MORPH_BOB_PRIVATE_KEY",
-            hide_env_values = true,
-            conflicts_with = "bob_public_key"
-        )]
-        bob_private_key: Option<String>,
-        /// Additional factory private key for participant 3 onward. Repeat up to 14 times.
-        #[arg(
-            long = "participant-private-key",
-            hide_env_values = true,
-            conflicts_with = "additional_participant_public_keys"
-        )]
-        additional_participant_private_keys: Vec<String>,
-        /// Additional compressed public key for participant 3 onward. Sufficient for reduced-reserve-claim authorisation.
-        #[arg(
-            long = "participant-public-key",
-            conflicts_with = "additional_participant_private_keys"
-        )]
-        additional_participant_public_keys: Vec<String>,
-        /// Bob's compressed 33-byte public key. Sufficient for reduced-reserve-claim authorisation.
-        #[arg(long, conflicts_with = "bob_private_key")]
-        bob_public_key: Option<String>,
-        /// Factory exit authorisation path.
-        #[arg(long, value_enum, default_value = "full-participants")]
-        authorisation: FactoryExitAuthorisationArg,
-        /// Current FactoryStateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_out_point: String,
-        /// Current FactoryVaultCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        factory_vault_out_point: String,
-        /// New factory update number. Defaults to old_update_number + 1.
-        #[arg(long)]
-        update_number: Option<u64>,
-        /// Capacity released from the factory reserve into the child channel vault.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's child-channel descriptor capacity. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's child-channel descriptor capacity. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's child-channel xUDT amount when the FactoryVaultCell carries xUDT.
-        #[arg(long)]
-        alice_xudt_amount: Option<u128>,
-        /// Bob's child-channel xUDT amount when the FactoryVaultCell carries xUDT.
-        #[arg(long)]
-        bob_xudt_amount: Option<u128>,
-        /// Capacity placed under the child channel sponsor lock.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee paid by a normal owner cell, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required before child-channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Publish a newer signed settling state, paid by a SponsorCell.
-    PublishState {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls the sponsor change lock.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Current StateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        state_out_point: String,
-        /// SponsorCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        sponsor_out_point: String,
-        /// New state number. Defaults to old_state_number + 1.
-        #[arg(long)]
-        state_number: Option<u64>,
-        /// Signed state package JSON. When set, Alice/Bob keys are not used.
-        #[arg(long, conflicts_with = "state_number")]
-        state_package: Option<std::path::PathBuf>,
-        /// Absolute fee paid by the SponsorCell, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Save a signed splice package from the live StateCell/VaultCell pair.
-    SaveSplicePackage {
-        /// Devnet Alice channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Current active StateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        state_out_point: String,
-        /// Current VaultCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        vault_out_point: String,
-        /// CKB splice direction.
-        #[arg(long, value_enum, default_value = "splice-in")]
-        kind: CkbSpliceKindArg,
-        /// Asset delta to encode in the splice package.
-        #[arg(long, value_enum, default_value = "ckb")]
-        asset: SpliceAssetArg,
-        /// Net CKB amount added to or withdrawn from the vault, in shannons.
-        #[arg(long, default_value_t = 1_000_000_000)]
-        ckb_amount: u64,
-        /// Net xUDT amount added to or withdrawn from the vault. Required with --asset xudt.
-        #[arg(long)]
-        xudt_amount: Option<u128>,
-        /// Signed CKB fee reserved inside a splice-in delta. Must be 0 for splice-out.
-        #[arg(long, default_value_t = 0)]
-        signed_fee: u64,
-        /// Funding epoch of the current live StateCell.
-        #[arg(long, default_value_t = 0)]
-        old_funding_epoch: u64,
-        /// Funding epoch assigned to the post-splice StateCell. Defaults to old + 1.
-        #[arg(long)]
-        new_funding_epoch: Option<u64>,
-        /// Splice sequence number. Defaults to the post-splice funding epoch.
-        #[arg(long)]
-        splice_number: Option<u64>,
-        /// Directory where signed splice packages are stored.
-        #[arg(long, default_value = "target/morph-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Apply a validated splice package to the live StateCell/VaultCell pair.
-    ApplySplice {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that pays splice external CKB and transaction fees.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Current active StateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        state_out_point: String,
-        /// Current VaultCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        vault_out_point: String,
-        /// Signed splice package JSON.
-        #[arg(long)]
-        splice_package: std::path::PathBuf,
-        /// External owner-controlled xUDT input, formatted as <tx-hash>:<index>. Required for xUDT splice-in.
-        #[arg(long)]
-        xudt_input_out_point: Option<String>,
-        /// Absolute transaction fee, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Save a signed settling state package without broadcasting it.
-    SaveStatePackage {
-        /// Devnet Alice channel signing key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel signing key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Current StateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        state_out_point: String,
-        /// New state number. Defaults to old_state_number + 1.
-        #[arg(long)]
-        state_number: Option<u64>,
-        /// Directory where signed state packages are stored.
-        #[arg(long, default_value = "target/morph-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// List saved signed state packages.
-    ListStatePackages {
-        /// Directory where signed state packages are stored.
-        #[arg(long, default_value = "target/morph-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Optional channel id filter.
-        #[arg(long)]
-        channel_id: Option<String>,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Select the highest-numbered saved state package for a channel.
-    LatestStatePackage {
-        /// Directory where signed state packages are stored.
-        #[arg(long, default_value = "target/morph-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Channel id to select.
-        #[arg(long)]
-        channel_id: String,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Publish the highest-numbered saved state package for a channel.
-    PublishLatestPackage {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls the sponsor change lock.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Current StateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        state_out_point: String,
-        /// SponsorCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        sponsor_out_point: String,
-        /// Directory where signed state packages are stored.
-        #[arg(long, default_value = "target/morph-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Channel id to select.
-        #[arg(long)]
-        channel_id: String,
-        /// Absolute fee paid by the SponsorCell, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Scan confirmed blocks and publish the latest saved package when an older StateCell is seen.
-    WatchLatestPackage {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls the sponsor change lock.
-        #[arg(long, hide_env_values = true)]
-        private_key: Option<String>,
-        /// File containing the sponsor private key. Prefer this for watchtower processes.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true)]
-        private_key_file: Option<PathBuf>,
-        /// SponsorCell out point, formatted as <tx-hash>:<index>.
-        /// Required unless --auto-fund-sponsor is set.
-        #[arg(long)]
-        sponsor_out_point: Option<String>,
-        /// Directory where signed state packages are stored.
-        #[arg(long, default_value = "target/morph-state-packages")]
-        store_dir: std::path::PathBuf,
-        /// Channel id to watch.
-        #[arg(long)]
-        channel_id: String,
-        /// First block number to scan.
-        #[arg(long, default_value_t = 0)]
-        from_block: u64,
-        /// Cursor JSON path. Defaults to the state-package store for this channel.
-        #[arg(long)]
-        cursor_file: Option<std::path::PathBuf>,
-        /// Optional watchtower policy JSON that bounds this run.
-        #[arg(long)]
-        watch_policy: Option<std::path::PathBuf>,
-        /// Publication fee/RBF/window profile JSON.
-        #[arg(long)]
-        publication_profile: Option<std::path::PathBuf>,
-        /// Durable JSONL publication-attempt log. Required with --publication-profile.
-        #[arg(long)]
-        publication_attempt_log: Option<std::path::PathBuf>,
-        /// Optional JSONL alert sink for watchtower events.
-        #[arg(long)]
-        alert_file: Option<std::path::PathBuf>,
-        /// Optional HTTP webhook URL for watchtower alerts.
-        #[arg(long)]
-        alert_webhook_url: Option<String>,
-        /// Start from --from-block even when a saved cursor exists.
-        #[arg(long)]
-        ignore_cursor: bool,
-        /// Required confirmation depth before a StateCell is actionable.
-        #[arg(long, default_value_t = 1)]
-        detection_depth: u64,
-        /// Maximum time to poll before returning without publication.
-        #[arg(long, default_value_t = 60)]
-        timeout_secs: u64,
-        /// Poll interval in milliseconds.
-        #[arg(long, default_value_t = 1_000)]
-        poll_ms: u64,
-        /// Absolute fee paid by the SponsorCell, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Create a narrowly scoped SponsorCell when an older StateCell is observed.
-        #[arg(long)]
-        auto_fund_sponsor: bool,
-        /// Capacity placed under an automatically created SponsorCell, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        auto_sponsor_capacity: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
     /// Run one configured watchtower pass across multiple channels.
     WatchConfigOnce {
         /// Directory containing the built RISC-V contract binaries.
@@ -2606,581 +972,58 @@ enum DevnetCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Finalise a settling channel and release the vault according to the descriptor.
-    FinaliseChannel {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key receiving the state-carrier refund.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice settlement key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob settlement key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Current settling StateCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        state_out_point: String,
-        /// VaultCell out point, formatted as <tx-hash>:<index>.
-        #[arg(long)]
-        vault_out_point: String,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Relative block count encoded onto the StateCell input.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Absolute fee paid from the state-carrier refund, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Mine this many blocks after broadcasting. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> CKB splice-in -> sponsor top-up -> post-splice publish on devnet.
-    SpliceInSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Initial capacity placed under the channel vault lock, in shannons.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        vault_capacity: u64,
-        /// Net CKB amount added to the vault, in shannons.
-        #[arg(long, default_value_t = 1_000_000_000)]
-        splice_amount: u64,
-        /// Alice's initial descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's initial descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel scripts.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where signed splice packages are stored.
-        #[arg(long, default_value = "target/morph-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> CKB splice-out -> sponsor top-up -> post-splice publish on devnet.
-    SpliceOutSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Initial capacity placed under the channel vault lock, in shannons.
-        #[arg(long, default_value_t = 24_000_000_000)]
-        vault_capacity: u64,
-        /// Net CKB amount withdrawn from the vault, in shannons.
-        #[arg(long, default_value_t = 7_000_000_000)]
-        splice_amount: u64,
-        /// Alice's initial descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's initial descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel scripts.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where signed splice packages are stored.
-        #[arg(long, default_value = "target/morph-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> xUDT splice-in -> sponsor top-up -> post-splice publish on devnet.
-    XudtSpliceInSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the xUDT vault lock, in shannons.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        vault_capacity: u64,
-        /// Net xUDT amount added to the vault.
-        #[arg(long, default_value_t = 100_000u128)]
-        splice_xudt_amount: u128,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's initial xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's initial xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel scripts.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where signed splice packages are stored.
-        #[arg(long, default_value = "target/morph-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> xUDT splice-out -> sponsor top-up -> post-splice publish on devnet.
-    XudtSpliceOutSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the xUDT vault lock, in shannons.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        vault_capacity: u64,
-        /// Net xUDT amount withdrawn from the vault.
-        #[arg(long, default_value_t = 100_000u128)]
-        splice_xudt_amount: u128,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's initial xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's initial xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel scripts.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where signed splice packages are stored.
-        #[arg(long, default_value = "target/morph-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prove live devnet rejects malformed and mismatched splice packages.
-    SpliceNegativeSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Initial capacity placed under both test vault locks, in shannons.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        vault_capacity: u64,
-        /// Net CKB amount used for splice-in/out negative packages, in shannons.
-        #[arg(long, default_value_t = 1_000_000_000)]
-        splice_amount: u64,
-        /// Net xUDT amount used for xUDT splice-out tampering.
-        #[arg(long, default_value_t = 100_000u128)]
-        splice_xudt_amount: u128,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's initial xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's initial xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for setup and rejected apply attempts, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel scripts.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after accepted setup broadcasts. Rejected attempts never mine.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Directory where signed and tampered splice packages are stored.
-        #[arg(long, default_value = "target/morph-splice-packages")]
-        store_dir: std::path::PathBuf,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> stale publish -> sponsor top-up -> supersede -> finalise on devnet.
-    SupersedeSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the channel vault lock, in shannons.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prove live devnet rejects finalisation when the StateCell input since is too low.
-    FinaliseSinceNegativeSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the channel vault lock, in shannons.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count required by channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each accepted broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run open -> publish -> finalise for a CKB+xUDT channel on devnet.
-    XudtSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the xUDT vault lock, in shannons.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's final xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's final xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prove live devnet rejects tampered CKB+xUDT vault settlement.
-    XudtNegativeSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells and xUDT mint authority.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the xUDT vault lock, in shannons.
-        #[arg(long, default_value_t = 40_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Alice's final xUDT settlement amount.
-        #[arg(long, default_value_t = 600_000u128)]
-        alice_xudt_amount: u128,
-        /// Bob's final xUDT settlement amount.
-        #[arg(long, default_value_t = 400_000u128)]
-        bob_xudt_amount: u128,
-        /// Capacity placed under the sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each accepted broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prove live devnet rejects a SponsorCell outside its state-number policy.
-    SponsorPolicyNegativeSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the channel vault lock, in shannons.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prove live devnet rejects a SponsorCell whose fee cap is too low.
-    SponsorBudgetNegativeSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the channel vault lock, in shannons.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each accepted broadcast. Use 0 to only submit to tx-pool.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prove competing mempool spends do not replace a live StateCell update.
-    CompetingSpendSmoke {
-        /// Directory containing the built RISC-V contract binaries.
-        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
-        contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key controlling devnet funding cells.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        /// Devnet Alice channel key.
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        /// Devnet Bob channel key.
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
-        /// Capacity placed under the channel vault lock, in shannons.
-        #[arg(long, default_value_t = 20_000_000_000)]
-        vault_capacity: u64,
-        /// Alice's descriptor capacity, in shannons. Must be paired with --bob-capacity.
-        #[arg(long)]
-        alice_capacity: Option<u64>,
-        /// Bob's descriptor capacity, in shannons. Must be paired with --alice-capacity.
-        #[arg(long)]
-        bob_capacity: Option<u64>,
-        /// Capacity placed under each sponsor lock, in shannons.
-        #[arg(long, default_value_t = 50_000_000_000)]
-        sponsor_capacity: u64,
-        /// Absolute fee used for each transaction, in shannons.
-        #[arg(long, default_value_t = 100_000_000)]
-        fee: u64,
-        /// Relative block count used by channel finalisation.
-        #[arg(long, default_value_t = 4)]
-        finalise_since: u64,
-        /// Mine this many blocks after each accepted broadcast. Must be greater than zero.
-        #[arg(long, default_value_t = 4)]
-        mine_blocks: u64,
-        /// Emit machine-readable JSON.
-        #[arg(long)]
-        json: bool,
-    },
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::InspectFactoryTransition { path, source } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&factory_transition_packages::inspect(
+                    &path,
+                    source.as_deref()
+                )?)?
+            );
+            Ok(())
+        }
+        Command::FactoryChildSession { session, command } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&factory_child_session::run(&session, command)?)?
+            );
+            Ok(())
+        }
+        Command::FactoryChildDelivery { command } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&factory_delivery::run(command)?)?
+            );
+            Ok(())
+        }
+        Command::InspectFactoryCustody { path } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&factory_packets::read_custody(&path)?.inspect()?)?
+            );
+            Ok(())
+        }
+        Command::FactorySession { session, command } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&factory_session::run(&session, command)?)?
+            );
+            Ok(())
+        }
+        Command::InspectFactoryRequest { path } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &factory_packets::read_for_delivery_review(&path)?.inspect()?
+                )?
+            );
+            Ok(())
+        }
         Command::ImportRootFunding { bundle, store_dir } => {
             let result = multi_asset_funding::import_root_funding(&bundle, &store_dir)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
@@ -3234,7 +1077,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         Command::ValidateFixture => validate_fixture(),
-        Command::PrintFixture => print_fixture(),
+        Command::PrintFixture | Command::PrintMultiAssetFixture => print_fixture(),
         Command::NewInvoice {
             payee_node_id,
             payee_private_key,
@@ -3345,112 +1188,14 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Command::PrintFactoryFixture => {
-            let package = factory_packages::fixture_package()?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
         Command::PrintConditionalBatchFixture => {
             let package = conditional_packages::fixture_package()?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintMultiAssetFixture => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&multi_asset_packages::fixture_package()?)?
-            );
-            Ok(())
-        }
-        Command::PrintFactoryStateFixture => {
-            let package = factory_packages::fixture_state_package()?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintReducedFactoryStateFixture => {
-            let package = factory_packages::fixture_reduced_state_package()?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintFactoryReducedRightsFixture => {
-            let package = packages::fixture_factory_reduced_rights_package()?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintFactoryReducedExitFixture => {
-            let package = factory_packages::fixture_reduced_exit_package()?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintFactoryMerkleUpdateFixture => {
-            let package = factory_packages::fixture_merkle_update_package()?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintFactoryMultiRightUpdateFixture => {
-            let package = factory_packages::fixture_multi_right_update_package()?;
             println!("{}", serde_json::to_string_pretty(&package)?);
             Ok(())
         }
         Command::PrintValueLimitPolicyFixture => {
             let policy = value_limit::fixture_value_limit_policy()?;
             println!("{}", serde_json::to_string_pretty(&policy)?);
-            Ok(())
-        }
-        Command::PrintFactoryLocalExitFixture => {
-            let package = packages::fixture_factory_local_exit_package()?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintFactorySpliceFixture { kind } => {
-            let package = factory_packages::fixture_factory_splice_package_with_kind(match kind {
-                FactorySpliceFixtureKindArg::SpliceIn => {
-                    factory_packages::FixtureFactorySpliceKind::CkbSpliceIn
-                }
-                FactorySpliceFixtureKindArg::SpliceOut => {
-                    factory_packages::FixtureFactorySpliceKind::CkbSpliceOut
-                }
-                FactorySpliceFixtureKindArg::XudtSpliceIn => {
-                    factory_packages::FixtureFactorySpliceKind::XudtSpliceIn
-                }
-                FactorySpliceFixtureKindArg::XudtSpliceOut => {
-                    factory_packages::FixtureFactorySpliceKind::XudtSpliceOut
-                }
-            })?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintFactoryReducedSpliceFixture { kind } => {
-            let package =
-                factory_packages::fixture_factory_reduced_splice_package_with_kind(match kind {
-                    FactorySpliceFixtureKindArg::SpliceIn => {
-                        factory_packages::FixtureFactorySpliceKind::CkbSpliceIn
-                    }
-                    FactorySpliceFixtureKindArg::SpliceOut => {
-                        factory_packages::FixtureFactorySpliceKind::CkbSpliceOut
-                    }
-                    FactorySpliceFixtureKindArg::XudtSpliceIn => {
-                        factory_packages::FixtureFactorySpliceKind::XudtSpliceIn
-                    }
-                    FactorySpliceFixtureKindArg::XudtSpliceOut => {
-                        factory_packages::FixtureFactorySpliceKind::XudtSpliceOut
-                    }
-                })?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
-            Ok(())
-        }
-        Command::PrintSpliceFixture { kind } => {
-            let package = splice_packages::fixture_package_with_kind(match kind {
-                SpliceFixtureKindArg::SpliceIn => splice_packages::FixtureSpliceKind::SpliceIn,
-                SpliceFixtureKindArg::SpliceOut => splice_packages::FixtureSpliceKind::SpliceOut,
-                SpliceFixtureKindArg::XudtSpliceIn => {
-                    splice_packages::FixtureSpliceKind::XudtSpliceIn
-                }
-                SpliceFixtureKindArg::XudtSpliceOut => {
-                    splice_packages::FixtureSpliceKind::XudtSpliceOut
-                }
-            })?;
-            println!("{}", serde_json::to_string_pretty(&package)?);
             Ok(())
         }
         Command::PrintWatchPolicyFixture => {
@@ -3505,31 +1250,6 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Command::ValidateFactoryPackage { path, json } => {
-            let package = factory_packages::read_factory_update_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("factory package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("update_number={}", summary.update_number);
-                println!("state_root_before={}", summary.state_root_before);
-                println!("state_root_after={}", summary.state_root_after);
-                println!("touched_participants={}", summary.touched_participants);
-                println!(
-                    "authorised_participants={}",
-                    summary.authorised_participants
-                );
-                println!("rights_before={}", summary.rights_before);
-                println!("rights_after={}", summary.rights_after);
-                println!(
-                    "non_interference_digest={}",
-                    summary.non_interference_digest
-                );
-            }
-            Ok(())
-        }
         Command::ValidateConditionalBatchPackage { path, json } => {
             let package = conditional_packages::read_package(&path)?;
             let summary = package.validate()?;
@@ -3549,13 +1269,6 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Command::ValidateFactoryMultiAssetMaterialisation { path } => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&factory_multi_asset_packages::validate(&path)?)?
-            );
-            Ok(())
-        }
         Command::ValidateMultiAssetPackage { path, json } => {
             let summary = multi_asset_packages::read_package(&path)?.validate()?;
             if json {
@@ -3572,157 +1285,6 @@ fn main() -> Result<()> {
             let package = multi_asset_packages::read_package(&path)?;
             let stored_path = multi_asset_packages::write_package(&store_dir, &package)?;
             println!("{}", stored_path.display());
-            Ok(())
-        }
-        Command::ValidateFactoryStatePackage { path, json } => {
-            let package = factory_packages::read_factory_state_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("factory state package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("update_number={}", summary.update_number);
-                println!("state_root_before={}", summary.state_root_before);
-                println!("state_root_after={}", summary.state_root_after);
-                println!(
-                    "non_interference_digest={}",
-                    summary.non_interference_digest
-                );
-                println!("signature_mode={}", summary.signature_mode);
-                println!("signature_threshold={}", summary.signature_threshold);
-                println!("participants={}", summary.participants);
-                println!("signatures={}", summary.signatures);
-                println!("factory_state_digest={}", summary.factory_state_digest);
-            }
-            Ok(())
-        }
-        Command::ValidateFactoryReducedRightsPackage { path, json } => {
-            let package = packages::read_factory_reduced_rights_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("factory reduced-rights package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("old_update_number={}", summary.old_update_number);
-                println!("new_update_number={}", summary.new_update_number);
-                println!("signing_digest={}", summary.signing_digest);
-                println!("old_state_root={}", summary.old_state_root);
-                println!("new_state_root={}", summary.new_state_root);
-                println!(
-                    "old_access_manifest_root={}",
-                    summary.old_access_manifest_root
-                );
-                println!(
-                    "new_access_manifest_root={}",
-                    summary.new_access_manifest_root
-                );
-                println!(
-                    "non_interference_digest={}",
-                    summary.non_interference_digest
-                );
-                println!("witness_len={}", summary.witness_len);
-            }
-            Ok(())
-        }
-        Command::ValidateFactoryReducedExitPackage { path, json } => {
-            let package = factory_packages::read_factory_reduced_exit_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("factory reduced-exit package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("update_number={}", summary.update_number);
-                println!("participant={}", summary.participant);
-                println!(
-                    "reserve_claim_subchannel={}",
-                    summary.reserve_claim_subchannel
-                );
-                if let Some(asset_type) = &summary.reserve_claim_asset_type {
-                    println!("reserve_claim_asset_type={asset_type}");
-                }
-                println!("release_quantity={}", summary.release_quantity);
-                println!("reserve_claim_before={}", summary.reserve_claim_before);
-                println!("reserve_claim_after={}", summary.reserve_claim_after);
-            }
-            Ok(())
-        }
-        Command::ValidateFactoryMerkleUpdatePackage { path, json } => {
-            let package = factory_packages::read_factory_merkle_update_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("factory Merkle update package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("update_number={}", summary.update_number);
-                println!("state_root_before={}", summary.state_root_before);
-                println!("state_root_after={}", summary.state_root_after);
-                println!("touched_participants={}", summary.touched_participants);
-                println!(
-                    "authorised_participants={}",
-                    summary.authorised_participants
-                );
-                println!("changed_participant={}", summary.changed_participant);
-                println!("changed_kind={:?}", summary.changed_kind);
-                println!("quantity_before={}", summary.quantity_before);
-                println!("quantity_after={}", summary.quantity_after);
-                println!("proof_siblings={}", summary.proof_siblings);
-                println!(
-                    "non_interference_digest={}",
-                    summary.non_interference_digest
-                );
-            }
-            Ok(())
-        }
-        Command::ValidateFactoryMultiRightUpdatePackage { path, json } => {
-            let package = factory_packages::read_factory_multi_right_update_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("factory multi-right update package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("update_number={}", summary.update_number);
-                println!("state_root_before={}", summary.state_root_before);
-                println!("state_root_after={}", summary.state_root_after);
-                println!("touched_participants={}", summary.touched_participants);
-                println!(
-                    "authorised_participants={}",
-                    summary.authorised_participants
-                );
-                println!("changed_participant={}", summary.changed_participant);
-                println!("right_count={}", summary.right_count);
-                println!("asset_groups={}", summary.asset_groups);
-                println!("proof_pairs_before={}", summary.proof_pairs_before);
-                println!("proof_pairs_after={}", summary.proof_pairs_after);
-                println!(
-                    "non_interference_digest={}",
-                    summary.non_interference_digest
-                );
-            }
-            Ok(())
-        }
-        Command::ValidateFactoryLocalExitPackage { path, json } => {
-            let package = packages::read_factory_local_exit_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("factory local-exit package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("update_number={}", summary.update_number);
-                println!("factory_signing_digest={}", summary.factory_signing_digest);
-                println!("exit_digest={}", summary.exit_digest);
-                println!("child_channel_id={}", summary.child_channel_id);
-                println!("child_state_number={}", summary.child_state_number);
-                println!("child_phase={}", summary.child_phase);
-                println!("descriptor_version={}", summary.descriptor_version);
-                println!("state_output_index={}", summary.state_output_index);
-                println!("vault_output_index={}", summary.vault_output_index);
-            }
             Ok(())
         }
         Command::ValidateValueLimitPolicy { path, json } => {
@@ -3752,13 +1314,15 @@ fn main() -> Result<()> {
         Command::ValueLimitCheck {
             policy: policy_path,
             package,
+            old_package,
             ckb,
             xudt,
         } => {
             let policy = value_limit::read_value_limit_policy(&policy_path)?;
             let subject = match (&package, ckb) {
                 (Some(package_path), None) if xudt.is_empty() => {
-                    let (schema, subject) = value_limit::extract_value_subject(package_path)?;
+                    let (schema, subject) =
+                        value_limit::extract_value_subject(package_path, old_package.as_deref())?;
                     println!("package_schema={schema}");
                     subject
                 }
@@ -3780,144 +1344,6 @@ fn main() -> Result<()> {
             println!("value-limit check ok");
             println!("ckb_capacity={}", subject.ckb_capacity);
             println!("xudt_assets={}", subject.xudt_amounts.len());
-            Ok(())
-        }
-        Command::ValidateFactorySplicePackage { path, json } => {
-            let package = factory_packages::read_factory_splice_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("factory splice package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("kind={}", summary.kind);
-                println!("old_update_number={}", summary.old_update_number);
-                println!("new_update_number={}", summary.new_update_number);
-                println!("old_state_root={}", summary.old_state_root);
-                println!("new_state_root={}", summary.new_state_root);
-                println!(
-                    "old_access_manifest_root={}",
-                    summary.old_access_manifest_root
-                );
-                println!(
-                    "new_access_manifest_root={}",
-                    summary.new_access_manifest_root
-                );
-                println!("signing_digest={}", summary.signing_digest);
-                println!("vault_delta_commitment={}", summary.vault_delta_commitment);
-                println!(
-                    "non_interference_digest={}",
-                    summary.non_interference_digest
-                );
-                println!(
-                    "reserve_claim_participant={}",
-                    summary.reserve_claim_participant
-                );
-                println!(
-                    "reserve_claim_subchannel={}",
-                    summary.reserve_claim_subchannel
-                );
-                println!("reserve_claim_asset={}", summary.reserve_claim_asset);
-                println!("reserve_claim_before={}", summary.reserve_claim_before);
-                println!("reserve_claim_after={}", summary.reserve_claim_after);
-                println!("vault_old_amount={}", summary.vault_old_amount);
-                println!("vault_new_amount={}", summary.vault_new_amount);
-                println!("external_input={}", summary.external_input);
-                println!("withdrawal={}", summary.withdrawal);
-                println!("signature_threshold={}", summary.signature_threshold);
-                println!("signatures={}", summary.signatures);
-                println!("contract_witness_len={}", summary.contract_witness_len);
-                println!("contract_witness_hex={}", summary.contract_witness_hex);
-            }
-            Ok(())
-        }
-        Command::ValidateFactoryReducedSplicePackage { path, json } => {
-            let package = factory_packages::read_factory_reduced_splice_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("reduced factory splice package ok");
-                println!("factory_id={}", summary.factory_id);
-                println!("kind={}", summary.kind);
-                println!("old_update_number={}", summary.old_update_number);
-                println!("new_update_number={}", summary.new_update_number);
-                println!("old_state_root={}", summary.old_state_root);
-                println!("new_state_root={}", summary.new_state_root);
-                println!(
-                    "old_access_manifest_root={}",
-                    summary.old_access_manifest_root
-                );
-                println!(
-                    "new_access_manifest_root={}",
-                    summary.new_access_manifest_root
-                );
-                println!("signing_digest={}", summary.signing_digest);
-                println!("vault_delta_commitment={}", summary.vault_delta_commitment);
-                println!(
-                    "non_interference_digest={}",
-                    summary.non_interference_digest
-                );
-                println!(
-                    "reserve_claim_participant={}",
-                    summary.reserve_claim_participant
-                );
-                println!(
-                    "reserve_claim_subchannel={}",
-                    summary.reserve_claim_subchannel
-                );
-                println!("reserve_claim_asset={}", summary.reserve_claim_asset);
-                println!("reserve_claim_before={}", summary.reserve_claim_before);
-                println!("reserve_claim_after={}", summary.reserve_claim_after);
-                println!("vault_old_amount={}", summary.vault_old_amount);
-                println!("vault_new_amount={}", summary.vault_new_amount);
-                println!("external_input={}", summary.external_input);
-                println!("withdrawal={}", summary.withdrawal);
-                println!("participant_keys={}", summary.participant_keys);
-                println!("signature_threshold={}", summary.signature_threshold);
-                println!("signatures={}", summary.signatures);
-                println!("proof_siblings={}", summary.proof_siblings);
-                println!("contract_witness_len={}", summary.contract_witness_len);
-                println!("contract_witness_hex={}", summary.contract_witness_hex);
-            }
-            Ok(())
-        }
-        Command::ValidateSplicePackage { path, json } => {
-            let package = splice_packages::read_splice_package(&path)?;
-            let summary = package.summary()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("splice package ok");
-                println!("channel_id={}", summary.channel_id);
-                println!("kind={}", summary.kind);
-                println!("base_state_number={}", summary.base_state_number);
-                println!("old_funding_epoch={}", summary.old_funding_epoch);
-                println!("new_funding_epoch={}", summary.new_funding_epoch);
-                println!("splice_number={}", summary.splice_number);
-                println!("signing_digest={}", summary.signing_digest);
-                println!("asset_delta_commitment={}", summary.asset_delta_commitment);
-                println!("deltas={}", summary.deltas);
-                println!("withdrawals={}", summary.withdrawals);
-                println!(
-                    "withdrawal_payout_policy={}",
-                    summary.withdrawal_payout_policy
-                );
-                if let Some(pubkey) = &summary.withdrawal_participant_pubkey_sec1 {
-                    println!("withdrawal_participant_pubkey_sec1={pubkey}");
-                }
-                println!(
-                    "remaining_settlement_assets={}",
-                    summary.remaining_settlement_assets
-                );
-                println!("contract_witness_len={}", summary.contract_witness_len);
-                println!("contract_witness_hex={}", summary.contract_witness_hex);
-                println!(
-                    "current_state_header_hex={}",
-                    summary.current_state_header_hex
-                );
-                println!("next_state_header_hex={}", summary.next_state_header_hex);
-            }
             Ok(())
         }
         Command::DevnetSmokeReport { dir, json } => {
@@ -3996,15 +1422,10 @@ fn main() -> Result<()> {
                     "watchtower_service_records={}",
                     report.watchtower_service_records
                 );
-                println!(
-                    "factory_reduced_rights_updates={}",
-                    report.factory_reduced_rights_updates
-                );
-                println!("factory_merkle_updates={}", report.factory_merkle_updates);
-                println!("factory_proof_profiles={}", report.factory_proof_profiles);
-                println!("factory_reduced_exits={}", report.factory_reduced_exits);
-                println!("factory_local_exits={}", report.factory_local_exits);
-                println!("factory_splices={}", report.factory_splices);
+                println!("cases={}", report.case_count);
+                println!("factory_proofs={}", report.factory_proofs);
+                println!("publication_attempts={}", report.publication_attempts);
+                println!("sponsor_policies={}", report.sponsor_policies);
                 if let Some(budget) = &report.budget {
                     println!("budget_total_cycles={}", budget.total_estimated_cycles);
                     println!("budget_max_tx_cycles={}", budget.max_estimated_cycles);
@@ -4021,10 +1442,9 @@ fn main() -> Result<()> {
                     }
                     for profile in &budget.proof_profiles {
                         println!(
-                            "budget_proof={} {} {} siblings={} witness_len={} cycles={} bytes={}",
+                            "budget_proof={} operation={} siblings={} witness_len={} cycles={} bytes={}",
                             profile.check,
-                            profile.transaction_path,
-                            profile.proof_kind,
+                            profile.operation,
                             profile.proof_siblings,
                             profile.witness_len,
                             profile.estimated_cycles,
@@ -4260,163 +1680,6 @@ fn canonical_private_key(value: &str, source: &str) -> Result<String> {
     SigningKey::from_slice(&decoded)
         .map_err(|err| anyhow::anyhow!("{source} is not a valid secp256k1 private key: {err:?}"))?;
     Ok(format!("0x{}", raw.to_ascii_lowercase()))
-}
-
-#[cfg(feature = "devnet")]
-fn print_factory_xudt_splice_smoke_report(report: &devnet::FactoryXudtSpliceSmokeReport) {
-    println!("kind={}", report.kind);
-    println!("factory_id={}", report.open.factory_id);
-    println!(
-        "xudt_type_hash={}",
-        report.exit.xudt_type_hash.as_deref().unwrap_or_default()
-    );
-    println!("open_tx_hash={}", report.open.tx_hash);
-    if let Some(external_xudt) = &report.external_xudt {
-        println!("external_xudt_tx_hash={}", external_xudt.tx_hash);
-        println!(
-            "external_xudt_out_point={}:{}",
-            external_xudt.cell_out_point.tx_hash, external_xudt.cell_out_point.index
-        );
-    }
-    println!("package_path={}", report.package.path);
-    println!("apply_tx_hash={}", report.apply.tx_hash);
-    println!("apply_status={}", report.apply.status);
-    println!(
-        "factory_out_point={}:{}",
-        report.apply.factory_out_point.tx_hash, report.apply.factory_out_point.index
-    );
-    println!(
-        "factory_vault_out_point={}:{}",
-        report.apply.factory_vault_out_point.tx_hash, report.apply.factory_vault_out_point.index
-    );
-    if let Some(out_point) = &report.apply.withdrawal_out_point {
-        println!(
-            "withdrawal_out_point={}:{}",
-            out_point.tx_hash, out_point.index
-        );
-    }
-    println!("contract_witness_len={}", report.apply.contract_witness_len);
-    println!("exit_tx_hash={}", report.exit.tx_hash);
-    println!("exit_status={}", report.exit.status);
-    println!(
-        "child_state_out_point={}:{}",
-        report.exit.state_out_point.tx_hash, report.exit.state_out_point.index
-    );
-    println!(
-        "child_vault_out_point={}:{}",
-        report.exit.vault_out_point.tx_hash, report.exit.vault_out_point.index
-    );
-    println!(
-        "child_xudt_amount={}",
-        report.exit.child_xudt_amount.unwrap_or_default()
-    );
-    println!(
-        "alice_xudt_amount={}",
-        report.exit.alice_xudt_amount.unwrap_or_default()
-    );
-    println!(
-        "bob_xudt_amount={}",
-        report.exit.bob_xudt_amount.unwrap_or_default()
-    );
-    println!(
-        "post_exit_factory_vault_out_point={}:{}",
-        report.exit.factory_vault_out_point.tx_hash, report.exit.factory_vault_out_point.index
-    );
-    if let Some(amount) = report.exit.factory_vault_change_xudt_amount {
-        println!("factory_vault_change_xudt_amount={amount}");
-    }
-    print_metrics(&report.open.metrics);
-    if let Some(external_xudt) = &report.external_xudt {
-        print_metrics(&external_xudt.metrics);
-    }
-    print_metrics(&report.apply.metrics);
-    print_metrics(&report.exit.metrics);
-    for hash in &report.apply.mined_blocks {
-        println!("mined_block={hash}");
-    }
-    for hash in &report.exit.mined_blocks {
-        println!("mined_block={hash}");
-    }
-}
-
-#[cfg(feature = "devnet")]
-fn print_factory_reduced_xudt_splice_smoke_report(
-    report: &devnet::FactoryReducedXudtSpliceSmokeReport,
-) {
-    println!("kind={}", report.kind);
-    println!("factory_id={}", report.open.factory_id);
-    println!(
-        "xudt_type_hash={}",
-        report.exit.xudt_type_hash.as_deref().unwrap_or_default()
-    );
-    println!("open_tx_hash={}", report.open.tx_hash);
-    if let Some(external_xudt) = &report.external_xudt {
-        println!("external_xudt_tx_hash={}", external_xudt.tx_hash);
-        println!(
-            "external_xudt_out_point={}:{}",
-            external_xudt.cell_out_point.tx_hash, external_xudt.cell_out_point.index
-        );
-    }
-    println!("package_path={}", report.package.path);
-    println!("proof_siblings={}", report.package.proof_siblings);
-    println!("apply_tx_hash={}", report.apply.tx_hash);
-    println!("apply_status={}", report.apply.status);
-    println!(
-        "factory_out_point={}:{}",
-        report.apply.factory_out_point.tx_hash, report.apply.factory_out_point.index
-    );
-    println!(
-        "factory_vault_out_point={}:{}",
-        report.apply.factory_vault_out_point.tx_hash, report.apply.factory_vault_out_point.index
-    );
-    if let Some(out_point) = &report.apply.withdrawal_out_point {
-        println!(
-            "withdrawal_out_point={}:{}",
-            out_point.tx_hash, out_point.index
-        );
-    }
-    println!("contract_witness_len={}", report.apply.contract_witness_len);
-    println!("exit_tx_hash={}", report.exit.tx_hash);
-    println!("exit_status={}", report.exit.status);
-    println!(
-        "child_state_out_point={}:{}",
-        report.exit.state_out_point.tx_hash, report.exit.state_out_point.index
-    );
-    println!(
-        "child_vault_out_point={}:{}",
-        report.exit.vault_out_point.tx_hash, report.exit.vault_out_point.index
-    );
-    println!(
-        "child_xudt_amount={}",
-        report.exit.child_xudt_amount.unwrap_or_default()
-    );
-    println!(
-        "alice_xudt_amount={}",
-        report.exit.alice_xudt_amount.unwrap_or_default()
-    );
-    println!(
-        "bob_xudt_amount={}",
-        report.exit.bob_xudt_amount.unwrap_or_default()
-    );
-    println!(
-        "post_exit_factory_vault_out_point={}:{}",
-        report.exit.factory_vault_out_point.tx_hash, report.exit.factory_vault_out_point.index
-    );
-    if let Some(amount) = report.exit.factory_vault_change_xudt_amount {
-        println!("factory_vault_change_xudt_amount={amount}");
-    }
-    print_metrics(&report.open.metrics);
-    if let Some(external_xudt) = &report.external_xudt {
-        print_metrics(&external_xudt.metrics);
-    }
-    print_metrics(&report.apply.metrics);
-    print_metrics(&report.exit.metrics);
-    for hash in &report.apply.mined_blocks {
-        println!("mined_block={hash}");
-    }
-    for hash in &report.exit.mined_blocks {
-        println!("mined_block={hash}");
-    }
 }
 
 #[cfg(feature = "devnet")]
@@ -4682,191 +1945,39 @@ fn current_unix_time() -> Result<u64> {
 }
 
 fn validate_fixture() -> Result<()> {
-    let fixture = Fixture::new()?;
-    validate_state_transition(&fixture.old_state, &fixture.new_state, &fixture.transition)?;
-    validate_partition_conservation(
-        &fixture.transition.partition,
-        &fixture.transition.asset_registry,
+    let package = multi_asset_packages::fixture_package()?;
+    let recovery = package.recovery()?;
+    recovery.validate()?;
+    let mut backend = MultiAssetChannelBackend::new(
+        recovery.clone(),
+        recovery.authorization.signatures[0].pubkey_sec1.clone(),
     )?;
-    validate_sponsor_policy(&fixture.sponsor_policy, &fixture.sponsor_spend)?;
-    validate_vault_spend(&fixture.vault_spend)?;
-    println!("fixture ok");
-    println!(
-        "state_digest={}",
-        hex::encode(fixture.new_state.header.signing_digest())
+    let mut settlement = recovery.settlement.clone();
+    settlement.payouts[0].values[0].amount = settlement.payouts[0].values[0]
+        .amount
+        .checked_sub(1)
+        .context("fixture has no spendable token")?;
+    settlement.payouts[0].values[1].amount = settlement.payouts[0].values[1]
+        .amount
+        .checked_add(1)
+        .context("fixture amount overflow")?;
+    let proposal = backend.propose(settlement)?;
+    let reservation = backend.reserve_signature()?;
+    ensure!(
+        proposal.signing_digest()? == reservation.signing_digest,
+        "fixture signing reservation differs from current proposal"
     );
+    println!("fixture ok");
+    println!("state_digest={}", hex::encode(reservation.signing_digest));
     Ok(())
 }
 
 fn print_fixture() -> Result<()> {
-    let fixture = Fixture::new()?;
-    let value = serde_json::json!({
-        "old_state": fixture.old_state,
-        "new_state": fixture.new_state,
-        "new_state_signing_digest": hex::encode(fixture.new_state.header.signing_digest()),
-        "sponsor_policy": fixture.sponsor_policy,
-        "sponsor_spend": fixture.sponsor_spend,
-    });
-    println!("{}", serde_json::to_string_pretty(&value)?);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&multi_asset_packages::fixture_package()?)?
+    );
     Ok(())
-}
-
-struct Fixture {
-    old_state: StateCell,
-    new_state: StateCell,
-    transition: StateTransitionContext,
-    sponsor_policy: SponsorPolicy,
-    sponsor_spend: SponsorSpend,
-    vault_spend: VaultSpend,
-}
-
-impl Fixture {
-    fn new() -> Result<Self> {
-        let registry = AssetRegistry {
-            xudt_types: BTreeSet::from([bytes32(42)]),
-        };
-        let partition = PartitionedTransaction {
-            inputs: vec![
-                ClassifiedCell::channel_reserve(1_000, 700),
-                ClassifiedCell::business_ckb(1_500, 700, 800),
-                ClassifiedCell::xudt(bytes32(42), 1_000, 700, 10),
-                ClassifiedCell::state_carrier(10_000, 1_000),
-                ClassifiedCell::sponsor(500, 100),
-            ],
-            outputs: vec![
-                ClassifiedCell::channel_reserve(1_000, 700),
-                ClassifiedCell::business_ckb(1_500, 700, 800),
-                ClassifiedCell::xudt(bytes32(42), 1_000, 700, 10),
-                ClassifiedCell::state_carrier(10_000, 1_000),
-                ClassifiedCell::sponsor(400, 100),
-            ],
-            tx_fee: 100,
-            authorised_reserve_refund: 0,
-        };
-        let mut old_state = StateCell {
-            header: header(1, Phase::Active),
-            capacity: 10_000,
-            occupied_capacity: 1_000,
-        };
-        let mut new_state = StateCell {
-            header: header(2, Phase::Settling),
-            capacity: 10_000,
-            occupied_capacity: 1_000,
-        };
-        let authorization = authorization_for(&mut new_state.header)?;
-        old_state.header.participants_commitment = new_state.header.participants_commitment;
-        let transition = StateTransitionContext {
-            referenced_funding_anchor: bytes32(3),
-            authorization,
-            asset_registry: registry.clone(),
-            partition: partition.clone(),
-        };
-        let sponsor_policy = SponsorPolicy {
-            channel_id: bytes32(2),
-            min_state_number: 1,
-            max_state_number: 10,
-            max_fee_per_tx: 200,
-            max_total_fee: 1_000,
-            already_spent: 100,
-            publication_state_type_hash: bytes32(10),
-            change_lock: bytes32(11),
-        };
-        let sponsor_spend = SponsorSpend {
-            channel_id: bytes32(2),
-            state_number: 2,
-            fee: 100,
-            publication_state_type_hash: bytes32(10),
-            change_lock: bytes32(11),
-            operation: ChannelOperation::Publish,
-        };
-        let vault_spend = VaultSpend {
-            operation: ChannelOperation::Finalise,
-            state_cell: new_state.clone(),
-            signatures_or_phase_authorised: true,
-            since_satisfied: true,
-            expected_funding_anchor: bytes32(3),
-            descriptor_outputs_match: true,
-            asset_registry: registry,
-            partition,
-        };
-        Ok(Self {
-            old_state,
-            new_state,
-            transition,
-            sponsor_policy,
-            sponsor_spend,
-            vault_spend,
-        })
-    }
-}
-
-fn signing_key(byte: u8) -> Result<SigningKey> {
-    SigningKey::from_slice(&[byte; 32])
-        .map_err(|err| anyhow::anyhow!("invalid built-in fixture signing key: {err:?}"))
-}
-
-fn pubkey(key: &SigningKey) -> Vec<u8> {
-    key.verifying_key()
-        .to_encoded_point(true)
-        .as_bytes()
-        .to_vec()
-}
-
-fn signature(key: &SigningKey, digest: &[u8; 32]) -> Result<Vec<u8>> {
-    let sig: Signature = key
-        .sign_prehash(digest)
-        .map_err(|err| anyhow::anyhow!("failed to sign built-in fixture: {err:?}"))?;
-    let signature_bytes = sig.to_bytes();
-    let signature_slice: &[u8] = signature_bytes.as_ref();
-    Ok(signature_slice.to_vec())
-}
-
-fn authorization_for(header: &mut StateHeader) -> Result<StateAuthorization> {
-    let key0 = signing_key(1)?;
-    let key1 = signing_key(2)?;
-    let mut entries = [(pubkey(&key0), key0), (pubkey(&key1), key1)];
-    entries.sort_by(|left, right| left.0.cmp(&right.0));
-
-    let pubkeys = [entries[0].0.as_slice(), entries[1].0.as_slice()];
-    header.participants_commitment = participants_commitment(2, &pubkeys);
-    let digest = header.signing_digest();
-    Ok(StateAuthorization {
-        threshold: 2,
-        signatures: entries
-            .iter()
-            .map(|(pubkey, key)| {
-                Ok(ParticipantSignature {
-                    pubkey_sec1: pubkey.clone(),
-                    signature: signature(key, &digest)?,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?,
-    })
-}
-
-fn header(n: u64, phase: Phase) -> StateHeader {
-    StateHeader {
-        protocol_version: 1,
-        chain_id: bytes32(1),
-        signature_scheme_id: 1,
-        channel_id: bytes32(2),
-        funding_epoch: 0,
-        funding_anchor: bytes32(3),
-        vault_set_commitment: bytes32(33),
-        state_number: n,
-        mode: Mode::BilateralPlain,
-        phase,
-        participants_commitment: bytes32(4),
-        asset_registry_commitment: asset_registry_commitment(&AssetRegistry {
-            xudt_types: BTreeSet::from([bytes32(42)]),
-        }),
-        settlement_descriptor_commitment: bytes32(6),
-        descriptor_version: 1,
-        vault_materialisation_root: bytes32(7),
-        vault_outpoint_commitment: bytes32(34),
-        challenge_policy_commitment: bytes32(8),
-        state_layout_version: 1,
-    }
 }
 
 #[cfg(test)]
@@ -4977,7 +2088,6 @@ mod cli_secret_tests {
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
                 for subcommand in [
-                    "watch-latest-package",
                     "watch-config-once",
                     "watch-config-loop",
                     "watch-config-service",

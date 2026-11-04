@@ -1,107 +1,62 @@
 # Roadmap
 
-This roadmap tracks Morph Channel's production implementation, protocol
-extensions, and release evidence.
+This roadmap tracks current implementation and the evidence needed for release.
+Historical v1–v4 milestones do not define parser compatibility. There is one
+current unpublished channel State/Vault-set implementation and one Factory
+rights authority. See [current coverage](current-protocol-coverage.md) and
+[the consolidation ledger](unified-protocol-migration.md) for exact scope and
+work still being completed.
 
-## Maturity Picture
-
-```mermaid
-flowchart LR
-    M0["M0<br/>Protocol model"] --> M1["M1<br/>State/Vault/Sponsor"]
-    M1 --> M2["M2<br/>Devnet vertical slice"]
-    M2 --> M3["M3<br/>CKB+xUDT + splice"]
-    M3 --> M4["M4<br/>Factory reduced proofs"]
-    M4 --> M5["M5<br/>Watchtower + stateful audit"]
-    M5 --> M6["M6<br/>External readiness work"]
-    M5 --> M8["M8<br/>Conditional batches"]
-    M8 --> M9["M9<br/>Multi-asset channels"]
-```
-
-The repository is entering production implementation work. Protocol objects,
-package tooling, CKB scripts, smoke tests, and stateful acceptance gates exist
-locally. The next asset extension is multiple xUDT types in one channel;
-external review and operational release evidence remain open.
-
-## Milestone Status
-
-| Milestone | Status | What exists |
-| --- | --- | --- |
-| M0: Protocol semantics | Implemented | `morph-core` types, signing digests, validation invariants, and executable tests. |
-| M1: Bilateral channel | Implemented | State Cell progression, Vault Cell settlement, sponsor fee boundary, and participant signatures. |
-| M2: Devnet vertical slice | Implemented | Local CKB node flow, script deployment, channel open, state publication, vault finalisation, negative smokes, and reports. |
-| M3: Assets and splice | Implemented locally | CKB+xUDT settlement, splice-in/out, funding epoch, vault-set commitment, package validation, and devnet smokes. |
-| M4: Factory mode | Implemented narrowly | Conservative factory updates, local exits, reduced-rights proof, sparse-Merkle update, reduced exit, factory splice, and reduced splice through `WitnessEnvelope`. |
-| M5: Watchtower and audit gates | Implemented locally | Watch config, policy checks, JSONL/webhook alerts, stale-package guard, smoke assertions, stateful assertions, and budget profiles. |
-| M6: Production readiness | Controlled-devnet candidate; production open | Factory has a checked manifest/envelope and runbooks. Publication now has bounded node-informed fees, CKB RBF, least-privilege two-operator local evidence, and induced-reorg recovery. External review, independent rebuild/operators, and repeated public-network measurements remain open. |
-| M7: Factory 2.0 surface (v2.0) | Implemented locally | Multi-right reduced updates (envelope kind 8), compact variable-depth sparse-Merkle proofs, and the operator value-limit policy with runbook; see `docs/factory-multi-right.md`. Devnet save/publication plumbing for kind 8 packages is the remaining follow-up. |
-| M8: Conditional batch surface (v3.0) | Implemented locally | Descriptor v3, bounded preimage/absolute-refund leaves, cooperative consolidation, Vault-to-Batch materialisation, Batch CKB-VM enforcement, canonical CLI package, and durable Hub import; see `docs/conditional-batches.md`. |
-| M9: Multi-asset channels | Implementation in progress | Bilateral layout 2 / descriptor 4 supports 1–8 Vaults with host, CKB-VM, CLI/SDK, durable Hub recovery, and real-node two/eight-xUDT lifecycle evidence. Bilateral splice has native construction, durable signing and SDK verification. Factory custody, typed conditions, full publication/reorg orchestration and release qualification remain open; see [candidate profile](multi-asset-wire.md). |
-
-## Current Factory Witness Baseline
-
-Factory authorisation uses `WitnessEnvelope`.
-
-```mermaid
-flowchart TB
-    E["Envelope kind + digest"] --> B["bounded body schema"]
-    B --> S["factory scripts"]
-    S --> R["state/root/vault checks"]
-```
-
-The remaining `*current` names in package or body schemas identify fixed-layout
-schemas and historical evidence labels. They are not the current public factory
-authorisation boundary.
-
-## Deferred Work
-
-| Area | Deferred item | Why it is deferred |
-| --- | --- | --- |
-| Multi-asset channels | Multiple xUDT types in one physical channel funding context. | Next protocol extension (M9): host/right models already represent multiple assets; single-Vault provenance and fixed settlement/splice paths need a versioned replacement. |
-| Factory proofs | ~~Multi-right reduced updates.~~ | Delivered in 2.0 as envelope kind 8; see `docs/factory-multi-right.md`. |
-| Factory proofs | ~~Variable-depth or dynamic proof profiles.~~ | Delivered in 2.0 as compact bounded sparse-Merkle proofs on kind 8. |
-| Factory 2.0 tooling | Devnet save/publication command for kind 8 state-cell packages. | Host validation, fixtures, and on-chain evidence exist; the live-node publication flow mirrors `save-factory-merkle-update-package` and needs a devnet rehearsal. |
-| Factory membership | Larger participant sets with production ergonomics. | The wire supports 2-16 participants; production ergonomics still need proof-size, fee, and UX evidence. |
-| Watchtower | Independent multi-operator deployment evidence. | Two isolated local operator scopes pass; distinct hosts, administrators, RPC providers, and alert paths still require rehearsal. |
-| Conditional batches | xUDT leaves, cross-channel routing, and production auto-broadcast. | v3 deliberately ships a bounded CKB-only primitive first; broader assets and routing need separate wire and operational evidence. |
-| Network conditions | Repeated public-network reorg, delay, and fee-pressure runs. | A deterministic local fault-injection gate passes, but one devnet sample is not a production measurement. |
-| Release process | Independent reproduction and release-owner sign-off. | Deterministic bundles, reviewed ELF hashes, successful main-branch CI upload/attestation, and staging cleanup exist; a successful independent external rebuild and release-owner sign-off remain open. |
-| Policy | Value-limit policy and operator runbooks. | Delivered in 2.0 (`morph-core::policy`, `value-limit-check`, `docs/runbooks/value-limits.md`); enforcing it in live publication automation remains operator process work. |
-
-## Next Engineering Slice
+## Current capability baseline
 
 ```mermaid
 flowchart LR
-    A["Multi-Vault wire + invariants"] --> B["Bilateral multi-asset settlement"]
-    B --> C["Splice + Factory materialisation"]
-    C --> D["Recovery + release evidence"]
+  C["Current custody + explicit capabilities"] --> H["Host / SDK / CKB-VM evidence"]
+  H --> N["Fresh-node lifecycle and recovery acceptance"]
+  N --> R["Complete CI + current reports + release artifacts"]
+  R --> I["Independent review / rebuild / operators"]
+  I --> P["Public-network fees, delay and reorg evidence"]
+  P --> V["Reviewed real-asset value limits"]
 ```
 
-The next protocol slice closes the single-xUDT limitation:
+| Area | Current implementation | Remaining qualification |
+| --- | --- | --- |
+| Channels | 318-byte layout-2 State, descriptor 5, 1–8 Vaults, exact provenance, complete-set finalisation and independent per-Type accounting. | Independent review and deployment-specific resource/asset qualification. |
+| Funding and splice | Independent durable signers, exit-before-creation ceremony, exact-transaction root/splice authorizations, wallet-group funding, keyless replay and canonical same-path handoff. | Current fresh-node report/CI refresh, terminal abort tracking and production recovery rehearsal. |
+| Conditional CKB | Explicit descriptor capability, shared bounded Batch terms/executor, context-bound 104-byte Batch args, cooperative consolidation and script-enforced preimage/refund fallback. | Typed conditions, routing integration and production operational evidence. |
+| Factory authority | Current 306-byte State; transaction-bound root/update, complete custody activation, full-consent materialisation and funded custody changes. | Current transition/child acceptance and release evidence must be evaluated together; independent review remains open. |
+| Reduced Factory capability | Sole compact locality proof path for rights (up to 10), deposits, releases and children (up to 9 physical claims); actual custody/fee/funding checks. | Proof-data retention/replacement snapshot discipline, independent review and arbitrary-asset/worst-topology resource qualification. |
+| Factory operations | Independent member journals, current request/custody packages, native preparation/wallet signing/keyless submission, private child exits and public delivery attestations. | Complete fresh acceptance/report matrix and independent operator rehearsal. |
+| Payment/provider integration | Current backend owns payment authorization and recovery; provider-edge checks bind current materialisation and Factory origin evidence. | Real Morph-backed routed/MPP provider acceptance; existing Fiber traffic alone is insufficient. |
+| Watch service | Configured once/loop/service paths reuse the canonical current watcher, bounded publication, attempt reconciliation, reorg cursors, health and alerts. | Independent hosts/RPC providers/administrators, pooled publication/failover and long-running adversarial rehearsal. |
+| Release policy | `morph-current-custody` no-real-assets envelope, artifact tooling and policy checks. | Fresh complete CI, reports/manifests, independent rebuild, owner sign-off and external review. |
 
-1. specify bounded multi-Vault commitments, exact provenance, canonical
-   settlement outputs, and capacity lanes;
-2. implement bilateral multi-xUDT funding, activation, publication, supersede,
-   and full-set finalisation, with negative CKB-VM tests;
-3. extend signed splice and Factory materialisation without weakening
-   non-interference or leaving reserve value behind;
-4. carry complete recovery packages through CLI, SDK, Hub, and watchtower
-   persistence, including restart and reorg recovery;
-5. measure transaction bytes, cycles, occupied capacity, and publication costs
-   at the chosen limits before freezing the profile.
+The former envelope-kind package commands and separate single-Vault physical
+implementations are removed. Flat, sparse and compact reduced-right operations
+are represented by one current compact frame; they are not parallel roadmap
+profiles. The retained 828-byte Batch terms and generic signature/Merkle
+primitives are used inside the current capabilities.
 
-The detailed sequence is in [multi-asset channels](multi-asset-channels.md).
-Independent review, clean release artefacts, repeated public-network fee/reorg
-measurements, independent operators, runbook rehearsals, and conservative
-value limits continue as production release requirements. Conditional xUDT
-batches follow ordinary multi-asset settlement as a separate extension.
+## Protocol work still separate from consolidation
 
-## How To Read Older Milestone Documents
+| Work | Constraint to resolve |
+| --- | --- |
+| Cooperative channel close | A separately authorized zero-challenge close must still preserve exact outputs, Type conservation and carrier refund. Current ordinary closure waits the challenge window. |
+| Member rotation / lost-key governance | Factory membership is committed; replacement must not confiscate another member's entitlement or invalidate their independent proofs. Reduced operations do not retire the last collective carrier/floor. |
+| Conditional xUDT | Define Type-bound executor custody, preimage/refund outputs and occupied-capacity budgets before admission. CKB conditional support does not imply token conditions. |
+| Recovery data availability | Retain complete initial rights data; deliver full snapshots for arbitrary all-member root replacement; retain child recovery privately before parent approval. A commitment alone is insufficient. |
+| Asset admission | Qualify actual Type behavior, code identity, value limits and shutdown/recovery operations. A refusing Type script can still block an atomic complete-set spend. |
+| Public-network reliability | Collect at least 1000 fresh latency samples and repeated fee/reorg/delay evidence with independent operating scopes. Local measurements are not substitutes. |
+| Supply chain and release review | Close or narrowly review dependency advisories, reproduce exact current ELFs independently and record release-owner approval. |
 
-Some closeout documents remain in this repository as historical evidence. They
-are useful for understanding what was proved at a prior milestone, but current
-design should be read from:
+## Acceptance before a release claim
 
-- [README.md](../README.md) for the human overview;
-- [implementation.md](implementation.md) for protocol and script boundaries;
-- [devnet.md](devnet.md) for executable local evidence;
-- [mainnet-readiness.md](mainnet-readiness.md) for release gates.
+The consolidation is not declared finished by this roadmap. Complete the
+[implementation ledger](unified-protocol-migration.md), regenerate current
+fixtures and deployment hashes, run full CI and fresh node acceptance, and
+review every safety-negative/resource regression. Reports must identify their
+actual binaries, transaction branches and canonical confirmations.
+
+Production and real assets additionally require every gate in
+[mainnet readiness](mainnet-readiness.md). The current envelope permits only
+controlled no-value devnet evidence generation.

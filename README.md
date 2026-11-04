@@ -4,7 +4,9 @@ Morph Channel is a CKB-native production off-chain channel and factory
 implementation. Two participants, or a small factory of participants, move
 channel state off chain while CKB keeps the enforceable evidence on chain.
 
-Current source release: **v4.0.0 — Multi-Asset Factory Channels**.
+Source version: **v4.0.0**. The current unpublished custody consolidation uses
+one channel implementation and one Factory authority; CI, report refresh and
+release qualification are tracked in the [migration ledger](docs/unified-protocol-migration.md).
 
 The short version is:
 
@@ -67,23 +69,20 @@ Implemented locally:
 - splice-in and splice-out, so a channel can be resized without starting over;
 - watchtower-style package publication with cursor persistence, policy checks,
   canonical block-hash reorg recovery, JSONL alerts, and optional webhook alerts;
-- conservative factory updates signed by all factory participants;
-- factory local exits that materialise child bilateral channels;
-- multi-asset Factory custody: N-of-N root creation, whole-set activation and
-  custody-preserving metadata updates (`MORPHFS!`), and complete
-  materialisation into one to four bilateral child channels with separate
-  reserve, business CKB and per-Type conservation (`MORPHFM!`); child channels
-  keep a fixed originating-Factory hash across splices
-  ([multi-asset channels](docs/multi-asset-channels.md));
-- reduced factory paths for bounded rights updates, exits, sparse-Merkle
-  updates, and splices, carried by `WitnessEnvelope`;
-- multi-right factory updates (envelope kind 8): one touched participant
-  atomically updates up to four of their own value rights per update, each
-  localised by a compact variable-depth sparse-Merkle proof that omits empty
-  siblings; see `docs/factory-multi-right.md`;
+- current Factory custody: transaction-bound all-member root/metadata approval
+  and permissionless complete-set activation (`MORPHFS!`), all-member child
+  materialisation (`MORPHFM!`), and localized reduced rights/deposit/release/child
+  operations plus funded full-consent changes (`MORPHFR!`);
+- one compact Factory rights proof path, with 1–10 metadata rights or up to
+  9 physical claims, separate per-Type quantities and global reserve/business
+  CKB lanes; see [Factory capabilities](docs/factory-multi-right.md);
+- independent durable Factory signer journals, exact wallet-group funding,
+  keyless submission, private child-exit delivery and public possession receipts;
+- independently enforceable child channels whose fixed originating-Factory
+  identity remains through splices;
 - a fail-closed operator value-limit policy with a runbook
   (`docs/runbooks/value-limits.md`), checked by `morph-cli value-limit-check`;
-- conditional CKB batches (descriptor version 3): zero to eight independent
+- conditional CKB batches (explicit descriptor-5 capability): one to eight independent
   transfers using SHA-256 or CKB Blake2b preimages, canonical absolute-block
   refunds, whole-Vault Batch Cell materialisation, and exact two-party payout;
 - a native host lifecycle for arming a batch, recording preimages,
@@ -110,9 +109,9 @@ Production rollout is gated on the qualification program in
 - independent release artefact and supply-chain sign-off;
 - the real-asset value envelope.
 
-The reviewed `morph-v3-conditional-batch` release profile has a
-machine-checked deployment envelope, an exact CKB contract data-hash manifest,
-operator runbooks, and CI provenance configuration. Verify it with:
+The `morph-current-custody` profile has a machine-checked no-real-assets
+deployment envelope. Current binaries, data-hash manifests, reports and CI
+provenance must be refreshed and verified together after consolidation:
 
 ```sh
 make build-contracts
@@ -120,9 +119,10 @@ make release-readiness
 make package-contract-release
 ```
 
-Repository-side release mechanics are complete; rollout proceeds through the
-readiness program. Factory signer membership is bounded to
-2–16, while reduced proofs retain their fixed count and depth limits.
+Release mechanics exist; completing the current refresh and the readiness
+gates is separate work. Factory membership is bounded to 2–16. The
+[current coverage ledger](docs/current-protocol-coverage.md) records accepted
+operation limits, safety negatives, proof-data assumptions and local resource measurements.
 
 ## Main Business Flows
 
@@ -177,10 +177,11 @@ CKB/xUDT output on chain.
 
 ### Use A Factory
 
-A factory groups reserve rights under a Factory State Cell and Factory Vault
-Cell. Conservative updates require all participants. Reduced paths are allowed
-only when the proof shows that a bounded local right changed and unrelated
-rights stayed committed.
+A Factory groups reserve rights under one Factory State and a complete Vault
+set. All-member approval controls arbitrary metadata/custody changes. One
+touched member can use a reduced operation only with localized rights proofs,
+exact physical accounting and an unchanged retained carrier. Preserve complete
+root rights data so every member can refresh their own proof after public updates.
 
 ## Repository Layout
 
@@ -290,12 +291,8 @@ With a local CKB devnet node running through `scripts/devnet-node.sh`:
 cargo run -p morph-cli --features devnet -- devnet --devnet-only check
 cargo run -p morph-cli --features devnet -- devnet --devnet-only mine --blocks 1
 cargo run -p morph-cli --features devnet -- devnet --devnet-only deploy-contracts
-cargo run -p morph-cli --features devnet -- devnet --devnet-only open-channel
-cargo run -p morph-cli --features devnet -- devnet --devnet-only supersede-smoke
-cargo run -p morph-cli --features devnet -- devnet --devnet-only xudt-smoke
-cargo run -p morph-cli --features devnet -- devnet --devnet-only factory-reduced-rights-smoke
-cargo run -p morph-cli --features devnet -- devnet --devnet-only factory-merkle-update-smoke
-cargo run -p morph-cli --features devnet -- devnet --devnet-only factory-reduced-exit-smoke
+cargo run -p morph-cli --features devnet -- devnet --devnet-only multi-asset-smoke --asset-count 2 --json
+cargo run -p morph-cli --features devnet -- devnet --devnet-only factory --help
 make devnet-smoke
 make devnet-e2e
 make devnet-stateful-e2e
@@ -315,36 +312,23 @@ Fiber channel acceptance on the same devnet. See
 
 ## Common CLI Workflows
 
-Generate and validate factory packages:
+Review current recovery and Factory requests:
 
 ```sh
-cargo run -p morph-cli -- print-factory-fixture > target/factory-update.json
-cargo run -p morph-cli -- validate-factory-package target/factory-update.json --json
-cargo run -p morph-cli -- print-factory-reduced-rights-fixture \
-  > target/factory-reduced-rights.json
-cargo run -p morph-cli -- validate-factory-reduced-rights-package \
-  target/factory-reduced-rights.json --json
-cargo run -p morph-cli -- print-factory-reduced-exit-fixture \
-  > target/factory-reduced-exit.json
-cargo run -p morph-cli -- validate-factory-reduced-exit-package \
-  target/factory-reduced-exit.json --json
-cargo run -p morph-cli -- print-factory-merkle-update-fixture \
-  > target/factory-merkle-update.json
-cargo run -p morph-cli -- validate-factory-merkle-update-package \
-  target/factory-merkle-update.json --json
+cargo run -p morph-cli -- print-multi-asset-fixture > target/recovery.json
+cargo run -p morph-cli -- validate-multi-asset-package target/recovery.json --json
+cargo run -p morph-cli -- inspect-factory-request request.json
+cargo run -p morph-cli -- factory-session --session member.json inspect
+cargo run -p morph-cli --features devnet -- devnet --devnet-only factory root-prepare --help
+cargo run -p morph-cli --features devnet -- devnet --devnet-only factory prepare --help
 ```
 
-Generate and validate splice packages:
-
-```sh
-cargo run -p morph-cli -- print-splice-fixture --kind splice-in \
-  > target/splice-in.json
-cargo run -p morph-cli -- validate-splice-package target/splice-in.json --json
-cargo run -p morph-cli -- print-splice-fixture --kind xudt-splice-out \
-  > target/xudt-splice-out.json
-cargo run -p morph-cli -- validate-splice-package \
-  target/xudt-splice-out.json --json
-```
+Each Factory member has an independent durable journal. Native preparation
+produces a current exact-transaction request; wallet signing and keyless
+submission use that same reviewed body. Child initial exits stay private and
+must reach both child parties before parent approval. For bilateral funding,
+splice and current monitoring, see [initial funding](docs/runbooks/initial-funding.md),
+[splice](docs/multi-asset-splice.md) and [the watch service](docs/runbooks/current-watch-service.md).
 
 Run watchtower-style publication:
 
@@ -359,8 +343,9 @@ cargo run -p morph-cli --features devnet -- devnet --devnet-only watch-config-on
   --json
 ```
 
-Run the production-publication reliability rehearsal against a fresh local CKB
-devnet (no CI/CD integration is implied):
+The publication-reliability rehearsal entrypoint is below. Its reports must be
+regenerated against the current binaries during consolidation; an older report
+does not qualify this release:
 
 ```sh
 CKB_BIN=../ckb/target/debug/ckb \
@@ -395,7 +380,7 @@ cargo run -p morph-cli -- devnet-smoke-compare \
 - [Roadmap](docs/roadmap.md): milestone status and deferred work.
 - [Multi-asset channels](docs/multi-asset-channels.md): the paper-to-code gap
   and proposed multi-Vault settlement path for multiple xUDT types per channel.
-- [Factory multi-right updates](docs/factory-multi-right.md): wire format,
+- [Factory reduced operations](docs/factory-multi-right.md): compact proofs, current authority,
   host APIs, and security boundaries.
 - [Mainnet readiness](docs/mainnet-readiness.md): what remains before any
   production or real-assets claim.
@@ -415,10 +400,11 @@ cargo run -p morph-cli -- devnet-smoke-compare \
 
 ## Production Implementation
 
-Morph Channel is in production rollout. Multi-asset channels are implemented
-end to end: one signed state controls a bounded set of Vault Cells with
-separate conservation for CKB and each xUDT type, and factories materialise
-that custody into bilateral child channels.
+Morph Channel is under production development with controlled-devnet evidence.
+The current implementation uses one signed State for a bounded Vault set,
+separate conservation for CKB and each xUDT Type, and an independent Factory
+rights authority. Consolidation, fresh acceptance/release evidence and
+independent qualification must be completed before a rollout claim.
 
 The release bar is concrete and stays in force: independent review, repeated
 devnet and testnet runs under realistic fees and reorg conditions, CI-backed

@@ -27,9 +27,7 @@ change invalidates prior no-value development state. Stop the devnet, discard
 that state, deploy the current manifest, and create new channel/Factory IDs and watch
 cursors. Do not add alternate parsers to preserve an unpublished shape. Hub state files
 require every current collection, watch configs require explicit operator and
-scan origin, and Agent requests require an explicit HTTP operation. The
-single-Vault args layout always includes the Batch Lock identity; the older
-short layout is rejected.
+scan origin, and Agent requests require an explicit HTTP operation. The current bilateral State uses 318 bytes and descriptor 5; Factory State uses 306 bytes. The Batch identity is 104 bytes and includes the exact funding context. Single-asset custody is a one-entry current manifest; old single-Vault State, Factory and splice layouts are rejected.
 
 ## Rollback
 

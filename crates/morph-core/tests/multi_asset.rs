@@ -91,6 +91,7 @@ fn fixture(count: usize) -> MultiAssetRecoveryPackage {
             .collect(),
     };
     let settlement = MultiAssetSettlement {
+        capability: morph_core::MultiAssetSettlementCapability::Ordinary,
         participant_lock_hashes: participant_locks.each_ref().map(|raw| blake2b256(raw)),
         carrier_refund_lock_hash: blake2b256(&carrier_refund_lock),
         payouts: manifest
@@ -261,7 +262,6 @@ fn multi_asset_domains_and_state_digests_match_host() {
         .unwrap(),
         package.state.vault_outpoint_set_root
     );
-    assert!(morph_script_common::StateHeader::parse(&raw).is_err());
 }
 
 #[test]
@@ -1216,3 +1216,91 @@ fn multi_asset_splice_funding_votes_survive_restart_and_gate_bridge_signing() {
 
 #[path = "multi_asset_cases/factory.rs"]
 mod factory_materialisation;
+
+#[path = "multi_asset_cases/payments.rs"]
+mod payments;
+
+#[path = "multi_asset_cases/conditional_backend.rs"]
+mod conditional_backend;
+
+#[path = "multi_asset_cases/bridge.rs"]
+mod bridge;
+
+#[test]
+fn current_state_type_args_have_one_shared_direct_and_factory_origin_layout() {
+    use wire::MultiAssetStateTypeArgs;
+    let anchor = [4; 32];
+    let origin = [7; 32];
+    let since = morph_script_common::relative_block_since(6).unwrap();
+    let mut direct = anchor.to_vec();
+    direct.extend_from_slice(&since.to_le_bytes());
+    let parsed = MultiAssetStateTypeArgs::parse(&direct).unwrap();
+    assert_eq!(parsed.funding_anchor(), anchor);
+    assert_eq!(parsed.factory_origin(), None);
+    assert_eq!(parsed.finalise_since(), since);
+    let mut child = anchor.to_vec();
+    child.extend_from_slice(&origin);
+    child.extend_from_slice(&since.to_le_bytes());
+    let parsed = MultiAssetStateTypeArgs::parse(&child).unwrap();
+    assert_eq!(parsed.funding_anchor(), anchor);
+    assert_eq!(parsed.factory_origin(), Some(origin.as_slice()));
+    assert_eq!(parsed.finalise_since(), since);
+    for len in [0, 32, 39, 41, 64, 71, 73, 139] {
+        assert!(MultiAssetStateTypeArgs::parse(&vec![1; len]).is_err());
+    }
+    let mut zero_origin = child.clone();
+    zero_origin[32..64].fill(0);
+    assert!(MultiAssetStateTypeArgs::parse(&zero_origin).is_err());
+    let mut wrong_order = direct.clone();
+    wrong_order.extend_from_slice(&origin);
+    assert!(MultiAssetStateTypeArgs::parse(&wrong_order).is_err());
+    for invalid in [
+        6,
+        (1u64 << 63) | (1 << 61) | 6,
+        (1u64 << 63) | (1 << 56) | 6,
+    ] {
+        let mut invalid_since = child.clone();
+        invalid_since[64..72].copy_from_slice(&invalid.to_le_bytes());
+        assert!(MultiAssetStateTypeArgs::parse(&invalid_since).is_err());
+    }
+}
+
+proptest! {
+    #[test]
+    fn current_state_digest_binds_every_encoded_byte(index in 0usize..318, bit in 0u8..8) {
+        let package = fixture(1);
+        let encoded = package.state.encode().unwrap();
+        let mut changed = encoded;
+        changed[index] ^= 1 << bit;
+        if let Ok(parsed) = wire::MultiAssetStateHeader::parse(&changed) {
+            prop_assert_ne!(parsed.signing_digest(), package.state.signing_digest().unwrap());
+        }
+    }
+
+    #[test]
+    fn current_state_context_freezes_all_non_progress_fields(field in 0usize..13, marker in 64u8..=240) {
+        let package = fixture(1);
+        let before = package.state.encode().unwrap();
+        let mut changed = package.state.clone();
+        match field {
+            0 => changed.header.chain_id = [marker;32],
+            1 => changed.header.channel_id = [marker;32],
+            2 => changed.header.funding_epoch += 1,
+            3 => changed.header.funding_anchor = [marker;32],
+            4 => changed.header.participants_commitment = [marker;32],
+            5 => changed.header.asset_registry_commitment = [marker;32],
+            6 => changed.header.challenge_policy_commitment = [marker;32],
+            7 => changed.vault_content_set_root = [marker;32],
+            8 => changed.vault_outpoint_set_root = [marker;32],
+            9 => changed.vault_count += 1,
+            10 => changed.header.protocol_version += 1,
+            11 => changed.header.signature_scheme_id += 1,
+            _ => changed.header.descriptor_version += 1,
+        }
+        if let Ok(after) = changed.encode() {
+            let old = wire::MultiAssetStateHeader::parse(&before).unwrap();
+            let new = wire::MultiAssetStateHeader::parse(&after).unwrap();
+            prop_assert!(!old.same_context_except_progress(&new), "field {}", field);
+        }
+    }
+}

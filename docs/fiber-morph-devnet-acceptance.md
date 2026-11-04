@@ -9,7 +9,7 @@ evidence files, and failure handling, use
 
 ## Purpose
 
-The gate proves coexistence before protocol merger:
+The gate tests coexistence of two separate systems:
 
 - Fiber starts its normal three-node devnet stack.
 - Morph runs the strict stateful channel and factory matrix against Fiber's CKB
@@ -164,7 +164,10 @@ Key files:
   security-family coverage;
 - `summary.json`: top-level pass summary;
 - `logs/`: Fiber stack logs, Morph stateful logs, Bruno logs, and build logs;
-- `morph-stateful/scenarios/`: Morph stateful scenario and smoke artifacts.
+- `morph-stateful/evidence.json`: actual external RPC/genesis and current code/report binding;
+- `fiber-coexistence-genesis.json`: independent observation of the same Fiber genesis;
+- `morph-stateful/scenarios/`: strict current stateful ledger;
+- `morph-stateful/scenarios/smoke/`: five actual current reports, recovery artifacts, captured ELFs and manifest.
 - `morph-agent-fiber-e2e/`: Agent result, no-secret manifest, and encrypted
   payer/payee stores from the three-node route.
 
@@ -174,22 +177,26 @@ Every `coexistence`, `fiber`, and `full` run now executes
 `scripts/fiber-morph-devnet-audit.sh` after writing the top-level summary. The
 audit fails the run unless the completed artefacts prove the expected flow set.
 
-For Morph, the required business scenarios are:
+Morph runs the sole `scripts/devnet-current-e2e.sh` with
+`EXTERNAL_RPC_URL` set to Fiber's actual CKB RPC. It neither starts another
+Morph chain nor stops the external node. The runner writes its strict stateful
+ledger under `morph-stateful/scenarios/` and the five current cases, captured
+ELFs and code manifest under `morph-stateful/scenarios/smoke/`:
 
-- `bilateral_direct_publish_finalise`
-- `bilateral_supersede_watchtower_finalise`
-- `sponsor_fee_pressure`
-- `splice_lifecycle_matrix`
-- `factory_lifecycle_matrix`
-- `factory_splice_then_exit`
-- `watchtower_operations`
-- `extreme_state_value_cases`
-- `negative_attack_matrix`
+- `bilateral_shared`: independent shared funding and whole-set settlement;
+- `bilateral_splice`: asset removal/admission, withheld receipt recovery and terminal exits;
+- `factory_custody_and_children`: current custody/rights operations, independent journals and full/reduced child exits;
+- `watch_service_reorg`: actual current service publication and canonical rollback recovery;
+- `maximum_asset_lifecycle`: eight-asset complete-set lifecycle.
 
-The same audit also requires all 11 Morph security families from
-`docs/devnet-audit-profile.example.json` to pass, including the P0 authority,
-maturity, non-interference, factory value-delta, and typed-asset binding
-families.
+The audit invokes the same current `devnet-stateful-assert` as the standalone
+gate. It additionally validates exact case IDs/kinds, each real report,
+318-byte recovery packages through the current Rust parser, and the independently
+observed Fiber genesis against the runner's RPC/genesis evidence. Captured
+artifact paths must stay inside the run. The retired physical implementation's
+190-transaction and old proof-profile counters are not evidence thresholds.
+Security families remain causal current stateful assertions rather than names
+that make an unexecuted scenario count as covered.
 
 For Fiber, `coexistence` requires:
 
@@ -279,8 +286,10 @@ FIBER_CXXFLAGS="-include cstdint"
 MORPH_FIBER_DEPLOYER_KEY_FILE=../fiber/tests/nodes/deployer/ckb/plain_key
 MORPH_FIBER_ALICE_KEY_FILE=../fiber/tests/nodes/1/ckb/plain_key
 MORPH_FIBER_BOB_KEY_FILE=../fiber/tests/nodes/2/ckb/plain_key
-BUILD_MORPH_CONTRACTS=0
 ```
+
+The current Morph phase builds and captures its intended ELFs through the sole
+runner; it does not select an older prebuilt implementation.
 
 `FIBER_BRUNO_SUITES` and `FIBER_FUNDING_TX_VERIFICATION_CASES` are useful for
 local debugging. Production `fiber` and `full` audit runs expect the strict
@@ -303,3 +312,22 @@ Morph Agent application flows over real Fiber multi-hop routing. The routed
 channels in that Agent test are Fiber-native. It does not claim that Morph
 Factory rights or materialised bilateral channels are already Fiber public
 graph edges; that remains the external-edge hook in the integration plan.
+
+## Current publication reliability rehearsal
+
+`devnet-publication-reliability.sh` uses the same current funding/session,
+transaction and watcher APIs, with a disposable independent CKB node. It
+restores a genuine signed Settling/1 branch while retaining a newer signed
+state-2 package, then tests two separate Sponsor budgets/operators. The
+rehearsal retains actual fee-floor/cap rejection, bounded RBF floor learning,
+unchanged-tip mempool eviction/retry, duplicate reconciliation, canonical
+confirmation, induced rollback/republication, measured challenge-window
+components and stopped-service health. It snapshots the CLI/ELFs used by the
+run. See [the reliability runbook](runbooks/current-publication-reliability.md).
+
+Fiber provider-route evidence is explicitly scoped: Agent manifests record
+`proof_scope: "fiber_provider_route"` and `morph_custody_backing_proven: false`.
+Actual x402/credential/fair-exchange traffic remains required, but it does not
+prove a Morph-backed routed channel. Missing Fiber runtime/dependencies,
+failed clean-source checks or unavailable RPCs must be reported as unexecuted
+acceptance, not a passed cross-stack gate.

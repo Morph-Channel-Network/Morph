@@ -21,8 +21,8 @@ Use `make` targets — they orchestrate the right flags.
 | `make source-hygiene` | Syntax-check every shell script, reject npm lockfiles pinned to the unsupported `npmmirror.com` registry, and deny `unwrap`/`expect`/`panic!` in production Rust targets. |
 | `make build-contracts` | Build all RISC-V scripts to `target/riscv64imac-unknown-none-elf/release/`. Required before `make contract-tests`. |
 | `make contract-tests` | Runs `crates/morph-core/tests/contract_scripts.rs` against the built ELFs (uses `--ignored --test-threads=1`). Fails if ELFs are missing. |
-| `make release-readiness` | Verifies all eight built ELF CKB data hashes, the v3 conditional-batch/dynamic-N no-real-assets envelope, and required operator runbooks. Run after `make build-contracts`. |
-| `make package-contract-release` | Stages a deterministic bundle under `target/contract-release.*` and writes `target/factory-dynamic-n.tar.gz` after readiness checks pass. |
+| `make release-readiness` | Verifies all eight built ELF CKB data hashes, the current-custody no-real-assets envelope, and required operator runbooks. Run after `make build-contracts`. |
+| `make package-contract-release` | Stages a deterministic bundle under `target/contract-release.*` and writes `target/morph-current-custody.tar.gz` after readiness checks pass. |
 | `make supply-chain` | `cargo audit` then `cargo deny check`. See `Makefile` for ignored advisory IDs. |
 | `make fixture-checks` | Generates and validates every protocol fixture (bilateral, factory, splice, watch). Writes to `target/fixture-checks/`. |
 | `make smoke` | Workspace tests plus `cargo run -p morph-cli -- validate-fixture`. |
@@ -63,7 +63,7 @@ contracts/morph-state-{lock,type}      State cell boundary.
 contracts/morph-vault-lock            Vault settlement, splice checks.
 contracts/morph-batch-lock            Bounded CKB conditional preimage/refund settlement.
 contracts/morph-sponsor-lock          Bounded sponsor budget.
-contracts/morph-factory-{type,vault-lock}  Factory state + reserve, with WitnessEnvelope dispatch.
+contracts/morph-factory-{type,vault-lock}  Current Factory authority + Vault-set custody (FS/FM/FR).
 contracts/morph-devnet-xudt           Devnet-only xUDT issuer/conservation script.
 docs/                          Audits, runbooks, readiness gates, tutorials.
 scripts/                       Devnet orchestration (see table above).
@@ -73,39 +73,44 @@ ui/morph-hub                   React + Vite + TypeScript operator console.
 ## Code Patterns and Conventions
 
 - Support only current unpublished formats. Do not add old JSON aliases, missing-field migrations, alternate old wire parsers, or funding-anchor fallbacks. Reset development state after an incompatible change; see `docs/runbooks/upgrade-and-migration.md`.
+- The shared-foundation architecture (option C) is implemented; see `docs/unified-protocol-migration.md`. New capabilities use the current Vault-set model and common signing/recovery components. Retired single-Vault State, Factory, splice and package codecs must not be reintroduced. Capability migration and verified retirement are both required; removal of a feature is not a completed migration.
 
 ### Crate boundaries
 
-- `morph-core` is plain Rust (no CKB runtime). It defines types, signing digests, and host-side validation. It is used by both `morph-cli` and the contract tests.
-- `morph-script-common` is `no_std` and shared by every contract crate. All length constants, domain-separation strings (e.g. `STATE_DOMAIN`, `FUNDING_CONTEXT_DOMAIN`), `WitnessEnvelope` dispatch, and helper parsers live here. Any change here is a wire-format change.
+- `morph-core` is plain Rust (no CKB RPC or VM runtime). It uses `ckb-types` for canonical host-side packed transaction/Script serialization, shared by the Factory journal and CLI instead of duplicating physical-body parsing. It defines types, signing digests, and host-side validation. It is used by both `morph-cli` and the contract tests.
+- `morph-script-common` is `no_std` and shared by every contract crate. All current length constants, role-separated domains (e.g. `MULTI_ASSET_STATE_DOMAIN`, `MULTI_ASSET_FUNDING_CONTEXT_DOMAIN`), bounded capability frames, and helper parsers live here. Any change here is a wire-format change.
 - CKB scripts use `#![cfg_attr(target_arch = "riscv64", no_std)]` plus `#![cfg_attr(target_arch = "riscv64", no_main)]` and provide a stub `fn main() {}` for host builds so `cargo check` works. `entry!(program_entry)` and `default_alloc!()` are gated the same way.
 - Contract crates depend only on `ckb-std` + `morph-script-common`. Do not pull in `morph-core` from a contract — it would pull non-`no_std` code.
 
 ### Hashing and domain separation
 
 - All commitments use `blake2b256` with the CKB personalization `b"ckb-default-hash"`, prefixed by an explicit domain string defined as a `const` next to the hasher. See `crates/morph-core/src/hash.rs`.
-- Domain strings are duplicated between `morph-core` and `morph-script-common` (e.g. `STATE_DOMAIN`, `FUNDING_CONTEXT_DOMAIN`, `WITNESS_ENVELOPE_BODY_DOMAIN`, `SPLICE_HEADER_DOMAIN`, `FACTORY_SPLICE_HEADER_DOMAIN`, `FACTORY_VAULT_DESCRIPTOR_DOMAIN`, `FACTORY_VAULT_DELTA_DOMAIN`, `PARTICIPANTS_DOMAIN`). Any change must land in both places and is a wire-format break. `crates/morph-core/tests/hash_parity.rs` enforces parity.
+- Shared current domains are pinned across `morph-core::hash` and `morph-script-common`; `hash_parity.rs` verifies equality. Factory root funding, exact metadata updates, materialisation, reduced transitions, bilateral state votes and splice bridges have distinct roles. Never replace one role with another even when the participant keys coincide.
 
-### State header and witness formats
+### Current State and witness formats
 
-- `StateHeader` has a fixed encoded length of 346 bytes (`STATE_HEADER_LEN` in `morph-script-common`). `encode_state_header` / `StateHeader::parse` are the only legal encoders; treat the byte order as load-bearing.
-- The multi-asset candidate uses the separate `multi_asset::MultiAssetStateHeader` parser and encoder: 318 bytes, State layout 2, descriptor 4, and domain-separated content/OutPoint set commitments. It has no single-Vault materialisation/OutPoint fields or duplicate content root. `StateHeader::parse` rejects that shape. See `docs/multi-asset-wire.md`; do not feed candidate packages through legacy single-Vault helpers.
-- `pub vault_materialisation_root: Bytes32` in `crates/morph-core/src/types.rs` is the sole JSON and Rust field name; unpublished aliases are intentionally unsupported.
-- Factory state headers (`FACTORY_STATE_HEADER_LEN = 302`), splice headers (`SPLICE_HEADER_LEN = 485`, `FACTORY_SPLICE_HEADER_LEN = 469`), and witness envelopes (`WITNESS_ENVELOPE_LEN = 8 + 2 + 2 + 2 + 4 + 32`, magic `b"MORPHW!!"`) are likewise fixed-layout. Splice-out headers sign the exact `withdrawal_lock_hash`; splice-in headers require it to be zero.
+- Bilateral State uses `multi_asset::MultiAssetStateHeader`: 318 bytes, layout 2 and descriptor 5. One to eight Vaults share a content commitment and exact OutPoint-set commitment. A one-asset channel uses this same implementation.
+- Descriptor 5 requires an explicit `Ordinary` or `CkbConditional` capability. Pending conditions consume CKB business value only; reserves, other assets and the signed State carrier remain independently conserved. The canonical inner Batch terms codec is 828 bytes; that shared primitive is not an older State profile. The Batch lock has 104-byte args binding channel, exact funding context, state number and terms commitment.
+- `MultiAssetStateTypeArgs::parse` is the sole Type-args parser: direct origin is `anchor32 || since8`; Factory child origin is `anchor32 || FactoryTypeHash32 || since8`. Since occupies the final eight bytes. Reject zero Factory origin and noncanonical relative since. Vault args are 116 bytes and bind anchor, since, authentic StateType and StateLock.
+- Factory State is 306 bytes, with 44-byte `MORPHFT!` Type args and 64-byte reserve-lock args. Its custody uses the same bounded manifest and per-Type values. There are no old State/Vault, descriptor1/2, old splice or envelope-kind fallbacks.
 
-### Witness envelope dispatch
+### Typed Factory authority and proofs
 
-- Factory authorisations are carried in a single `WitnessEnvelope` and dispatched by kind/format/body length and a body commitment. See `WITNESS_ENVELOPE_KIND_*` constants and `WitnessEnvelopeKindSpec` table in `contracts/morph-script-common/src/lib.rs`. Bodies are parsed only after the envelope body's `blake2b256` matches the embedded commitment. The sole unpublished envelope format is `WITNESS_ENVELOPE_FORMAT = 1` with Factory kinds 1–8 (kind 8 `FACTORY_MULTI_RIGHT_UPDATE` is the 2.0 multi-right path; see `docs/factory-multi-right.md`).
-- Factory participant sets support 2–16 members. All-participant paths require `N-of-N`; reduced paths commit the complete sorted membership but authorise exactly the touched participant. Reduced-rights/sparse-Merkle/reduced-exit/splice proofs retain `FACTORY_SPARSE_MERKLE_DEPTH = 256` and limited `FACTORY_*_COUNT` constants. Unknown proof shapes must remain rejected.
-- Kind 8 multi-right updates: the touched participant updates 1–4 of their own value rights (`FACTORY_MULTI_RIGHT_MAX_COUNT = 4`), each proven independently against both state roots with compact proofs (`FACTORY_COMPACT_PROOF_MAX_SIBLINGS = 64` strictly-descending `(depth, hash)` pairs; omitted siblings must reconstruct from the canonical `FACTORY_RIGHT_EMPTY_DOMAIN` chain). Verification also enforces cross-side localization: any sibling subtree whose before/after hashes differ must contain another listed right, so no unlisted right can change between the committed roots. Quantity non-increase is enforced separately for CKB and every xUDT type; never sum quantities across asset domains. Host, CLI, and script arrays use raw `FactoryRightId` order, not hashed Merkle-key order. Host support lives in `morph-core` (`FactoryMultiRightMerkleUpdate`, `factory_right_sparse_proof_compact`) and `morph-cli` (`print|validate-factory-multi-right-update-package`); the devnet save/publication command is future work.
-- Operator value-limit policy: `morph-core::policy` (`ValueLimitPolicy`, fail-closed, unlisted xUDT assets rejected) plus `morph-cli value-limit-check` / `validate-value-limit-policy`. Runbook: `docs/runbooks/value-limits.md`. It is an operator control only and never weakens script consensus.
+- `MORPHFS!` format2 carries root, permissionless activation and exact-transaction metadata update. Full consent is N-of-N for 2–16 sorted members. `MORPHFM!` is full-consent materialisation with optional retained custody. `MORPHFR!` operations are reduced release0, rights1, deposit2, full custody4 and reduced child5; unknown tag3 is rejected.
+- Reduced transitions commit the complete membership and carry exactly the touched member's signature. Compact SMT proofs have depth 256 and at most 64 descending sibling pairs per leaf. Public before/after root localization prevents unlisted leaf changes. Raw `FactoryRightId` order is canonical; never sort by hashed key.
+- Reduced metadata supports up to 10 value rights; physical transitions support at most 9 claims (global CKB plus up to 8 token Types). Quantity rules are independent for every asset. CKB reserve/business lanes are global across Vaults; tokens remain per-Type. Never sum token amounts across Types or use carriers/fees as claims.
+- Physical release, deposit and child operations use precommitted `ReserveClaim` leaves. Initial allocation must provide intended rights and enough operating reserve for payout geometry and the retained Factory floor. Backing checks alone do not prove arbitrary allocations withdrawable. Last retained reserve and the shared carrier require full consent.
+- Every member retains a complete rights snapshot. Reduced public changes permit local proof refresh without peer data; full-consent replacement requires delivery of a complete new snapshot before signing. `factory-session refresh/reconcile` retains prior reservations and approvals across canonical changes. Explicit replacement does not revoke an older approval: first canonical source consumption settles the operation.
+- Child parties may be outside the Factory roster. Their committed two keys and private exits are independent of parent authority: only roster members/all-N or the touched member can authorize Factory consumption. Provider routing reservation/liquidity admission is a separate check.
+- Child initial exits use independent `factory-child-session` journals. Both child parties persist their complete private exit before public possession attestations. Parent requests contain only public terms/receipts. Confirmed Factory-origin provenance performs same-path handoff into the ordinary bilateral journal; it cannot masquerade as Root funding or initialise another authority.
+- Operator value limits are fail-closed and admit every committed token right even when its quantity is zero. They remain an operator control, never a weaker consensus rule.
 
 ### CKB cell selection discipline
 
 - Scripts rely on `zero_or_one_group_cell_data` to detect create/supersede/finalise/splice-retire paths. The match arms in `contracts/morph-state-type/src/main.rs` are exhaustive over `(input, output)` shape.
-- Vault finalisation requires exactly one authentic StateCell input with the expected StateType **and** StateLock hash. See "Authentic StateCell authority" in `SECURITY-FIXES.md` and tests `vault_lock_rejects_fake_state_header_without_state_type`, etc.
+- Vault finalisation requires exactly one authentic StateCell input with the expected StateType **and** StateLock hash. Current VM boundary matrices cover fake/cloned authority, wrong script identity and duplicated State inputs; historical audit names are mapped to current tests.
 - `since` is encoded as canonical relative block (`relative_block_since` in `morph-script-common`). Raw `u64` is not a valid CKB `since`. CLI arguments are block counts.
-- State retirement cannot orphan value: StateType finalise and splice retire paths require an input whose VaultCell commitment matches `StateHeader.vault_materialisation_root`.
+- State retirement cannot orphan value: StateType finalise and splice retire paths authenticate and consume the complete committed Vault set.
 
 ### Multi-asset splice signing
 
@@ -117,7 +122,7 @@ ui/morph-hub                   React + Vite + TypeScript operator console.
 - Current watch cursors require `from_block`, contiguous scan heights, and `scanned_to_block_hash`; missing old fields are rejected. At startup and while scanning, the watchtower compares that hash with the canonical block returned by CKB RPC.
 - An uninitialised cursor hash or a missing/mismatched canonical block emits a critical `chain_reorg_detected` alert, clears orphanable funding/observation context, and rescans from the channel's configured `from_block`.
 - Operators must set `from_block` no later than channel creation and retain packages across funding contexts. Do not weaken this to resume from an unverifiable height.
-- `devnet multi-asset-watch` is passive dispute correction: Active cells do not trigger settlement. It rejects conflicting saved/on-chain states, matches exact funding context and authentic scripts, and uses explicit plain fee inputs plus a bounded publication profile. Current support is finite watch passes for activated bilateral channels; service and automatic funding-activation integration remain work. Sponsor publication is supported.
+- `devnet multi-asset-watch` is passive dispute correction: Active cells do not trigger settlement. It rejects conflicting saved/on-chain states, matches exact funding context and authentic scripts, and uses explicit plain fee inputs plus a bounded publication profile. Finite passes and the continuous configuration service share this sole current observer/publisher. Service health, validated configuration reload, policy/webhook alerts and exact-state sponsor funding are implemented. Automatic funding activation, independent failover and pooled publication remain separate work.
 
 ### Signatures
 
@@ -133,7 +138,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - `MultiAssetChannelBackend` uses the current multi-asset profile only. Persist `reserve_signature()` before invoking the local signer, then persist `record_signature()` before releasing its receipt. Cancel never resets the reservation. Only two valid signatures can commit a publishable recovery package.
 - `multi-asset-session` enforces that order with a stable OS-locked sidecar and fsynced atomic snapshots; never unlink its `.lock` file, clone an active authority, or restore an older signer snapshot. Recovery package backups do not replace the monotonic signer journal.
 - Splice sessions retain the exact packed raw transaction in required `splice_draft` evidence. `sign`/`add-signature` require an explicit `--target update|splice-creation|splice-recovery|splice-bridge`; no implicit signing role. Export persists the fully signed initial recovery package before returning the Morph-signed transaction. Initial funding uses the immutable `multi-asset-funding-session` ceremony and confirmed same-path handoff; operational `init`/`bind-root` are removed; `confirm-splice` retains the same active session path; never initialise a second authority at a new funding-context path. Operational commands reject null `lineage`; new journals obtain confirmed provenance only through same-path handoff. Lineage requires RPC-enabled canonical/dependency checks before signing; `refresh-chain --package` updates evidence without resetting votes. Retired evidence is rejected as an active session.
-- Root creation is epoch-0 unbound Active/0, signed over `MULTI_ASSET_ROOT_FUNDING_DOMAIN || state_digest || raw_tx_hash`. Ordinary state votes are rejected; public recovery validation requires bound epoch-0 evidence. Preserve a complete exact-TX exit before broadcasting. The funding ceremony collects a complete exit before creation, then `confirm` seals initial reservations and switches the same path to a guarded session; `export-root-funding` works offline/orphaned and `multi-asset-funding-submit` validates exact signed replay. Lineage uses explicit tagged Root/Splice origins, with no old-shape parser.
+- Root creation is epoch-0 unbound Active/0, signed over `MULTI_ASSET_ROOT_FUNDING_DOMAIN || state_digest || raw_tx_hash`. Ordinary state votes are rejected; public recovery validation requires bound epoch-0 evidence. Preserve a complete exact-TX exit before broadcasting. The funding ceremony collects a complete exit before creation, then `confirm` seals initial reservations and switches the same path to a guarded session; `export-root-funding` works offline/orphaned and `multi-asset-funding-submit` validates exact signed replay. Lineage uses explicit tagged Root/Splice/Factory origins, with no old-shape parser.
 - Public root construction uses `multi-asset-funding-prepare` and strict `morph.multi_asset_root_terms.v1`: canonical explicit funders/inputs, exact per-wallet CKB/fee and per-Type token contributions, and owner-only change. The native builder never mints or selects replacement inputs. `multi-asset-funding-wallet-sign` reconstructs the exact body before signing only the declared wallet group, after complete root/exit authorization. `multi-asset-funding-submit` is keyless with no wallet/presigned fallback; full VM preflight precedes immutable binary persistence, preventing partial-witness attempts from poisoning that path. The harness uses these public paths.
 - `multi-asset-supervise` observes 1–32 registered session paths with four workers, nonblocking journal locks and one total RPC budget per check. Its atomic health has a config-bound expiry and is never signing authority; `multi-asset-supervision-health` fails on stale/unverified entries. Stable alert history survives busy checks and restart. Unguarded epoch-0 sessions are explicitly unmanaged; failover and pooled publication remain open. Runbook: `docs/runbooks/signer-supervision.md`.
 - Public proposal/signature messages use decimal strings and canonical hex. The private backend snapshot uses Rust serde integers and is not a JavaScript interchange format. SDK inspection is stateless and does not reserve a signer state number.
@@ -153,7 +158,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 
 - `multi-asset-smoke --sponsor-publication` funds a separate target-state policy for each publication; combine with `--watch-publication --watch-reorg` for sponsor rollback acceptance. Operator/watch `sponsor --change-pubkey` takes no fee private key. Funding, activation and finalisation still use wallet fees.
 
-- `cargo run -p morph-cli --features devnet -- devnet ...` is required for any `--devnet-only` subcommand (open-channel, supersede-smoke, factory-*-smoke, xudt-smoke, watch-config-once). Without the feature, the `devnet`, `rpc`, `watch_alert`, `watch_config`, and `watch_policy` modules are compile-gated out.
+- `cargo run -p morph-cli --features devnet -- devnet ...` is required for any `--devnet-only` subcommand (multi-asset-smoke, factory smoke, multi-asset-transact, watch-config-once). RPC-enabled commands require the `devnet` feature; offline package, watch-policy/config and alert helpers remain usable in the default build.
 - Private-key env vars (`MORPH_DEVNET_PRIVATE_KEY`, `MORPH_ALICE_PRIVATE_KEY`, `MORPH_BOB_PRIVATE_KEY`, `MORPH_HUB_INVOICE_PRIVATE_KEY`, `MORPH_HUB_AUTH_TOKEN`, `MORPH_CHANNEL_PRIVATE_KEY`) are declared with clap's `hide_env_values = true` so they don't leak in `--help`. Don't print them anywhere.
 - `MORPH_CKB_RPC` defaults to `http://127.0.0.1:18114` and is set up by `scripts/devnet-node.sh`.
 
@@ -183,7 +188,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - **Both domain-string locations must change together.** `morph-core/src/hash.rs` and `contracts/morph-script-common/src/lib.rs` declare duplicate domain constants for use across the host/script boundary. `hash_parity.rs` enforces equality at test time.
 - **`vault_materialisation_root` is the only accepted JSON name.** Do not reintroduce unpublished aliases.
 - **Boundary versions are not free.** Bumping `WITNESS_ENVELOPE_FORMAT`, any `FACTORY_*_WITNESS_VERSION`, the `STATE_HEADER_LEN`, or any `*_LEN` constant is a wire-format break and breaks every dependency on it (parsers, fixtures, contract tests, devnet smoke). Check fixtures and security audits first.
-- **Reduced-rights factories only support the documented proof shapes.** Signer membership is dynamic from 2–16; kind 8 supports bounded multi-right compact proofs. Additional proof shapes must remain rejected. Multi-asset rights do not imply that the physical Vault or child-settlement paths support multiple xUDT types.
+- **Reduced factories accept only current documented proofs.** Signer membership is 2–16; rights and physical custody share current per-asset compact proofs and resource limits. Unknown shapes remain rejected.
 - **Devnet-only `morph-devnet-xudt`.** It is not safe for non-devnet use. The contract name and the README both call this out.
 - **`devnet` feature on `morph-cli`.** The `devnet` feature gates RPC client, fixture-server utilities, `watch_*`, and the entire `devnet` subcommand. A default build will silently lack these.
 - **Hub auth tokens are scoped.** `read,write,restore,sign:<secret>` is the documented scope syntax; an unprefixed token is all-scope. Don't log the secret.
@@ -199,7 +204,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - Validation errors and rules: `crates/morph-core/src/validation.rs`
 - Witnesses, splice envelopes: `contracts/morph-script-common/src/lib.rs` (length table, envelope dispatch)
 - State cell script entrypoint and shape dispatch: `contracts/morph-state-type/src/main.rs`
-- Fixtures: `crates/morph-cli/src/{packages,splice_packages,factory_packages}.rs`
+- Fixtures: `crates/morph-cli/src/{multi_asset_packages,factory_packets,factory_transaction,fixture_exports}.rs`
 - Hub server: `crates/morph-cli/src/hub.rs`
 - Devnet flows: `crates/morph-cli/src/devnet.rs`, `scripts/devnet-*.sh`
 - Safety boundaries and their tests: `SECURITY-FIXES.md`

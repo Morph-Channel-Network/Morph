@@ -1,20 +1,24 @@
 //! Deterministic root construction from explicit per-wallet contributions.
 //! Quantities use decimal strings; outputs and initial recovery are derived.
-use crate::multi_asset_funding::{RootFundingDraft, funding_wallet_lock};
+#[cfg(test)]
+use crate::canonical_fields::decimal_u64;
+#[cfg(test)]
+use crate::canonical_fields::{decimal_u128, hash, public};
+use crate::funding_wallets::{
+    FundingCell, FundingCustody, FundingWallet, build_wallet_funding, funding_points,
+};
+#[cfg(test)]
+use crate::funding_wallets::{FundingInput, TokenContribution};
+use crate::multi_asset_funding::RootFundingDraft;
+#[cfg(test)]
+use crate::multi_asset_funding::funding_wallet_lock;
 use crate::multi_asset_packages::{
-    StoredMultiAssetCellDep, canonical_hex, decode_dependency_records, decode_hex,
+    StoredMultiAssetCellDep, canonical_hex, decode_dependency_records,
 };
-use anyhow::{Result, anyhow, ensure};
-use ckb_types::{
-    bytes::Bytes,
-    core::{Capacity, TransactionBuilder},
-    packed,
-    prelude::*,
-};
+use anyhow::{Context, Result, ensure};
+use ckb_types::{bytes::Bytes, packed, prelude::*};
 use morph_core::*;
-use morph_script_common::multi_asset as wire;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
 
 #[cfg(feature = "devnet")]
 pub(crate) const MAX_TERMS_BYTES: usize = 64 * 1024;
@@ -30,35 +34,7 @@ pub struct RootFundingTerms {
     pub challenge_blocks: String,
     pub type_scripts_hex: Vec<String>,
     pub cell_deps: Vec<StoredMultiAssetCellDep>,
-    pub funders: Vec<RootFunder>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RootFunder {
-    pub pubkey: String,
-    pub inputs: Vec<RootInput>,
-    /// Channel custody plus State carrier, excluding this wallet's fee share.
-    pub ckb_contribution: String,
-    pub fee_contribution: String,
-    pub tokens: Vec<RootTokenContribution>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RootInput {
-    pub tx_hash: String,
-    pub index: u32,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RootTokenContribution {
-    pub type_hash: String,
-    pub amount: String,
-}
-#[derive(Debug, Clone)]
-pub struct RootFundingCell {
-    pub point: packed::OutPoint,
-    pub output: packed::CellOutput,
-    pub data: Bytes,
+    pub funders: Vec<FundingWallet>,
 }
 #[derive(Debug, Clone, Copy)]
 pub struct RootAuthorityHashes {
@@ -73,114 +49,13 @@ pub struct PreparedRoot {
     pub fee: u64,
 }
 
-pub(crate) fn decimal_u64(value: &str) -> Result<u64> {
-    let result = value.parse::<u64>()?;
-    ensure!(
-        result.to_string() == value,
-        "quantity must be canonical unsigned decimal"
-    );
-    Ok(result)
-}
-fn decimal_u128(value: &str) -> Result<u128> {
-    let result = value.parse::<u128>()?;
-    ensure!(
-        result.to_string() == value,
-        "quantity must be canonical unsigned decimal"
-    );
-    Ok(result)
-}
-fn hash(value: &str) -> Result<Bytes32> {
-    decode_hex(value, 32)?
-        .try_into()
-        .map_err(|_| anyhow!("hash must be 32 bytes"))
-}
-fn public(value: &str) -> Result<Vec<u8>> {
-    let raw = decode_hex(value, 33)?;
-    ensure!(raw.len() == 33, "compressed key must be 33 bytes");
-    k256::ecdsa::VerifyingKey::from_sec1_bytes(&raw)
-        .map_err(|_| anyhow!("invalid compressed public key"))?;
-    Ok(raw)
-}
-
-fn script(raw: &str) -> Result<Vec<u8>> {
-    let raw = decode_hex(raw, wire::MULTI_ASSET_MAX_SCRIPT_LEN)?;
-    packed::Script::from_slice(&raw)?;
-    Ok(raw)
-}
-fn data1(code: &Bytes32, args: &[u8]) -> packed::Script {
-    packed::Script::new_builder()
-        .code_hash(code.pack())
-        .hash_type(2u8)
-        .args(args.pack())
-        .build()
-}
-impl RootInput {
-    pub fn point(&self) -> Result<packed::OutPoint> {
-        let hash = hash(&self.tx_hash)?;
-        ensure!(hash != [0; 32], "zero funding input hash");
-        Ok(packed::OutPoint::new_builder()
-            .tx_hash(hash.pack())
-            .index(self.index)
-            .build())
-    }
-}
 impl RootFundingTerms {
     pub fn points(&self) -> Result<Vec<packed::OutPoint>> {
         ensure!(
             self.schema == "morph.multi_asset_root_terms.v1",
             "unsupported root terms schema"
         );
-        ensure!(
-            (1..=16).contains(&self.funders.len()),
-            "root requires 1..=16 explicit funders"
-        );
-        ensure!(
-            self.funders
-                .windows(2)
-                .all(|pair| pair[0].pubkey < pair[1].pubkey),
-            "funders must be distinct and sorted by public key"
-        );
-        let mut points = Vec::new();
-        let mut seen = BTreeSet::new();
-        for funder in &self.funders {
-            public(&funder.pubkey)?;
-            ensure!(
-                !funder.inputs.is_empty() && funder.inputs.len() <= 64,
-                "funder requires bounded explicit inputs"
-            );
-            ensure!(
-                funder
-                    .inputs
-                    .windows(2)
-                    .all(|pair| (&pair[0].tx_hash, pair[0].index)
-                        < (&pair[1].tx_hash, pair[1].index)),
-                "funder inputs must be ordered"
-            );
-            decimal_u64(&funder.ckb_contribution)?;
-            decimal_u64(&funder.fee_contribution)?;
-            ensure!(
-                funder.tokens.len() <= wire::MULTI_ASSET_MAX_VAULTS
-                    && funder
-                        .tokens
-                        .windows(2)
-                        .all(|pair| pair[0].type_hash < pair[1].type_hash),
-                "token contributions must be bounded and ordered"
-            );
-            for token in &funder.tokens {
-                hash(&token.type_hash)?;
-                ensure!(decimal_u128(&token.amount)? > 0, "zero token contribution");
-            }
-            for input in &funder.inputs {
-                let point = input.point()?;
-                ensure!(
-                    seen.insert(point.as_slice().to_vec()),
-                    "duplicate funding input"
-                );
-                points.push(point);
-            }
-        }
-        ensure!(points.len() <= 64, "too many root funding inputs");
-        Ok(points)
+        funding_points(&self.funders)
     }
     /// Capacity requirements do not depend on available inputs or their value.
     /// Callers may derive their intended contributions before selecting coins.
@@ -191,344 +66,55 @@ impl RootFundingTerms {
     ) -> Result<MultiAssetRecoveryPackage> {
         let points = self.points()?;
         decode_dependency_records(&self.cell_deps)?;
-        let keys = self.participants.each_ref().map(|key| public(key));
-        let [first, second] = keys;
-        let keys = [first?, second?];
-        ensure!(
-            keys[0] < keys[1],
-            "participants must be distinct and ordered"
-        );
-        let blocks = decimal_u64(&self.challenge_blocks)?;
-        ensure!(blocks > 0, "challenge blocks must be positive");
-        let since = morph_script_common::relative_block_since(blocks)
-            .map_err(|error| anyhow!("invalid challenge blocks: {error:?}"))?;
         let input = packed::CellInput::new_builder()
             .previous_output(points[0].clone())
             .build();
         let mut anchor = input.as_slice().to_vec();
         anchor.extend_from_slice(&0u64.to_le_bytes());
-        let anchor = blake2b256(&anchor);
-        let mut args = anchor.to_vec();
-        args.extend_from_slice(&since.to_le_bytes());
-        let state_type = data1(&authority.state_type, &args);
-        let state_lock = data1(
-            &authority.state_lock,
-            state_type.calc_script_hash().as_slice(),
-        );
-        let vault_args = wire::encode_multi_asset_vault_args(
-            &anchor,
-            since,
-            &state_type.calc_script_hash().unpack(),
-            &state_lock.calc_script_hash().unpack(),
-        )
-        .map_err(|error| anyhow!("invalid Vault authority: {error:?}"))?;
-        let vault_lock = data1(&authority.vault_lock, &vault_args);
-        let settlement = MultiAssetSettlement::decode(&decode_hex(
-            &self.descriptor_hex,
-            wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
-                + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN,
-        )?)?;
-        let manifest = MultiAssetManifest {
-            vaults: settlement
-                .payouts
-                .iter()
-                .map(|payout| -> Result<_> {
-                    let [a, b] = payout.values;
-                    Ok(MultiAssetVault {
-                        asset: payout.asset.clone(),
-                        lock_hash: vault_lock.calc_script_hash().unpack(),
-                        value: MultiAssetValue {
-                            reserve: a
-                                .reserve
-                                .checked_add(b.reserve)
-                                .ok_or_else(|| anyhow!("reserve overflow"))?,
-                            business_ckb: a
-                                .business_ckb
-                                .checked_add(b.business_ckb)
-                                .ok_or_else(|| anyhow!("business capacity overflow"))?,
-                            amount: a
-                                .amount
-                                .checked_add(b.amount)
-                                .ok_or_else(|| anyhow!("token amount overflow"))?,
-                        },
-                    })
-                })
-                .collect::<Result<_>>()?,
-        };
-        ensure!(
-            self.type_scripts_hex.len() <= wire::MULTI_ASSET_MAX_VAULTS,
-            "too many Type Scripts"
-        );
-        let type_scripts = self
-            .type_scripts_hex
-            .iter()
-            .map(|raw| -> Result<_> {
-                let raw = script(raw)?;
-                Ok(MultiAssetTypeScript {
-                    type_hash: blake2b256(&raw),
-                    script: raw,
-                })
-            })
-            .collect::<Result<_>>()?;
-        let state_output = packed::CellOutput::new_builder()
-            .lock(state_lock.clone())
-            .type_(Some(state_type.clone()).pack())
-            .build();
-        let carrier = state_output
-            .occupied_capacity(Capacity::bytes(wire::MULTI_ASSET_STATE_HEADER_LEN)?)?
-            .as_u64();
-        let mut channel = b"CKB_MORPH_CHANNEL_ID".to_vec();
-        channel.extend_from_slice(&anchor);
-        let mut challenge = b"CKB_MORPH_CHALLENGE_POLICY".to_vec();
-        challenge.extend_from_slice(&since.to_le_bytes());
-        let creation = MultiAssetRecoveryPackage {
-            state: MultiAssetState {
-                header: MultiAssetHeader {
-                    protocol_version: 1,
-                    chain_id,
-                    signature_scheme_id: 1,
-                    channel_id: blake2b256(&channel),
-                    funding_epoch: 0,
-                    funding_anchor: anchor,
-                    state_number: 0,
-                    mode: Mode::BilateralPlain,
-                    phase: Phase::Active,
-                    participants_commitment: participants_commitment(2, &[&keys[0], &keys[1]]),
-                    asset_registry_commitment: asset_registry_commitment(&manifest.registry()?),
-                    settlement_descriptor_commitment: settlement.commitment()?,
-                    descriptor_version: wire::MULTI_ASSET_DESCRIPTOR_VERSION,
-                    challenge_policy_commitment: blake2b256(&challenge),
-                    state_layout_version: wire::MULTI_ASSET_STATE_LAYOUT_VERSION,
-                },
-                vault_content_set_root: manifest.commitment()?,
-                vault_outpoint_set_root: [0; 32],
-                vault_count: manifest.vaults.len() as u16,
-            },
-            authorization: StateAuthorization {
-                threshold: 2,
-                signatures: vec![],
-            },
-            manifest,
-            settlement,
-            outpoints: vec![],
-            state_carrier_capacity: carrier,
-            scripts: MultiAssetRecoveryScripts {
-                vault_lock: vault_lock.as_slice().to_vec(),
-                state_type: state_type.as_slice().to_vec(),
-                state_lock: state_lock.as_slice().to_vec(),
-                participant_locks: [
-                    script(&self.participant_locks_hex[0])?,
-                    script(&self.participant_locks_hex[1])?,
-                ],
-                carrier_refund_lock: script(&self.carrier_refund_lock_hex)?,
-                type_scripts,
-            },
-        };
-        creation.validate_contents()?;
-        Ok(creation)
+        crate::channel_creation::ChannelCreationTerms {
+            participants: self.participants.clone(),
+            participant_locks_hex: self.participant_locks_hex.clone(),
+            carrier_refund_lock_hex: self.carrier_refund_lock_hex.clone(),
+            descriptor_hex: self.descriptor_hex.clone(),
+            challenge_blocks: self.challenge_blocks.clone(),
+            type_scripts_hex: self.type_scripts_hex.clone(),
+        }
+        .build(chain_id, authority, blake2b256(&anchor), None)
     }
     pub fn build(
         &self,
         chain_id: Bytes32,
         authority: RootAuthorityHashes,
-        cells: &[RootFundingCell],
+        cells: &[FundingCell],
         max_fee: u64,
     ) -> Result<PreparedRoot> {
         let creation = self.creation(chain_id, authority)?;
-        let points = self.points()?;
-        ensure!(
-            points.len() == cells.len()
-                && points
-                    .iter()
-                    .zip(cells)
-                    .all(|(point, cell)| point.as_slice() == cell.point.as_slice()),
-            "resolved funding inputs differ from exact terms"
-        );
-        let mut outputs = vec![
-            packed::CellOutput::new_builder()
-                .capacity(creation.state_carrier_capacity)
-                .lock(packed::Script::from_slice(&creation.scripts.state_lock)?)
-                .type_(Some(packed::Script::from_slice(&creation.scripts.state_type)?).pack())
-                .build(),
-        ];
-        let mut data = vec![Bytes::from(creation.state.encode()?.to_vec())];
-        let registered = creation
-            .scripts
-            .type_scripts
-            .iter()
-            .map(|entry| (entry.type_hash, entry.script.as_slice()))
-            .collect::<BTreeMap<_, _>>();
-        let mut expected_tokens = BTreeMap::new();
+        let mut vaults = Vec::new();
         for vault in &creation.manifest.vaults {
-            let ty = match vault.asset {
+            let type_script = match vault.asset {
                 VaultAsset::Ckb => None,
-                VaultAsset::Xudt(hash) => {
-                    expected_tokens.insert(hash, vault.value.amount);
-                    Some(packed::Script::from_slice(
-                        registered
-                            .get(&hash)
-                            .ok_or_else(|| anyhow!("missing registered Type Script"))?,
-                    )?)
-                }
+                VaultAsset::Xudt(hash) => Some(packed::Script::from_slice(
+                    &creation
+                        .scripts
+                        .type_scripts
+                        .iter()
+                        .find(|entry| entry.type_hash == hash)
+                        .context("missing registered Type Script")?
+                        .script,
+                )?),
             };
-            outputs.push(
-                packed::CellOutput::new_builder()
-                    .capacity(vault.value.capacity()?)
-                    .lock(packed::Script::from_slice(&creation.scripts.vault_lock)?)
-                    .type_(ty.clone().pack())
-                    .build(),
-            );
-            data.push(if ty.is_some() {
+            let output = packed::CellOutput::new_builder()
+                .capacity(vault.value.capacity()?)
+                .lock(packed::Script::from_slice(&creation.scripts.vault_lock)?)
+                .type_(type_script.clone().pack())
+                .build();
+            let data = if type_script.is_some() {
                 Bytes::from(vault.value.amount.to_le_bytes().to_vec())
             } else {
                 Bytes::new()
-            });
+            };
+            vaults.push((output, data));
         }
-        let required_capacity = creation.manifest.vaults.iter().try_fold(
-            creation.state_carrier_capacity,
-            |sum, vault| -> Result<_> {
-                sum.checked_add(vault.value.capacity()?)
-                    .ok_or_else(|| anyhow!("root custody capacity overflow"))
-            },
-        )?;
-        let mut contributed_capacity = 0u64;
-        let mut fee = 0u64;
-        let mut contributed_tokens = BTreeMap::<Bytes32, u128>::new();
-        let mut offset = 0;
-        for funder in &self.funders {
-            let lock = funding_wallet_lock(&public(&funder.pubkey)?)?;
-            let group = &cells[offset..offset + funder.inputs.len()];
-            offset += group.len();
-            let mut remaining = BTreeMap::<Bytes32, u128>::new();
-            let mut capacity = 0u64;
-            for cell in group {
-                ensure!(
-                    cell.output.lock() == lock,
-                    "funding input is not owned by its declared funder"
-                );
-                capacity = capacity
-                    .checked_add(u64::from(cell.output.capacity()))
-                    .ok_or_else(|| anyhow!("input capacity overflow"))?;
-                ensure!(
-                    u64::from(cell.output.capacity())
-                        >= cell
-                            .output
-                            .occupied_capacity(Capacity::bytes(cell.data.len())?)?
-                            .as_u64(),
-                    "funding input below occupied capacity"
-                );
-                if let Some(ty) = cell.output.type_().to_opt() {
-                    let hash: Bytes32 = ty.calc_script_hash().unpack();
-                    ensure!(
-                        registered.contains_key(&hash),
-                        "funding input has an unregistered asset"
-                    );
-                    let amount = u128::from_le_bytes(
-                        cell.data
-                            .as_ref()
-                            .try_into()
-                            .map_err(|_| anyhow!("funding token data must be 16 bytes"))?,
-                    );
-                    let sum = remaining.entry(hash).or_default();
-                    *sum = sum
-                        .checked_add(amount)
-                        .ok_or_else(|| anyhow!("input token overflow"))?;
-                } else {
-                    ensure!(
-                        cell.data.is_empty(),
-                        "plain funding input has unexpected data"
-                    );
-                }
-            }
-            for token in &funder.tokens {
-                let hash = hash(&token.type_hash)?;
-                let amount = decimal_u128(&token.amount)?;
-                ensure!(
-                    registered.contains_key(&hash),
-                    "token contribution is unregistered"
-                );
-                let available = remaining
-                    .get_mut(&hash)
-                    .ok_or_else(|| anyhow!("funder lacks pledged token input"))?;
-                *available = available
-                    .checked_sub(amount)
-                    .ok_or_else(|| anyhow!("funder lacks pledged token quantity"))?;
-                let total = contributed_tokens.entry(hash).or_default();
-                *total = total
-                    .checked_add(amount)
-                    .ok_or_else(|| anyhow!("token contribution overflow"))?;
-            }
-            let contribution = decimal_u64(&funder.ckb_contribution)?;
-            let fee_share = decimal_u64(&funder.fee_contribution)?;
-            contributed_capacity = contributed_capacity
-                .checked_add(contribution)
-                .ok_or_else(|| anyhow!("CKB contribution overflow"))?;
-            fee = fee
-                .checked_add(fee_share)
-                .ok_or_else(|| anyhow!("fee contribution overflow"))?;
-            let mut change = capacity
-                .checked_sub(contribution)
-                .and_then(|value| value.checked_sub(fee_share))
-                .ok_or_else(|| anyhow!("funder lacks pledged CKB capacity"))?;
-            let first_change = outputs.len();
-            for (hash, amount) in remaining {
-                if amount == 0 {
-                    continue;
-                }
-                let output = packed::CellOutput::new_builder()
-                    .lock(lock.clone())
-                    .type_(Some(packed::Script::from_slice(registered[&hash])?).pack())
-                    .build();
-                let occupied = output.occupied_capacity(Capacity::bytes(16)?)?.as_u64();
-                change = change
-                    .checked_sub(occupied)
-                    .ok_or_else(|| anyhow!("funder cannot fund occupied token change"))?;
-                outputs.push(output.as_builder().capacity(occupied).build());
-                data.push(Bytes::from(amount.to_le_bytes().to_vec()));
-            }
-            if change > 0 {
-                let plain = packed::CellOutput::new_builder().lock(lock).build();
-                if change >= plain.occupied_capacity(Capacity::bytes(0)?)?.as_u64() {
-                    outputs.push(plain.as_builder().capacity(change).build());
-                    data.push(Bytes::new());
-                } else if outputs.len() > first_change {
-                    let capacity = u64::from(outputs[first_change].capacity())
-                        .checked_add(change)
-                        .ok_or_else(|| anyhow!("change capacity overflow"))?;
-                    outputs[first_change] = outputs[first_change]
-                        .clone()
-                        .as_builder()
-                        .capacity(capacity)
-                        .build();
-                } else {
-                    return Err(anyhow!("funder plain change is below occupied capacity"));
-                }
-            }
-        }
-        ensure!(
-            contributed_capacity == required_capacity,
-            "CKB contributions must equal exact root custody plus State carrier: required {required_capacity}"
-        );
-        ensure!(
-            contributed_tokens == expected_tokens,
-            "per-Type contributions must equal exact root custody"
-        );
-        ensure!(
-            fee > 0 && fee <= max_fee,
-            "root fee is zero or exceeds max_fee"
-        );
-        let input_capacity = cells.iter().try_fold(0u64, |sum, cell| {
-            sum.checked_add(u64::from(cell.output.capacity()))
-                .ok_or_else(|| anyhow!("total input capacity overflow"))
-        })?;
-        let output_capacity = outputs.iter().try_fold(fee, |sum, output| {
-            sum.checked_add(u64::from(output.capacity()))
-                .ok_or_else(|| anyhow!("total output capacity overflow"))
-        })?;
-        ensure!(
-            input_capacity == output_capacity,
-            "root capacity accounting mismatch"
-        );
         let evidence = encode_multi_asset_witness(
             &creation.manifest,
             &creation.settlement,
@@ -538,19 +124,27 @@ impl RootFundingTerms {
         let witness = packed::WitnessArgs::new_builder()
             .output_type(Some(Bytes::from(evidence)).pack())
             .build();
-        let mut tx = TransactionBuilder::default()
-            .set_cell_deps(decode_dependency_records(&self.cell_deps)?);
-        for point in points {
-            tx = tx.input(
-                packed::CellInput::new_builder()
-                    .previous_output(point)
-                    .build(),
-            );
-        }
-        for (output, value) in outputs.into_iter().zip(data) {
-            tx = tx.output(output).output_data(value.pack());
-        }
-        let transaction = tx.witness(witness.as_bytes()).build().data();
+        let (transaction, fee) = build_wallet_funding(
+            &self.funders,
+            cells,
+            FundingCustody {
+                state: (
+                    packed::CellOutput::new_builder()
+                        .capacity(creation.state_carrier_capacity)
+                        .lock(packed::Script::from_slice(&creation.scripts.state_lock)?)
+                        .type_(
+                            Some(packed::Script::from_slice(&creation.scripts.state_type)?).pack(),
+                        )
+                        .build(),
+                    Bytes::from(creation.state.encode()?.to_vec()),
+                ),
+                vaults,
+                type_scripts: creation.scripts.type_scripts.clone(),
+            },
+            decode_dependency_records(&self.cell_deps)?,
+            witness,
+            max_fee,
+        )?;
         let draft = RootFundingDraft {
             schema: "morph.multi_asset_root_draft.v1".to_string(),
             transaction_hex: canonical_hex(transaction.as_slice()),
@@ -568,13 +162,61 @@ impl RootFundingTerms {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn root_funds_pending_conditions_as_business_value_without_borrowing_reserve() {
+        let (mut terms, authority, cells, chain) = fixture(1, true);
+        let before = terms.creation(chain, authority).unwrap();
+        let mut settlement = before.settlement.clone();
+        settlement.payouts[0].values[0].business_ckb -= 1_000_000_000;
+        let pending = ConditionalBatch {
+            batch_id: [71; 32],
+            application_context_commitment: [72; 32],
+            participants: std::array::from_fn(|i| ConditionalParticipant {
+                settlement_lock_hash: settlement.participant_lock_hashes[i],
+                settled_capacity: settlement.payouts[0].values[i].capacity().unwrap(),
+            }),
+            transfers: vec![ConditionalTransferSpec {
+                transfer_id: [73; 32],
+                payer_lock_hash: settlement.participant_lock_hashes[0],
+                hash_algorithm: ConditionalHashAlgorithm::Sha256,
+                payment_hash: derive_conditional_payment_hash(
+                    ConditionalHashAlgorithm::Sha256,
+                    &[74; 32],
+                )
+                .unwrap(),
+                amount: 1_000_000_000,
+                refund_after_block: 100,
+            }],
+        };
+        settlement.capability = MultiAssetSettlementCapability::CkbConditional {
+            batch_code_hash: [75; 32],
+            batch_hash_type: 2,
+            batch: Box::new(pending),
+        };
+        terms.descriptor_hex = canonical_hex(&settlement.encode().unwrap());
+        let prepared = terms.build(chain, authority, &cells, 100_000_000).unwrap();
+        assert_eq!(prepared.creation.manifest, before.manifest);
+        assert_eq!(
+            prepared.creation.state_carrier_capacity,
+            before.state_carrier_capacity
+        );
+        assert_eq!(prepared.creation.settlement, settlement);
+        let (decoded, _) = prepared.draft.evidence().unwrap();
+        assert_eq!(decoded.manifest, before.manifest);
+        assert_eq!(decoded.settlement.capability, settlement.capability);
+        terms.funders[0].ckb_contribution =
+            (decimal_u64(&terms.funders[0].ckb_contribution).unwrap() - 1).to_string();
+        assert!(terms.build(chain, authority, &cells, 100_000_000).is_err());
+    }
+
     pub(crate) fn fixture(
         count: usize,
         plain: bool,
     ) -> (
         RootFundingTerms,
         RootAuthorityHashes,
-        Vec<RootFundingCell>,
+        Vec<FundingCell>,
         Bytes32,
     ) {
         let draft = crate::multi_asset_funding::tests::draft_fixture();
@@ -633,10 +275,10 @@ pub(crate) mod tests {
         };
         for i in 0..2 {
             let key = k256::ecdsa::SigningKey::from_slice(&[i as u8 + 11; 32]).unwrap();
-            terms.funders.push(RootFunder {
+            terms.funders.push(FundingWallet {
                 pubkey: canonical_hex(key.verifying_key().to_encoded_point(true).as_bytes()),
                 inputs: (0..count.max(1))
-                    .map(|j| RootInput {
+                    .map(|j| FundingInput {
                         tx_hash: canonical_hex(&[40 + i as u8 * 10 + j as u8; 32]),
                         index: 0,
                     })
@@ -654,7 +296,7 @@ pub(crate) mod tests {
                             })
                             .unwrap();
                         let total = payout.values[0].amount + payout.values[1].amount;
-                        RootTokenContribution {
+                        TokenContribution {
                             type_hash: canonical_hex(ty.calc_script_hash().as_slice()),
                             amount: (if i == 0 { total / 2 } else { total - total / 2 })
                                 .to_string(),
@@ -700,7 +342,7 @@ pub(crate) mod tests {
                 } else {
                     Bytes::new()
                 };
-                cells.push(RootFundingCell {
+                cells.push(FundingCell {
                     point: input.point().unwrap(),
                     output: packed::CellOutput::new_builder()
                         .capacity(100_000_000_000u64)
@@ -713,11 +355,7 @@ pub(crate) mod tests {
         }
         (terms, authority, cells, chain)
     }
-    fn assert_refunds(
-        terms: &RootFundingTerms,
-        cells: &[RootFundingCell],
-        tx: &packed::Transaction,
-    ) {
+    fn assert_refunds(terms: &RootFundingTerms, cells: &[FundingCell], tx: &packed::Transaction) {
         let mut offset = 0;
         for funder in &terms.funders {
             let group = &cells[offset..offset + funder.inputs.len()];
@@ -820,9 +458,9 @@ pub(crate) mod tests {
         let (terms, authority, mut cells, chain) = fixture(2, false);
         let funder = &terms.funders[0];
         let lock = funding_wallet_lock(&public(&funder.pubkey).unwrap()).unwrap();
-        let minimum = |cell: &RootFundingCell| {
+        let minimum = |cell: &FundingCell| {
             cell.output
-                .occupied_capacity(Capacity::bytes(16).unwrap())
+                .occupied_capacity(ckb_types::core::Capacity::bytes(16).unwrap())
                 .unwrap()
                 .as_u64()
         };

@@ -87,7 +87,8 @@ impl SpliceTerms {
         let settlement = MultiAssetSettlement::decode(&decode_hex(
             &self.descriptor_hex,
             wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
-                + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN,
+                + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN
+                + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN,
         )?)?;
         ensure!(
             self.new_type_scripts_hex.len() <= wire::MULTI_ASSET_MAX_VAULTS,
@@ -144,33 +145,7 @@ impl SpliceTerms {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let vaults = settlement
-            .payouts
-            .iter()
-            .map(|payout| -> Result<_> {
-                let a = payout.values[0];
-                let b = payout.values[1];
-                Ok(MultiAssetVault {
-                    asset: payout.asset.clone(),
-                    lock_hash: blake2b256(&scripts.vault_lock),
-                    value: MultiAssetValue {
-                        reserve: a
-                            .reserve
-                            .checked_add(b.reserve)
-                            .ok_or_else(|| anyhow!("reserve overflow"))?,
-                        business_ckb: a
-                            .business_ckb
-                            .checked_add(b.business_ckb)
-                            .ok_or_else(|| anyhow!("business capacity overflow"))?,
-                        amount: a
-                            .amount
-                            .checked_add(b.amount)
-                            .ok_or_else(|| anyhow!("token amount overflow"))?,
-                    },
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let manifest = MultiAssetManifest { vaults };
+        let manifest = settlement.custody_manifest(blake2b256(&scripts.vault_lock))?;
         let mut state = current.state.clone();
         state.header.funding_epoch = state
             .header
@@ -246,7 +221,7 @@ impl SpliceDraft {
         current: &MultiAssetRecoveryPackage,
         recovery: &MultiAssetRecoveryPackage,
         transaction: &packed::Transaction,
-    ) -> Result<(Self, MultiAssetSpliceProposal)> {
+    ) -> Result<(Self, MultiAssetSpliceProposal, StateAuthorization)> {
         recovery.validate()?;
         let witness_bytes = transaction
             .witnesses()
@@ -325,7 +300,7 @@ impl SpliceDraft {
             plan.encode_witness(current, &authorization)? == bridge_bytes.as_ref(),
             "splice witness differs from signed intent"
         );
-        Ok((draft, plan))
+        Ok((draft, plan, authorization))
     }
     pub fn transaction(&self) -> Result<packed::Transaction> {
         ensure!(self.schema == SCHEMA, "unsupported splice draft schema");
@@ -510,17 +485,7 @@ pub fn write_transaction(
         "{prefix}-{}.tx",
         hex::encode(transaction.calc_tx_hash().as_slice())
     ));
-    let _lock = crate::packages::try_lock_private_path(&path)?
-        .ok_or_else(|| anyhow!("funding transaction artifact is busy"))?;
-    if path.exists() {
-        ensure!(
-            std::fs::read(&path)? == transaction.as_slice(),
-            "splice export path already holds different witnesses"
-        );
-        std::fs::File::open(&path)?.sync_all()?;
-    } else {
-        crate::packages::write_private_atomic(&path, transaction.as_slice())?;
-    }
+    crate::persistence::write_private_immutable(&path, transaction.as_slice())?;
     Ok(path)
 }
 
@@ -729,11 +694,59 @@ pub(crate) fn fixture_draft(current: &MultiAssetRecoveryPackage) -> SpliceDraft 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use ckb_types::bytes::Bytes;
 
-    fn sdk_splice_fixture() -> serde_json::Value {
+    #[test]
+    fn conditional_splice_terms_fund_pending_business_without_touching_reserve() {
+        let source = crate::conditional_packages::fixture_source_package().unwrap();
+        let current = source.recovery().unwrap();
+        let flows = current
+            .manifest
+            .vaults
+            .iter()
+            .map(|vault| MultiAssetSpliceFlow {
+                asset: vault.asset.clone(),
+                deposit: MultiAssetValue::default(),
+                withdrawal: MultiAssetValue::default(),
+            })
+            .collect::<Vec<_>>();
+        let terms = SpliceTerms {
+            schema: "morph.multi_asset_splice_terms.v1".into(),
+            descriptor_hex: canonical_hex(&current.settlement.encode().unwrap()),
+            flows_hex: canonical_hex(&encode_multi_asset_splice_flows(&flows).unwrap()),
+            new_type_scripts_hex: current
+                .scripts
+                .type_scripts
+                .iter()
+                .map(|entry| canonical_hex(&entry.script))
+                .collect(),
+            withdrawal_lock_hex: "0x".into(),
+            cell_deps: source.cell_deps,
+        };
+        let next = terms
+            .funding(
+                &current,
+                &MultiAssetOutPoint {
+                    tx_hash: [40; 32],
+                    index: 0,
+                },
+            )
+            .unwrap();
+        for (before, after) in current.manifest.vaults.iter().zip(&next.manifest.vaults) {
+            assert_eq!(before.asset, after.asset);
+            assert_eq!(before.value, after.value);
+        }
+        next.settlement.validate_against(&next.manifest).unwrap();
+        assert_eq!(next.manifest.vaults[0].value.business_ckb, 10_000_000_000);
+        assert_ne!(
+            next.state.header.funding_anchor,
+            current.state.header.funding_anchor
+        );
+    }
+
+    pub(crate) fn sdk_splice_fixture() -> serde_json::Value {
         use crate::multi_asset_funding::root_collection_tests::signed_receipts;
         use crate::multi_asset_packages::StoredMultiAssetPackage;
         let stored = crate::multi_asset_packages::fixture_package().unwrap();
@@ -856,7 +869,7 @@ mod tests {
             .unwrap();
             let current = current.recovery().unwrap();
             let recovery = recovery.recovery().unwrap();
-            let (reconstructed, plan) =
+            let (reconstructed, plan, _) =
                 SpliceDraft::from_signed_transaction(&current, &recovery, &tx).unwrap();
             assert_eq!(
                 reconstructed.transaction().unwrap().raw().as_slice(),

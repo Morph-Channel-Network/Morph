@@ -26,20 +26,20 @@ is necessary evidence, but it is not enough for mainnet.
 | --- | --- | --- |
 | Independent protocol review | External review of state, vault, sponsor, splice, and factory rules. | Open. |
 | Independent script review | Review of no-std CKB parsing, cell selection, since handling, and error paths. | Open. |
-| Multi-asset channel profile | Versioned multi-Vault authority, complete-set retirement, per-type conservation, capacity accounting, and end-to-end recovery for multiple xUDT types in one channel. | Bilateral layout 2 / descriptor 4 has host/script/CKB-VM, CLI/SDK and Hub recovery evidence. Native activation, wallet/sponsor publication, bounded fees/RBF, complete settlement and canonical dispute/reorg recovery are verified. Native splice supports a real-node 2→1→2 roundtrip, keyless replay, confirmed same-session switching, guarded signing and explicit refresh. Independent initial signing, confirmed root handoff, exact keyless funding replay and bounded supervision verify transition alerts and expiring health. Public root construction and per-wallet signing have real-node three-funder evidence. Pooled publication/failover, terminal abort tracking, application/Hub orchestration, multi-asset Factory/conditions, release qualification and independent review remain open. See [wire profile](multi-asset-wire.md), [splice](multi-asset-splice.md) and [supervision runbook](runbooks/signer-supervision.md). |
+| Current channel / Factory capabilities | One State/Vault-set lifecycle, independent Type accounting, complete recovery, localized Factory operations and private child delivery. | Current channel layout 2 / descriptor 5 and Factory layout 2 have host, CLI/SDK and local CKB-VM evidence. Native funding/splice, independent journals, exact-body Factory requests, private child delivery, keyless submission and current watcher service are implemented. Current actual-node acceptance includes root/activation, metadata and custody changes, reduced escape/proof refresh, private child exits and parent retirement. Updated full CI, the expanded five-case matrix and release artifacts must still be evaluated together. Independent review, pooled publication/failover, terminal abort tracking and production operational qualification remain open. See [coverage](current-protocol-coverage.md), [migration status](unified-protocol-migration.md), [wire](multi-asset-wire.md) and [watch service](runbooks/current-watch-service.md). |
 | Exact Vault provenance | Activation/rotation binds every bilateral and Factory Vault to its exact CKB OutPoint; clone/substitution negatives pass. | Implemented and locally verified; independent review remains open. |
 | Factory state sovereignty | FactoryState uses the type-bound Morph StateLock; participant/reduced proofs, rather than a fee payer's secp lock, authorise state transitions. | Implemented for the sole unpublished Factory shape; independent review remains open. |
-| Factory child provenance | A FactoryProof child StateType commits and verifies the exact input FactoryType script hash that authorises materialisation. | Implemented with a CKB-VM negative test; independent review remains open. |
-| State-carrier conservation | Multi-asset updates and activation preserve carrier capacity exactly. Existing single-Vault/Factory activation consumes exactly 10,000 shannons and its splice/exit successors reserve that amount until those physical paths are migrated. | Implemented and covered by CKB-VM negative tests; independent review remains open. |
+| Factory child provenance | A current Factory child StateType commits and verifies the exact input FactoryType script hash that authorises materialisation. | Implemented with a CKB-VM negative test; independent review remains open. |
+| State-carrier conservation | Current channel and Factory updates/activation preserve carrier capacity exactly. Fees are external; reduced Factory successors retain the collective carrier and full parent materialisation retirement refunds it explicitly. | Implemented and covered by CKB-VM negative tests; independent review remains open. |
 | Timed payment commit | The bilateral backend rejects commits before preparation and at/after the signed intent expiry. Conditional batches enforce preimages and absolute-block refunds in CKB-VM. | Implemented for bounded CKB batches; xUDT conditions and production watchtower broadcast remain open. |
 | Morph-backed routed edge | A provider-neutral edge and minimal Fiber hook prove real routed/MPP traffic against live Morph materialisation and failure callbacks. | Open; current real Fiber route is not Morph-backed. |
 | RGB++ proof and reorg pipeline | Bitcoin proof, CKB binding/leap, confirmation, quarantine, and rollback evidence for admitted RGB++ assets. | Open. |
-| Reproducible release artefacts | CI-built script ELFs, data hashes, signed release manifests, and clean rebuild instructions. | Implemented for the bounded Factory devnet candidate: committed CKB data-hash manifest, deterministic bundle, successful clean main-branch CI upload, and provenance attestation. An independent external rebuild and release-owner sign-off remain required evidence. |
+| Reproducible release artefacts | CI-built script ELFs, data hashes, signed release manifests, and clean rebuild instructions. | Release tooling, data-hash manifests and provenance checks exist. The current consolidation changes binaries and requires fresh complete CI/report/manifest evidence. An independent external rebuild and release-owner sign-off remain open. |
 | Supply-chain warning closure | Remove or formally review current upstream warnings (`memmap2` and `lru 0.7` through dev-only `ckb-testtool` and unmaintained `proc-macro-error2`). | Open; policy gates pass with narrow reviewed waivers, but upstream warnings remain. |
-| Candidate dependency migration | Close fresh dependency advisories without expanding the waiver list. | TLS/QUIC/root-certificate and Tokio dependencies have been patched in the candidate lockfile. Audit still rejects `crypto-bigint` 0.5.5 ([RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387)) through RustCrypto/Biscuit and `faster-hex` 0.6.1 ([RUSTSEC-2026-0306](https://rustsec.org/advisories/RUSTSEC-2026-0306)) through CKB/Molecule. Compatible crypto and CKB/toolchain migrations remain open; no new waivers were added. |
-| Mainnet-like fee evidence | Repeated runs under realistic fee pressure and transaction-size budgets. | A deterministic local gate now reads the CKB estimator/pool floor, rejects below-floor submissions, and proves bounded RBF. Repeated public-network measurements remain open. |
+| Candidate dependency migration | Close fresh dependency advisories without expanding the waiver list. | TLS/QUIC/root-certificate and Tokio dependencies have been patched in the candidate lockfile. The graph still contains `crypto-bigint` 0.5.5 ([RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387)) through RustCrypto/Biscuit and `faster-hex` 0.6.1 ([RUSTSEC-2026-0306](https://rustsec.org/advisories/RUSTSEC-2026-0306)) through CKB/Molecule. The current Makefile explicitly lists narrow waivers and their removal conditions for these and other upstream advisories. Compatible crypto and CKB/toolchain migrations, removal/review of those waivers and fresh supply-chain evidence remain release gates. |
+| Mainnet-like fee evidence | Repeated runs under realistic fee pressure and transaction-size budgets. | Historical local evidence includes a gate that reads the CKB estimator/pool floor, rejects below-floor submissions, and proves bounded RBF. Repeated public-network measurements remain open. |
 | Reorg and delay evidence | Watchtower and publication behaviour under delayed observations and chain reorg scenarios. | Canonical cursor reset/rescan plus injected delay and IntegrationTest truncate/alternate-chain recovery now pass locally. Repeated public-network evidence remains open. |
-| Multi-operator watchtower evidence | At least two independent operators following documented procedures. | Two least-privilege local operators with distinct keys, SponsorCells, stores, cursors, profiles, and attempt logs pass the deterministic contention gate. Independent hosts, RPC providers, and administrators remain open. |
+| Multi-operator watchtower evidence | At least two independent operators following documented procedures. | Historical local evidence has two least-privilege operators with distinct keys, SponsorCells, stores, cursors, profiles, and attempt logs pass the deterministic contention gate. Independent hosts, RPC providers, and administrators remain open. |
 | Operational runbooks | Key handling, package retention, alert response, rollback, incident response, and upgrade procedures. | Implemented for the controlled-devnet candidate with a repository-side rehearsal; independent operator rehearsal remains open. |
 | Value-limit policy | Explicit caps tied to evidence level and operator readiness. | Implemented as a machine-checked, dated, no-real-assets devnet envelope. Any public testnet/mainnet or real-asset policy remains open. |
 
@@ -60,19 +60,19 @@ Local evidence covers:
 - monotonic State Cell progression;
 - authentic State Cell requirements for vault finalisation;
 - per-cell sponsor budget, exact fee attribution, and clean-change boundaries;
-- CKB and CKB+xUDT settlement descriptors;
+- one current descriptor with ordinary and bounded CKB-conditional capabilities;
 - splice funding-anchor and vault-set transitions;
 - factory full-participant signatures;
 - exact bilateral/Factory Vault content commitments plus canonical OutPoint
   activation, preservation, rotation, and clone-substitution negatives;
-- bounded reduced-rights, sparse-Merkle, reduced-exit, factory-splice, and
-  reduced-splice proof bodies carried by `WitnessEnvelope`;
+- one compact localized-rights proof path over current Factory custody, with
+  reduced rights, deposits, releases and child materialisation;
 - type-bound FactoryState locking, with fee signatures isolated to independent
-  fee inputs and reduced exit constructible from the counterparty public key;
-- FactoryProof child State creation bound to the exact authorising FactoryType
+  fee inputs and one touched member authorizing reduced paths without another member key;
+- current Factory child State creation bound to the exact authorising FactoryType
   input identity;
-- exact State/Factory carrier-capacity deltas across ordinary update,
-  activation, splice, and exit paths;
+- exact State/Factory carrier preservation/refund across updates, activation,
+  splice and materialisation, with external fee/funding isolation;
 - expected failure paths for malformed or attack-shaped transactions.
 - node-informed publication fees, durable attempt reconciliation, and successful
   CKB RBF after learning an unknown competing transaction's replacement floor;

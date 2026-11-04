@@ -1,6 +1,6 @@
 //! Durable state negotiation. The stable sidecar lock survives atomic snapshot
 //! replacement; OS locks release on process death. No private key is persisted.
-use crate::packages::{lock_private_path, required_option};
+use crate::persistence::{lock_private_path, required_option};
 #[cfg(test)]
 use std::fs;
 use std::fs::File;
@@ -30,7 +30,8 @@ const PROPOSAL_SCHEMA: &str = "morph.multi_asset_proposal.v1";
 const RETIRED_SCHEMA: &str = "morph.multi_asset_retired_session.v1";
 const MAX_SESSION_BYTES: u64 = 512 * 1024;
 const MAX_DESCRIPTOR_BYTES: usize = wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
-    + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN;
+    + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN
+    + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN;
 
 #[derive(Debug, Subcommand)]
 pub enum SessionCommand {
@@ -79,6 +80,11 @@ pub enum SessionCommand {
     CancelSplice,
     /// Save the complete future recovery package before exporting the signed splice.
     ExportSplice {
+        #[arg(long)]
+        store_dir: PathBuf,
+    },
+    /// Save the complete future exit offline, even without the last bridge receipt.
+    ExportSpliceRecovery {
         #[arg(long)]
         store_dir: PathBuf,
     },
@@ -383,6 +389,22 @@ impl StoredSession {
     fn validate_lineage_binding(&self) -> Result<()> {
         self.validate_guard_shape()?;
         if let Some(lineage) = &self.lineage
+            && let SessionOrigin::Factory {
+                origin_evidence,
+                origin_evidence_hash,
+            } = &lineage.origin
+        {
+            let origin = crate::factory_child_origin::read(origin_evidence, origin_evidence_hash)?;
+            origin.verify_current(self.backend.current())?;
+            let (_, transaction, _) = origin.decode()?;
+            ensure!(
+                lineage.evidence.funding.transaction_hash
+                    == canonical_hex(transaction.calc_tx_hash().as_slice()),
+                "Factory checkpoint differs from exact parent transaction"
+            );
+            self.validate_funding_dependencies(&transaction)?;
+        }
+        if let Some(lineage) = &self.lineage
             && let SessionOrigin::Root {
                 funding_transaction_hex,
             } = &lineage.origin
@@ -500,11 +522,70 @@ impl StoredSession {
         witnesses[0] = witness.as_bytes().pack();
         Ok(transaction.as_builder().witnesses(witnesses.pack()).build())
     }
+    /// Import public receipts from the exact fully authorized transaction.
+    /// The caller separately establishes canonical inclusion before handoff.
+    #[cfg(any(feature = "devnet", test))]
+    fn reconcile_splice_transaction(&mut self, transaction: &packed::Transaction) -> Result<()> {
+        ensure!(
+            self.backend.splice_signature_reserved(),
+            "cannot reconcile an unsealed old signing context"
+        );
+        let plan = self
+            .backend
+            .splice_proposal()
+            .ok_or_else(|| anyhow!("no pending splice"))?;
+        let draft = self
+            .splice_draft
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing exact splice body"))?;
+        draft.validate_plan(self.backend.current(), plan)?;
+        ensure!(
+            transaction.raw().as_slice() == draft.transaction()?.raw().as_slice(),
+            "observed splice differs from locally authorized raw body"
+        );
+        let recovery = plan.initial_recovery(self.backend.current())?;
+        let (_, _, authorization) =
+            SpliceDraft::from_signed_transaction(self.backend.current(), &recovery, transaction)?;
+        let mut reconciled = self.backend.clone();
+        for signature in authorization.signatures {
+            reconciled.record_splice_signature(signature)?;
+        }
+        reconciled.validate()?;
+        self.backend = reconciled;
+        Ok(())
+    }
+    fn export_splice_recovery(&self, store_dir: &Path) -> Result<PathBuf> {
+        let plan = self
+            .backend
+            .splice_proposal()
+            .ok_or_else(|| anyhow!("no pending splice"))?;
+        let draft = self
+            .splice_draft
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing exact splice body"))?;
+        draft.validate_plan(self.backend.current(), plan)?;
+        let recovery = plan.initial_recovery(self.backend.current())?;
+        let transaction = draft.transaction()?;
+        let package = StoredMultiAssetPackage::from_recovery(
+            &recovery,
+            &transaction
+                .raw()
+                .cell_deps()
+                .into_iter()
+                .collect::<Vec<_>>(),
+        )?;
+        packages::write_package(store_dir, &package)
+    }
     fn summary(&self) -> Result<Value> {
         let payouts = self
             .backend
             .proposal()
             .map(|proposal| payout_summary(&proposal.settlement));
+        let proposal_capability = self
+            .backend
+            .proposal()
+            .map(|proposal| packages::capability_summary(&proposal.settlement, &proposal.state))
+            .transpose()?;
         let splice = self.backend.splice_proposal().map(|plan| -> Result<Value> {
             Ok(json!({"signing_digest": canonical_hex(&self.backend.splice_intent_digest()?),
                 "transaction_hash":canonical_hex(&plan.transaction_hash),
@@ -512,6 +593,7 @@ impl StoredSession {
                 "new_funding_anchor":canonical_hex(&plan.new_state.header.funding_anchor),
                 "new_funding_epoch":plan.new_state.header.funding_epoch.to_string(),
                 "new_payouts":payout_summary(&plan.new_settlement),
+                "new_capability":packages::capability_summary(&plan.new_settlement, &plan.initial_recovery_contents(self.backend.current())?.state)?,
                 "funding_flows":plan.flows.iter().map(|flow| json!({"type_hash":asset_summary(&flow.asset), "deposit":value_summary(flow.deposit), "withdrawal":value_summary(flow.withdrawal)})).collect::<Vec<_>>(),
                 "initial_recovery_digest":canonical_hex(&self.backend.splice_funding_signing_digest(MultiAssetSpliceFundingKind::InitialRecovery)?),
                 "creation_signature_count":plan.new_state_authorization.signatures.len(),
@@ -524,7 +606,7 @@ impl StoredSession {
             "reserved_state_number":self.backend.reservation().state_number.to_string(),
             "reserved_signing_digest":canonical_hex(&self.backend.reservation().signing_digest),
             "proposal":self.backend.proposal().map(ProposalMessage::from_proposal).transpose()?,
-            "proposal_payouts":payouts,"splice":splice,"lineage":self.lineage,
+            "proposal_payouts":payouts,"proposal_capability":proposal_capability,"splice":splice,"lineage":self.lineage,
             "participant_lock_hashes":self.backend.current().settlement.participant_lock_hashes.map(|hash| canonical_hex(&hash)),
             "signature_count":self.backend.signatures().len()}),
         )
@@ -538,7 +620,7 @@ fn save(path: &Path, session: &StoredSession) -> Result<()> {
         bytes.len() as u64 <= MAX_SESSION_BYTES,
         "session exceeds byte limit"
     );
-    crate::packages::write_private_atomic(path, &bytes)
+    crate::persistence::write_private_atomic(path, &bytes)
 }
 
 #[cfg(test)]
@@ -574,6 +656,7 @@ fn run_loaded(
     let requires_chain = match &command {
         SessionCommand::Inspect
         | SessionCommand::ExportSplice { .. }
+        | SessionCommand::ExportSpliceRecovery { .. }
         | SessionCommand::ExportRootFunding { .. }
         | SessionCommand::Cancel
         | SessionCommand::CancelSplice => false,
@@ -700,17 +783,12 @@ fn run_loaded(
             session.summary()
         }
         SessionCommand::ExportSplice { store_dir } => {
+            let recovery_path = session.export_splice_recovery(&store_dir)?;
             let signed = session.signed_splice()?;
             let plan = session
                 .backend
                 .splice_proposal()
                 .ok_or_else(|| anyhow!("no pending splice"))?;
-            let recovery = plan.initial_recovery(session.backend.current())?;
-            let package = StoredMultiAssetPackage::from_recovery(
-                &recovery,
-                &signed.raw().cell_deps().into_iter().collect::<Vec<_>>(),
-            )?;
-            let recovery_path = packages::write_package(&store_dir, &package)?;
             let transaction_path = crate::multi_asset_splice_transaction::write_transaction(
                 &store_dir,
                 &signed,
@@ -719,6 +797,9 @@ fn run_loaded(
             Ok(
                 json!({"recovery_package":recovery_path,"transaction":transaction_path,"transaction_hash":canonical_hex(&plan.transaction_hash)}),
             )
+        }
+        SessionCommand::ExportSpliceRecovery { store_dir } => {
+            Ok(json!({"recovery_package":session.export_splice_recovery(&store_dir)?}))
         }
         SessionCommand::ExportRootFunding { store_dir } => {
             let lineage = session
@@ -786,7 +867,7 @@ pub(super) fn observe_for_supervision(
     budget: std::time::Duration,
 ) -> crate::multi_asset_supervision::Observation {
     use crate::multi_asset_supervision::{Identity, Observation, Status};
-    let _lock = match crate::packages::try_lock_private_path(path) {
+    let _lock = match crate::persistence::try_lock_private_path(path) {
         Ok(Some(lock)) => lock,
         Ok(None) => return Observation::failure(Status::Busy, "signer journal is busy"),
         Err(error) => return Observation::failure(Status::Unreadable, error),
@@ -907,6 +988,86 @@ pub(crate) fn confirm_initial_funding(
 }
 
 #[cfg(feature = "devnet")]
+pub(crate) struct FactoryChildHandoff<'a> {
+    pub origin: crate::factory_child_origin::FactoryChildOrigin,
+    pub local_pubkey: Vec<u8>,
+    pub rpc_url: &'a str,
+    pub state_out_point: &'a str,
+    pub min_confirmations: u64,
+    pub archive_dir: &'a Path,
+    pub contracts_dir: &'a Path,
+}
+
+/// Only the dedicated initial-exit ceremony may call this while holding this
+/// path's stable lock. There is no operational import/new-path bootstrap.
+#[cfg(feature = "devnet")]
+pub(crate) fn confirm_factory_child(
+    path: &Path,
+    options: FactoryChildHandoff<'_>,
+) -> Result<Value> {
+    use crate::devnet::multi_asset_splice_operator::{
+        FactoryChildContext, confirm_factory_child_context,
+    };
+    let (request, transaction, initial) = options.origin.decode()?;
+    let endpoint = crate::multi_asset_session_chain::rpc_endpoint(options.rpc_url)?;
+    let contracts_dir = options.contracts_dir.canonicalize()?;
+    let rpc = crate::rpc::CkbRpcClient::new(endpoint.as_str())?;
+    let evidence = confirm_factory_child_context(
+        &rpc,
+        FactoryChildContext {
+            request: &request,
+            child_index: options.origin.child_index,
+            initial: &initial,
+            current: &initial,
+            transaction: &transaction,
+            state_out_point: options.state_out_point,
+            min_confirmations: options.min_confirmations,
+            contracts_dir: &contracts_dir,
+        },
+    )?;
+    let bytes = serde_json::to_vec(&options.origin)?;
+    ensure!(
+        bytes.len() <= crate::factory_child_origin::MAX_ORIGIN_BYTES,
+        "Factory child origin exceeds byte bound"
+    );
+    let origin_hash = canonical_hex(&blake2b256(&bytes));
+    let origin_path = std::path::absolute(options.archive_dir)?.join(format!(
+        "factory-child-origin-{}.json",
+        origin_hash.trim_start_matches("0x")
+    ));
+    ensure!(
+        origin_path != std::path::absolute(path)?,
+        "child origin archive cannot replace active signer authority"
+    );
+    crate::persistence::write_private_immutable(&origin_path, &bytes)?;
+    let origin_path = origin_path.canonicalize()?;
+    let package = options.origin.initial_recovery;
+    let recovery_path = packages::write_package(&options.archive_dir.join("recovery"), &package)?;
+    let session = StoredSession {
+        schema: SESSION_SCHEMA.to_string(),
+        backend: MultiAssetChannelBackend::new(initial, options.local_pubkey)?,
+        cell_deps: package.cell_deps,
+        splice_draft: None,
+        lineage: Some(SessionLineage {
+            rpc_url: endpoint.to_string(),
+            contracts_dir,
+            min_confirmations: options.min_confirmations,
+            evidence,
+            origin: SessionOrigin::Factory {
+                origin_evidence: origin_path.clone(),
+                origin_evidence_hash: origin_hash,
+            },
+        }),
+    };
+    session.package()?;
+    session.verify_chain()?;
+    save(path, &session)?;
+    Ok(
+        json!({"initial_recovery_package":recovery_path,"factory_origin_archive":origin_path,"session":session.summary()?}),
+    )
+}
+
+#[cfg(feature = "devnet")]
 struct Confirmation<'a> {
     rpc_url: &'a str,
     state_out_point: &'a str,
@@ -916,21 +1077,38 @@ struct Confirmation<'a> {
 }
 
 #[cfg(feature = "devnet")]
-fn confirm_splice(path: &Path, session: StoredSession, options: Confirmation<'_>) -> Result<Value> {
-    use crate::devnet::multi_asset_splice_operator::{ConfirmationOptions, confirm_context};
+fn confirm_splice(
+    path: &Path,
+    mut session: StoredSession,
+    options: Confirmation<'_>,
+) -> Result<Value> {
+    use crate::devnet::multi_asset_splice_operator::{
+        ConfirmationOptions, canonical_transaction, confirm_context,
+    };
     let endpoint = crate::multi_asset_session_chain::rpc_endpoint(options.rpc_url)?;
     ensure!(
         session.backend.splice_signature_reserved(),
         "cannot retire an unsealed signer journal"
     );
-    let transaction = session.signed_splice()?;
+    let rpc = crate::rpc::CkbRpcClient::new(endpoint.as_str())?;
+    let transaction_hash = session
+        .backend
+        .splice_proposal()
+        .ok_or_else(|| anyhow!("no pending splice"))?
+        .transaction_hash;
+    let (transaction, _) = canonical_transaction(
+        &rpc,
+        ckb_types::H256::from(transaction_hash),
+        options.min_confirmations,
+    )?;
+    session.reconcile_splice_transaction(&transaction)?;
+    save(path, &session)?;
     let plan = session
         .backend
         .splice_proposal()
         .ok_or_else(|| anyhow!("no pending splice"))?;
     let recovery = plan.initial_recovery(session.backend.current())?;
     let contracts_dir = options.contracts_dir.canonicalize()?;
-    let rpc = crate::rpc::CkbRpcClient::new(endpoint.as_str())?;
     let evidence = confirm_context(
         &rpc,
         ConfirmationOptions {
@@ -963,7 +1141,7 @@ fn confirm_splice(path: &Path, session: StoredSession, options: Confirmation<'_>
         );
         File::open(&retired)?.sync_all()?;
     } else {
-        crate::packages::write_private_atomic(&retired, &bytes)?;
+        crate::persistence::write_private_atomic(&retired, &bytes)?;
     }
     let retired = retired.canonicalize()?;
     ensure!(
@@ -1024,6 +1202,26 @@ fn refresh_chain(
         .ok_or_else(|| anyhow!("session has no canonical lineage"))?;
     let rpc = crate::rpc::CkbRpcClient::new(&lineage.rpc_url)?;
     let evidence = match &lineage.origin {
+        SessionOrigin::Factory {
+            origin_evidence,
+            origin_evidence_hash,
+        } => {
+            let origin = crate::factory_child_origin::read(origin_evidence, origin_evidence_hash)?;
+            let (request, transaction, initial) = origin.decode()?;
+            crate::devnet::multi_asset_splice_operator::confirm_factory_child_context(
+                &rpc,
+                crate::devnet::multi_asset_splice_operator::FactoryChildContext {
+                    request: &request,
+                    child_index: origin.child_index,
+                    initial: &initial,
+                    current: session.backend.current(),
+                    transaction: &transaction,
+                    state_out_point,
+                    min_confirmations: lineage.min_confirmations,
+                    contracts_dir: &lineage.contracts_dir,
+                },
+            )?
+        }
         SessionOrigin::Root { .. } => {
             confirm_root_context(
                 &rpc,
@@ -1241,6 +1439,119 @@ mod tests {
     }
 
     #[test]
+    fn withheld_bridge_receipt_does_not_block_offline_exit_or_public_receipt_reconciliation() {
+        let (dir, alice, original, package) = fixture();
+        let bob = dir.join("bob.json");
+        init(&alice, &original, 1);
+        init(&bob, &original, 2);
+        let draft =
+            crate::multi_asset_splice_transaction::fixture_draft(&package.recovery().unwrap());
+        let draft_path = dir.join("draft.json");
+        fs::write(&draft_path, serde_json::to_vec(&draft).unwrap()).unwrap();
+        for path in [&alice, &bob] {
+            run(
+                path,
+                SessionCommand::PrepareSplice {
+                    draft: draft_path.clone(),
+                },
+            )
+            .unwrap();
+        }
+        for target in [
+            SigningTarget::SpliceCreation,
+            SigningTarget::SpliceRecovery,
+            SigningTarget::SpliceBridge,
+        ] {
+            let receipts: Vec<_> = [(&alice, 1), (&bob, 2)]
+                .into_iter()
+                .map(|(path, key)| {
+                    let receipt = run(
+                        path,
+                        SessionCommand::Sign {
+                            target,
+                            private_key: hex::encode([key; 32]),
+                        },
+                    )
+                    .unwrap();
+                    let file = dir.join(format!("{target:?}-{key}.json"));
+                    fs::write(&file, serde_json::to_vec(&receipt).unwrap()).unwrap();
+                    file
+                })
+                .collect();
+            run(
+                &bob,
+                SessionCommand::AddSignature {
+                    target,
+                    signature: receipts[0].clone(),
+                },
+            )
+            .unwrap();
+            if !matches!(target, SigningTarget::SpliceBridge) {
+                run(
+                    &alice,
+                    SessionCommand::AddSignature {
+                        target,
+                        signature: receipts[1].clone(),
+                    },
+                )
+                .unwrap();
+            }
+        }
+        let before = fs::read(&alice).unwrap();
+        let mut waiting: StoredSession = serde_json::from_slice(&before).unwrap();
+        assert_eq!(waiting.backend.splice_signatures().len(), 1);
+        assert!(waiting.signed_splice().is_err());
+        let exported = run_loaded(
+            &alice,
+            SessionCommand::ExportSpliceRecovery {
+                store_dir: dir.join("offline"),
+            },
+            serde_json::from_slice(&before).unwrap(),
+            |_| Err(anyhow!("old context already spent")),
+        )
+        .unwrap();
+        let exit =
+            packages::read_package(Path::new(exported["recovery_package"].as_str().unwrap()))
+                .unwrap()
+                .recovery()
+                .unwrap();
+        exit.validate().unwrap();
+        assert_eq!(fs::read(&alice).unwrap(), before);
+        let peer: StoredSession = serde_json::from_slice(&fs::read(&bob).unwrap()).unwrap();
+        let transaction = peer.signed_splice().unwrap();
+        let changed = transaction
+            .clone()
+            .as_builder()
+            .raw(transaction.raw().as_builder().version(1u32).build())
+            .build();
+        assert!(waiting.reconcile_splice_transaction(&changed).is_err());
+        assert_eq!(waiting.backend.splice_signatures().len(), 1);
+        let mut witnesses = transaction.witnesses().into_iter().collect::<Vec<_>>();
+        witnesses[0] = Bytes::new().pack();
+        let unsigned = transaction
+            .clone()
+            .as_builder()
+            .witnesses(witnesses.pack())
+            .build();
+        assert!(waiting.reconcile_splice_transaction(&unsigned).is_err());
+        assert_eq!(waiting.backend.splice_signatures().len(), 1);
+        waiting.reconcile_splice_transaction(&transaction).unwrap();
+        waiting.reconcile_splice_transaction(&transaction).unwrap();
+        assert_eq!(
+            waiting.backend.splice_signatures(),
+            peer.backend.splice_signatures()
+        );
+        assert!(waiting.backend.cancel_splice().is_err());
+        save(&alice, &waiting).unwrap();
+        let restored: StoredSession = serde_json::from_slice(&fs::read(&alice).unwrap()).unwrap();
+        assert_eq!(
+            restored.signed_splice().unwrap().as_slice(),
+            transaction.as_slice()
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn splice_session_collects_three_signature_roles_and_exports_exact_body_and_exit() {
         let (dir, alice, original, package) = fixture();
         let bob = dir.join("bob.json");
@@ -1342,7 +1653,7 @@ mod tests {
         assert_eq!(recovery.state.header.state_number, 1);
         let bytes = fs::read(result["transaction"].as_str().unwrap()).unwrap();
         let tx = packed::Transaction::from_slice(&bytes).unwrap();
-        let (_, verified) =
+        let (_, verified, _) =
             SpliceDraft::from_signed_transaction(&package.recovery().unwrap(), &recovery, &tx)
                 .unwrap();
         assert_eq!(
@@ -1560,6 +1871,33 @@ mod tests {
         );
         fs::remove_dir_all(dir).unwrap();
     }
+}
+
+#[cfg(test)]
+pub(crate) fn sdk_update_fixture() -> Value {
+    let recovery = packages::fixture_package().unwrap().recovery().unwrap();
+    let key = SigningKey::from_slice(&[1u8; 32]).unwrap();
+    let public = key
+        .verifying_key()
+        .to_encoded_point(true)
+        .as_bytes()
+        .to_vec();
+    let mut backend = MultiAssetChannelBackend::new(recovery, public.clone()).unwrap();
+    let mut settlement = backend.current().settlement.clone();
+    settlement.payouts[0].values[0].amount -= 1;
+    settlement.payouts[0].values[1].amount += 1;
+    let proposal = backend.propose(settlement).unwrap();
+    let reservation = backend.reserve_signature().unwrap();
+    let signature: Signature = key.sign_prehash(&reservation.signing_digest).unwrap();
+    let signature = ParticipantSignature {
+        pubkey_sec1: public,
+        signature: signature.to_bytes().to_vec(),
+    };
+    backend.record_signature(signature.clone()).unwrap();
+    json!({
+        "proposal": ProposalMessage::from_proposal(&proposal).unwrap(),
+        "signature": SignatureMessage::new(&reservation.signing_digest, &signature),
+    })
 }
 
 #[cfg(test)]

@@ -110,8 +110,19 @@ impl FactoryMultiAssetMaterialisation {
         }
         Ok(raw)
     }
-    pub fn encode_intent(&self) -> MultiAssetResult<Vec<u8>> {
+    /// Public preparation before the two child parties exchange private exits.
+    /// This validates current contents/partition only; parent journal signing
+    /// still requires complete delivery attestations from both child parties.
+    pub fn encode_public_intent(&self) -> MultiAssetResult<Vec<u8>> {
+        for child in &self.children {
+            child.recovery.validate_contents()?;
+        }
         let raw = self.encode_intent_unchecked()?;
+        wire::FactoryMaterialisationIntent::parse(&raw)?;
+        Ok(raw)
+    }
+    pub fn encode_intent(&self) -> MultiAssetResult<Vec<u8>> {
+        let raw = self.encode_public_intent()?;
         let intent = wire::FactoryMaterialisationIntent::parse(&raw)?;
         for (i, child) in self.children.iter().enumerate() {
             let recovery = encode_multi_asset_signatures(&child.recovery.authorization)?;
@@ -138,22 +149,18 @@ impl FactoryMultiAssetMaterialisation {
             return mismatch();
         }
         let intent = self.encode_intent()?;
-        let signatures = encode_factory_all_participant_signatures(authorization)?;
-        let mut raw = wire::FACTORY_MATERIALISATION_MAGIC.to_vec();
-        raw.extend_from_slice(&1u16.to_le_bytes());
-        raw.extend_from_slice(&0u16.to_le_bytes());
-        raw.extend_from_slice(&(intent.len() as u32).to_le_bytes());
-        raw.extend_from_slice(&(signatures.len() as u32).to_le_bytes());
-        raw.extend_from_slice(&(self.children.len() as u16).to_le_bytes());
-        raw.extend_from_slice(&0u16.to_le_bytes());
-        raw.extend_from_slice(&intent);
-        raw.extend_from_slice(&signatures);
-        for child in &self.children {
-            let signatures = encode_multi_asset_signatures(&child.recovery.authorization)?;
-            let signatures = BilateralSignatureWitness::parse(&signatures)?;
-            raw.extend_from_slice(signatures.pubkey(0));
-            raw.extend_from_slice(signatures.pubkey(1));
-        }
+        let keys = self
+            .children
+            .iter()
+            .map(|child| {
+                let members = &child.recovery.authorization.signatures;
+                [
+                    members[0].pubkey_sec1.clone(),
+                    members[1].pubkey_sec1.clone(),
+                ]
+            })
+            .collect::<Vec<_>>();
+        let raw = encode_factory_materialisation_public_witness(&intent, authorization, &keys)?;
         wire::FactoryMaterialisationWitness::parse(&raw)?.verify()?;
         Ok(raw)
     }
@@ -165,6 +172,39 @@ impl FactoryMultiAssetMaterialisation {
         self.encode_witness(expected_participants, authorization)
             .map(|_| ())
     }
+}
+
+/// Encode the sole public materialisation frame, including unsigned preparation.
+/// This verifies public membership/intent shape, not delivery of private exits
+/// or Factory signatures; the signing ceremony and `verify()` supply those.
+pub fn encode_factory_materialisation_public_witness(
+    intent: &[u8],
+    authorization: &[FactoryParticipantSignature],
+    child_keys: &[[Vec<u8>; 2]],
+) -> MultiAssetResult<Vec<u8>> {
+    let parsed = wire::FactoryMaterialisationIntent::parse(intent)?;
+    if child_keys.len() != parsed.child_count()
+        || child_keys.iter().flatten().any(|key| key.len() != 33)
+    {
+        return mismatch();
+    }
+    let signatures = encode_factory_all_participant_signatures(authorization)?;
+    let mut raw = wire::FACTORY_MATERIALISATION_MAGIC.to_vec();
+    raw.extend_from_slice(&1u16.to_le_bytes());
+    raw.extend_from_slice(&0u16.to_le_bytes());
+    raw.extend_from_slice(&(intent.len() as u32).to_le_bytes());
+    raw.extend_from_slice(&(signatures.len() as u32).to_le_bytes());
+    raw.extend_from_slice(&(child_keys.len() as u16).to_le_bytes());
+    raw.extend_from_slice(&0u16.to_le_bytes());
+    raw.extend_from_slice(intent);
+    raw.extend_from_slice(&signatures);
+    for keys in child_keys {
+        for key in keys {
+            raw.extend_from_slice(key);
+        }
+    }
+    wire::FactoryMaterialisationWitness::parse(&raw)?.validate_public_contents()?;
+    Ok(raw)
 }
 
 pub fn encode_factory_all_participant_signatures(
@@ -201,7 +241,7 @@ pub fn encode_factory_multi_asset_state_witness(
         encode_factory_all_participant_signatures(authorization)?
     };
     let mut raw = wire::FACTORY_MULTI_ASSET_STATE_WITNESS_MAGIC.to_vec();
-    raw.extend_from_slice(&1u16.to_le_bytes());
+    raw.extend_from_slice(&wire::FACTORY_MULTI_ASSET_STATE_WITNESS_FORMAT.to_le_bytes());
     raw.extend_from_slice(&0u16.to_le_bytes());
     raw.extend_from_slice(&kind.to_le_bytes());
     raw.extend_from_slice(&(points.len() as u16).to_le_bytes());

@@ -20,8 +20,8 @@ use crate::multi_asset_session::payout_summary;
 use crate::multi_asset_signatures::{SIGNATURE_SCHEMA, SignatureMessage, channel_signing_key};
 use crate::multi_asset_splice_transaction::{TransactionKind, write_transaction};
 #[cfg(feature = "devnet")]
-use crate::packages::try_lock_private_path;
-use crate::packages::{lock_private_path, write_private_atomic};
+use crate::persistence::try_lock_private_path;
+use crate::persistence::{lock_private_path, write_private_atomic};
 
 const SCHEMA: &str = "morph.multi_asset_funding_session.v1";
 const MAX_BYTES: u64 = 768 * 1024;

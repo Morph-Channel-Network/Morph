@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
-use crate::packages::canonical_hex32;
+use crate::canonical_fields::canonical_hex32;
 
 const WATCH_POLICY_SCHEMA: &str = "morph.watchtower_policy";
 

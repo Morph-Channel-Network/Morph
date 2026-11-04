@@ -7,86 +7,71 @@ use anyhow::{Context, Result, anyhow, ensure};
 use serde::{Deserialize, Serialize};
 
 use crate::smoke_report::{
-    self, DevnetSmokeAssertionReport, DevnetSmokeBudgetLimits, DevnetSmokeProofProfileBudgetLimit,
-    DevnetSmokeSummary, DevnetSmokeTransactionBudgetLimit,
+    self, DevnetSmokeAssertionReport, DevnetSmokeBudgetLimits, DevnetSmokeSummary,
 };
 
 const MAX_SPONSOR_STATE_NUMBER_SPAN: u64 = crate::devnet::DEFAULT_SPONSOR_MAX_STATE_NUMBER
     - crate::devnet::DEFAULT_SPONSOR_MIN_STATE_NUMBER;
-const DEVNET_STATEFUL_BUDGET_SCHEMA: &str = "morph.devnet_stateful_budget";
-const DEVNET_STATEFUL_SCENARIO_SCHEMA: &str = "morph.devnet_stateful_scenario";
-const DEVNET_AUDIT_PROFILE_SCHEMA: &str = "morph.devnet_audit_profile";
+const DEVNET_STATEFUL_SCENARIO_SCHEMA: &str = "morph.current_stateful_scenario.v1";
+const DEVNET_AUDIT_PROFILE_SCHEMA: &str = "morph.current_stateful_audit.v1";
+const MAX_SCENARIO_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_EVIDENCE_BYTES: u64 = 64 * 1024 * 1024;
 
 const REQUIRED_SCENARIOS: &[&str] = &[
-    "bilateral_supersede_watchtower_finalise",
-    "bilateral_direct_publish_finalise",
-    "sponsor_fee_pressure",
-    "splice_lifecycle_matrix",
-    "factory_lifecycle_matrix",
-    "factory_splice_then_exit",
-    "watchtower_operations",
-    "extreme_state_value_cases",
-    "negative_attack_matrix",
+    "root_funding",
+    "bilateral_splice",
+    "bilateral_unilateral_close",
+    "factory_reduced_escape",
+    "factory_deposit",
+    "factory_children",
+    "factory_terminal_materialisation",
+    "watch_service_reorg",
+    "maximum_asset_lifecycle",
 ];
-const FACTORY_LIFECYCLE_REQUIRED_CHECKS: &[&str] = &[
-    "factory-smoke",
-    "factory/open",
-    "factory/update",
-    "factory/exit-channel",
-    "factory/child-publish",
-    "factory/child-finalise",
-    "factory-reduced-rights-smoke",
-    "factory-reduced-rights-tight-smoke",
-    "factory-merkle-update-smoke",
-    "factory-merkle-update-tight-smoke",
-    "factory-reduced-exit-smoke",
-    "factory-reduced-exit-asymmetric-smoke",
-    "factory-reduced-xudt-exit-smoke",
-    "factory-reduced-xudt-exit-full-smoke",
-    "factory-reduced-xudt-exit-one-sided-smoke",
-    "factory-xudt/smoke",
-    "factory-xudt-one-sided/smoke",
-];
-const FACTORY_SPLICE_REQUIRED_CHECKS: &[&str] = &[
-    "factory-splice-in-smoke",
-    "factory-splice-out-smoke",
-    "factory-splice-in-asymmetric-smoke",
-    "factory-splice-out-asymmetric-smoke",
-    "factory-reduced-splice-in-smoke",
-    "factory-reduced-splice-out-smoke",
-    "factory-reduced-splice-in-asymmetric-smoke",
-    "factory-reduced-splice-out-asymmetric-smoke",
-    "factory-reduced-xudt-splice-in-smoke",
-    "factory-reduced-xudt-splice-out-smoke",
-    "factory-xudt-splice-in-smoke",
-    "factory-xudt-splice-out-smoke",
-    "factory/child-finalise",
-];
-const FACTORY_EXTREME_REQUIRED_CHECKS: &[&str] = &[
-    "factory-reduced-rights-tight-smoke",
-    "factory-merkle-update-tight-smoke",
-    "factory-xudt-one-sided/smoke",
-    "factory-reduced-xudt-exit-one-sided-smoke",
-    "factory-reduced-xudt-splice-in-one-sided-smoke",
-    "factory-reduced-xudt-splice-out-one-sided-smoke",
-    "factory-xudt-splice-in-one-sided-smoke",
-    "factory-xudt-splice-out-one-sided-smoke",
-];
-const FACTORY_NEGATIVE_REQUIRED_FAILURES: &[(&str, &str, i64)] = &[
-    (
-        "factory-xudt-negative/smoke",
-        "SettlementOutputMismatch",
-        28,
-    ),
-    (
-        "factory-reduced-xudt-negative-exit-smoke",
-        "SettlementOutputMismatch",
-        28,
-    ),
-];
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StatefulEvidenceDimension {
+    State,
+    Assets,
+    Persistence,
+    Reorg,
+    Authority,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatefulEvidenceAssertion {
+    pub dimension: StatefulEvidenceDimension,
+    pub artifact: String,
+    pub pointer: String,
+    pub expected: serde_json::Value,
+}
+fn required_dimensions(scenario: &str) -> Result<BTreeSet<StatefulEvidenceDimension>> {
+    use StatefulEvidenceDimension::*;
+    ensure!(
+        REQUIRED_SCENARIOS.contains(&scenario),
+        "unknown current stateful scenario {scenario}"
+    );
+    let mut required = BTreeSet::from([State, Assets, Authority]);
+    if matches!(
+        scenario,
+        "root_funding"
+            | "bilateral_splice"
+            | "factory_reduced_escape"
+            | "factory_children"
+            | "factory_terminal_materialisation"
+            | "watch_service_reorg"
+    ) {
+        required.insert(Persistence);
+    }
+    if scenario == "watch_service_reorg" {
+        required.insert(Reorg);
+    }
+    Ok(required)
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DevnetStatefulSummary {
+    pub schema: String,
     pub directory: String,
     pub manifest: BTreeMap<String, String>,
     pub scenarios: Vec<StatefulScenarioSummary>,
@@ -106,6 +91,7 @@ pub struct StatefulScenarioSummary {
     pub required_committed_checks: Vec<String>,
     pub expected_failures: Vec<StatefulExpectedFailure>,
     pub coverage: Vec<String>,
+    pub assertions: Vec<StatefulEvidenceAssertion>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -121,6 +107,7 @@ pub struct DevnetStatefulAssertionReport {
     pub referenced_artifacts: usize,
     pub required_committed_checks: usize,
     pub expected_failures: usize,
+    pub evidence_assertions: usize,
     pub sponsor_policy_windows: usize,
     pub wide_sponsor_policy_windows: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -164,6 +151,7 @@ pub struct AuditFamilySummary {
     pub missing_scenarios: Vec<String>,
     pub missing_checks: Vec<String>,
     pub missing_failures: Vec<StatefulExpectedFailure>,
+    pub evidence_errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -174,60 +162,44 @@ pub struct AuditFamilyStatusDelta {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StatefulScenarioFile {
     schema: String,
     scenario_id: String,
     category: String,
     description: String,
-    #[serde(default)]
     references: Vec<String>,
-    #[serde(default)]
     required_committed_checks: Vec<String>,
-    #[serde(default)]
     expected_failures: Vec<StatefulExpectedFailure>,
-    #[serde(default)]
     coverage: Vec<String>,
+    assertions: Vec<StatefulEvidenceAssertion>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DevnetAuditProfile {
     schema: String,
     pub families: Vec<AuditFamilyProfile>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AuditFamilyProfile {
     pub id: String,
     pub severity: String,
     pub principle: String,
-    #[serde(default)]
     pub required_coverage_tags: Vec<String>,
-    #[serde(default)]
     pub required_scenarios: Vec<String>,
-    #[serde(default)]
     pub required_committed_checks: Vec<String>,
-    #[serde(default)]
     pub required_expected_failures: Vec<StatefulExpectedFailure>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StatefulExpectedFailure {
     pub check: String,
     pub morph_error: String,
     pub error_code: i64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct DevnetStatefulBudgetProfile {
-    schema: String,
-    max_total_cycles: Option<u64>,
-    max_tx_cycles: Option<u64>,
-    max_total_bytes: Option<usize>,
-    max_tx_bytes: Option<usize>,
-    #[serde(default)]
-    transactions: Vec<DevnetSmokeTransactionBudgetLimit>,
-    #[serde(default)]
-    proof_profiles: Vec<DevnetSmokeProofProfileBudgetLimit>,
 }
 
 #[derive(Debug, Clone)]
@@ -253,6 +225,7 @@ pub fn summarize_devnet_stateful_with_audit(
             required_committed_checks: scenario.required_committed_checks.clone(),
             expected_failures: scenario.expected_failures.clone(),
             coverage: scenario.coverage.clone(),
+            assertions: scenario.assertions.clone(),
         })
         .collect::<Vec<_>>();
     let smoke_dir = dir.join("smoke");
@@ -265,6 +238,7 @@ pub fn summarize_devnet_stateful_with_audit(
         .map(wide_sponsor_policy_windows)
         .unwrap_or_default();
     let mut summary = DevnetStatefulSummary {
+        schema: "morph.current_stateful_summary.v1".to_string(),
         directory: dir.display().to_string(),
         manifest,
         scenarios,
@@ -282,8 +256,7 @@ pub fn summarize_devnet_stateful_with_audit(
 }
 
 pub fn read_audit_profile(path: &Path) -> Result<DevnetAuditProfile> {
-    let raw = fs::read(path)
-        .with_context(|| format!("failed to read devnet audit profile {}", path.display()))?;
+    let raw = read_bounded(path, MAX_SCENARIO_BYTES)?;
     let profile: DevnetAuditProfile = serde_json::from_slice(&raw)
         .with_context(|| format!("failed to parse devnet audit profile {}", path.display()))?;
     if profile.schema != DEVNET_AUDIT_PROFILE_SCHEMA {
@@ -308,32 +281,14 @@ pub fn read_audit_profile(path: &Path) -> Result<DevnetAuditProfile> {
     Ok(profile)
 }
 
+/// Stateful and ordinary matrix reports share one current budget schema and
+/// parser. A stateful ledger adds scenario facts, not another resource model.
 pub fn read_stateful_budget_profile(path: &Path) -> Result<DevnetSmokeBudgetLimits> {
-    let raw = fs::read(path).with_context(|| {
+    smoke_report::read_smoke_budget_profile(path).with_context(|| {
         format!(
-            "failed to read devnet stateful budget profile {}",
+            "invalid current stateful acceptance budget {}",
             path.display()
         )
-    })?;
-    let profile: DevnetStatefulBudgetProfile = serde_json::from_slice(&raw).with_context(|| {
-        format!(
-            "failed to parse devnet stateful budget profile {}",
-            path.display()
-        )
-    })?;
-    if profile.schema != DEVNET_STATEFUL_BUDGET_SCHEMA {
-        return Err(anyhow!(
-            "unsupported devnet stateful budget profile schema {}",
-            profile.schema
-        ));
-    }
-    Ok(DevnetSmokeBudgetLimits {
-        max_total_cycles: profile.max_total_cycles,
-        max_tx_cycles: profile.max_tx_cycles,
-        max_total_bytes: profile.max_total_bytes,
-        max_tx_bytes: profile.max_tx_bytes,
-        transactions: profile.transactions,
-        proof_profiles: profile.proof_profiles,
     })
 }
 
@@ -396,6 +351,11 @@ pub fn assert_default_devnet_stateful(
         referenced_artifacts,
         required_committed_checks,
         expected_failures,
+        evidence_assertions: summary
+            .scenarios
+            .iter()
+            .map(|scenario| scenario.assertions.len())
+            .sum(),
         sponsor_policy_windows,
         wide_sponsor_policy_windows: summary.wide_sponsor_policies.len(),
         smoke: smoke_report,
@@ -490,16 +450,17 @@ pub fn render_markdown(summary: &DevnetStatefulSummary) -> String {
         out.push('\n');
     }
     out.push_str("## Scenarios\n\n");
-    out.push_str("| Scenario | Category | References | Required commits | Expected failures |\n");
-    out.push_str("| --- | --- | ---: | ---: | ---: |\n");
+    out.push_str("| Scenario | Category | References | Required commits | Expected failures | Exact evidence assertions |\n");
+    out.push_str("| --- | --- | ---: | ---: | ---: | ---: |\n");
     for scenario in &summary.scenarios {
         out.push_str(&format!(
-            "| {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} |\n",
             table_cell(&scenario.scenario_id),
             table_cell(&scenario.category),
             scenario.references.len(),
             scenario.required_committed_checks.len(),
-            scenario.expected_failures.len()
+            scenario.expected_failures.len(),
+            scenario.assertions.len()
         ));
     }
     out.push('\n');
@@ -511,25 +472,26 @@ pub fn render_markdown(summary: &DevnetStatefulSummary) -> String {
                 summary.unknown_coverage_tags.join("`, `")
             ));
         }
-        out.push_str("| Family | Severity | Status | Missing tags | Missing scenarios | Missing checks | Missing failures |\n");
-        out.push_str("| --- | --- | --- | ---: | ---: | ---: | ---: |\n");
+        out.push_str("| Family | Severity | Status | Missing tags | Missing scenarios | Missing checks | Missing failures | Invalid facts |\n");
+        out.push_str("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |\n");
         for family in &summary.audit_families {
             out.push_str(&format!(
-                "| {} | {} | {} | {} | {} | {} | {} |\n",
+                "| {} | {} | {} | {} | {} | {} | {} | {} |\n",
                 table_cell(&family.id),
                 table_cell(&family.severity),
                 if family.passed { "passed" } else { "missing" },
                 family.missing_tags.len(),
                 family.missing_scenarios.len(),
                 family.missing_checks.len(),
-                family.missing_failures.len()
+                family.missing_failures.len(),
+                family.evidence_errors.len()
             ));
         }
         out.push('\n');
     }
     if let Some(smoke) = &summary.smoke {
         out.push_str("## Underlying Smoke Totals\n\n");
-        out.push_str("| Transactions | Committed | Pending | Script failures | Watchtower alerts | Factory exits | Factory splices | Sponsor policies | Wide sponsor policies |\n");
+        out.push_str("| Transactions | Committed | Pending | Script failures | Watchtower alerts | Current Factory proofs | Cases | Sponsor policies | Wide sponsor policies |\n");
         out.push_str("| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
         out.push_str(&format!(
             "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n\n",
@@ -538,8 +500,8 @@ pub fn render_markdown(summary: &DevnetStatefulSummary) -> String {
             smoke.totals.pending_count,
             smoke.script_failures.len(),
             smoke.watchtower_alerts.len(),
-            smoke.factory_reduced_exits.len(),
-            smoke.factory_splices.len(),
+            smoke.factory_proofs.len(),
+            smoke.cases.len(),
             smoke.sponsor_policies.len(),
             summary.wide_sponsor_policies.len()
         ));
@@ -547,7 +509,7 @@ pub fn render_markdown(summary: &DevnetStatefulSummary) -> String {
     if !summary.wide_sponsor_policies.is_empty() {
         out.push_str("## Wide Sponsor Policies\n\n");
         out.push_str("| Check | Path | Min state | Max state | Span |\n");
-        out.push_str("| --- | --- | ---: | ---: | ---: |\n");
+        out.push_str("| --- | --- | ---: | ---: | ---: | ---: |\n");
         for policy in &summary.wide_sponsor_policies {
             out.push_str(&format!(
                 "| {} | {} | {} | {} | {} |\n",
@@ -609,7 +571,16 @@ fn assert_stateful_summary(summary: &DevnetStatefulSummary) -> Result<()> {
         summary.manifest.get("status").map(String::as_str) == Some("passed"),
         "stateful manifest status is not passed"
     );
+    ensure!(
+        summary.manifest.get("schema").map(String::as_str)
+            == Some("morph.current_stateful_matrix.v1"),
+        "unsupported current stateful ledger manifest schema"
+    );
     let scenario_ids = scenario_id_set(summary);
+    ensure!(
+        scenario_ids.len() == summary.scenarios.len(),
+        "duplicate current stateful scenario id"
+    );
     for required in REQUIRED_SCENARIOS {
         ensure!(
             scenario_ids.contains(*required),
@@ -623,30 +594,12 @@ fn assert_stateful_summary(summary: &DevnetStatefulSummary) -> Result<()> {
             scenario.scenario_id
         );
         for reference in &scenario.references {
-            ensure!(
-                Path::new(reference).is_relative(),
-                "scenario {} reference must be relative: {}",
-                scenario.scenario_id,
-                reference
-            );
-            ensure!(
-                Path::new(reference)
-                    .components()
-                    .all(|component| { !matches!(component, std::path::Component::ParentDir) }),
-                "scenario {} reference must not escape directory: {}",
-                scenario.scenario_id,
-                reference
-            );
-            let path = Path::new(&summary.directory).join(reference);
-            ensure!(
-                path.exists(),
-                "scenario {} referenced artifact does not exist: {}",
-                scenario.scenario_id,
-                reference
-            );
+            artifact_path(Path::new(&summary.directory), reference)?;
         }
     }
-    assert_factory_stateful_acceptance_contract(summary)?;
+    for scenario in &summary.scenarios {
+        assert_scenario_evidence(summary, scenario)?;
+    }
     let smoke = summary
         .smoke
         .as_ref()
@@ -691,88 +644,134 @@ fn assert_stateful_summary(summary: &DevnetStatefulSummary) -> Result<()> {
     Ok(())
 }
 
-fn assert_factory_stateful_acceptance_contract(summary: &DevnetStatefulSummary) -> Result<()> {
-    assert_scenario_requires_committed_checks(
-        summary,
-        "factory_lifecycle_matrix",
-        FACTORY_LIFECYCLE_REQUIRED_CHECKS,
-    )?;
-    assert_scenario_requires_committed_checks(
-        summary,
-        "factory_splice_then_exit",
-        FACTORY_SPLICE_REQUIRED_CHECKS,
-    )?;
-    assert_scenario_requires_committed_checks(
-        summary,
-        "extreme_state_value_cases",
-        FACTORY_EXTREME_REQUIRED_CHECKS,
-    )?;
-    assert_scenario_expects_failures(
-        summary,
-        "negative_attack_matrix",
-        FACTORY_NEGATIVE_REQUIRED_FAILURES,
-    )?;
-    Ok(())
-}
-
-fn assert_scenario_requires_committed_checks(
+fn assert_scenario_evidence(
     summary: &DevnetStatefulSummary,
-    scenario_id: &str,
-    required: &[&str],
+    scenario: &StatefulScenarioSummary,
 ) -> Result<()> {
-    let scenario = scenario_by_id(summary, scenario_id)?;
-    let checks = scenario
-        .required_committed_checks
+    let dimensions = scenario
+        .assertions
         .iter()
-        .map(String::as_str)
+        .map(|assertion| assertion.dimension)
         .collect::<BTreeSet<_>>();
-    let missing = required
-        .iter()
+    let missing = required_dimensions(&scenario.scenario_id)?
+        .difference(&dimensions)
         .copied()
-        .filter(|check| !checks.contains(check))
         .collect::<Vec<_>>();
     ensure!(
         missing.is_empty(),
-        "scenario {scenario_id} missing strict factory committed checks: {:?}",
+        "scenario {} lacks current evidence dimensions: {:?}",
+        scenario.scenario_id,
         missing
     );
+    let mut unique = BTreeSet::new();
+    let mut evidence = BTreeMap::new();
+    for assertion in &scenario.assertions {
+        ensure!(
+            scenario.references.contains(&assertion.artifact),
+            "scenario {} assertion artifact is not a declared reference: {}",
+            scenario.scenario_id,
+            assertion.artifact
+        );
+        ensure!(
+            assertion.pointer.starts_with('/')
+                && unique.insert((&assertion.artifact, &assertion.pointer)),
+            "scenario {} requires unique explicit JSON pointers",
+            scenario.scenario_id
+        );
+        if assertion.dimension == StatefulEvidenceDimension::Assets {
+            ensure!(
+                integral_asset_numbers(&assertion.expected),
+                "scenario {} asset evidence contains floating-point quantities",
+                scenario.scenario_id
+            );
+            let numeric = assertion.expected.as_str().is_some_and(|value| {
+                !value.is_empty()
+                    && value.bytes().all(|byte| byte.is_ascii_digit())
+                    && (value == "0" || !value.starts_with('0'))
+            });
+            ensure!(
+                numeric
+                    || assertion.expected.as_u64().is_some()
+                    || assertion
+                        .expected
+                        .as_object()
+                        .is_some_and(|value| !value.is_empty())
+                    || assertion
+                        .expected
+                        .as_array()
+                        .is_some_and(|value| !value.is_empty()),
+                "scenario {} asset evidence must expose actual values or identities, not a boolean/empty placeholder",
+                scenario.scenario_id
+            );
+        }
+        if !evidence.contains_key(&assertion.artifact) {
+            let path = artifact_path(Path::new(&summary.directory), &assertion.artifact)?;
+            let raw = read_bounded(&path, MAX_EVIDENCE_BYTES)?;
+            let value: serde_json::Value = serde_json::from_slice(&raw)
+                .with_context(|| format!("invalid scenario evidence JSON {}", path.display()))?;
+            evidence.insert(assertion.artifact.clone(), value);
+        }
+        let actual = evidence[&assertion.artifact]
+            .pointer(&assertion.pointer)
+            .ok_or_else(|| {
+                anyhow!(
+                    "scenario {} unresolved evidence pointer {} {}",
+                    scenario.scenario_id,
+                    assertion.artifact,
+                    assertion.pointer
+                )
+            })?;
+        ensure!(
+            actual == &assertion.expected,
+            "scenario {} evidence differs from expected: {} {}",
+            scenario.scenario_id,
+            assertion.artifact,
+            assertion.pointer
+        );
+    }
     Ok(())
 }
-
-fn assert_scenario_expects_failures(
-    summary: &DevnetStatefulSummary,
-    scenario_id: &str,
-    required: &[(&str, &str, i64)],
-) -> Result<()> {
-    let scenario = scenario_by_id(summary, scenario_id)?;
-    let missing = required
-        .iter()
-        .filter(|(check, morph_error, error_code)| {
-            !scenario.expected_failures.iter().any(|failure| {
-                failure.check == *check
-                    && failure.morph_error == *morph_error
-                    && failure.error_code == *error_code
-            })
-        })
-        .map(|(check, morph_error, error_code)| format!("{check} {morph_error} {error_code}"))
-        .collect::<Vec<_>>();
+fn integral_asset_numbers(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Number(number) => number.is_u64() || number.is_i64(),
+        serde_json::Value::Array(values) => values.iter().all(integral_asset_numbers),
+        serde_json::Value::Object(values) => values.values().all(integral_asset_numbers),
+        _ => true,
+    }
+}
+fn artifact_path(directory: &Path, reference: &str) -> Result<std::path::PathBuf> {
+    let path = Path::new(reference);
     ensure!(
-        missing.is_empty(),
-        "scenario {scenario_id} missing strict factory expected failures: {:?}",
-        missing
+        !reference.is_empty()
+            && path.is_relative()
+            && path
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_))),
+        "stateful reference must be a contained relative path: {reference}"
     );
-    Ok(())
+    let directory = directory.canonicalize()?;
+    let path = directory
+        .join(path)
+        .canonicalize()
+        .with_context(|| format!("stateful artifact does not exist: {reference}"))?;
+    ensure!(
+        path.starts_with(&directory) && path.is_file(),
+        "stateful artifact escapes its evidence directory: {reference}"
+    );
+    Ok(path)
 }
-
-fn scenario_by_id<'a>(
-    summary: &'a DevnetStatefulSummary,
-    scenario_id: &str,
-) -> Result<&'a StatefulScenarioSummary> {
-    summary
-        .scenarios
-        .iter()
-        .find(|scenario| scenario.scenario_id == scenario_id)
-        .ok_or_else(|| anyhow!("missing required stateful scenario {scenario_id}"))
+fn read_bounded(path: &Path, max: u64) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let mut raw = Vec::new();
+    std::fs::File::open(path)?
+        .take(max + 1)
+        .read_to_end(&mut raw)?;
+    ensure!(
+        raw.len() as u64 <= max,
+        "stateful artifact exceeds byte bound: {}",
+        path.display()
+    );
+    Ok(raw)
 }
 
 fn assert_stateful_artifact_fresh(summary: &DevnetStatefulSummary) -> Result<()> {
@@ -790,6 +789,14 @@ fn assert_stateful_artifact_fresh_against(
     summary: &DevnetStatefulSummary,
     current_git: &CurrentGitState,
 ) -> Result<()> {
+    ensure!(
+        summary.manifest.get("provenance_phase").map(String::as_str) == Some("pre_build"),
+        "stateful artifact lacks immutable pre-build source provenance"
+    );
+    ensure!(
+        summary.manifest.get("source_unchanged").map(String::as_str) == Some("true"),
+        "stateful artifact source changed during the run"
+    );
     ensure!(
         summary.manifest.get("git_dirty").map(String::as_str) == Some("false"),
         "stateful artifact was produced from a dirty working tree"
@@ -820,9 +827,33 @@ fn current_git_state() -> Result<CurrentGitState> {
         "tracked git worktree inspection failed: {}",
         String::from_utf8_lossy(&status.stderr).trim()
     );
+    let untracked = Command::new("git")
+        .args([
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "crates",
+            "contracts",
+            "scripts",
+            "sdk",
+            "ui",
+            ".github",
+            "Cargo.toml",
+            "Cargo.lock",
+            "Makefile",
+            "rust-toolchain.toml",
+            "AGENTS.md",
+        ])
+        .output()
+        .context("failed to inspect untracked implementation files")?;
+    ensure!(
+        untracked.status.success(),
+        "untracked implementation inspection failed"
+    );
     Ok(CurrentGitState {
         commit: current_git_commit_short()?,
-        dirty: !String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        dirty: !status.stdout.is_empty() || !untracked.stdout.is_empty(),
     })
 }
 
@@ -867,12 +898,13 @@ fn assert_audit_families(
     for family in &summary.audit_families {
         ensure!(
             family.passed,
-            "audit family {} missing evidence: tags {:?}, scenarios {:?}, checks {:?}, failures {:?}",
+            "audit family {} missing evidence: tags {:?}, scenarios {:?}, checks {:?}, failures {:?}, invalid facts {:?}",
             family.id,
             family.missing_tags,
             family.missing_scenarios,
             family.missing_checks,
-            family.missing_failures
+            family.missing_failures,
+            family.evidence_errors
         );
     }
     Ok(())
@@ -911,10 +943,26 @@ fn audit_family_summaries(
                 .filter(|failure| !has_exact_failure(summary, failure))
                 .cloned()
                 .collect::<Vec<_>>();
+            let evidence_errors = family
+                .required_scenarios
+                .iter()
+                .filter_map(|id| {
+                    summary
+                        .scenarios
+                        .iter()
+                        .find(|scenario| &scenario.scenario_id == id)
+                })
+                .filter_map(|scenario| {
+                    assert_scenario_evidence(summary, scenario)
+                        .err()
+                        .map(|error| error.to_string())
+                })
+                .collect::<Vec<_>>();
             let passed = missing_tags.is_empty()
                 && missing_scenarios.is_empty()
                 && missing_checks.is_empty()
-                && missing_failures.is_empty();
+                && missing_failures.is_empty()
+                && evidence_errors.is_empty();
             AuditFamilySummary {
                 id: family.id.clone(),
                 severity: family.severity.clone(),
@@ -924,6 +972,7 @@ fn audit_family_summaries(
                 missing_scenarios,
                 missing_checks,
                 missing_failures,
+                evidence_errors,
             }
         })
         .collect();
@@ -1048,10 +1097,13 @@ fn read_scenario_files(dir: &Path) -> Result<Vec<StatefulScenarioFile>> {
         })
         .collect::<Vec<_>>();
     paths.sort();
+    ensure!(
+        paths.len() <= 32,
+        "too many current stateful scenario files"
+    );
     let mut scenarios = Vec::new();
     for path in paths {
-        let raw = fs::read(&path)
-            .with_context(|| format!("failed to read stateful scenario {}", path.display()))?;
+        let raw = read_bounded(&path, MAX_SCENARIO_BYTES)?;
         let scenario: StatefulScenarioFile = serde_json::from_slice(&raw)
             .with_context(|| format!("failed to parse stateful scenario {}", path.display()))?;
         ensure!(
@@ -1114,10 +1166,7 @@ fn table_cell(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::smoke_report::{
-        DeployedScriptSummary, FactoryLocalExitEvidenceSummary, FactoryMerkleUpdateEvidenceSummary,
-        FactoryProofProfileSummary, FactoryReducedExitEvidenceSummary,
-        FactoryReducedRightsEvidenceSummary, FactorySpliceEvidenceSummary, MetricTotals,
-        SplicePayoutEvidenceSummary, SponsorPolicySummary, TransactionSummary,
+        DeployedScriptSummary, MetricTotals, SponsorPolicySummary, TransactionSummary,
         WatchtowerAlertSummary, WatchtowerServiceSummary,
     };
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1129,7 +1178,7 @@ mod tests {
         let path = dir.join("profile.json");
         fs::write(
             &path,
-            r#"{"schema":"wrong","families":[{"id":"f","severity":"P0","principle":"p"}]}"#,
+            r#"{"schema":"wrong","families":[{"id":"f","severity":"P0","principle":"p","required_coverage_tags":[],"required_scenarios":[],"required_committed_checks":[],"required_expected_failures":[]}]}"#,
         )
         .unwrap();
 
@@ -1138,6 +1187,45 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn current_example_audit_and_budget_only_name_current_scenarios_and_operations() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs");
+        let profile = read_audit_profile(&root.join("devnet-audit-profile.example.json")).unwrap();
+        assert_eq!(profile.families.len(), 11);
+        for family in profile.families {
+            assert!(
+                family
+                    .required_scenarios
+                    .iter()
+                    .all(|id| REQUIRED_SCENARIOS.contains(&id.as_str()))
+            );
+        }
+        let budget =
+            read_stateful_budget_profile(&root.join("devnet-stateful-budget.example.json"))
+                .unwrap();
+        assert!(budget.has_any_limit());
+        assert_eq!(budget.cases.len(), 6);
+        for case in &budget.cases {
+            if case.name == "deployment" {
+                assert_eq!(case.max_tx_cycles, Some(2_000_000));
+                assert_eq!(case.max_tx_bytes, Some(300_000));
+            } else {
+                assert_eq!(case.max_tx_cycles, Some(40_000_000));
+                assert_eq!(case.max_tx_bytes, Some(100_000));
+            }
+        }
+        assert_eq!(budget.proof_profiles.len(), 5);
+        assert!(budget.proof_profiles.iter().all(|proof| {
+            [
+                "root_funding",
+                "ReducedRelease",
+                "ReducedDeposit",
+                "ReducedChild",
+                "materialisation",
+            ]
+            .contains(&proof.operation.as_str())
+        }));
+    }
     #[test]
     fn audit_family_summary_rejects_unknown_coverage_tag() {
         let summary = summary_with_scenario(StatefulScenarioSummary {
@@ -1148,6 +1236,7 @@ mod tests {
             required_committed_checks: vec![],
             expected_failures: vec![],
             coverage: vec!["unknown_tag".to_string()],
+            assertions: vec![],
         });
         let profile = audit_profile(vec![AuditFamilyProfile {
             id: "family-a".to_string(),
@@ -1178,6 +1267,7 @@ mod tests {
             required_committed_checks: vec![],
             expected_failures: vec![],
             coverage: vec!["family-a".to_string()],
+            assertions: vec![],
         });
         let expected_failure = StatefulExpectedFailure {
             check: "negative-check".to_string(),
@@ -1204,15 +1294,11 @@ mod tests {
 
     #[test]
     fn complete_audit_family_passes() {
-        let mut summary = summary_with_scenario(StatefulScenarioSummary {
-            scenario_id: "scenario-a".to_string(),
-            category: "test".to_string(),
-            description: "test".to_string(),
-            references: vec!["a.json".to_string()],
-            required_committed_checks: vec![],
-            expected_failures: vec![],
-            coverage: vec!["family-a".to_string()],
-        });
+        let directory = temp_dir("complete-current-audit");
+        let mut scenario = current_evidence_scenario(&directory, "root_funding");
+        scenario.coverage = vec!["family-a".to_string()];
+        let mut summary = summary_with_scenario(scenario);
+        summary.directory = directory.display().to_string();
         summary.smoke = Some(smoke_summary(
             vec![transaction("committed-check", "Committed")],
             vec![script_failure("negative-check", "ExpectedError", 42)],
@@ -1222,7 +1308,7 @@ mod tests {
             severity: "P0".to_string(),
             principle: "principle".to_string(),
             required_coverage_tags: vec!["family-a".to_string()],
-            required_scenarios: vec!["scenario-a".to_string()],
+            required_scenarios: vec!["root_funding".to_string()],
             required_committed_checks: vec!["committed-check".to_string()],
             required_expected_failures: vec![StatefulExpectedFailure {
                 check: "negative-check".to_string(),
@@ -1234,6 +1320,11 @@ mod tests {
         let audit = audit_family_summaries(&summary, &profile);
         assert!(audit.unknown_coverage_tags.is_empty());
         assert!(audit.families[0].passed);
+        summary.scenarios[0].assertions[0].expected = serde_json::json!("forged");
+        let forged = audit_family_summaries(&summary, &profile);
+        assert!(!forged.families[0].passed);
+        assert!(!forged.families[0].evidence_errors.is_empty());
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -1252,80 +1343,172 @@ mod tests {
         assert!(wide_sponsor_policy_message(&wide).contains("wide-window $.sponsor_policy"));
     }
 
-    #[test]
-    fn complete_factory_stateful_contract_passes() {
-        let summary = summary_with_scenarios(vec![
-            scenario_with_committed_checks(
-                "factory_lifecycle_matrix",
-                FACTORY_LIFECYCLE_REQUIRED_CHECKS,
-            ),
-            scenario_with_committed_checks(
-                "factory_splice_then_exit",
-                FACTORY_SPLICE_REQUIRED_CHECKS,
-            ),
-            scenario_with_committed_checks(
-                "extreme_state_value_cases",
-                FACTORY_EXTREME_REQUIRED_CHECKS,
-            ),
-            factory_negative_scenario(),
-        ]);
-
-        assert_factory_stateful_acceptance_contract(&summary).unwrap();
+    fn current_evidence_scenario(directory: &Path, id: &str) -> StatefulScenarioSummary {
+        let evidence = serde_json::json!({"state":"settling","assets":{"ckb":"100"},"persistence":true,"reorg":true,"authority":true});
+        fs::create_dir_all(directory).unwrap();
+        fs::write(
+            directory.join("evidence.json"),
+            serde_json::to_vec(&evidence).unwrap(),
+        )
+        .unwrap();
+        StatefulScenarioSummary {
+            scenario_id: id.to_string(),
+            category: "current".to_string(),
+            description: "current actual evidence assertions".to_string(),
+            references: vec!["evidence.json".to_string()],
+            required_committed_checks: vec![],
+            expected_failures: vec![],
+            coverage: vec![],
+            assertions: required_dimensions(id)
+                .unwrap()
+                .into_iter()
+                .map(|dimension| {
+                    let key = match dimension {
+                        StatefulEvidenceDimension::State => "state",
+                        StatefulEvidenceDimension::Assets => "assets",
+                        StatefulEvidenceDimension::Persistence => "persistence",
+                        StatefulEvidenceDimension::Reorg => "reorg",
+                        StatefulEvidenceDimension::Authority => "authority",
+                    };
+                    StatefulEvidenceAssertion {
+                        dimension,
+                        artifact: "evidence.json".to_string(),
+                        pointer: format!("/{key}"),
+                        expected: evidence[key].clone(),
+                    }
+                })
+                .collect(),
+        }
     }
-
     #[test]
-    fn rejects_missing_factory_stateful_required_check() {
-        let mut lifecycle = scenario_with_committed_checks(
-            "factory_lifecycle_matrix",
-            FACTORY_LIFECYCLE_REQUIRED_CHECKS,
-        );
-        lifecycle
-            .required_committed_checks
-            .retain(|check| check != "factory-reduced-xudt-exit-one-sided-smoke");
-        let summary = summary_with_scenarios(vec![
-            lifecycle,
-            scenario_with_committed_checks(
-                "factory_splice_then_exit",
-                FACTORY_SPLICE_REQUIRED_CHECKS,
-            ),
-            scenario_with_committed_checks(
-                "extreme_state_value_cases",
-                FACTORY_EXTREME_REQUIRED_CHECKS,
-            ),
-            factory_negative_scenario(),
-        ]);
-
-        let err = assert_factory_stateful_acceptance_contract(&summary).unwrap_err();
+    fn current_scenarios_require_actual_values_and_every_safety_dimension() {
+        let directory = temp_dir("current-dimensions");
+        for id in REQUIRED_SCENARIOS {
+            let scenario = current_evidence_scenario(&directory, id);
+            let mut summary = summary_with_scenario(scenario.clone());
+            summary.directory = directory.display().to_string();
+            assert_scenario_evidence(&summary, &scenario).unwrap();
+            for dimension in required_dimensions(id).unwrap() {
+                let mut missing = scenario.clone();
+                missing
+                    .assertions
+                    .retain(|assertion| assertion.dimension != dimension);
+                assert!(
+                    assert_scenario_evidence(&summary, &missing).is_err(),
+                    "missing {dimension:?} for {id}"
+                );
+            }
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn current_evidence_rejects_wrong_missing_duplicate_and_boolean_asset_facts() {
+        let directory = temp_dir("current-forged-evidence");
+        let scenario = current_evidence_scenario(&directory, "root_funding");
+        let mut summary = summary_with_scenario(scenario.clone());
+        summary.directory = directory.display().to_string();
+        let mut wrong = scenario.clone();
+        wrong.assertions[0].expected = serde_json::json!("wrong");
         assert!(
-            err.to_string()
-                .contains("factory-reduced-xudt-exit-one-sided-smoke")
+            assert_scenario_evidence(&summary, &wrong)
+                .unwrap_err()
+                .to_string()
+                .contains("differs from expected")
         );
+        let mut absent = scenario.clone();
+        absent.assertions[0].pointer = "/missing".to_string();
+        assert!(
+            assert_scenario_evidence(&summary, &absent)
+                .unwrap_err()
+                .to_string()
+                .contains("unresolved")
+        );
+        let mut duplicate = scenario.clone();
+        duplicate.assertions.push(duplicate.assertions[0].clone());
+        assert!(
+            assert_scenario_evidence(&summary, &duplicate)
+                .unwrap_err()
+                .to_string()
+                .contains("unique explicit")
+        );
+        let mut boolean = scenario.clone();
+        boolean
+            .assertions
+            .iter_mut()
+            .find(|assertion| assertion.dimension == StatefulEvidenceDimension::Assets)
+            .unwrap()
+            .expected = serde_json::json!(true);
+        assert!(
+            assert_scenario_evidence(&summary, &boolean)
+                .unwrap_err()
+                .to_string()
+                .contains("actual values")
+        );
+        let mut rounded = scenario.clone();
+        rounded
+            .assertions
+            .iter_mut()
+            .find(|assertion| assertion.dimension == StatefulEvidenceDimension::Assets)
+            .unwrap()
+            .expected = serde_json::json!({"token_amount":1e38});
+        assert!(
+            assert_scenario_evidence(&summary, &rounded)
+                .unwrap_err()
+                .to_string()
+                .contains("floating-point")
+        );
+        let mut undeclared = scenario.clone();
+        undeclared.assertions[0].artifact = "elsewhere.json".to_string();
+        assert!(
+            assert_scenario_evidence(&summary, &undeclared)
+                .unwrap_err()
+                .to_string()
+                .contains("declared reference")
+        );
+        fs::remove_dir_all(directory).unwrap();
     }
-
     #[test]
-    fn rejects_missing_factory_stateful_expected_failure() {
-        let mut negative = factory_negative_scenario();
-        negative
-            .expected_failures
-            .retain(|failure| failure.check != "factory-xudt-negative/smoke");
-        let summary = summary_with_scenarios(vec![
-            scenario_with_committed_checks(
-                "factory_lifecycle_matrix",
-                FACTORY_LIFECYCLE_REQUIRED_CHECKS,
-            ),
-            scenario_with_committed_checks(
-                "factory_splice_then_exit",
-                FACTORY_SPLICE_REQUIRED_CHECKS,
-            ),
-            scenario_with_committed_checks(
-                "extreme_state_value_cases",
-                FACTORY_EXTREME_REQUIRED_CHECKS,
-            ),
-            negative,
-        ]);
-
-        let err = assert_factory_stateful_acceptance_contract(&summary).unwrap_err();
-        assert!(err.to_string().contains("factory-xudt-negative/smoke"));
+    fn current_evidence_rejects_escaping_paths_and_old_placeholder_schema() {
+        let directory = temp_dir("current-contained-evidence");
+        fs::create_dir_all(&directory).unwrap();
+        assert!(artifact_path(&directory, "../outside.json").is_err());
+        assert!(artifact_path(&directory, "/outside.json").is_err());
+        let raw = serde_json::json!({"schema":DEVNET_STATEFUL_SCENARIO_SCHEMA,"scenario_id":"root_funding","category":"current","description":"evidence","references":[],"required_committed_checks":[],"expected_failures":[],"coverage":[],"assertions":[],"final_state_pointer":{},"asset_deltas":{}});
+        assert!(serde_json::from_value::<StatefulScenarioFile>(raw).is_err());
+        #[cfg(unix)]
+        {
+            let outside = temp_dir("outside-evidence");
+            fs::create_dir_all(&outside).unwrap();
+            fs::write(outside.join("outside.json"), b"{}").unwrap();
+            std::os::unix::fs::symlink(outside.join("outside.json"), directory.join("link.json"))
+                .unwrap();
+            assert!(artifact_path(&directory, "link.json").is_err());
+            fs::remove_dir_all(outside).unwrap();
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn expected_failures_keep_exact_check_name_and_script_error_matching() {
+        let mut summary = summary_with_scenarios(vec![]);
+        summary.smoke = Some(smoke_summary(
+            vec![],
+            vec![script_failure("negative-check", "ExpectedError", 42)],
+        ));
+        let expected = StatefulExpectedFailure {
+            check: "negative-check".to_string(),
+            morph_error: "ExpectedError".to_string(),
+            error_code: 42,
+        };
+        assert!(has_exact_failure(&summary, &expected));
+        let mut wrong = expected.clone();
+        wrong.error_code = 41;
+        assert!(!has_exact_failure(&summary, &wrong));
+        wrong = expected.clone();
+        wrong.check = "other-case".to_string();
+        assert!(!has_exact_failure(&summary, &wrong));
+        wrong = expected;
+        wrong.morph_error = "OtherError".to_string();
+        assert!(!has_exact_failure(&summary, &wrong));
     }
 
     #[test]
@@ -1338,6 +1521,7 @@ mod tests {
             required_committed_checks: vec![],
             expected_failures: vec![],
             coverage: vec![],
+            assertions: vec![],
         });
         baseline.audit_families = vec![AuditFamilySummary {
             id: "family-a".to_string(),
@@ -1348,6 +1532,7 @@ mod tests {
             missing_scenarios: vec![],
             missing_checks: vec![],
             missing_failures: vec![],
+            evidence_errors: vec![],
         }];
         let mut candidate = baseline.clone();
         candidate.audit_families[0].passed = false;
@@ -1369,6 +1554,7 @@ mod tests {
             required_committed_checks: vec![],
             expected_failures: vec![],
             coverage: vec![],
+            assertions: vec![],
         });
         summary.manifest.insert(
             "git_commit".to_string(),
@@ -1396,6 +1582,7 @@ mod tests {
             required_committed_checks: vec![],
             expected_failures: vec![],
             coverage: vec![],
+            assertions: vec![],
         });
         summary
             .manifest
@@ -1422,6 +1609,7 @@ mod tests {
             required_committed_checks: vec![],
             expected_failures: vec![],
             coverage: vec![],
+            assertions: vec![],
         });
         summary
             .manifest
@@ -1445,6 +1633,32 @@ mod tests {
             err.to_string()
                 .contains("artifact was produced from a dirty")
         );
+    }
+
+    #[test]
+    fn rejects_post_run_or_changed_source_even_when_head_and_worktree_are_clean() {
+        let mut summary = summary_with_scenarios(vec![]);
+        summary
+            .manifest
+            .insert("git_commit".into(), "abc1234".into());
+        summary.manifest.insert("git_dirty".into(), "false".into());
+        let current_git = CurrentGitState {
+            commit: "abc1234".into(),
+            dirty: false,
+        };
+        summary
+            .manifest
+            .insert("provenance_phase".into(), "post_run".into());
+        let error = assert_stateful_artifact_fresh_against(&summary, &current_git).unwrap_err();
+        assert!(error.to_string().contains("pre-build"));
+        summary
+            .manifest
+            .insert("provenance_phase".into(), "pre_build".into());
+        summary
+            .manifest
+            .insert("source_unchanged".into(), "false".into());
+        let error = assert_stateful_artifact_fresh_against(&summary, &current_git).unwrap_err();
+        assert!(error.to_string().contains("source changed"));
     }
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
@@ -1472,7 +1686,14 @@ mod tests {
     fn summary_with_scenarios(scenarios: Vec<StatefulScenarioSummary>) -> DevnetStatefulSummary {
         let mut manifest = BTreeMap::new();
         manifest.insert("status".to_string(), "passed".to_string());
+        manifest.insert("provenance_phase".to_string(), "pre_build".to_string());
+        manifest.insert("source_unchanged".to_string(), "true".to_string());
+        manifest.insert(
+            "schema".to_string(),
+            "morph.current_stateful_matrix.v1".to_string(),
+        );
         DevnetStatefulSummary {
+            schema: "morph.current_stateful_summary.v1".to_string(),
             directory: ".".to_string(),
             manifest,
             scenarios,
@@ -1483,61 +1704,28 @@ mod tests {
         }
     }
 
-    fn scenario_with_committed_checks(
-        scenario_id: &str,
-        checks: &[&str],
-    ) -> StatefulScenarioSummary {
-        StatefulScenarioSummary {
-            scenario_id: scenario_id.to_string(),
-            category: "factory".to_string(),
-            description: "test".to_string(),
-            references: vec!["a.json".to_string()],
-            required_committed_checks: checks.iter().map(|check| (*check).to_string()).collect(),
-            expected_failures: vec![],
-            coverage: vec![],
-        }
-    }
-
-    fn factory_negative_scenario() -> StatefulScenarioSummary {
-        StatefulScenarioSummary {
-            scenario_id: "negative_attack_matrix".to_string(),
-            category: "negative".to_string(),
-            description: "test".to_string(),
-            references: vec!["a.json".to_string()],
-            required_committed_checks: vec![],
-            expected_failures: FACTORY_NEGATIVE_REQUIRED_FAILURES
-                .iter()
-                .map(|(check, morph_error, error_code)| StatefulExpectedFailure {
-                    check: (*check).to_string(),
-                    morph_error: (*morph_error).to_string(),
-                    error_code: *error_code,
-                })
-                .collect(),
-            coverage: vec![],
-        }
-    }
-
     fn smoke_summary(
         transactions: Vec<TransactionSummary>,
         script_failures: Vec<smoke_report::ScriptFailureSummary>,
     ) -> DevnetSmokeSummary {
         DevnetSmokeSummary {
             directory: ".".to_string(),
-            manifest: BTreeMap::new(),
+            schema: "morph.current_acceptance_summary.v1".to_string(),
+            matrix: smoke_report::CurrentMatrix {
+                schema: "morph.current_acceptance_matrix.v1".to_string(),
+                cases: vec![],
+            },
+            cases: vec![],
             json_files: 0,
-            json_checks: vec![],
+            publication_attempts: vec![],
+            publication_reconciliations: vec![],
+            factory_proofs: vec![],
+            transaction_observations: transactions.clone(),
             transactions,
             script_failures,
             deployed_scripts: Vec::<DeployedScriptSummary>::new(),
             watchtower_alerts: Vec::<WatchtowerAlertSummary>::new(),
             watchtower_services: Vec::<WatchtowerServiceSummary>::new(),
-            factory_reduced_rights_updates: Vec::<FactoryReducedRightsEvidenceSummary>::new(),
-            factory_merkle_updates: Vec::<FactoryMerkleUpdateEvidenceSummary>::new(),
-            factory_proof_profiles: Vec::<FactoryProofProfileSummary>::new(),
-            factory_reduced_exits: Vec::<FactoryReducedExitEvidenceSummary>::new(),
-            factory_local_exits: Vec::<FactoryLocalExitEvidenceSummary>::new(),
-            factory_splices: Vec::<FactorySpliceEvidenceSummary>::new(),
-            splice_payouts: Vec::<SplicePayoutEvidenceSummary>::new(),
             sponsor_policies: Vec::new(),
             totals: MetricTotals::default(),
         }

@@ -1,10 +1,10 @@
 {
   "schema": "morph.preproduction_envelope",
-  "release_profile": "morph-v3-conditional-batch",
-  "effective_date": "2026-11-04",
+  "release_profile": "morph-current-custody",
+  "effective_date": "2026-11-05",
   "review_by": "2026-12-04",
   "approval_timezone": "Asia/Shanghai",
-  "effective_unix": 1793721600,
+  "effective_unix": 1793808000,
   "review_by_unix": 1796399999,
   "approved_networks": [
     "devnet"
@@ -16,7 +16,9 @@
     "max_participant_count": 16,
     "max_active_factories": 4,
     "max_children_per_factory": 10,
-    "max_capacity_shannons": 1000000000000
+    "max_capacity_shannons": 1000000000000,
+    "max_children_per_transaction": 4,
+    "max_vaults_per_state": 8
   },
   "channel": {
     "max_capacity_shannons": 100000000000,
@@ -40,7 +42,7 @@
     "allowed_scripts": [
       "morph-devnet-xudt"
     ],
-    "max_asset_types_per_factory": 1,
+    "max_asset_types_per_factory": 8,
     "max_units_per_factory": 1000000000000
   },
   "watchtower": {

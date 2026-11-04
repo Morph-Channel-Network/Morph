@@ -18,6 +18,49 @@ None of these closeouts is a mainnet-ready or production-ready claim. External
 review, mainnet-like fee/reorg evidence, independent release verification,
 multi-operator rehearsal, and a real-asset value policy remain required.
 
+## Current source boundary and historical evidence (2026-11-05)
+
+The current unpublished implementation has one 318-byte channel State,
+descriptor 5, one complete Vault-set lifecycle, and one 306-byte Factory
+State. The former 346/302-byte headers, single-Vault settlement/splice
+codecs, 485/469-byte bridges and `MORPHW!!` kinds 1–8 are removed. Direct and
+Factory-child StateType args use the shared strict 40/72-byte parser; both
+read canonical relative since from their final eight bytes.
+
+Current Factory root and metadata roles are exact-transaction `MORPHFS!`
+format 2; child materialisation uses `MORPHFM!`; localized rights and funded
+custody changes use `MORPHFR!`. Reduced paths authenticate the actual State,
+StateLock and complete exact custody, protect untouched rights/reserve, and
+isolate external funding/fees. Conditional CKB uses descriptor-5 capability 1
+and the sole Batch executor; 104-byte Batch args bind the exact funding context.
+The shared 828-byte inner Batch terms and compact Merkle algorithms survive
+as current capability primitives.
+
+The chronological sections below preserve the findings and fixes at their
+original baselines. Their old wire lengths, activation-fee rules, API names
+and removed test names describe historical evidence. They do **not** specify
+current parser acceptance, prove the changed binaries independently reviewed,
+or establish release readiness. Current test names, operation mapping,
+measured budgets and data-availability limits are recorded in
+[the coverage ledger](docs/current-protocol-coverage.md).
+
+| Historical negative family | Current coverage entry |
+| --- | --- |
+| `state_type_rejects_equal_state_number`, signature/context/carrier drift | `current_state_supersede_preserves_carrier_context_lock_and_signature_authority`; current header context/digest properties. |
+| Fake State header, StateLock mismatch and ambiguous authority | `multi_asset_rejects_fake_state_authority`; `current_vault_authority_checks_state_lock_identity_and_unique_authentic_state`. |
+| Raw absolute since, dirty/typed/split settlement and standalone retirement | `current_finalise_rejects_absolute_since_dirty_typed_split_and_standalone_retirement`. |
+| Sponsor diversion, dirty change, overflow and fake/unbacked publication | `current_sponsor_bounds_fee_budget_change_attribution_and_authentic_publication`. |
+| Kind-8 foreign/nonvalue/unlisted/cross-asset/proof-order negatives | Current `multi_right.rs` invokes the production reduced frame; 17 compact proof/current-rights tests and 11 reduced/proof-data tests. |
+| Old withdrawal-lock and splice physical-delta negatives | Current exact-body splice mutation matrix and Factory freshly-authorized physical mismatch tests. |
+| Factory child authority/private exit | Full/reduced materialisation VM tests, child exit after parent retirement, independent delivery/journal tests. |
+
+The current CKB-VM harness passed 77 tests after runtime/common pruning and the external-child
+capability parity check.
+This is local migration evidence. Independent protocol/script review,
+public-network fee/reorg/latency evidence, independent operators/builds and a
+real-asset value envelope remain required. Complete repository CI and report
+refresh are tracked separately in [the migration ledger](docs/unified-protocol-migration.md).
+
 ## Factory-materialised State authority binding (2026-08-13)
 
 - Issue: a FactoryProof State creation parsed the Factory exit envelope from
@@ -422,7 +465,7 @@ not fetch the RustSec advisory database because the GitHub request failed with
 an IO error. Later cached and CI runs passed the repository's narrow reviewed
 waiver policy. Every release candidate must still rerun `make supply-chain` and
 record fresh CI/independent-build evidence.
-# Morph 3.0 conditional-batch boundary
+## Historical Morph 3.0 conditional-batch boundary
 
 Morph 3.0 adds descriptor version 3 and `morph-batch-lock`. Conditional CKB
 value is never paid directly from an application result: the signed descriptor
@@ -433,7 +476,7 @@ Negative CKB-VM coverage rejects wrong preimages, premature refunds, descriptor
 substitution, wrong Batch Lock identity/args, and capacity loss. Conditional
 xUDT remains rejected by design.
 
-## Multi-asset bilateral candidate boundary
+## Historical multi-asset bilateral candidate boundary (descriptor 4)
 
 The candidate adds a separate 318-byte State layout and descriptor version 4.
 Legacy encodings are unchanged. Both StateType and Vault Lock validate the
