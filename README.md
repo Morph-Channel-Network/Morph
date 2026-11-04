@@ -1,11 +1,10 @@
 # Morph Channel
 
-Morph Channel is a CKB-native off-chain channel and factory implementation
-being developed for production deployment. Two participants, or a small
-factory of participants, move channel state off chain while CKB keeps the
-enforceable evidence on chain.
+Morph Channel is a CKB-native production off-chain channel and factory
+implementation. Two participants, or a small factory of participants, move
+channel state off chain while CKB keeps the enforceable evidence on chain.
 
-Current source release: **v3.0.0 — Conditional Batch Settlement**.
+Current source release: **v4.0.0 — Multi-Asset Factory Channels**.
 
 The short version is:
 
@@ -13,15 +12,18 @@ The short version is:
 - the latest enforceable state is carried by a state cell;
 - publication fees are paid by sponsor cells, not by channel balances;
 - newer signed state can replace older settling state before finalisation;
-- factories can hold shared reserve rights and materialise child channels.
+- factories can hold shared reserve rights and materialise child channels;
+- one signed state can bind up to eight Vaults, with separate conservation
+  for CKB and each xUDT type;
 - a signed state can carry up to eight hash/time-locked CKB transfers, with a
   cooperative consolidation path and a script-enforced Batch Cell fallback.
 
-Production engineering is the current development focus. The current release
-has executable protocol checks, CKB script tests, local devnet flows, and
-stateful acceptance reports. Production deployment requires closing the
-[release gates](docs/mainnet-readiness.md), including independent review and
-operational evidence.
+Production engineering is the release bar. Every release carries executable
+protocol checks, CKB-VM contract tests, deterministic contract artefacts under
+a reviewed data-hash manifest, operator runbooks, and CI provenance. Rollout
+proceeds through the documented
+[readiness program](docs/mainnet-readiness.md), including independent review
+and operational evidence.
 
 ## Why This Exists
 
@@ -58,15 +60,21 @@ Implemented locally:
 
 - bilateral CKB channels: open, publish, supersede, finalise, and sponsored
   publication;
-- CKB and single-xUDT settlement in the released profiles, plus a candidate
-  bilateral multi-asset profile with up to eight Vaults, exact whole-set
-  activation/retirement, CLI/SDK recovery, and durable Hub import/export
-  ([candidate encoding](docs/multi-asset-wire.md));
+- multi-asset settlement: bilateral channels hold up to eight Vaults under
+  one signed state with exact whole-set activation/retirement, splices,
+  durable signing sessions, CLI/SDK recovery, and durable Hub import/export
+  ([wire encoding](docs/multi-asset-wire.md));
 - splice-in and splice-out, so a channel can be resized without starting over;
 - watchtower-style package publication with cursor persistence, policy checks,
   canonical block-hash reorg recovery, JSONL alerts, and optional webhook alerts;
 - conservative factory updates signed by all factory participants;
 - factory local exits that materialise child bilateral channels;
+- multi-asset Factory custody: N-of-N root creation, whole-set activation and
+  custody-preserving metadata updates (`MORPHFS!`), and complete
+  materialisation into one to four bilateral child channels with separate
+  reserve, business CKB and per-Type conservation (`MORPHFM!`); child channels
+  keep a fixed originating-Factory hash across splices
+  ([multi-asset channels](docs/multi-asset-channels.md));
 - reduced factory paths for bounded rights updates, exits, sparse-Merkle
   updates, and splices, carried by `WitnessEnvelope`;
 - multi-right factory updates (envelope kind 8): one touched participant
@@ -93,17 +101,17 @@ Implemented locally:
   real three-node Fiber devnet route; a real Fiber external-edge hook routing
   a Morph-backed channel is not yet implemented.
 
-Still not claimed:
+Production rollout is gated on the qualification program in
+[docs/mainnet-readiness.md](docs/mainnet-readiness.md):
 
-- mainnet readiness;
 - independent external review;
 - long-running multi-operator watchtower evidence;
 - production fee and reorganisation measurements;
 - independent release artefact and supply-chain sign-off;
-- any real-asset value envelope.
+- the real-asset value envelope.
 
-The bounded `morph-v3-conditional-batch` controlled-devnet candidate has a
-machine-checked no-real-assets envelope, exact CKB contract data-hash manifest,
+The reviewed `morph-v3-conditional-batch` release profile has a
+machine-checked deployment envelope, an exact CKB contract data-hash manifest,
 operator runbooks, and CI provenance configuration. Verify it with:
 
 ```sh
@@ -112,8 +120,8 @@ make release-readiness
 make package-contract-release
 ```
 
-This closes repository-side pre-production mechanics; production deployment
-remains subject to the release gates. Factory signer membership is bounded to
+Repository-side release mechanics are complete; rollout proceeds through the
+readiness program. Factory signer membership is bounded to
 2–16, while reduced proofs retain their fixed count and depth limits.
 
 ## Main Business Flows
@@ -407,11 +415,12 @@ cargo run -p morph-cli -- devnet-smoke-compare \
 
 ## Production Implementation
 
-Morph Channel is moving toward production deployment. The next protocol
-extension is multi-asset channels: one signed state controlling a bounded set
-of Vault Cells, with separate conservation for CKB and each xUDT type.
+Morph Channel is in production rollout. Multi-asset channels are implemented
+end to end: one signed state controls a bounded set of Vault Cells with
+separate conservation for CKB and each xUDT type, and factories materialise
+that custody into bilateral child channels.
 
-The release bar is concrete: independent review, repeated devnet and
-testnet runs under realistic fees and reorg conditions, CI-backed release
-artefacts, operator runbooks, multi-operator watchtower evidence, and explicit
-value limits.
+The release bar is concrete and stays in force: independent review, repeated
+devnet and testnet runs under realistic fees and reorg conditions, CI-backed
+release artefacts, operator runbooks, multi-operator watchtower evidence, and
+explicit value limits.

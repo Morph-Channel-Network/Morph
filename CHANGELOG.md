@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.0.0 — 2026-11-04
 
 - Add multi-asset Factory consensus to the Factory Type and Factory Vault Lock
   scripts: a 306-byte layout-2 Factory State header with 44-byte Type args,
