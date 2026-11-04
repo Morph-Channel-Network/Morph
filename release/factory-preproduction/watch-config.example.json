@@ -1,5 +1,6 @@
 {
   "schema": "morph.watchtower_config",
+  "operator_id": "morph-example-operator",
   "defaults": {
     "store_dir": "operator-data/packages",
     "watch_policy": "watch-policy.json",

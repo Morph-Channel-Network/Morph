@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add multi-asset Factory consensus to the Factory Type and Factory Vault Lock
+  scripts: a 306-byte layout-2 Factory State header with 44-byte Type args,
+  `MORPHFS!` N-of-N root-creation, whole-set activation and custody-preserving
+  metadata updates, and `MORPHFM!` complete materialisation into 1-4 bilateral
+  children with separate reserve, business CKB and per-Type conservation.
+  Children use 72-byte State Type args binding the originating Factory and a
+  fixed origin hash across splices. Update the reviewed pre-production contract
+  manifest to the rebuilt ELFs (six of eight data hashes change) and roll the
+  envelope review window to 2026-11-04/2026-12-04.
+
 - Add independent root funding sessions with durable initial-exit reservations,
   two-party exit-before-creation signing, approved local artifact checks and
   confirmed same-path handoff. Remove direct operational `init`/`bind-root`.

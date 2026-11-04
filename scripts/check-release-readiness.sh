@@ -27,7 +27,7 @@ done
 
 cd "$REPO_ROOT"
 grep -q "chain_reorg_detected" docs/runbooks/incident-response.md
-grep -q "supports no historical Factory" docs/runbooks/upgrade-and-migration.md
+grep -q "Historical formats and in-place migrations are rejected" docs/runbooks/upgrade-and-migration.md
 grep -q "Real assets | Prohibited" docs/preproduction-envelope.md
 cargo run -q -p morph-cli -- validate-watch-policy \
   release/factory-preproduction/watch-policy.json
