@@ -48,7 +48,7 @@ UI (`ui/morph-hub`):
 
 Notes:
 
-- The `audit` step ignores `RUSTSEC-2024-0436` (paste, unmaintained) and `RUSTSEC-2026-0097` (rand 0.7, unsound); comment in `Makefile` lines 5–11 explains why. Don't add new ignore flags without justification in the Makefile.
+- The `audit` step carries explicit upstream waivers in `AUDIT_IGNORE` (top of `Makefile`); each has a rationale and removal condition in the comment block above it. Don't add new ignore flags without the same justification. Removing the crypto-bigint/k256 waiver (`RUSTSEC-2026-0387`) is a mainnet-readiness precondition because the fix relinks every contract ELF.
 - The CI workflow (`.github/workflows/ci.yml`) mirrors `make ci` and pins Rust 1.92.0 plus the RISC-V target.
 - `cargo audit` historically failed with IO errors when fetching the RustSec DB; see `SECURITY-FIXES.md` "Evidence run" for context.
 
