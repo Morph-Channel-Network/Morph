@@ -1969,7 +1969,7 @@ dependencies = [
 
 [[package]]
 name = "morph-agent"
-version = "3.0.0"
+version = "4.0.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2002,7 +2002,7 @@ dependencies = [
 
 [[package]]
 name = "morph-cli"
-version = "3.0.0"
+version = "4.0.0"
 dependencies = [
  "anyhow",
  "ckb-crypto",
@@ -2024,7 +2024,7 @@ dependencies = [
 
 [[package]]
 name = "morph-core"
-version = "3.0.0"
+version = "4.0.0"
 dependencies = [
  "blake2b-rs",
  "ckb-testtool",
@@ -2063,7 +2063,7 @@ dependencies = [
 
 [[package]]
 name = "morph-fiber-adapter"
-version = "3.0.0"
+version = "4.0.0"
 dependencies = [
  "axum",
  "hex",
