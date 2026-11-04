@@ -64,6 +64,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
+#[path = "contract_scripts/multi_asset.rs"]
+mod multi_asset;
+
 const MAX_CYCLES: u64 = 50_000_000;
 const CELL_CAPACITY: u64 = 100_000_000_000;
 const ALICE_CAPACITY: u64 = 60_000_000_000;
@@ -202,19 +205,9 @@ fn vault_args(
     args.push(state_type.hash_type().as_slice()[0]);
     args.extend_from_slice(state_lock.code_hash().as_slice());
     args.push(state_lock.hash_type().as_slice()[0]);
-    args
-}
-
-fn vault_args_v2(
-    anchor: [u8; 32],
-    finalise_since: u64,
-    state_type: &ckb_testtool::ckb_types::packed::Script,
-    state_lock: &ckb_testtool::ckb_types::packed::Script,
-    batch_lock_template: &ckb_testtool::ckb_types::packed::Script,
-) -> Vec<u8> {
-    let mut args = vault_args(anchor, finalise_since, state_type, state_lock);
-    args.extend_from_slice(batch_lock_template.code_hash().as_slice());
-    args.push(batch_lock_template.hash_type().as_slice()[0]);
+    // Plain settlement still uses the current complete args layout.
+    args.extend_from_slice(&[0u8; 32]);
+    args.push(0);
     args
 }
 
@@ -7758,7 +7751,7 @@ fn state_type_rejects_invalid_participant_signature() {
 
 #[ignore = "requires `make build-contracts`"]
 #[test]
-fn vault_lock_accepts_finalise_with_current_state_and_v2_args() {
+fn vault_lock_accepts_finalise_with_current_state() {
     let mut context = Context::default();
     let alice_lock = deploy_always_success_with_args(&mut context, Bytes::from(vec![1]));
     let bob_lock = deploy_always_success_with_args(&mut context, Bytes::from(vec![2]));
@@ -7773,20 +7766,10 @@ fn vault_lock_accepts_finalise_with_current_state_and_v2_args() {
     let state_type = deploy_contract(&mut context, "morph-state-type", state_args(finalise_since));
     let state_type_hash: [u8; 32] = state_type.calc_script_hash().unpack();
     let state_lock = deploy_contract(&mut context, "morph-state-lock", state_type_hash.to_vec());
-    let batch_code = context.deploy_cell(contract_bin("morph-batch-lock"));
-    let batch_template = context
-        .build_script(&batch_code, Bytes::new())
-        .expect("batch lock template");
     let vault_lock = deploy_contract(
         &mut context,
         "morph-vault-lock",
-        vault_args_v2(
-            FUNDING_ANCHOR,
-            finalise_since,
-            &state_type,
-            &state_lock,
-            &batch_template,
-        ),
+        vault_args(FUNDING_ANCHOR, finalise_since, &state_type, &state_lock),
     );
     let mut state_data = header_raw(3, PHASE_SETTLING);
     state_data[214..246].copy_from_slice(&descriptor_commitment);
@@ -8893,7 +8876,7 @@ enum ConditionalBatchTamper {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ConditionalVaultTamper {
     None,
-    LegacyVaultArgs,
+    TruncatedVaultArgs,
     WrongBatchCode,
     WrongBatchArgs,
     BatchCapacity,
@@ -8948,17 +8931,14 @@ fn conditional_vault_finalise_tx(tamper: ConditionalVaultTamper) -> (Context, Tr
     let batch_template = context
         .build_script(&batch_code, Bytes::new())
         .expect("batch lock template");
-    let vault_lock_args = if tamper == ConditionalVaultTamper::LegacyVaultArgs {
-        vault_args(FUNDING_ANCHOR, finalise_since, &state_type, &state_lock)
-    } else {
-        vault_args_v2(
-            FUNDING_ANCHOR,
-            finalise_since,
-            &state_type,
-            &state_lock,
-            &batch_template,
-        )
-    };
+    let mut vault_lock_args = vault_args(FUNDING_ANCHOR, finalise_since, &state_type, &state_lock);
+    let batch_offset = vault_lock_args.len() - 33;
+    vault_lock_args[batch_offset..batch_offset + 32]
+        .copy_from_slice(batch_template.code_hash().as_slice());
+    vault_lock_args[batch_offset + 32] = batch_template.hash_type().as_slice()[0];
+    if tamper == ConditionalVaultTamper::TruncatedVaultArgs {
+        vault_lock_args.truncate(batch_offset);
+    }
     let vault_lock = deploy_contract(&mut context, "morph-vault-lock", vault_lock_args);
     let mut state_data = header_raw(3, PHASE_SETTLING);
     state_data[214..246].copy_from_slice(&descriptor_commitment);
@@ -9046,9 +9026,10 @@ fn vault_lock_materialises_conditional_batch_cell() {
 
 #[ignore = "requires `make build-contracts`"]
 #[test]
-fn vault_lock_rejects_conditional_descriptor_under_legacy_args() {
-    let (context, tx) = conditional_vault_finalise_tx(ConditionalVaultTamper::LegacyVaultArgs);
-    assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
+fn vault_lock_rejects_truncated_args() {
+    let (context, tx) = conditional_vault_finalise_tx(ConditionalVaultTamper::TruncatedVaultArgs);
+    let error = format!("{:?}", context.verify_tx(&tx, MAX_CYCLES).unwrap_err());
+    assert!(error.contains("error code 7 "), "{error}");
 }
 
 #[ignore = "requires `make build-contracts`"]

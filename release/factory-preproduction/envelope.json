@@ -1,11 +1,11 @@
 {
   "schema": "morph.preproduction_envelope",
   "release_profile": "morph-v3-conditional-batch",
-  "effective_date": "2026-08-25",
-  "review_by": "2026-09-24",
+  "effective_date": "2026-11-04",
+  "review_by": "2026-12-04",
   "approval_timezone": "Asia/Shanghai",
-  "effective_unix": 1787587200,
-  "review_by_unix": 1790265599,
+  "effective_unix": 1793721600,
+  "review_by_unix": 1796399999,
   "approved_networks": [
     "devnet"
   ],

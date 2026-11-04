@@ -31,6 +31,7 @@ pub struct CkbRpcClient {
     transport_max_attempts: usize,
     retryable_status_max_attempts: usize,
     max_attempts: usize,
+    deadline: Option<Instant>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,6 +126,33 @@ impl CkbRpcClient {
         Self::with_options(url, Duration::from_secs(2), Duration::from_secs(1), 1, 1)
     }
 
+    pub fn new_supervision(url: impl Into<String>, budget: Duration) -> Result<Self> {
+        anyhow::ensure!(!budget.is_zero(), "supervision RPC budget must be positive");
+        let mut client = Self::with_options(url, budget, budget.min(Duration::from_secs(1)), 1, 1)?;
+        client.deadline = Some(
+            Instant::now()
+                .checked_add(budget)
+                .ok_or_else(|| anyhow!("RPC deadline overflow"))?,
+        );
+        Ok(client)
+    }
+
+    pub fn ensure_deadline(&self) -> Result<()> {
+        let _ = self.remaining_budget()?;
+        Ok(())
+    }
+
+    fn remaining_budget(&self) -> Result<Option<Duration>> {
+        self.deadline
+            .map(|deadline| {
+                deadline
+                    .checked_duration_since(Instant::now())
+                    .filter(|remaining| !remaining.is_zero())
+                    .ok_or_else(|| anyhow!("supervision RPC deadline exhausted"))
+            })
+            .transpose()
+    }
+
     fn with_options(
         url: impl Into<String>,
         request_timeout: Duration,
@@ -144,7 +172,12 @@ impl CkbRpcClient {
             transport_max_attempts,
             retryable_status_max_attempts,
             max_attempts: transport_max_attempts.max(retryable_status_max_attempts),
+            deadline: None,
         })
+    }
+
+    pub fn endpoint(&self) -> &str {
+        &self.url
     }
 
     pub fn tip_header(&self) -> Result<HeaderView> {
@@ -178,6 +211,10 @@ impl CkbRpcClient {
             .with_context(
                 || "truncate failed; ensure the node exposes CKB integration-test RPC methods",
             )
+    }
+
+    pub fn genesis_block_hash(&self) -> Result<Option<H256>> {
+        self.call_nullable("get_block_hash", json!(["0x0"]))
     }
 
     pub fn block_by_number(&self, number: u64) -> Result<Option<BlockView>> {
@@ -284,7 +321,11 @@ impl CkbRpcClient {
         });
 
         for attempt in 1..=self.max_attempts {
-            let response = match self.client.post(&self.url).json(&request).send() {
+            let mut builder = self.client.post(&self.url).json(&request);
+            if let Some(remaining) = self.remaining_budget()? {
+                builder = builder.timeout(remaining);
+            }
+            let response = match builder.send() {
                 Ok(response) => response,
                 Err(err) => {
                     if is_retryable_rpc_transport_error(&err)
@@ -332,6 +373,7 @@ impl CkbRpcClient {
                 }
                 .into());
             }
+            self.remaining_budget()?;
             return Ok(response.result);
         }
 
@@ -422,6 +464,21 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
+
+    #[test]
+    fn supervision_deadline_covers_the_whole_client_without_transport_retry() {
+        let mut rpc =
+            CkbRpcClient::new_supervision("http://127.0.0.1:1", Duration::from_secs(1)).unwrap();
+        rpc.deadline = Some(Instant::now());
+        assert!(rpc.ensure_deadline().is_err());
+        assert!(
+            rpc.tip_header()
+                .unwrap_err()
+                .to_string()
+                .contains("supervision RPC deadline exhausted")
+        );
+        assert!(CkbRpcClient::new_supervision("http://127.0.0.1:1", Duration::ZERO).is_err());
+    }
 
     #[test]
     fn bounded_rpc_body_accepts_body_at_limit() {

@@ -58,9 +58,10 @@ Implemented locally:
 
 - bilateral CKB channels: open, publish, supersede, finalise, and sponsored
   publication;
-- CKB and single-xUDT settlement through the same state/vault authority model;
-  multiple xUDT types in one channel are the next planned asset extension
-  ([design](docs/multi-asset-channels.md));
+- CKB and single-xUDT settlement in the released profiles, plus a candidate
+  bilateral multi-asset profile with up to eight Vaults, exact whole-set
+  activation/retirement, CLI/SDK recovery, and durable Hub import/export
+  ([candidate encoding](docs/multi-asset-wire.md));
 - splice-in and splice-out, so a channel can be resized without starting over;
 - watchtower-style package publication with cursor persistence, policy checks,
   canonical block-hash reorg recovery, JSONL alerts, and optional webhook alerts;
@@ -71,7 +72,7 @@ Implemented locally:
 - multi-right factory updates (envelope kind 8): one touched participant
   atomically updates up to four of their own value rights per update, each
   localised by a compact variable-depth sparse-Merkle proof that omits empty
-  siblings; see `docs/v2.0-plan.md`;
+  siblings; see `docs/factory-multi-right.md`;
 - a fail-closed operator value-limit policy with a runbook
   (`docs/runbooks/value-limits.md`), checked by `morph-cli value-limit-check`;
 - conditional CKB batches (descriptor version 3): zero to eight independent
@@ -180,7 +181,6 @@ crates/morph-core      Protocol objects, signing digests, and invariants.
 crates/morph-cli       Fixture tooling, package validators, devnet operations,
                        watchtower commands, and report generation.
 contracts/             no-std CKB scripts and shared script parsers.
-schemas/               Molecule schema draft for the wire format.
 docs/                  Devnet, implementation, readiness, and tutorial notes.
 scripts/               Devnet, smoke, and environment helpers.
 ui/morph-hub           Local Morph operator console for invoices, channels,
@@ -387,8 +387,8 @@ cargo run -p morph-cli -- devnet-smoke-compare \
 - [Roadmap](docs/roadmap.md): milestone status and deferred work.
 - [Multi-asset channels](docs/multi-asset-channels.md): the paper-to-code gap
   and proposed multi-Vault settlement path for multiple xUDT types per channel.
-- [2.0 plan](docs/v2.0-plan.md): scope, wire format, and test matrix of the
-  multi-right factory update and value-limit-policy release.
+- [Factory multi-right updates](docs/factory-multi-right.md): wire format,
+  host APIs, and security boundaries.
 - [Mainnet readiness](docs/mainnet-readiness.md): what remains before any
   production or real-assets claim.
 - [Publication reliability hardening](docs/hardening/production-publication-reliability/hardening.md):

@@ -21,3 +21,4 @@ thiserror.workspace = true
 [dev-dependencies]
 ckb-testtool.workspace = true
 proptest.workspace = true
+serde_json.workspace = true

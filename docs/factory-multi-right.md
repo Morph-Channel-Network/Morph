@@ -1,32 +1,6 @@
-# Morph Channel 2.0 Plan
+# Factory Multi-Right Updates
 
-Status: implemented on the `v2.0` branch. This document is the plan of record
-for the 2.0 protocol surface, its wire-format definition, its security
-rationale, and its test matrix. Passing these tests does not imply mainnet
-readiness; see `docs/mainnet-readiness.md` for the release gates.
-
-## 1. Scope
-
-Morph Channel 2.0 closes the implementable protocol items that
-`docs/roadmap.md` listed as deferred work for the Factory reduced-proof
-surface, plus the operator value-limit policy that the roadmap requires
-before any real-assets claim:
-
-| # | Deferred item (roadmap) | 2.0 deliverable | Status |
-| --- | --- | --- | --- |
-| 1 | Multi-right reduced updates | New `WitnessEnvelope` kind 8 (`FACTORY_MULTI_RIGHT_UPDATE`): one touched participant atomically updates 1–4 of their own rights, each localised by an independent sparse-Merkle proof. | Implemented |
-| 2 | Variable-depth or dynamic proof profiles | Compact variable-depth sparse-Merkle proofs: only non-empty sibling hashes are carried (bounded pair count), the remaining path is completed with the canonical empty-subtree hash chain inside the script. | Implemented |
-| 3 | Value-limit policy and operator runbooks | `ValueLimitPolicy` in `morph-core`, a `value-limit-check` CLI subcommand, and `docs/runbooks/value-limits.md`. | Implemented |
-| 4 | Larger participant sets | Already delivered in the v1.x dynamic 2–16 participant profile; unchanged in 2.0. | Already done |
-| 5 | Independent multi-operator deployment evidence; repeated public-network measurements | Not code; remains external evidence work tracked by the roadmap. | Deferred (external) |
-
-Non-goals for 2.0: no change to bilateral State/Vault/Sponsor scripts, no
-change to existing witness kinds 1–7, no Factory membership/right-identity
-mutation through the new path, and no new devnet smoke topology. The 2.0
-surface is additive: a new envelope kind, new host validation, and an
-operator policy module.
-
-## 2. Wire Format: Kind 8 Multi-Right Update
+## Wire Format: Kind 8 Multi-Right Update
 
 Envelope: `WitnessEnvelope` format 1, kind
 `WITNESS_ENVELOPE_KIND_FACTORY_MULTI_RIGHT_UPDATE = 8`, body version
@@ -122,7 +96,7 @@ other listed rights. Only the listed rights may therefore differ anywhere
 between the two committed trees: an unlisted change necessarily surfaces as
 a differing subtree on some listed path that no listed key can excuse.
 
-## 3. Host Surface
+## Host Surface
 
 - `morph-script-common`: `FactoryMultiRightUpdateWitness` parse/verify,
   `factory_multi_right_update_witness_len`, kind-8 envelope admission, empty
@@ -140,17 +114,12 @@ a differing subtree on some listed path that no listed key can excuse.
 - `morph-cli`: `print-factory-multi-right-update-fixture`,
   `validate-factory-multi-right-update-package`,
   `print-value-limit-policy-fixture`, `validate-value-limit-policy`,
-  `value-limit-check`, fixture-checks integration, and the regenerated
-  reviewed contract manifest for the 2.0 boundary. The devnet
-  save/publication command for kind 8 state-cell packages (mirroring
-  `save-factory-merkle-update-package`) is deliberately out of scope for the
-  first 2.0 cut; host validation, fixtures, and on-chain CKB-VM evidence
-  cover the protocol surface, and the live-node flow needs a devnet
-  rehearsal before it carries value.
+  `value-limit-check`, and fixture-checks integration. Live-node save/publication
+  plumbing for kind 8 remains tracked in `roadmap.md`.
 - `morph-factory-type`: kind 8 dispatch in
   `validate_participant_authorisation` and the state-preserving update arm.
 
-## 4. Security Boundaries and Negative Tests
+## Security Boundaries
 
 Every boundary below has a negative test; names are listed in
 `SECURITY-FIXES.md`.
@@ -168,7 +137,7 @@ Every boundary below has a negative test; names are listed in
 | Non-interference digest binding | Replay of a witness against different headers. |
 | Compact pairs strictly descending, bounded, all consumed | Malformed or ambiguous proof encodings. |
 
-## 5. Test Matrix
+## Verification
 
 - `morph-script-common` unit tests: parse round-trip, positive verify, and
   one negative per boundary above.
@@ -180,13 +149,3 @@ Every boundary below has a negative test; names are listed in
   a real kind-8 update on the factory-type script, plus on-chain negatives
   (foreign right, same-asset increase, cross-asset rebalance, bad signature).
 - `make fixture-checks`: kind-8 fixture generation and validation.
-
-## 6. Release Boundary
-
-2.0 is an additive wire-format change: kind 8 did not exist in 1.x, and no
-1.x constant, layout, or kind changed. Existing fixtures, packages, and
-contract hashes for kinds 1–7 remain valid. The factory-type and (unchanged)
-factory-vault-lock scripts must be redeployed only to accept kind 8; the
-ELF hash of every unchanged script stays as committed in
-`release/factory-preproduction/contracts.json` for the 1.x line, and 2.0
-records a fresh manifest.

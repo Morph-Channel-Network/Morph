@@ -56,6 +56,9 @@ fn main() {}
 fn main() -> Result<()> {
     let script = load_script().map_err(|_| ScriptError::Encoding)?;
     let args = script.args().raw_data();
+    if args.len() == morph_script_common::factory_multi_asset::FACTORY_MULTI_ASSET_TYPE_ARGS_LEN {
+        return morph_script_common::factory_multi_asset_runtime::validate_type();
+    }
     if args.len() != BYTE32_LEN {
         return Err(ScriptError::WrongArgsLength);
     }

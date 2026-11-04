@@ -8,7 +8,7 @@ use morph_core::{
     VALUE_LIMIT_POLICY_SCHEMA, ValueLimitPolicy, ValueSubject, VaultAsset, VaultAssetAmount,
 };
 
-use crate::{factory_packages, splice_packages};
+use crate::{factory_packages, multi_asset_packages, splice_packages};
 
 const FACTORY_SPLICE_SCHEMA: &str = "morph.factory_splice_package";
 const FACTORY_REDUCED_SPLICE_SCHEMA: &str = "morph.factory_reduced_splice_package";
@@ -40,8 +40,8 @@ pub fn fixture_value_limit_policy() -> Result<ValueLimitPolicy> {
 }
 
 /// Extracts peak committed channel holdings from a fully validated package.
-/// Supported schemas are the bilateral and factory splice families; unknown
-/// or malformed packages are rejected rather than treated as empty.
+/// Supported schemas are the bilateral and factory splice families and the
+/// multi-asset recovery profile; unknown/malformed packages fail closed.
 pub fn extract_value_subject(path: &Path) -> Result<(String, ValueSubject)> {
     let bytes =
         fs::read(path).with_context(|| format!("failed to read package {}", path.display()))?;
@@ -52,6 +52,13 @@ pub fn extract_value_subject(path: &Path) -> Result<(String, ValueSubject)> {
         .and_then(serde_json::Value::as_str)
         .with_context(|| format!("package {} carries no schema field", path.display()))?;
     match schema {
+        multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA => {
+            let package = multi_asset_packages::read_package(path)?;
+            Ok((
+                multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA.to_string(),
+                package.value_subject()?,
+            ))
+        }
         BILATERAL_SPLICE_SCHEMA => {
             let package = splice_packages::read_splice_package(path)?;
             let transition = package.validate()?;
@@ -78,8 +85,9 @@ pub fn extract_value_subject(path: &Path) -> Result<(String, ValueSubject)> {
         }
         other => Err(anyhow::anyhow!(
             "package schema {other} in {} is not a value-bearing surface covered by value-limit checks; \
-             supported schemas: {BILATERAL_SPLICE_SCHEMA}, {FACTORY_SPLICE_SCHEMA}, {FACTORY_REDUCED_SPLICE_SCHEMA}",
-            path.display()
+             supported schemas: {BILATERAL_SPLICE_SCHEMA}, {FACTORY_SPLICE_SCHEMA}, {FACTORY_REDUCED_SPLICE_SCHEMA}, {}",
+            path.display(),
+            multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA
         )),
     }
 }
@@ -138,6 +146,41 @@ mod tests {
             .unwrap()
             .enforce(&subject)
             .unwrap();
+    }
+
+    #[test]
+    fn multi_asset_limits_include_all_types_reserve_business_and_state_carrier() {
+        let package = multi_asset_packages::fixture_package().unwrap();
+        let path = test_path("multi-asset");
+        fs::write(&path, serde_json::to_vec(&package).unwrap()).unwrap();
+        let (schema, subject) = extract_value_subject(&path).unwrap();
+        assert_eq!(schema, multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA);
+        assert_eq!(subject.ckb_capacity, 200_000_000_000);
+        assert_eq!(subject.xudt_amounts.len(), 2);
+        assert!(
+            subject
+                .xudt_amounts
+                .values()
+                .all(|amount| *amount == u128::MAX / 2)
+        );
+        let mut policy = ValueLimitPolicy {
+            schema: VALUE_LIMIT_POLICY_SCHEMA.to_string(),
+            created_unix_ms: 1,
+            max_channel_ckb_capacity: 200_000_000_000,
+            max_xudt_amounts: subject.xudt_amounts.clone(),
+        };
+        policy.enforce(&subject).unwrap();
+        policy.max_xudt_amounts.pop_first();
+        assert!(matches!(
+            policy.enforce(&subject),
+            Err(ValueLimitError::UnlistedXudt { .. })
+        ));
+        policy.max_xudt_amounts = subject.xudt_amounts.clone();
+        policy.max_channel_ckb_capacity -= 1;
+        assert!(matches!(
+            policy.enforce(&subject),
+            Err(ValueLimitError::CkbOverLimit { .. })
+        ));
     }
 
     #[test]

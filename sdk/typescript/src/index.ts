@@ -1,6 +1,11 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { inspectMultiAssetPackage, inspectMultiAssetRootDraft, inspectMultiAssetRootCollection,
+  inspectMultiAssetFundingSignature, inspectMultiAssetRootFunding,
+  type MultiAssetRecoveryPackage, type MultiAssetRootDraft, type MultiAssetRootCollection,
+  type MultiAssetRootFunding, type MultiAssetSignatureReceipt, type MultiAssetFundingTarget } from "./multi-asset.js";
+export * from "./multi-asset.js";
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
@@ -141,6 +146,46 @@ export class MorphHubClient {
     return this.request("api/conditional-batches", value);
   }
 
+  importMultiAssetPackage(value: MultiAssetRecoveryPackage): Promise<Record<string, unknown>> {
+    inspectMultiAssetPackage(value);
+    return this.request("api/multi-asset-packages", value);
+  }
+
+  async multiAssetPackage(packageId: string): Promise<MultiAssetRecoveryPackage> {
+    if (!/^0x[0-9a-f]{64}$/.test(packageId)) throw new TypeError("invalid multi-asset package id");
+    const value = await this.request(`api/multi-asset-packages/${packageId}`);
+    const result = value as unknown as MultiAssetRecoveryPackage;
+    const summary = inspectMultiAssetPackage(result);
+    if (summary.package_id !== packageId) throw new Error("Morph Hub returned a different multi-asset package");
+    return result;
+  }
+
+  importRootFunding(draft: MultiAssetRootDraft): Promise<Record<string, unknown>> {
+    inspectMultiAssetRootDraft(draft);
+    return this.request("api/root-fundings", draft);
+  }
+
+  async rootFunding(transactionHash: string): Promise<MultiAssetRootCollection> {
+    if (!/^0x[0-9a-f]{64}$/.test(transactionHash)) throw new TypeError("invalid root funding transaction hash");
+    const result = await this.request(`api/root-fundings/${transactionHash}`) as unknown as MultiAssetRootCollection;
+    if (inspectMultiAssetRootCollection(result).transaction_hash !== transactionHash) throw new Error("Morph Hub returned a different root funding intent");
+    return result;
+  }
+
+  async addRootFundingSignature(transactionHash: string, target: MultiAssetFundingTarget, receipt: MultiAssetSignatureReceipt): Promise<Record<string, unknown>> {
+    const collection = await this.rootFunding(transactionHash);
+    inspectMultiAssetFundingSignature(collection.draft, target, receipt);
+    if (target === "creation" && collection.exit_signatures.length !== 2) throw new TypeError("complete initial exit must be retained before creation receipts");
+    return this.request(`api/root-fundings/${transactionHash}/signatures`, {target, receipt});
+  }
+
+  async exportRootFunding(transactionHash: string): Promise<MultiAssetRootFunding> {
+    if (!/^0x[0-9a-f]{64}$/.test(transactionHash)) throw new TypeError("invalid root funding transaction hash");
+    const result = await this.request(`api/root-fundings/${transactionHash}/export`) as unknown as MultiAssetRootFunding;
+    if (inspectMultiAssetRootFunding(result).transaction_hash !== transactionHash) throw new Error("Morph Hub returned different root funding evidence");
+    return result;
+  }
+
   private async request(path: string, body?: unknown): Promise<Record<string, unknown>> {
     const response = await fetch(new URL(path, this.baseUrl), {
       method: body === undefined ? "GET" : "POST",
@@ -203,7 +248,7 @@ export class MorphAgentClient {
     amount: string;
     payer: string;
     resource: string;
-    operation?: string;
+    operation: string;
     description?: string;
     expires_in_seconds?: number;
     rgbpp_proof_commitment?: string;
@@ -216,7 +261,7 @@ export class MorphAgentClient {
     amount: string;
     payer: string;
     resource: string;
-    operation?: string;
+    operation: string;
     description?: string;
     expires_in_seconds?: number;
     rgbpp_proof_commitment?: string;
@@ -272,7 +317,7 @@ export class MorphAgentClient {
     amount: string;
     payer: string;
     resource: string;
-    operation?: string;
+    operation: string;
     plaintext_base64: string;
     description?: string;
     expires_in_seconds?: number;

@@ -3,6 +3,9 @@
 #![forbid(unsafe_code)]
 
 #[cfg(target_arch = "riscv64")]
+mod multi_asset;
+
+#[cfg(target_arch = "riscv64")]
 use ckb_std::ckb_constants::Source;
 #[cfg(target_arch = "riscv64")]
 use ckb_std::ckb_types::prelude::*;
@@ -28,9 +31,9 @@ use morph_script_common::{
 };
 
 #[cfg(target_arch = "riscv64")]
-const VAULT_ARGS_LEN: usize = BYTE32_LEN + 8 + BYTE32_LEN + 1 + BYTE32_LEN + 1;
+const BATCH_IDENTITY_OFFSET: usize = BYTE32_LEN + 8 + BYTE32_LEN + 1 + BYTE32_LEN + 1;
 #[cfg(target_arch = "riscv64")]
-const VAULT_ARGS_V2_LEN: usize = VAULT_ARGS_LEN + BYTE32_LEN + 1;
+const VAULT_ARGS_LEN: usize = BATCH_IDENTITY_OFFSET + BYTE32_LEN + 1;
 #[cfg(target_arch = "riscv64")]
 const MAX_WITNESS_INPUTS_PER_TX: usize = 64;
 
@@ -54,7 +57,13 @@ fn main() {}
 fn main() -> Result<()> {
     let script = load_script().map_err(|_| ScriptError::Encoding)?;
     let args = script.args().raw_data();
-    if args.len() != VAULT_ARGS_LEN && args.len() != VAULT_ARGS_V2_LEN {
+    if args
+        .as_ref()
+        .starts_with(morph_script_common::multi_asset::MULTI_ASSET_VAULT_ARGS_MAGIC)
+    {
+        return multi_asset::validate(args.as_ref());
+    }
+    if args.len() != VAULT_ARGS_LEN {
         return Err(ScriptError::WrongArgsLength);
     }
     let expected_funding_anchor = &args.as_ref()[..BYTE32_LEN];
@@ -134,9 +143,6 @@ fn main() -> Result<()> {
             verify_ckb_xudt_descriptor_outputs(&descriptor)?;
         }
         BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN => {
-            if args.len() != VAULT_ARGS_V2_LEN {
-                return Err(ScriptError::ConditionalBatchLockMismatch);
-            }
             let descriptor = BilateralCkbConditionalDescriptor::parse(descriptor_raw.as_ref())?;
             if header.descriptor_version() != BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_VERSION
                 || header.settlement_descriptor_commitment() != descriptor.commitment().as_slice()
@@ -155,7 +161,7 @@ fn main() -> Result<()> {
                 verify_conditional_batch_output(
                     &descriptor,
                     &header,
-                    &args.as_ref()[VAULT_ARGS_LEN..VAULT_ARGS_V2_LEN],
+                    &args.as_ref()[BATCH_IDENTITY_OFFSET..VAULT_ARGS_LEN],
                     vault_capacity,
                 )?;
             }
@@ -438,10 +444,8 @@ fn find_unique_state_input(
                         Source::Input,
                         expected_funding_anchor,
                         expected_min_since,
-                        expected_type_code_hash,
-                        expected_type_hash_type,
-                        expected_lock_code_hash,
-                        expected_lock_hash_type,
+                        (expected_type_code_hash, expected_type_hash_type),
+                        (expected_lock_code_hash, expected_lock_hash_type),
                     )?
                 {
                     if found.is_some() {
@@ -644,11 +648,11 @@ fn state_cell_scripts_match(
     source: Source,
     expected_funding_anchor: &[u8],
     expected_min_since: u64,
-    expected_type_code_hash: &[u8],
-    expected_type_hash_type: u8,
-    expected_lock_code_hash: &[u8],
-    expected_lock_hash_type: u8,
+    expected_type: (&[u8], u8),
+    expected_lock: (&[u8], u8),
 ) -> Result<bool> {
+    let (expected_type_code_hash, expected_type_hash_type) = expected_type;
+    let (expected_lock_code_hash, expected_lock_hash_type) = expected_lock;
     let Some(state_type) = load_cell_type(index, source).map_err(|_| ScriptError::Encoding)? else {
         return Ok(false);
     };

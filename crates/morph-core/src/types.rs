@@ -41,6 +41,7 @@ impl ChannelOperation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StateHeader {
     pub protocol_version: u16,
     pub chain_id: Bytes32,
@@ -102,12 +103,14 @@ impl StateCell {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ParticipantSignature {
     pub pubkey_sec1: Vec<u8>,
     pub signature: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StateAuthorization {
     pub threshold: u8,
     pub signatures: Vec<ParticipantSignature>,

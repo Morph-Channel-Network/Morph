@@ -979,6 +979,7 @@ function NodeInfoStrip({
       <NodeInfoPill Icon={ReceiptText} label="Invoices" value={String(state.invoices.length)} />
       <NodeInfoPill Icon={Factory} label="Factories" value={String(state.factories.length)} />
       <NodeInfoPill Icon={Boxes} label="Batches" value={String(state.conditional_batches.length)} />
+      <NodeInfoPill Icon={FileJson} label="Recoveries" value={String(state.multi_asset_package_count)} />
       <NodeInfoPill
         Icon={RadioTower}
         label="Watch"

@@ -42,8 +42,20 @@ mod conditional_packages;
 mod devnet;
 #[cfg(feature = "devnet")]
 mod devnet_dispatch;
+mod factory_multi_asset_packages;
 mod factory_packages;
 mod hub;
+mod multi_asset_funding;
+mod multi_asset_funding_session;
+mod multi_asset_packages;
+#[cfg(any(feature = "devnet", test))]
+mod multi_asset_root_transaction;
+mod multi_asset_session;
+mod multi_asset_session_chain;
+mod multi_asset_signatures;
+mod multi_asset_splice_transaction;
+#[cfg(feature = "devnet")]
+mod multi_asset_supervision;
 mod packages;
 mod preproduction;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
@@ -122,6 +134,54 @@ enum InvoiceAssetArg {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Verify a public funding bundle and durably extract its exit before the binary.
+    ImportRootFunding {
+        bundle: PathBuf,
+        #[arg(long)]
+        store_dir: PathBuf,
+    },
+    /// Verify a complete splice export against the old context and retain its exit before the binary.
+    ImportSpliceFunding {
+        bundle: PathBuf,
+        #[arg(long)]
+        old_package: PathBuf,
+        #[arg(long)]
+        store_dir: PathBuf,
+    },
+    /// Independently collect an initial exit before authorising exact root funding.
+    MultiAssetFundingSession {
+        #[arg(long)]
+        session: PathBuf,
+        #[command(subcommand)]
+        command: multi_asset_funding_session::FundingSessionCommand,
+    },
+    /// Negotiate signed multi-asset updates using a durable local signing journal.
+    MultiAssetSession {
+        #[arg(long)]
+        session: PathBuf,
+        #[command(subcommand)]
+        command: multi_asset_session::SessionCommand,
+    },
+    /// Continuously verify registered signer contexts and persist local health/alerts.
+    #[cfg(feature = "devnet")]
+    MultiAssetSupervise {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        health_file: PathBuf,
+        #[arg(long)]
+        alert_file: PathBuf,
+        #[arg(long)]
+        cycles: Option<u64>,
+    },
+    /// Read supervision health; stale or unverified contexts return a failing exit status.
+    #[cfg(feature = "devnet")]
+    MultiAssetSupervisionHealth {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        health_file: PathBuf,
+    },
     /// Validate the built-in bilateral-channel fixture.
     ValidateFixture,
     /// Print a JSON state header fixture and signing digest.
@@ -226,6 +286,8 @@ enum Command {
     PrintFactoryFixture,
     /// Print a bounded CKB conditional-batch force-resolution package fixture.
     PrintConditionalBatchFixture,
+    /// Print a complete signed two-xUDT recovery package fixture.
+    PrintMultiAssetFixture,
     /// Print a conservative all-participant signed factory state package fixture.
     PrintFactoryStateFixture,
     /// Print a host-side authorised-participant signed factory state package fixture.
@@ -295,6 +357,20 @@ enum Command {
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
+    },
+    /// Validate complete multi-asset unilateral recovery evidence.
+    ValidateMultiAssetPackage {
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Verify an offline multi-asset Factory partition and all-participant approval.
+    ValidateFactoryMultiAssetMaterialisation { path: PathBuf },
+    /// Validate and atomically retain a multi-asset recovery package.
+    StoreMultiAssetPackage {
+        path: PathBuf,
+        #[arg(long)]
+        store_dir: PathBuf,
     },
     /// Validate a conservative all-participant signed factory state package.
     ValidateFactoryStatePackage {
@@ -578,6 +654,188 @@ enum HubCommand {
 #[cfg(feature = "devnet")]
 #[derive(Debug, Subcommand)]
 enum DevnetCommand {
+    /// Scan canonical multi-asset State Cells and publish saved newer recovery evidence.
+    MultiAssetWatch {
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[command(subcommand)]
+        fee_authorization: devnet::multi_asset_operator::FeeAuthorization,
+        #[arg(long)]
+        fee_out_point: String,
+        #[arg(long)]
+        store_dir: PathBuf,
+        #[arg(long)]
+        channel_id: String,
+        #[arg(long)]
+        from_block: u64,
+        #[arg(long)]
+        cursor_file: PathBuf,
+        #[arg(long)]
+        alert_file: PathBuf,
+        #[arg(long)]
+        publication_profile: PathBuf,
+        #[arg(long)]
+        attempt_log: PathBuf,
+        #[arg(long, default_value_t = 1)]
+        detection_depth: u64,
+        #[arg(long, default_value_t = 30)]
+        timeout_secs: u64,
+        #[arg(long, default_value_t = 1000)]
+        poll_ms: u64,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value_t = 0)]
+        mine_blocks: u64,
+    },
+    /// Recover activation, publish, or finalise the complete Vault set from saved evidence.
+    MultiAssetTransact {
+        #[arg(long, value_enum)]
+        operation: devnet::multi_asset_operator::Operation,
+        #[arg(long)]
+        package: PathBuf,
+        #[arg(long)]
+        state_out_point: String,
+        #[arg(long)]
+        fee_out_point: String,
+        #[command(subcommand)]
+        fee_authorization: devnet::multi_asset_operator::FeeAuthorization,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value = "target/multi-asset/packages")]
+        store_dir: PathBuf,
+        #[arg(long, default_value_t = 100_000_000)]
+        fee: u64,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value_t = 0)]
+        mine_blocks: u64,
+        #[arg(long)]
+        publication_profile: Option<PathBuf>,
+        #[arg(long)]
+        attempt_log: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Construct exact root funding with explicit per-wallet CKB/token/fee contributions.
+    MultiAssetFundingPrepare {
+        #[arg(long)]
+        terms: PathBuf,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Sign only the declared wallet's group after reviewing exact funding terms and exit.
+    MultiAssetFundingWalletSign {
+        #[arg(long)]
+        terms: PathBuf,
+        #[arg(long)]
+        transaction: PathBuf,
+        #[arg(long)]
+        package: PathBuf,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value = "target/multi-asset/packages")]
+        store_dir: PathBuf,
+        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
+        private_key: String,
+    },
+    /// Submit a fully signed epoch-0 funding transaction or replay its exact bytes.
+    MultiAssetFundingSubmit {
+        #[arg(long)]
+        transaction: PathBuf,
+        #[arg(long)]
+        package: PathBuf,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value = "target/multi-asset/packages")]
+        store_dir: PathBuf,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value_t = 0)]
+        mine_blocks: u64,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Construct an exact unsigned splice draft from explicit funding inputs and value terms.
+    MultiAssetSplicePrepare {
+        #[arg(long)]
+        old_package: PathBuf,
+        #[arg(long)]
+        state_out_point: String,
+        #[arg(long)]
+        terms: PathBuf,
+        #[arg(long = "external-input", required = true)]
+        external_inputs: Vec<String>,
+        #[arg(long)]
+        change_pubkey: String,
+        #[arg(long)]
+        fee: u64,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Verify live complete sets and code, then submit an exact signed splice body.
+    MultiAssetSpliceSubmit {
+        #[arg(long)]
+        transaction: PathBuf,
+        #[arg(long)]
+        old_package: PathBuf,
+        #[arg(long)]
+        new_package: PathBuf,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value = "target/multi-asset/packages")]
+        store_dir: PathBuf,
+        #[arg(long)]
+        max_fee: u64,
+        #[arg(long, default_value_t = 0)]
+        mine_blocks: u64,
+        #[arg(long)]
+        dry_run: bool,
+        #[command(subcommand)]
+        fee_authorization: devnet::multi_asset_splice_operator::FeeAuthorization,
+    },
+    /// Exercise a complete multi-xUDT channel lifecycle on an isolated devnet.
+    MultiAssetSmoke {
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
+        private_key: String,
+        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
+        alice_private_key: String,
+        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
+        bob_private_key: String,
+        #[arg(long, default_value_t = 2)]
+        asset_count: usize,
+        /// Fund assets from both participants and use a third fee/carrier wallet.
+        #[arg(long)]
+        shared_funding: bool,
+        #[arg(long, default_value_t = 100_000_000)]
+        fee: u64,
+        #[arg(long, default_value_t = 4)]
+        finalise_since: u64,
+        #[arg(long, default_value_t = 4)]
+        mine_blocks: u64,
+        #[arg(long, default_value = "target/multi-asset-devnet/packages")]
+        store_dir: PathBuf,
+        #[arg(long)]
+        publication_profile: Option<PathBuf>,
+        #[arg(long, requires = "publication_profile")]
+        watch_publication: bool,
+        #[arg(long, requires = "watch_publication")]
+        watch_reorg: bool,
+        /// Use a separately funded, state-number-bound SponsorCell for every publication.
+        #[arg(long)]
+        sponsor_publication: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Print chain, node, and tip status.
     Check {
         /// Emit machine-readable JSON.
@@ -2923,6 +3181,58 @@ enum DevnetCommand {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::ImportRootFunding { bundle, store_dir } => {
+            let result = multi_asset_funding::import_root_funding(&bundle, &store_dir)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        Command::ImportSpliceFunding {
+            bundle,
+            old_package,
+            store_dir,
+        } => {
+            let result = multi_asset_splice_transaction::import_splice_funding(
+                &bundle,
+                &old_package,
+                &store_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        Command::MultiAssetFundingSession { session, command } => {
+            let result = multi_asset_funding_session::run(&session, command)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        Command::MultiAssetSession { session, command } => {
+            let result = multi_asset_session::run(&session, command)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        #[cfg(feature = "devnet")]
+        Command::MultiAssetSupervise {
+            config,
+            health_file,
+            alert_file,
+            cycles,
+        } => {
+            let result = multi_asset_supervision::run(&config, &health_file, &alert_file, cycles)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
+        #[cfg(feature = "devnet")]
+        Command::MultiAssetSupervisionHealth {
+            config,
+            health_file,
+        } => {
+            let result = multi_asset_supervision::health(&config, &health_file)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            ensure!(
+                result.healthy,
+                "signer supervision is stale or contains unverified contexts"
+            );
+            Ok(())
+        }
         Command::ValidateFixture => validate_fixture(),
         Command::PrintFixture => print_fixture(),
         Command::NewInvoice {
@@ -3043,6 +3353,13 @@ fn main() -> Result<()> {
         Command::PrintConditionalBatchFixture => {
             let package = conditional_packages::fixture_package()?;
             println!("{}", serde_json::to_string_pretty(&package)?);
+            Ok(())
+        }
+        Command::PrintMultiAssetFixture => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&multi_asset_packages::fixture_package()?)?
+            );
             Ok(())
         }
         Command::PrintFactoryStateFixture => {
@@ -3230,6 +3547,31 @@ fn main() -> Result<()> {
                     summary.resolved_capacities[0], summary.resolved_capacities[1]
                 );
             }
+            Ok(())
+        }
+        Command::ValidateFactoryMultiAssetMaterialisation { path } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&factory_multi_asset_packages::validate(&path)?)?
+            );
+            Ok(())
+        }
+        Command::ValidateMultiAssetPackage { path, json } => {
+            let summary = multi_asset_packages::read_package(&path)?.validate()?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&summary)?);
+            } else {
+                println!(
+                    "multi-asset package ok: channel={} state={} vaults={}",
+                    summary.channel_id, summary.state_number, summary.vault_count
+                );
+            }
+            Ok(())
+        }
+        Command::StoreMultiAssetPackage { path, store_dir } => {
+            let package = multi_asset_packages::read_package(&path)?;
+            let stored_path = multi_asset_packages::write_package(&store_dir, &package)?;
+            println!("{}", stored_path.display());
             Ok(())
         }
         Command::ValidateFactoryStatePackage { path, json } => {

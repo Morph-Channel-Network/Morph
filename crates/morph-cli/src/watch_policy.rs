@@ -20,7 +20,6 @@ pub struct WatchtowerPolicy {
     pub require_auto_fund_sponsor: bool,
     pub max_auto_sponsor_capacity: u64,
     pub require_mine_blocks: bool,
-    #[serde(default)]
     pub allow_webhook_alerts: bool,
 }
 

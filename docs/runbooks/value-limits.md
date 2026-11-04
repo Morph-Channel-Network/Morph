@@ -61,6 +61,12 @@ cargo run -p morph-cli -- value-limit-check \
 
 ## 4. Failure handling
 
+The checker also accepts `morph.multi_asset_recovery_package.v1` packages.
+It counts every Vault's reserve and business CKB plus the State carrier, and
+checks each registered xUDT amount separately. Unlisted assets fail closed.
+Retaining recovery evidence remains separate from permission to fund or
+publish new value; a reduced operator cap must not erase existing exit data.
+
 - `channel CKB capacity ... exceeds the policy cap` or
   `xUDT asset ... exceeds the policy cap`: do not broadcast. Reduce the
   package amounts or raise the cap through review.

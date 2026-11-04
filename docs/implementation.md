@@ -143,17 +143,20 @@ cannot substitute for the committed bilateral or Factory Vault.
 
 ### Current Asset Boundary
 
-The host model already represents multiple xUDT types through `AssetRegistry`,
-per-type conservation maps, and asset-qualified Factory rights. The deployed
+The host model represents multiple xUDT types through `AssetRegistry`,
+per-type conservation maps, and asset-qualified Factory rights. The legacy
 script profile is narrower: descriptor v2 names one xUDT type, and bilateral
 and Factory provenance bind one physical Vault Cell. Splice and Factory Vault
 descriptors have two asset slots, with physical paths limited to CKB plus one
 xUDT type. Descriptor v3 conditional batches are CKB-only.
 
-Multiple xUDT types in one channel require a versioned multi-Vault profile,
-including whole-set activation, retirement, and capacity accounting. The
-[multi-asset channel design](multi-asset-channels.md) records the proposed
-extension and its acceptance gates; it is not supported by current scripts.
+The [candidate multi-asset profile](multi-asset-wire.md) now implements a
+separate 318-byte State layout, 1–8 Vaults, whole-set activation and retirement,
+per-asset settlement, occupied-capacity evidence, CLI/SDK recovery, durable
+bilateral signing sessions, Hub import/export, and canonical dispute-watch
+passes with reorg recovery. Multi-asset splice, Factory custody, conditional
+xUDT, and multi-channel watch service orchestration remain work tracked by the
+[multi-asset channel design](multi-asset-channels.md).
 
 ```mermaid
 flowchart LR
@@ -315,9 +318,9 @@ Header bytes, bilateral signature witness bytes, channel id, funding anchor,
 derived funding context id, state number, signing digest, source State
 outpoint, and descriptor commitment/version metadata. It validates signatures
 and metadata before write and read. Latest-package selection is by channel id
-and state number, while watchtower re-anchor handling prefers the derived
-funding context id and falls back to the funding anchor for older package
-stores. The broader paper `StatePackage` object is the protocol requirement for
+and state number. Watchtower re-anchor handling requires the exact derived
+funding context id; funding-anchor-only matching is rejected. The broader paper `StatePackage`
+object is the protocol requirement for
 arbitrary representation profiles; the current bilateral devnet package is the
 implemented plaintext profile.
 

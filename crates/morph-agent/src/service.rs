@@ -662,13 +662,9 @@ pub struct CreateChallengeRequest {
     /// Morph account allowed to sign and claim this challenge.
     pub payer: String,
     pub resource: String,
-    #[serde(default = "default_operation")]
     pub operation: String,
-    #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
     pub expires_in_seconds: Option<u64>,
-    #[serde(default)]
     pub rgbpp_proof_commitment: Option<String>,
 }
 
@@ -676,9 +672,7 @@ pub struct CreateChallengeRequest {
 pub struct PayRequest {
     pub requirements: PaymentRequirements,
     pub payload: PaymentPayload,
-    #[serde(default)]
     pub timeout_seconds: Option<u64>,
-    #[serde(default)]
     pub max_fee_amount: Option<String>,
 }
 
@@ -706,7 +700,6 @@ pub struct VerifyResponse {
 pub struct SettleRequest {
     pub requirements: PaymentRequirements,
     pub payload: PaymentPayload,
-    #[serde(default)]
     pub credential_ttl_seconds: Option<u64>,
 }
 
@@ -730,14 +723,10 @@ pub struct FairExchangeOfferRequest {
     /// Morph account allowed to pay for and decrypt this offer.
     pub payer: String,
     pub resource: String,
-    #[serde(default = "default_operation")]
     pub operation: String,
     pub plaintext_base64: String,
-    #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
     pub expires_in_seconds: Option<u64>,
-    #[serde(default)]
     pub rgbpp_proof_commitment: Option<String>,
 }
 
@@ -745,7 +734,6 @@ pub struct FairExchangeOfferRequest {
 pub struct FairExchangeClaimRequest {
     pub offer_id: String,
     pub payload: PaymentPayload,
-    #[serde(default)]
     pub credential_ttl_seconds: Option<u64>,
 }
 
@@ -1296,10 +1284,6 @@ fn constant_time_equal(left: &[u8; 32], right: &[u8; 32]) -> bool {
             difference | (left ^ right)
         })
         == 0
-}
-
-fn default_operation() -> String {
-    "GET".to_string()
 }
 
 fn validate_operation(operation: &str) -> Result<(), ServiceError> {

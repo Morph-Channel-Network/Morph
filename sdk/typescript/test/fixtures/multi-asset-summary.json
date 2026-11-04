@@ -1,0 +1,30 @@
+{
+  "package_id": "0x407e0b8ddc658056995407bfbae9d280fae8cb91d0d632dc4f0a470e918ca390",
+  "channel_id": "0x0202020202020202020202020202020202020202020202020202020202020202",
+  "funding_context_id": "0x100deb7a3111e8dfc7eef1ee35edfe49256d9b533c9f30593220cceb066df1bf",
+  "state_number": "9",
+  "phase": "settling",
+  "vaults_bound": true,
+  "vault_count": 2,
+  "witness_bytes": 1360,
+  "dependency_count": 5,
+  "state_carrier_capacity": "100000000000",
+  "signer_pubkeys": [
+    "0x024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
+    "0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f"
+  ],
+  "assets": [
+    {
+      "type_hash": "0x9c3866105f3f40f8c25f81f8dc7118aa2eb156ef7274926ccaa92ab3e1627fd4",
+      "reserve": "40000000000",
+      "business_ckb": "10000000000",
+      "amount": "170141183460469231731687303715884105727"
+    },
+    {
+      "type_hash": "0xbf4ae1a321d460ab9adb72fa41415bca168deff95ce13246f2203240d7b74c26",
+      "reserve": "40000000000",
+      "business_ckb": "10000000000",
+      "amount": "170141183460469231731687303715884105727"
+    }
+  ]
+}

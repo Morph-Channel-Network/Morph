@@ -134,7 +134,7 @@ the expected files and log markers are present.
 | Splice lifecycle matrix | CKB and xUDT splice-in and splice-out update funding anchors and vault sets. | Funding-anchor and descriptor changes require signed evidence. |
 | Factory lifecycle matrix | Factory open, update, reduced rights, sparse Merkle update, local child exit, and reduced exit all execute. | Factory rights and child value cannot be changed without the required proof. |
 | Factory splice then exit | Conservative and reduced CKB/xUDT factory splice paths can be followed by child materialisation and finalisation. | Factory value deltas are bound across reserve, balance, and vault cells. |
-| Watchtower operations | Auto-sponsor, direct sponsor, config-loop, health-file, cursor, service stop, and stale-splice watching are recorded. | Watchtower publication is cursor-aware and funding-context-aware, with funding-anchor fallback for older packages. |
+| Watchtower operations | Auto-sponsor, direct sponsor, config-loop, health-file, cursor, service stop, and stale-splice watching are recorded. | Watchtower publication is cursor-aware and funding-context-aware, with exact funding-context matching and no funding-anchor fallback. |
 | Extreme state value cases | Asymmetric capacities and one-sided xUDT paths remain valid. | Edge-value cases do not bypass typed-asset or budget checks. |
 | Negative attack matrix | Known attack-shaped transactions fail with exact expected errors, then later valid transitions still commit. | Rejection paths are precise and recovery continues afterwards. |
 

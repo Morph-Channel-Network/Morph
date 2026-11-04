@@ -432,3 +432,195 @@ refunds, exact capacity conservation, and exactly two plain settlement outputs.
 Negative CKB-VM coverage rejects wrong preimages, premature refunds, descriptor
 substitution, wrong Batch Lock identity/args, and capacity loss. Conditional
 xUDT remains rejected by design.
+
+## Multi-asset bilateral candidate boundary
+
+The candidate adds a separate 318-byte State layout and descriptor version 4.
+Legacy encodings are unchanged. Both StateType and Vault Lock validate the
+entire bounded content/OutPoint set; exact canonical payout positions and a
+complete carrier refund conserve reserve, business CKB, and every xUDT type
+independently. Script preimages in recovery evidence prove occupied capacity
+before signing. Activation preserves the complete carrier capacity, with fees
+funded externally. Plain external fee change may share a refund address without
+being counted toward the canonical channel outputs.
+
+The activation recovery operator validates original on-chain creation evidence
+and signatures, keeps the original descriptor even when the saved unilateral
+state has different payouts, and places the complete exact Vault set first in
+direct dependencies. No participant key or reused creation signature authorises
+the new bound header. Host negatives reject foreign funding contexts/transactions,
+missing creation evidence and already-bound States; independent eight-asset
+node recovery confirms activation, latest publication and full finalisation
+using only an external fee wallet.
+
+Named CKB-VM boundaries include:
+
+- `multi_asset_rejects_partial_set_retirement` and
+  `multi_asset_rejects_extra_vault_input`;
+- `multi_asset_rejects_byte_identical_vault_substitution` and
+  `multi_asset_rejects_activation_with_reordered_direct_dependencies`;
+- `multi_asset_rejects_fake_state_authority` and
+  `multi_asset_rejects_premature_finalise`;
+- `multi_asset_rejects_payout_reallocation_not_in_signed_descriptor`;
+- `multi_asset_rejects_missing_carrier_refund` and
+  `multi_asset_rejects_activation_carrier_fee_leakage`;
+- `multi_asset_rejects_signed_publication_in_changed_chain_context`.
+
+The host suite separately rejects cross-asset minting, reserve reclassification,
+overflow, noncanonical asset sets, missing scripts, inadequate capacity, and
+incomplete/exchanged OutPoints. Rust and TypeScript share a signed recovery
+fixture with quantities above JavaScript's safe integer range; the SDK also
+rejects a freshly signed cross-asset mint and preserves a u64-max state number.
+Hub import binds the two signers to the actual local channel participants and
+retains validated evidence across restart. Recovery packages count as
+operational records for the bootstrap-only restore boundary. Value-limit
+extraction counts every Vault, every xUDT type, and the State carrier.
+
+Whole-lifecycle CKB-VM evidence includes balanced, one-sided, plain-CKB plus
+two-xUDT, maximum-eight-Vault, and Sponsor-funded publication paths. Isolated
+real-node acceptance has committed two- and eight-xUDT funding, activation,
+publication, supersede, and finalisation, with initial signed exit evidence
+durably retained before funding broadcast. Candidate implementation details
+and commands are in [multi-asset-wire.md](docs/multi-asset-wire.md).
+
+This section does not close multi-asset splice, Factory reserve/child paths,
+typed conditions, publication/reorg automation, reviewed release manifests,
+or independent review. The v3 release manifest must not be relabelled as
+qualification for those pending surfaces.
+
+### Multi-asset package-based transaction admission
+
+`devnet multi-asset-transact` requires exact canonical live State/Vault
+identities, complete registered asset quantities, independent plain fee input,
+matching carrier capacity, and live script dependencies. Code/DepGroup
+resolution is bounded to 64 unique code cells; Morph authority code must match
+the selected local artifacts. Finalisation checks canonical State inclusion and
+relative-block maturity before VM preflight. Publication can reuse the bounded
+fee/RBF controller and its durable attempt log; recovery evidence is persisted
+before submission.
+
+`dependency_resolution_distinguishes_code_data_hash_from_type_identity` tests
+hash-type-specific dependency resolution. Real-node `multi-asset-smoke`
+`operator_checks` exercises missing code, changed carrier, and signed preview
+paths through the same operator used for its committed publications and exit.
+This evidence does not close backend, sponsor/watchtower, splice, Factory,
+typed-condition, or independent-release-review gates.
+
+### Multi-asset state agreement and durable signing reservations
+
+The native `MultiAssetChannelBackend` validates complete unsigned proposal
+contents before reserving a vote, then verifies each exact participant signature
+and commits only a complete two-signature recovery package. The local signing
+reservation never decreases, including after cancellation or delayed peer-state
+recovery. Restored snapshots revalidate current evidence, context, pending
+signatures and the reservation. The standalone `multi-asset-session` CLI locks
+the stable sidecar across reads and atomic writes, fsyncs the reservation before
+invoking its signer, and fsyncs the receipt before exposing it. Keys are not
+stored in snapshots. This guarantee assumes one authoritative journal without
+operator-induced rollback or independent cloned stores.
+
+Evidence: `multi_asset_backend_cancel_and_restart_cannot_reuse_signed_state_number`,
+`multi_asset_backend_rejects_mint_context_changes_and_foreign_signatures_without_mutation`,
+`multi_asset_backend_restoration_rejects_tampered_pending_and_vote_snapshots`,
+`multi_asset_backend_recovers_delayed_complete_update_without_resetting_newer_vote`,
+`durable_session_negotiates_both_signers_and_exports_lossless_recovery`,
+`cancelled_signature_survives_restart_and_wrong_key_does_not_reserve`, and
+`session_lock_covers_read_reserve_and_atomic_snapshot_replacement` cover these
+boundaries. Rust and TypeScript share proposal/signature fixtures containing
+u128 quantities above JavaScript's safe integer range. Payment/Hub integration,
+Factory, splice, typed conditions and full watcher/release qualification remain
+separate gates.
+
+### Multi-asset canonical dispute monitoring
+
+`multi-asset-watch` matches exact funding contexts and authentic State scripts,
+rechecks saved signatures, rejects same-context/number equivocation and
+same-number on-chain conflicts, and preserves normal Active channels. Only an
+older Settling state can trigger automatic publication. Late packages force a
+rescan when the observed stale State is still canonical and live. Profile fee,
+poll, detection and challenge budgets apply before using the explicit fee input.
+
+Cursors bind a required scan origin and contiguous prefix, are privately and
+atomically fsynced under a stable lock, and check checkpoint/parent hashes.
+Reorg recovery clears orphanable observations before rescanning from creation.
+A failed or Pending publication does not advance observation to an unconfirmed
+success. Restart reconciles the shared durable attempt records. Alert append
+uses a file lock, one encoded record write and fsync, preventing interleaved
+writers from silently corrupting critical events.
+
+Unit evidence: `saved_packages_are_selected_per_context_and_conflicting_votes_fail_closed`
+and `shared_scanner_recognises_current_profile_and_rejects_fake_authority`.
+Real-node `watch-eight-final.json` records Active no-op, late saved-package
+rescan, deliberate stored and on-chain conflicts, rejected late origin, real
+node truncation, critical reorg recovery and canonical republication followed
+by full-set finalisation. Finite passes are not the complete sponsor-backed
+multi-channel watch service or an independent production release qualification.
+
+## Multi-asset splice authority and conservation
+
+The `MORPHMS!` path requires the exact signed raw transaction hash, authentic old
+State input zero, all exact old Vault OutPoints, matching authority code/policy,
+new unbound State output zero and canonical complete new Vault/withdrawal outputs.
+State carrier capacity is preserved; per-asset reserve, business CKB and token
+flows balance independently. Whole-transaction Type-quantity checks protect
+registered assets even when their own Type script permits minting. Bridge and
+new-State creation signatures are independently required.
+
+CKB-VM cases in `contract_scripts/multi_asset.rs`:
+
+- `multi_asset_splice_reanchors_full_set_with_asset_admission_withdrawal_and_recovery`
+  covers count changes, full replacement, 512-byte Scripts and pre-signed exit.
+- `multi_asset_splice_rejects_body_changes_clone_partial_sets_withdrawal_and_carrier_substitution`
+  rejects body mutation, incomplete/duplicate custody, fake authority and value loss.
+- `multi_asset_splice_requires_both_bridge_and_new_creation_authorizations` rejects
+  missing, invalid and cross-domain signature reuse.
+- `multi_asset_splice_independently_rejects_mint_under_a_permissive_asset_type` and
+  `multi_asset_splice_rejects_reserve_business_reclassification_even_with_valid_bridge_signatures`
+  check conservation beyond signature validity and external Type behavior.
+
+Native publication, canonical signer completion/abort and node/reorg acceptance
+remain separate gates; VM success does not satisfy those gates.
+
+## Root funding transaction replacement
+
+Root creation signatures bind the complete raw funding transaction in addition
+to the unbound State digest. Binding only the anchor and State permits a wallet
+owner to replace fee/change/dependencies and invalidate the pre-signed exit's
+exact Vault OutPoints. StateType now rejects ordinary state votes for root
+creation. Splice retains its transaction-bound bridge. Host funding validation
+and activation enforce the same distinction. Negative coverage:
+`multi_asset_root_creation_rejects_transaction_replacement` and
+`root_authorization_rejects_replaced_raw_body_even_with_fresh_exit_signatures`.
+
+## Independent initial funding votes
+
+Root creation cannot be released until both exact initial-exit signatures are
+persisted. Initial reservations and receipts use the same locked/fsynced journal
+path that later becomes the confirmed operational session; the initial journal
+is sealed before handoff and State 1 retains its exact exit vote. Direct
+operational `init`/`bind-root` and null-lineage operational snapshots are rejected.
+Signed exports remain available after artifact or RPC loss. Native funding and
+context checks also compare the signed chain ID to the RPC genesis before
+fee signing, persisting network artifacts or broadcasting. Negative coverage:
+`initial_ceremony_requires_full_exit_before_creation_and_exports_exact_custody`,
+`initial_reservations_survive_restart_and_reject_forged_local_receipts_and_artifact_drift`,
+`operational_commands_reject_unconfirmed_recovery_bootstrap`, and
+`recovery_package_cannot_bypass_initial_funding_ceremony`.
+
+## Per-wallet root funding authority
+
+Root construction derives State/Vault outputs from the descriptor and takes
+explicit CKB, fee and per-Type contributions from each declared wallet. Every
+input must belong to its funder, and all change remains with that wallet. A
+shortfall cannot consume another wallet's change; token quantities never cross
+Type domains. Tiny residual CKB stays in that wallet's token change or rejects
+when no occupied change output can carry it. Wallet signing reconstructs the
+exact raw body and requires complete root/initial-exit authorization. The former
+signing modes on funding submission have been removed.
+
+Submission performs full VM preflight before writing its immutable binary,
+so an attempt missing wallet signatures cannot occupy the later valid
+transaction's path. The synthetic shared-funding harness retains that negative
+and completes submission through the same store. Unit negatives:
+`root_builder_rejects_cross_wallet_subsidies_ownership_and_cross_type_quantity_changes`
+and `root_builder_keeps_tiny_change_with_the_owner_without_changing_fee`.

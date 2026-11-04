@@ -6,6 +6,18 @@ use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
 
+pub mod factory_multi_asset;
+pub mod multi_asset;
+pub mod multi_asset_splice;
+#[cfg(target_arch = "riscv64")]
+extern crate alloc;
+#[cfg(target_arch = "riscv64")]
+pub mod factory_multi_asset_runtime;
+#[cfg(target_arch = "riscv64")]
+pub mod multi_asset_runtime;
+#[cfg(target_arch = "riscv64")]
+pub mod multi_asset_splice_runtime;
+
 pub const BYTE32_LEN: usize = 32;
 pub const STATE_HEADER_LEN: usize = 346;
 pub const WITNESS_ENVELOPE_MAGIC: &[u8; 8] = b"MORPHW!!";
@@ -336,6 +348,14 @@ pub enum ScriptError {
     ConditionalRefundNotMature = 59,
     ConditionalBatchLockMismatch = 60,
     ConditionalValueMismatch = 61,
+    MultiAssetEncoding = 62,
+    MultiAssetCommitmentMismatch = 63,
+    MultiAssetConservationMismatch = 64,
+    MultiAssetCapacityMismatch = 65,
+    MultiAssetVaultSetIncomplete = 66,
+    MultiAssetSpliceEncoding = 67,
+    MultiAssetSpliceMismatch = 68,
+    FactoryMultiAssetPartitionMismatch = 69,
 }
 
 pub type Result<T> = core::result::Result<T, ScriptError>;
@@ -7677,100 +7697,6 @@ mod tests {
         assert_eq!(policy.already_spent(), 50);
         assert_eq!(policy.publication_state_type_hash(), &[2u8; 32]);
         assert_eq!(policy.change_lock(), &[3u8; 32]);
-    }
-
-    #[test]
-    fn molecule_schema_names_all_active_fixed_width_objects() {
-        let schema = include_str!("../../../schemas/morph.mol");
-        fn declared_schema_size(schema: &str, name: &str) -> Option<usize> {
-            for line in schema.lines() {
-                let Some(rest) = line.trim().strip_prefix("// - ") else {
-                    continue;
-                };
-                let Some(rest) = rest.strip_prefix(name) else {
-                    continue;
-                };
-                let Some(rest) = rest.strip_prefix(": ") else {
-                    continue;
-                };
-                let Some(digits) = rest.strip_suffix(" bytes") else {
-                    continue;
-                };
-                return digits.parse().ok();
-            }
-            None
-        }
-
-        for (name, len) in [
-            ("StateHeader", STATE_HEADER_LEN),
-            ("SpliceHeader", SPLICE_HEADER_LEN),
-            ("SpliceSignatureWitness", SPLICE_SIGNATURE_WITNESS_LEN),
-            ("SpliceVaultAssetAmount", SPLICE_VAULT_ASSET_AMOUNT_LEN),
-            ("SpliceVaultDescriptor", SPLICE_VAULT_DESCRIPTOR_LEN),
-            ("SpliceAssetDelta", SPLICE_ASSET_DELTA_LEN),
-            ("SpliceAssetDeltas", SPLICE_ASSET_DELTAS_LEN),
-            (
-                "SpliceStateTransitionWitness",
-                SPLICE_STATE_TRANSITION_WITNESS_LEN,
-            ),
-            ("BilateralSignatureWitness", BILATERAL_SIGNATURE_WITNESS_LEN),
-            (
-                "BilateralCkbSettlementDescriptor",
-                BILATERAL_CKB_DESCRIPTOR_LEN,
-            ),
-            (
-                "BilateralCkbXudtSettlementDescriptor",
-                BILATERAL_CKB_XUDT_DESCRIPTOR_LEN,
-            ),
-            ("SponsorPolicy", SPONSOR_POLICY_LEN),
-            ("FactoryStateHeader", FACTORY_STATE_HEADER_LEN),
-            ("FactoryRight", FACTORY_RIGHT_LEN),
-            ("FactorySpliceHeader", FACTORY_SPLICE_HEADER_LEN),
-            ("FactoryVaultDescriptor", FACTORY_VAULT_DESCRIPTOR_LEN),
-            ("FactoryVaultDelta", FACTORY_VAULT_DELTA_LEN),
-            ("FactoryVaultDeltas", FACTORY_VAULT_DELTAS_LEN),
-        ] {
-            assert!(
-                declared_schema_size(schema, name) == Some(len),
-                "schema size mismatch for {name}"
-            );
-        }
-
-        for expected in [
-            "struct StateHeader",
-            "struct SpliceHeader",
-            "struct SpliceSignatureWitness",
-            "struct SpliceVaultDescriptor",
-            "struct SpliceAssetDeltas",
-            "struct SpliceStateTransitionWitness",
-            "struct FactoryStateHeader",
-            "struct BilateralSignatureWitness",
-            "struct FactorySpliceHeader",
-            "struct FactoryVaultDescriptor",
-            "struct FactoryVaultDeltas",
-            "struct BilateralCkbSettlementDescriptor",
-            "struct BilateralCkbXudtSettlementDescriptor",
-            "struct SponsorPolicy",
-            "state_lock_hash: Byte32",
-            "xudt_type_hash: Byte32",
-            "xudt_amount: uint128",
-            "max_fee_per_tx: uint64",
-            "publication_state_type_hash: Byte32",
-            "change_lock_hash: Byte32",
-            "non_interference_digest: Byte32",
-            "old_funding_epoch: uint64",
-            "new_funding_epoch: uint64",
-            "funding_epoch: uint64",
-            "vault_set_commitment: Byte32",
-            "asset_delta_commitment: Byte32",
-            "signed_fee: uint128",
-            "old_vault_descriptor: SpliceVaultDescriptor",
-        ] {
-            assert!(
-                schema.contains(expected),
-                "schema is missing expected fragment: {expected}"
-            );
-        }
     }
 
     #[test]

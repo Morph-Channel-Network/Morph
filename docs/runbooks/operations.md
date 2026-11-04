@@ -109,4 +109,7 @@ process during a write unless it is unsafe to let it continue.
 
 On restart, verify the release manifest, RPC chain identity, envelope date,
 package backup, cursor ownership, and health output. An uninitialised cursor without a
-canonical block hash will deliberately trigger a critical rescan.
+canonical block hash will deliberately trigger a critical rescan. Cursor JSON
+requires its original `from_block` and contiguous scan heights; a changed origin
+requires a fresh cursor. This reset policy does not apply to signer journals,
+whose reservations must never be rolled back.

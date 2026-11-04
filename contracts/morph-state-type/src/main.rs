@@ -3,6 +3,9 @@
 #![forbid(unsafe_code)]
 
 #[cfg(target_arch = "riscv64")]
+mod multi_asset;
+
+#[cfg(target_arch = "riscv64")]
 use ckb_std::ckb_constants::Source;
 #[cfg(target_arch = "riscv64")]
 use ckb_std::ckb_types::prelude::*;
@@ -61,10 +64,22 @@ fn main() -> Result<()> {
     };
     let expected_funding_anchor = &args.as_ref()[..BYTE32_LEN];
 
-    match (
-        zero_or_one_group_cell_data(Source::GroupInput)?,
-        zero_or_one_group_cell_data(Source::GroupOutput)?,
-    ) {
+    let old_data = zero_or_one_group_cell_data(Source::GroupInput)?;
+    let new_data = zero_or_one_group_cell_data(Source::GroupOutput)?;
+    if old_data.as_ref().is_some_and(|data| {
+        data.len() == morph_script_common::multi_asset::MULTI_ASSET_STATE_HEADER_LEN
+    }) || new_data.as_ref().is_some_and(|data| {
+        data.len() == morph_script_common::multi_asset::MULTI_ASSET_STATE_HEADER_LEN
+    }) {
+        return multi_asset::validate(
+            expected_funding_anchor,
+            finalise_since,
+            old_data.as_deref(),
+            new_data.as_deref(),
+            expected_factory_type_hash,
+        );
+    }
+    match (old_data, new_data) {
         (None, Some(new_data)) => validate_create(
             &script,
             &new_data,

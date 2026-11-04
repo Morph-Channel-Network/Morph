@@ -2,7 +2,7 @@ import { Activity, BadgeCheck, Factory, FileJson, GitBranch, Network, Plus, Radi
 import type { LucideIcon } from 'lucide-react';
 import type React from 'react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { connectPeer, getStateFile, postAction, previewStateFile, replaceStateFile, type RestorePreview } from './api';
+import { connectPeer, getRootFunding, getMultiAssetRecoveryPackage, getStateFile, postAction, previewStateFile, replaceStateFile, type RestorePreview } from './api';
 import { ConfirmActionDialog, ValidatedInput, ValidatedTextarea } from './components';
 import {
   Asset,
@@ -912,6 +912,91 @@ function ChannelOpenForm({
   );
 }
 
+export function RootFundingActions({state,runAction,busy}:{state:NodeState;runAction:RunAction;busy:boolean}) {
+  const [draftJson,setDraftJson]=useState('');
+  const [receiptJson,setReceiptJson]=useState('');
+  const [selectedId,setSelectedId]=useState('');
+  const [target,setTarget]=useState<'exit'|'creation'>('exit');
+  const [bundleJson,setBundleJson]=useState('');
+  const [status,setStatus]=useState('');
+  const [loading,setLoading]=useState(false);
+  const selected=state.root_fundings.find(entry=>entry.transaction_hash===selectedId);
+  const canWrite=hasHubScope(state.security,'write');
+  const canRead=hasHubScope(state.security,'read');
+  useEffect(()=>{if(selected?.exit_signature_count!==2)setTarget('exit');},[selected?.exit_signature_count,selectedId]);
+  const load=async(id:string)=>{
+    setSelectedId(id);setBundleJson('');setStatus('');setLoading(true);
+    try {const collection=await getRootFunding(id);setDraftJson(JSON.stringify(collection.draft,null,2));}
+    catch(error){setStatus((error as Error).message);}finally{setLoading(false);}
+  };
+  const propose=(event:FormEvent)=>{
+    event.preventDefault();if(!canWrite)return;
+    void runAction('Retain funding proposal',async()=>{
+      if(draftJson.length>600*1024)throw new Error('Funding draft exceeds 600 KiB');
+      const draft:unknown=JSON.parse(requiredText(draftJson,'Funding draft JSON'));
+      const next=await postAction('/api/root-fundings',draft);
+      const added=next.root_fundings.find(entry=>!state.root_fundings.some(old=>old.transaction_hash===entry.transaction_hash));
+      if(added){setSelectedId(added.transaction_hash);setBundleJson('');}return next;
+    });
+  };
+  const addReceipt=(event:FormEvent)=>{
+    event.preventDefault();if(!canWrite||!selected)return;
+    void runAction('Retain participant signature',async()=>{
+      if(receiptJson.length>2048)throw new Error('Signature receipt exceeds 2 KiB');
+      const receipt:unknown=JSON.parse(requiredText(receiptJson,'Signature receipt JSON'));
+      const next=await postAction(`/api/root-fundings/${selected.transaction_hash}/signatures`,{target,receipt});
+      setReceiptJson('');setBundleJson('');return next;
+    });
+  };
+  const exportBundle=async()=>{
+    if(!selected?.ready_to_export||!canRead)return;
+    setStatus('');setLoading(true);
+    try {setBundleJson(JSON.stringify(await getRootFunding(selected.transaction_hash,true),null,2));}
+    catch(error){setStatus((error as Error).message);}finally{setLoading(false);}
+  };
+  const download=()=>{
+    const url=URL.createObjectURL(new Blob([bundleJson],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download=`morph-funding-${selectedId.slice(2,18)}.json`;link.click();
+    window.setTimeout(()=>URL.revokeObjectURL(url),250);
+  };
+  return <section data-testid="root-funding-actions">
+    <h2>Funding proposals</h2>
+    <p>Review allocations and exchange participant receipts before the funding wallets sign. Connect the other participant first.</p>
+    <form className="form-grid" onSubmit={propose}>
+      <label>Funding draft JSON<textarea className="mono" data-testid="root-draft-json" maxLength={600*1024} value={draftJson} onChange={event=>setDraftJson(event.target.value)} /></label>
+      <button data-testid="root-draft-import" disabled={busy||loading||!canWrite||!draftJson.trim()}><Upload size={15}/> Retain proposal</button>
+    </form>
+    <div className="stack-list">{state.root_fundings.map(entry=><button type="button" className="copy-button" key={entry.transaction_hash} disabled={busy||loading||!canRead} onClick={()=>{void load(entry.transaction_hash);}}>
+      {shortHex(entry.transaction_hash)} · exit {entry.exit_signature_count}/2 · creation {entry.creation_signature_count}/2
+    </button>)}</div>
+    {selected&&<>
+      <h3>{selected.ready_to_export?'Ready for wallet signatures':selected.exit_signature_count===2?'Collect creation receipts':'Collect initial exit receipts'}</h3>
+      <p>This is a funding proposal; it does not establish a funded channel.</p>
+      <p className="mono">Chain {shortHex(selected.chain_id)} · channel {shortHex(selected.channel_id)} · {selected.assets.length} assets</p>
+      <p>State carrier: {selected.state_carrier_capacity} shannons</p>
+      <div className="stack-list">{selected.payouts.map((payout,index)=><div key={payout.type_hash??'ckb'}>
+        <strong>{payout.type_hash?`xUDT ${shortHex(payout.type_hash)}`:'CKB'}</strong>
+        {payout.allocations.map((value,party)=><p key={party} className="mono">{shortHex(selected.participant_lock_hashes[party]!)}: {payout.type_hash?`${value.amount} tokens · `:''}reserve {value.reserve} · spendable {value.business_ckb} shannons</p>)}
+        <small>Vault {selected.vault_outpoints[index]?.index}</small>
+      </div>)}</div>
+      <form className="form-grid" onSubmit={addReceipt}>
+        <label>Signing role<select data-testid="root-receipt-target" value={target} onChange={event=>setTarget(event.target.value as 'exit'|'creation')}>
+          <option value="exit">Initial exit</option><option value="creation" disabled={selected.exit_signature_count!==2}>Root creation</option>
+        </select></label>
+        <label>Signature receipt JSON<textarea className="mono" data-testid="root-receipt-json" maxLength={2048} value={receiptJson} onChange={event=>setReceiptJson(event.target.value)} /></label>
+        <button data-testid="root-receipt-import" disabled={busy||loading||!canWrite||!receiptJson.trim()}><Upload size={15}/> Retain receipt</button>
+      </form>
+      <button data-testid="root-bundle-export" disabled={busy||loading||!canRead||!selected.ready_to_export} onClick={()=>{void exportBundle();}}><FileJson size={15}/> Export funding bundle</button>
+    </>}
+    {status&&<small className="inline-error">{status}</small>}
+    {bundleJson&&<>
+      <p>The bundle retains the signed exit. Funding wallets still need to authorize the transaction.</p>
+      <textarea data-testid="root-bundle-json" className="mono" readOnly value={bundleJson}/>
+      <button type="button" onClick={download}><FileJson size={15}/> Download bundle</button>
+    </>}
+  </section>;
+}
+
 export function StateActions({ state, runAction, busy }: { state: NodeState; runAction: RunAction; busy: boolean }) {
   const [raw, setRaw] = useState('');
   const [stateFileStatus, setStateFileStatus] = useState('');
@@ -920,6 +1005,28 @@ export function StateActions({ state, runAction, busy }: { state: NodeState; run
   const [restoreCandidate, setRestoreCandidate] = useState<{ payload: unknown; preview: RestorePreview } | null>(null);
   const canRestore = hasHubScope(state.security, 'restore');
   const restoreAvailable = state.security.state_restore_enabled && canRestore;
+  const [recoveryJson, setRecoveryJson] = useState('');
+  const [recoveryStatus, setRecoveryStatus] = useState('');
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const canWrite = hasHubScope(state.security, 'write');
+
+  const loadRecovery = async (id: string) => {
+    setRecoveryBusy(true);
+    setRecoveryStatus('');
+    try { setRecoveryJson(JSON.stringify(await getMultiAssetRecoveryPackage(id), null, 2)); }
+    catch (error) { setRecoveryStatus((error as Error).message); }
+    finally { setRecoveryBusy(false); }
+  };
+
+  const importRecovery = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canWrite) return;
+    void runAction('Retain multi-asset recovery', () => {
+      if (recoveryJson.length > 128 * 1024) throw new Error('Recovery JSON exceeds 128 KiB');
+      const packageValue: unknown = JSON.parse(requiredText(recoveryJson, 'Recovery package JSON'));
+      return postAction('/api/multi-asset-packages', packageValue);
+    });
+  };
 
   const exportState = async () => {
     if (!canRestore) return;
@@ -967,6 +1074,23 @@ export function StateActions({ state, runAction, busy }: { state: NodeState; run
 
   return (
     <div className="drawer-section">
+      <RootFundingActions state={state} runAction={runAction} busy={busy}/>
+      <h2>Multi-asset recovery</h2>
+      <p>Retain signed withdrawal evidence for the current channel state.</p>
+      <form className="form-grid" onSubmit={importRecovery}>
+        <label>Recovery package JSON
+          <textarea className="mono" data-testid="multi-asset-recovery-json" maxLength={128 * 1024} value={recoveryJson} onChange={event => setRecoveryJson(event.target.value)} />
+        </label>
+        <button data-testid="multi-asset-recovery-import" disabled={busy || recoveryBusy || !canWrite || !recoveryJson.trim()}><Upload size={15} /> Validate and retain</button>
+      </form>
+      {recoveryStatus && <small className="inline-error">{recoveryStatus}</small>}
+      <div className="stack-list">
+        {state.multi_asset_packages.map(packageValue => (
+          <button type="button" className="copy-button" key={packageValue.package_id} disabled={busy || recoveryBusy} onClick={() => { void loadRecovery(packageValue.package_id); }}>
+            <FileJson size={15} /> {shortHex(packageValue.channel_id)} · state {packageValue.state_number} · {packageValue.vault_count} assets
+          </button>
+        ))}
+      </div>
       <h2>State File</h2>
       <div className="state-path">
         <strong>{state.state_path || 'not loaded'}</strong>
@@ -1012,7 +1136,7 @@ export function StateActions({ state, runAction, busy }: { state: NodeState; run
 }
 
 function formatRestoreSummary(summary: RestorePreview['current']): string {
-  return `${summary.peers} peers, ${summary.channels} channels, ${summary.factories} factories, ${summary.invoices} invoices, ${summary.completed_flows} flows, ${summary.events} events`;
+  return `${summary.peers} peers, ${summary.channels} channels, ${summary.root_fundings} funding proposals, ${summary.factories} factories, ${summary.invoices} invoices, ${summary.completed_flows} flows, ${summary.events} events`;
 }
 
 function ChannelSelect({

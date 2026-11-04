@@ -1,6 +1,6 @@
 # Factory Pre-production Envelope
 
-Effective: 2026-08-25. Mandatory review by: 2026-09-24.
+Effective: 2026-11-04. Mandatory review by: 2026-12-04.
 
 This envelope authorises only a controlled, no-real-assets CKB devnet pilot of
 the `morph-v3-conditional-batch` profile. It does not authorise mainnet,
@@ -84,7 +84,7 @@ Factory. See
 
 ## Approval and Expiry
 
-The envelope expires unless a release owner reviews it by 2026-09-24. Any
+The envelope expires unless a release owner reviews it by 2026-12-04. Any
 increase requires fresh acceptance evidence and a reviewed change to both the
 JSON policy and this document. CI validation is necessary but is not release
 owner approval for higher limits.

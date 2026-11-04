@@ -11,6 +11,8 @@ export type WatchAlertSeverity = 'info' | 'warning' | 'critical';
 export type HubScope = 'read' | 'write' | 'restore' | 'sign';
 export type WatchAlertEvent =
   | 'chain_reorg_detected'
+  | 'recovery_data_invalid'
+  | 'publication_failed'
   | 'older_state_detected'
   | 'publication_submitted'
   | 'splice_detected'
@@ -194,6 +196,41 @@ export interface WatchtowerState {
   provenance: RecordProvenance;
 }
 
+export interface MultiAssetRecoverySummary {
+  package_id: Hex32;
+  channel_id: Hex32;
+  funding_context_id: Hex32;
+  state_number: string;
+  phase: 'active' | 'settling';
+  vaults_bound: boolean;
+  vault_count: number;
+  witness_bytes: number;
+  dependency_count: number;
+  state_carrier_capacity: string;
+  signer_pubkeys: [string, string];
+  assets: Array<{ type_hash: Hex32 | null; reserve: string; business_ckb: string; amount: string }>;
+}
+
+export interface RootFundingSummary {
+  transaction_hash: Hex32;
+  chain_id: Hex32;
+  channel_id: Hex32;
+  funding_context_id: Hex32;
+  creation_digest: Hex32;
+  exit_digest: Hex32;
+  state_carrier_capacity: string;
+  participants: [string, string];
+  participant_lock_hashes: [Hex32, Hex32];
+  vault_outpoints: Array<{tx_hash: Hex32; index: number}>;
+  assets: MultiAssetRecoverySummary['assets'];
+  payouts: Array<{type_hash: Hex32 | null; allocations: [{reserve: string; business_ckb: string; amount: string}, {reserve: string; business_ckb: string; amount: string}]}>;
+  input_count: number;
+  output_count: number;
+  exit_signature_count: number;
+  creation_signature_count: number;
+  ready_to_export: boolean;
+}
+
 export interface NodeState {
   pubkey: Pubkey;
   node_id: Hex32;
@@ -209,6 +246,9 @@ export interface NodeState {
   invoices: InvoiceRecord[];
   factories: FactoryRecord[];
   conditional_batches: ConditionalBatchPackage[];
+  multi_asset_packages: MultiAssetRecoverySummary[];
+  multi_asset_package_count: number;
+  root_fundings: RootFundingSummary[];
   events: HubEvent[];
   required_flows: FlowKey[];
   completed_flows: FlowKey[];
@@ -274,6 +314,9 @@ export const emptyState: NodeState = {
   invoices: [],
   factories: [],
   conditional_batches: [],
+  multi_asset_packages: [],
+  multi_asset_package_count: 0,
+  root_fundings: [],
   events: [],
   required_flows: [],
   completed_flows: [],
