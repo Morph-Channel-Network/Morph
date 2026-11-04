@@ -71,14 +71,12 @@ fn main() -> Result<()> {
     }) || new_data.as_ref().is_some_and(|data| {
         data.len() == morph_script_common::multi_asset::MULTI_ASSET_STATE_HEADER_LEN
     }) {
-        if expected_factory_type_hash.is_some() {
-            return Err(ScriptError::UnsupportedProtocolProfile);
-        }
         return multi_asset::validate(
             expected_funding_anchor,
             finalise_since,
             old_data.as_deref(),
             new_data.as_deref(),
+            expected_factory_type_hash,
         );
     }
     match (old_data, new_data) {

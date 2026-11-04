@@ -94,13 +94,30 @@ pub fn verify_multi_asset_vault_set(
     source: Source,
     exact_inputs: bool,
 ) -> Result<[usize; MULTI_ASSET_MAX_VAULTS]> {
+    verify_vault_manifest_set(
+        evidence.manifest(),
+        exact_inputs.then_some(evidence.outpoints()),
+        source,
+    )
+}
+
+pub fn verify_vault_manifest_set(
+    manifest: &crate::multi_asset::MultiAssetVaultManifest,
+    expected_points: Option<&[u8]>,
+    source: Source,
+) -> Result<[usize; MULTI_ASSET_MAX_VAULTS]> {
+    if expected_points.is_some_and(|points| points.len() != manifest.count() * 36) {
+        return Err(ScriptError::VaultOutPointMismatch);
+    }
     let mut found = [usize::MAX; MULTI_ASSET_MAX_VAULTS];
-    let manifest = evidence.manifest();
     let expected_lock = manifest.entry(0)?.lock_hash;
     let mut ended = false;
-    for index in 0..MULTI_ASSET_MAX_TRANSACTION_CELLS {
+    for index in 0..=MULTI_ASSET_MAX_TRANSACTION_CELLS {
         match load_cell_capacity(index, source) {
             Ok(_) => {
+                if index == MULTI_ASSET_MAX_TRANSACTION_CELLS {
+                    return Err(ScriptError::MultiAssetVaultSetIncomplete);
+                }
                 if load_cell_lock_hash(index, source).map_err(|_| ScriptError::Encoding)?
                     != expected_lock
                 {
@@ -115,12 +132,20 @@ pub fn verify_multi_asset_vault_set(
                     if *position != usize::MAX {
                         return Err(ScriptError::MultiAssetVaultSetIncomplete);
                     }
-                    verify_multi_asset_vault_at(evidence, entry_index, index, source)?;
-                    if exact_inputs
+                    let entry = manifest.entry(entry_index)?;
+                    verify_value(
+                        index,
+                        source,
+                        &entry.lock_hash,
+                        entry.asset,
+                        entry.allocation,
+                    )?;
+                    if expected_points.is_some()
                         && load_input_out_point(index, source)
                             .map_err(|_| ScriptError::Encoding)?
                             .as_slice()
-                            != evidence.outpoint(entry_index)?
+                            != &expected_points.ok_or(ScriptError::VaultOutPointMismatch)?
+                                [entry_index * 36..(entry_index + 1) * 36]
                     {
                         return Err(ScriptError::VaultOutPointMismatch);
                     }

@@ -764,9 +764,10 @@ impl<'a> MultiAssetScripts<'a> {
         let state_lock_hash = blake2b256(&[state_lock]);
         if args.state_type_hash() != state_type_hash
             || args.state_lock_hash() != state_lock_hash
-            || state_type[53..].len() != 40
+            || !matches!(state_type[53..].len(), 40 | 72)
+            || (state_type.len() == 125 && zero(&state_type[85..117]))
             || &state_type[53..85] != args.funding_anchor()
-            || read_u64(state_type, 85) != args.finalise_since()
+            || read_u64(state_type, state_type.len() - 8) != args.finalise_since()
             || state_lock[53..] != state_type_hash
         {
             return Err(ScriptError::MultiAssetCommitmentMismatch);

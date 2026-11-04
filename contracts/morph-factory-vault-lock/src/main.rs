@@ -56,6 +56,18 @@ fn main() -> Result<()> {
     let factory_id = &args.as_ref()[..BYTE32_LEN];
     let factory_type_hash = &args.as_ref()[BYTE32_LEN..2 * BYTE32_LEN];
 
+    if morph_script_common::factory_multi_asset_runtime::has_multi_asset_factory_source(
+        factory_type_hash,
+    )? {
+        let raw = morph_script_common::factory_multi_asset_runtime::materialisation_evidence()?
+            .ok_or(ScriptError::FactoryMultiAssetPartitionMismatch)?;
+        return morph_script_common::factory_multi_asset_runtime::validate_vault_gate(
+            &raw,
+            factory_id,
+            factory_type_hash,
+        );
+    }
+
     let witness_args = load_witness_args(0, Source::GroupInput)
         .map_err(|_| ScriptError::ParticipantWitnessMissing)?;
     let input_type = witness_args

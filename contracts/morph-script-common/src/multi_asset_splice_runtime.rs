@@ -159,8 +159,9 @@ fn verify_authority(proof: &MultiAssetSpliceWitness, old: &MultiAssetStateHeader
     let b = MultiAssetVaultArgs::parse(&new_vault[53..])?;
     let old_args = old_type.args().raw_data();
     let new_args = new_type.args().raw_data();
-    if old_type.as_slice().len() != 93
-        || new_type.as_slice().len() != 93
+    if !matches!(old_type.as_slice().len(), 93 | 125)
+        || old_type.as_slice().len() != new_type.as_slice().len()
+        || old_args[32..old_args.len() - 8] != new_args[32..new_args.len() - 8]
         || old_state_lock.as_slice().len() != 85
         || old_type.as_slice()[..49] != new_type.as_slice()[..49]
         || old_state_lock.as_slice()[..49] != new_state_lock.as_slice()[..49]
@@ -169,9 +170,9 @@ fn verify_authority(proof: &MultiAssetSpliceWitness, old: &MultiAssetStateHeader
         || new_state_lock.as_slice() != scripts.script(5)?
         || old_type.calc_script_hash() == new_type.calc_script_hash()
         || &old_args[..32] != old.funding_anchor()
-        || read_u64(&old_args, 32) != a.finalise_since()
+        || read_u64(&old_args, old_args.len() - 8) != a.finalise_since()
         || &new_args[..32] != proof.new_header().funding_anchor()
-        || read_u64(&new_args, 32) != a.finalise_since()
+        || read_u64(&new_args, new_args.len() - 8) != a.finalise_since()
         || a.finalise_since() != b.finalise_since()
         || a.funding_anchor() != old.funding_anchor()
         || a.state_type_hash() != old_type.calc_script_hash().as_slice()

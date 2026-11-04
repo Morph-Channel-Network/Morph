@@ -12,6 +12,8 @@ pub mod multi_asset_splice;
 #[cfg(target_arch = "riscv64")]
 extern crate alloc;
 #[cfg(target_arch = "riscv64")]
+pub mod factory_multi_asset_runtime;
+#[cfg(target_arch = "riscv64")]
 pub mod multi_asset_runtime;
 #[cfg(target_arch = "riscv64")]
 pub mod multi_asset_splice_runtime;

@@ -145,9 +145,9 @@ impl MultiAssetSpliceProposal {
             || old.state_type[..49] != new.state_type[..49]
             || old.state_lock[..49] != new.state_lock[..49]
             || old_args.finalise_since() != new_args.finalise_since()
-            || old.state_type.len() != 93
-            || new.state_type.len() != 93
-            || old.state_type[85..93] != new.state_type[85..93]
+            || !matches!(old.state_type.len(), 93 | 125)
+            || old.state_type.len() != new.state_type.len()
+            || old.state_type[85..] != new.state_type[85..]
         {
             return Err(MultiAssetError::ScriptIdentity);
         }

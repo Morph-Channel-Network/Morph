@@ -310,3 +310,7 @@ fn encode_vault_asset(asset: &VaultAsset, out: &mut Vec<u8>) {
         }
     }
 }
+
+pub const FACTORY_MULTI_ASSET_STATE_DOMAIN: &[u8] = b"CKB_MORPH_FACTORY_MULTI_ASSET_STATE_V1";
+pub const FACTORY_MULTI_ASSET_ROOT_FUNDING_DOMAIN: &[u8] =
+    b"CKB_MORPH_FACTORY_MULTI_ASSET_ROOT_FUNDING_V1";

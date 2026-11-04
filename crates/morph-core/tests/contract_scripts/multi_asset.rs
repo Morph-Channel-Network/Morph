@@ -424,7 +424,12 @@ fn finalise(fixture: &mut Fixture) -> TransactionView {
     for i in 0..fixture.vault_types.len() {
         tx = tx.input(
             CellInput::new_builder()
-                .previous_output(point(&fixture.funding, i + 1))
+                .previous_output(
+                    OutPoint::new_builder()
+                        .tx_hash(fixture.package.outpoints[i].tx_hash.pack())
+                        .index(fixture.package.outpoints[i].index)
+                        .build(),
+                )
                 .build(),
         );
     }
@@ -1616,3 +1621,6 @@ fn multi_asset_splice_rejects_reserve_business_reclassification_even_with_valid_
         .build();
     rejects(&fixture.base.context, &fixture.transaction, &[64]);
 }
+
+#[path = "factory_multi_asset.rs"]
+mod factory;

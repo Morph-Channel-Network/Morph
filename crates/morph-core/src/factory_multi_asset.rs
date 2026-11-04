@@ -1,24 +1,18 @@
-//! Factory materialisation planning. A validated plan is public evidence for
-//! all-participant approval, not proof that a Factory State or Vault is live.
-//! Factory execution must still bind its authenticated State and actual CKB
-//! inputs/outputs to this exact plan. Existing single-Vault scripts do not
-//! accept this profile.
-use std::collections::BTreeSet;
-
+//! Complete Factory materialisation plans and private child recovery checks.
+//! Consensus separately authenticates the Factory State and the exact physical
+//! input/output set against the canonical intent encoded here.
 use crate::{
     Bytes32, FactoryParticipantSignature, MultiAssetError, MultiAssetManifest, MultiAssetOutPoint,
-    MultiAssetRecoveryPackage, MultiAssetResult, MultiAssetTypeScript, Phase, StateAuthorization,
-    blake2b256, encode_multi_asset_outpoints, encode_multi_asset_signatures,
-    encode_multi_asset_witness, multi_asset_outpoint_commitment,
+    MultiAssetRecoveryPackage, MultiAssetResult, MultiAssetTypeScript, blake2b256,
+    encode_multi_asset_outpoints, encode_multi_asset_signatures, encode_multi_asset_witness,
 };
-use morph_script_common::{BilateralSignatureWitness, FactorySignatureWitness, ScriptError};
-use morph_script_common::{factory_multi_asset as wire, multi_asset as asset};
+use morph_script_common::factory_multi_asset as wire;
+use morph_script_common::{BilateralSignatureWitness, ScriptError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FactoryMultiAssetChild {
     pub state_output_index: u32,
     pub recovery: MultiAssetRecoveryPackage,
-    pub creation_authorization: StateAuthorization,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,198 +44,23 @@ fn mismatch<T>() -> MultiAssetResult<T> {
 
 impl FactoryMultiAssetMaterialisation {
     pub fn validate_contents(&self) -> MultiAssetResult<()> {
-        if self.chain_id == [0; 32]
-            || self.factory_id == [0; 32]
-            || self.participants_commitment == [0; 32]
-            || self.old_state.tx_hash == [0; 32]
-            || self.transaction_hash == [0; 32]
-            || self.old_state.tx_hash == self.transaction_hash
-            || self
-                .source_outpoints
-                .iter()
-                .any(|point| point.tx_hash == self.transaction_hash)
-            || self.factory_carrier_capacity == 0
-            || !(1..=wire::FACTORY_MULTI_ASSET_MAX_CHILDREN).contains(&self.children.len())
-            || self.source_outpoints.contains(&self.old_state)
-        {
-            return mismatch();
-        }
-        multi_asset_outpoint_commitment(&self.source, &self.source_outpoints)?;
-        let source_raw = self.source.encode()?;
-        let retained_raw = self
-            .retained
-            .as_ref()
-            .map(MultiAssetManifest::encode)
-            .transpose()?;
-        let child_raw = self
-            .children
-            .iter()
-            .map(|child| child.recovery.manifest.encode())
-            .collect::<MultiAssetResult<Vec<_>>>()?;
-        let source = asset::MultiAssetVaultManifest::parse(&source_raw)?;
-        let source_lock = source.entry(0)?.lock_hash;
-        let registry = self.source.registry()?;
-        asset::multi_asset_script_occupied_bytes(&self.factory_vault_lock)?;
-        if self.factory_vault_lock.len() != 117
-            || self.factory_vault_lock[53..85] != self.factory_id
-            || self.factory_vault_lock[85..] == [0; 32]
-            || blake2b256(&self.factory_vault_lock) != source_lock
-            || self.type_scripts.len() != registry.xudt_types.len()
-        {
-            return mismatch();
-        }
-        let mut previous_type = None;
-        for entry in &self.type_scripts {
-            asset::multi_asset_script_occupied_bytes(&entry.script)?;
-            if blake2b256(&entry.script) != entry.type_hash
-                || !registry.contains(&entry.type_hash)
-                || previous_type.is_some_and(|previous| previous >= entry.type_hash)
-            {
-                return mismatch();
-            }
-            previous_type = Some(entry.type_hash);
-        }
-        for manifest in std::iter::once(&self.source).chain(self.retained.iter()) {
-            for vault in &manifest.vaults {
-                let ty = match &vault.asset {
-                    crate::VaultAsset::Ckb => None,
-                    crate::VaultAsset::Xudt(hash) => Some(
-                        self.type_scripts
-                            .iter()
-                            .find(|entry| entry.type_hash == *hash)
-                            .ok_or(MultiAssetError::IncompleteEvidence)?
-                            .script
-                            .as_slice(),
-                    ),
-                };
-                if vault.value.reserve
-                    < asset::multi_asset_occupied_capacity(
-                        &self.factory_vault_lock,
-                        ty,
-                        if ty.is_some() { 16 } else { 0 },
-                    )?
-                {
-                    return mismatch();
-                }
-            }
-        }
-        let retained = retained_raw
-            .as_deref()
-            .map(asset::MultiAssetVaultManifest::parse)
-            .transpose()?;
-        let children = child_raw
-            .iter()
-            .map(|raw| asset::MultiAssetVaultManifest::parse(raw))
-            .collect::<Result<Vec<_>, _>>()?;
-        wire::validate_materialisation_partition(&source, retained.as_ref(), &children)?;
-        if self.retained.is_some() {
-            if !self.carrier_refund_lock.is_empty() {
-                return mismatch();
-            }
-        } else if self.carrier_refund_lock.is_empty()
-            || blake2b256(&self.carrier_refund_lock) == source_lock
-            || asset::multi_asset_occupied_capacity(&self.carrier_refund_lock, None, 0)?
-                > self.factory_carrier_capacity
-        {
-            return mismatch();
-        }
-        let mut occupied = BTreeSet::from([0u32]);
-        if let Some(retained) = &self.retained {
-            for index in 1..=retained.vaults.len() {
-                occupied.insert(index as u32);
-            }
-        }
-        let mut channel_ids = BTreeSet::new();
-        let mut state_types = BTreeSet::new();
-        let mut state_locks = BTreeSet::new();
-        let mut carriers = 0u64;
-        let mut custody_locks = BTreeSet::from([source_lock]);
-        for child in &self.children {
-            custody_locks.insert(blake2b256(&child.recovery.scripts.vault_lock));
-            custody_locks.insert(blake2b256(&child.recovery.scripts.state_lock));
-        }
-        if !self.carrier_refund_lock.is_empty()
-            && custody_locks.contains(&blake2b256(&self.carrier_refund_lock))
-        {
-            return mismatch();
-        }
-        let mut first_input = vec![0u8; 8];
-        first_input.extend_from_slice(&self.old_state.tx_hash);
-        first_input.extend_from_slice(&self.old_state.index.to_le_bytes());
-        for child in &self.children {
-            let exit = &child.recovery;
-            exit.validate()?;
-            for lock in exit
-                .scripts
-                .participant_locks
-                .iter()
-                .chain(std::iter::once(&exit.scripts.carrier_refund_lock))
-            {
-                if custody_locks.contains(&blake2b256(lock)) {
-                    return mismatch();
-                }
-            }
-            let header = &exit.state.header;
-            if header.chain_id != self.chain_id
-                || header.funding_epoch != 0
-                || header.phase != Phase::Settling
-                || header.state_number != 1
-                || !channel_ids.insert(header.channel_id)
-                || !state_types.insert(blake2b256(&exit.scripts.state_type))
-                || !state_locks.insert(blake2b256(&exit.scripts.state_lock))
-                || child.state_output_index >= wire::FACTORY_MULTI_ASSET_MAX_OUTPUTS as u32
-                || !occupied.insert(child.state_output_index)
-            {
-                return mismatch();
-            }
-            let mut anchor = first_input.clone();
-            anchor.extend_from_slice(&(child.state_output_index as u64).to_le_bytes());
-            if blake2b256(&anchor) != header.funding_anchor {
-                return mismatch();
-            }
-            for point in &exit.outpoints {
-                if point.tx_hash != self.transaction_hash
-                    || point.index >= wire::FACTORY_MULTI_ASSET_MAX_OUTPUTS as u32
-                    || !occupied.insert(point.index)
-                {
-                    return mismatch();
-                }
-            }
-            let mut creation = exit.clone();
-            creation.state.header.phase = Phase::Active;
-            creation.state.header.state_number = 0;
-            creation.state.vault_outpoint_set_root = [0; 32];
-            creation.outpoints.clear();
-            creation.authorization = child.creation_authorization.clone();
-            creation.validate_contents()?;
-            let encoded = creation.state.encode()?;
-            let signatures = encode_multi_asset_signatures(&child.creation_authorization)?;
-            asset::MultiAssetStateHeader::parse(&encoded)?.verify_root_funding_signatures(
-                &self.transaction_hash,
-                &BilateralSignatureWitness::parse(&signatures)?,
-            )?;
-            carriers = carriers
-                .checked_add(exit.state_carrier_capacity)
-                .ok_or(ScriptError::MultiAssetCapacityMismatch)?;
-        }
-        if carriers != self.external_carrier_contribution {
-            return mismatch();
-        }
-        let source_capacity = (0..source.count()).try_fold(0u64, |sum, i| {
-            sum.checked_add(source.entry(i)?.allocation.capacity()?)
-                .ok_or(ScriptError::MultiAssetCapacityMismatch)
-        })?;
-        source_capacity
-            .checked_add(self.factory_carrier_capacity)
-            .and_then(|value| value.checked_add(carriers))
-            .ok_or(ScriptError::MultiAssetCapacityMismatch)?;
-        Ok(())
+        self.encode_intent().map(|_| ())
     }
 
     /// Canonical public intent; signatures are verified prerequisites but are
     /// not themselves committed, allowing equivalent valid signature delivery.
-    pub fn encode_intent(&self) -> MultiAssetResult<Vec<u8>> {
-        self.validate_contents()?;
+    fn encode_intent_unchecked(&self) -> MultiAssetResult<Vec<u8>> {
+        if !(1..=wire::FACTORY_MULTI_ASSET_MAX_CHILDREN).contains(&self.children.len())
+            || self.source_outpoints.len() != self.source.vaults.len()
+            || self.type_scripts.len() > 8
+            || self.factory_vault_lock.len() > 512
+            || self.carrier_refund_lock.len() > 512
+            || self.type_scripts.iter().any(|entry| {
+                entry.script.len() > 512 || entry.type_hash != blake2b256(&entry.script)
+            })
+        {
+            return mismatch();
+        }
         let source = self.source.encode()?;
         let retained = self
             .retained
@@ -291,51 +110,106 @@ impl FactoryMultiAssetMaterialisation {
         }
         Ok(raw)
     }
+    pub fn encode_intent(&self) -> MultiAssetResult<Vec<u8>> {
+        let raw = self.encode_intent_unchecked()?;
+        let intent = wire::FactoryMaterialisationIntent::parse(&raw)?;
+        for (i, child) in self.children.iter().enumerate() {
+            let recovery = encode_multi_asset_signatures(&child.recovery.authorization)?;
+            intent
+                .child(i)?
+                .verify_recovery_authorisation(&BilateralSignatureWitness::parse(&recovery)?)?;
+        }
+        Ok(raw)
+    }
     pub fn signing_digest(&self) -> MultiAssetResult<Bytes32> {
         Ok(crate::multi_asset::host_commitment(
             crate::hash::FACTORY_MULTI_ASSET_MATERIALISATION_DOMAIN,
             &self.encode_intent()?,
         ))
     }
-    pub fn verify_authorization(
+    pub fn encode_witness(
         &self,
         expected_participants: &Bytes32,
         authorization: &[FactoryParticipantSignature],
-    ) -> MultiAssetResult<()> {
+    ) -> MultiAssetResult<Vec<u8>> {
         if self.participants_commitment != *expected_participants
             || !(2..=16).contains(&authorization.len())
         {
             return mismatch();
         }
-        let mut raw = vec![1, 0, authorization.len() as u8, authorization.len() as u8];
-        for signature in authorization {
-            if signature.pubkey_sec1.len() != 33 || signature.signature.len() != 64 {
-                return Err(MultiAssetError::IncompleteEvidence);
-            }
-            raw.extend_from_slice(&signature.participant);
-            raw.extend_from_slice(&signature.pubkey_sec1);
-            raw.extend_from_slice(&signature.signature);
-        }
-        wire::verify_materialisation_authorisation(
-            &self.encode_intent()?,
-            expected_participants,
-            &FactorySignatureWitness::parse(&raw)?,
-        )?;
+        let intent = self.encode_intent()?;
+        let signatures = encode_factory_all_participant_signatures(authorization)?;
+        let mut raw = wire::FACTORY_MATERIALISATION_MAGIC.to_vec();
+        raw.extend_from_slice(&1u16.to_le_bytes());
+        raw.extend_from_slice(&0u16.to_le_bytes());
+        raw.extend_from_slice(&(intent.len() as u32).to_le_bytes());
+        raw.extend_from_slice(&(signatures.len() as u32).to_le_bytes());
+        raw.extend_from_slice(&(self.children.len() as u16).to_le_bytes());
+        raw.extend_from_slice(&0u16.to_le_bytes());
+        raw.extend_from_slice(&intent);
+        raw.extend_from_slice(&signatures);
         for child in &self.children {
-            if child
-                .recovery
-                .authorization
-                .signatures
-                .iter()
-                .any(|signature| {
-                    !authorization
-                        .iter()
-                        .any(|member| member.pubkey_sec1 == signature.pubkey_sec1)
-                })
-            {
-                return mismatch();
-            }
+            let signatures = encode_multi_asset_signatures(&child.recovery.authorization)?;
+            let signatures = BilateralSignatureWitness::parse(&signatures)?;
+            raw.extend_from_slice(signatures.pubkey(0));
+            raw.extend_from_slice(signatures.pubkey(1));
         }
-        Ok(())
+        wire::FactoryMaterialisationWitness::parse(&raw)?.verify()?;
+        Ok(raw)
     }
+    pub fn verify_authorization(
+        &self,
+        expected_participants: &Bytes32,
+        authorization: &[FactoryParticipantSignature],
+    ) -> MultiAssetResult<()> {
+        self.encode_witness(expected_participants, authorization)
+            .map(|_| ())
+    }
+}
+
+pub fn encode_factory_all_participant_signatures(
+    authorization: &[FactoryParticipantSignature],
+) -> MultiAssetResult<Vec<u8>> {
+    if !(2..=16).contains(&authorization.len()) {
+        return mismatch();
+    }
+    let mut raw = vec![1, 0, authorization.len() as u8, authorization.len() as u8];
+    for signature in authorization {
+        if signature.pubkey_sec1.len() != 33 || signature.signature.len() != 64 {
+            return Err(MultiAssetError::IncompleteEvidence);
+        }
+        raw.extend_from_slice(&signature.participant);
+        raw.extend_from_slice(&signature.pubkey_sec1);
+        raw.extend_from_slice(&signature.signature);
+    }
+    morph_script_common::FactorySignatureWitness::parse(&raw)?;
+    Ok(raw)
+}
+pub fn encode_factory_multi_asset_state_witness(
+    kind: u16,
+    manifest: &MultiAssetManifest,
+    points: &[MultiAssetOutPoint],
+    authorization: &[FactoryParticipantSignature],
+) -> MultiAssetResult<Vec<u8>> {
+    if points.len() > 8 {
+        return mismatch();
+    }
+    let manifest = manifest.encode()?;
+    let signatures = if kind == wire::FACTORY_STATE_WITNESS_ACTIVATE && authorization.is_empty() {
+        vec![]
+    } else {
+        encode_factory_all_participant_signatures(authorization)?
+    };
+    let mut raw = wire::FACTORY_MULTI_ASSET_STATE_WITNESS_MAGIC.to_vec();
+    raw.extend_from_slice(&1u16.to_le_bytes());
+    raw.extend_from_slice(&0u16.to_le_bytes());
+    raw.extend_from_slice(&kind.to_le_bytes());
+    raw.extend_from_slice(&(points.len() as u16).to_le_bytes());
+    raw.extend_from_slice(&(manifest.len() as u32).to_le_bytes());
+    raw.extend_from_slice(&(signatures.len() as u32).to_le_bytes());
+    raw.extend_from_slice(&manifest);
+    raw.extend_from_slice(&encode_multi_asset_outpoints(points)?);
+    raw.extend_from_slice(&signatures);
+    wire::FactoryMultiAssetStateWitness::parse(&raw)?;
+    Ok(raw)
 }

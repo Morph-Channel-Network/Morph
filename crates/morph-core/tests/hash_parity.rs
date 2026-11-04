@@ -22,6 +22,14 @@ fn duplicated_host_and_script_domains_match() {
     );
     assert_eq!(host_hash::STATE_DOMAIN, wire::STATE_DOMAIN);
     assert_eq!(
+        host_hash::FACTORY_MULTI_ASSET_STATE_DOMAIN,
+        wire::factory_multi_asset::FACTORY_MULTI_ASSET_STATE_DOMAIN
+    );
+    assert_eq!(
+        host_hash::FACTORY_MULTI_ASSET_ROOT_FUNDING_DOMAIN,
+        wire::factory_multi_asset::FACTORY_MULTI_ASSET_ROOT_FUNDING_DOMAIN
+    );
+    assert_eq!(
         host_hash::MULTI_ASSET_ROOT_FUNDING_DOMAIN,
         wire::multi_asset::MULTI_ASSET_ROOT_FUNDING_DOMAIN
     );

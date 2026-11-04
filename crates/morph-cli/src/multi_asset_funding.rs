@@ -190,6 +190,10 @@ pub fn validate_root_funding_contents(
     creation.state.vault_outpoint_set_root = current.state.vault_outpoint_set_root;
     // Never re-use the unbound creation signatures as an activation vote.
     creation.validate_contents()?;
+    ensure!(
+        creation.scripts.state_type.len() == 93,
+        "direct root funding cannot use a Factory-origin State Type"
+    );
     let before = creation.state.encode()?;
     let after = current.state.encode()?;
     ensure!(

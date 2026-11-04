@@ -109,13 +109,7 @@ pub fn materialisation_commitment(intent: &[u8]) -> [u8; 32] {
     crate::blake2b256(&[FACTORY_MULTI_ASSET_MATERIALISATION_DOMAIN, intent])
 }
 
-pub fn verify_materialisation_authorisation(
-    intent: &[u8],
-    expected_participants: &[u8; 32],
-    witness: &crate::FactorySignatureWitness,
-) -> Result<()> {
-    if witness.participants_commitment() != *expected_participants {
-        return Err(ScriptError::ParticipantCommitmentMismatch);
-    }
-    crate::verify_factory_signatures_for_digest(&materialisation_commitment(intent), witness)
-}
+mod materialisation;
+mod state;
+pub use materialisation::*;
+pub use state::*;

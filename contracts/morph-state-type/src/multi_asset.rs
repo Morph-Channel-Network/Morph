@@ -59,7 +59,13 @@ fn bind_vault_lock(
     Ok(())
 }
 
-pub fn validate(anchor: &[u8], since: u64, old: Option<&[u8]>, new: Option<&[u8]>) -> Result<()> {
+pub fn validate(
+    anchor: &[u8],
+    since: u64,
+    old: Option<&[u8]>,
+    new: Option<&[u8]>,
+    factory_origin: Option<&[u8]>,
+) -> Result<()> {
     match (old, new) {
         (None, Some(raw)) => {
             let header = MultiAssetStateHeader::parse(raw)?;
@@ -76,6 +82,37 @@ pub fn validate(anchor: &[u8], since: u64, old: Option<&[u8]>, new: Option<&[u8]
             {
                 morph_script_common::multi_asset_splice_runtime::verify_splice(&raw)?;
                 signatures(&header, Source::Input)?;
+            } else if let Some(factory_origin) = factory_origin {
+                let raw =
+                    morph_script_common::factory_multi_asset_runtime::materialisation_evidence()?
+                        .ok_or(ScriptError::FactoryMultiAssetPartitionMismatch)?;
+                let child =
+                    morph_script_common::factory_multi_asset_runtime::verify_child_creation(
+                        &raw,
+                        &header,
+                        &ckb_std::high_level::load_script_hash()
+                            .map_err(|_| ScriptError::Encoding)?,
+                        factory_origin,
+                    )?;
+                super::validate_anchor_derivation(anchor)?;
+                super::validate_output_lock_args_bind_output_type(0, Source::GroupOutput)?;
+                bind_vault_lock(&child.evidence, anchor, since, Source::GroupOutput)?;
+                let positions =
+                    verify_multi_asset_vault_set(&child.evidence, Source::Output, false)?;
+                let tx_hash = load_tx_hash().map_err(|_| ScriptError::Encoding)?;
+                for (i, position) in positions
+                    .iter()
+                    .enumerate()
+                    .take(child.evidence.manifest().count())
+                {
+                    let point = child.evidence.outpoint(i)?;
+                    if point[..32] != tx_hash
+                        || morph_script_common::read_u32(point, 32) as usize != *position
+                    {
+                        return Err(ScriptError::VaultOutPointMismatch);
+                    }
+                }
+                return super::validate_group_output_capacity();
             } else {
                 let witness = load_witness_args(0, Source::Input)
                     .map_err(|_| ScriptError::ParticipantWitnessMissing)?;

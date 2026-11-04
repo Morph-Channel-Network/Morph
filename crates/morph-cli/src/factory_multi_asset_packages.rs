@@ -2,9 +2,7 @@
 //! RPC calls or transaction submission are part of this verifier.
 use anyhow::{Result, ensure};
 use morph_core::*;
-use morph_script_common::{
-    BilateralSignatureWitness, FactorySignatureWitness, multi_asset as wire,
-};
+use morph_script_common::{FactorySignatureWitness, multi_asset as wire};
 use serde::{Deserialize, Serialize};
 
 use crate::multi_asset_packages::{
@@ -30,7 +28,6 @@ impl StoredPoint {
 struct StoredChild {
     state_output_index: u32,
     recovery_package: StoredMultiAssetPackage,
-    creation_signature_witness_hex: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -66,20 +63,6 @@ fn decimal(raw: &str) -> Result<u64> {
         "capacity must be canonical decimal"
     );
     Ok(value)
-}
-fn bilateral(raw: &str) -> Result<StateAuthorization> {
-    let raw = decode_hex(raw, 198)?;
-    let witness = BilateralSignatureWitness::parse(&raw)
-        .map_err(|error| anyhow::anyhow!("invalid creation signatures: {error:?}"))?;
-    Ok(StateAuthorization {
-        threshold: 2,
-        signatures: (0..2)
-            .map(|i| ParticipantSignature {
-                pubkey_sec1: witness.pubkey(i).to_vec(),
-                signature: witness.signature(i).to_vec(),
-            })
-            .collect(),
-    })
 }
 impl StoredMaterialisation {
     fn decode(&self) -> Result<FactoryMultiAssetMaterialisation> {
@@ -142,7 +125,6 @@ impl StoredMaterialisation {
                     Ok(FactoryMultiAssetChild {
                         state_output_index: child.state_output_index,
                         recovery: child.recovery_package.recovery()?,
-                        creation_authorization: bilateral(&child.creation_signature_witness_hex)?,
                     })
                 })
                 .collect::<Result<_>>()?,
@@ -193,7 +175,67 @@ mod tests {
         let root = crate::multi_asset_funding::root_collection_tests::fixture();
         let recovery_package: StoredMultiAssetPackage =
             serde_json::from_value(root["funding"]["recovery_package"].clone()).unwrap();
-        let recovery = recovery_package.recovery().unwrap();
+        let mut recovery = recovery_package.recovery().unwrap();
+        let old_type = packed::Script::from_slice(&recovery.scripts.state_type).unwrap();
+        let old_args = old_type.args().raw_data();
+        let mut args = old_args[..32].to_vec();
+        args.extend_from_slice(&[99; 32]);
+        args.extend_from_slice(&old_args[32..]);
+        let ty = old_type
+            .as_builder()
+            .args(ckb_types::bytes::Bytes::from(args).pack())
+            .build();
+        let lock = packed::Script::from_slice(&recovery.scripts.state_lock)
+            .unwrap()
+            .as_builder()
+            .args(ckb_types::bytes::Bytes::from(ty.calc_script_hash().as_slice().to_vec()).pack())
+            .build();
+        let since = u64::from_le_bytes(old_args[32..].try_into().unwrap());
+        let vault_args = wire::encode_multi_asset_vault_args(
+            &recovery.state.header.funding_anchor,
+            since,
+            &ty.calc_script_hash().unpack(),
+            &lock.calc_script_hash().unpack(),
+        )
+        .unwrap();
+        let vault = packed::Script::from_slice(&recovery.scripts.vault_lock)
+            .unwrap()
+            .as_builder()
+            .args(ckb_types::bytes::Bytes::from(vault_args.to_vec()).pack())
+            .build();
+        recovery.scripts.state_type = ty.as_slice().to_vec();
+        recovery.scripts.state_lock = lock.as_slice().to_vec();
+        recovery.scripts.vault_lock = vault.as_slice().to_vec();
+        for entry in &mut recovery.manifest.vaults {
+            entry.lock_hash = blake2b256(vault.as_slice());
+        }
+        recovery.state.vault_content_set_root = recovery.manifest.commitment().unwrap();
+        recovery.state.vault_outpoint_set_root =
+            multi_asset_outpoint_commitment(&recovery.manifest, &recovery.outpoints).unwrap();
+        let digest = recovery.state.signing_digest().unwrap();
+        let participants = root["draft"]["participants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|key| key.as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        recovery.authorization = StateAuthorization {
+            threshold: 2,
+            signatures: crate::multi_asset_funding::root_collection_tests::signed_receipts(&digest)
+                .iter()
+                .map(|receipt| {
+                    receipt
+                        .verify(&digest, &[participants[0].clone(), participants[1].clone()])
+                        .unwrap()
+                })
+                .collect(),
+        };
+        let recovery_package = StoredMultiAssetPackage::from_recovery(
+            &recovery,
+            &crate::multi_asset_packages::decode_dependency_records(&recovery_package.cell_deps)
+                .unwrap(),
+        )
+        .unwrap();
         let transaction = packed::Transaction::from_slice(
             &decode_hex(
                 root["draft"]["transaction_hex"].as_str().unwrap(),
@@ -209,26 +251,6 @@ mod tests {
             .into_iter()
             .position(|data| data.raw_data().len() == 318)
             .unwrap() as u32;
-        let draft: crate::multi_asset_funding::RootFundingDraft =
-            serde_json::from_value(root["draft"].clone()).unwrap();
-        let creation: Vec<crate::multi_asset_signatures::SignatureMessage> =
-            serde_json::from_value(root["creation_receipts"].clone()).unwrap();
-        let authorization = StateAuthorization {
-            threshold: 2,
-            signatures: creation
-                .iter()
-                .map(|receipt| {
-                    receipt
-                        .verify(
-                            &crate::multi_asset_funding::RootFundingTarget::Creation
-                                .digest(&draft)
-                                .unwrap(),
-                            &draft.participants,
-                        )
-                        .unwrap()
-                })
-                .collect(),
-        };
         let factory_id = [51u8; 32];
         let mut args = factory_id.to_vec();
         args.extend_from_slice(&[99; 32]);
@@ -274,9 +296,6 @@ mod tests {
             children: vec![StoredChild {
                 state_output_index: state_index,
                 recovery_package,
-                creation_signature_witness_hex: canonical_hex(
-                    &encode_multi_asset_signatures(&authorization).unwrap(),
-                ),
             }],
             factory_participants_commitment: String::new(),
             factory_signature_witness_hex: String::new(),

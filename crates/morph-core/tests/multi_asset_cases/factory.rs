@@ -1,28 +1,6 @@
 use super::*;
 use morph_script_common::{FactorySignatureWitness, factory_multi_asset as factory};
 
-fn signatures(digest: Bytes32) -> StateAuthorization {
-    let mut signatures = [1u8, 2]
-        .into_iter()
-        .map(|seed| {
-            let key = SigningKey::from_slice(&[seed; 32]).unwrap();
-            let sig: Signature = key.sign_prehash(&digest).unwrap();
-            ParticipantSignature {
-                pubkey_sec1: key
-                    .verifying_key()
-                    .to_encoded_point(true)
-                    .as_bytes()
-                    .to_vec(),
-                signature: sig.to_bytes().to_vec(),
-            }
-        })
-        .collect::<Vec<_>>();
-    signatures.sort_by(|a, b| a.pubkey_sec1.cmp(&b.pubkey_sec1));
-    StateAuthorization {
-        threshold: 2,
-        signatures,
-    }
-}
 fn child(count: usize, state_index: u32) -> FactoryMultiAssetChild {
     let mut recovery = fixture(count);
     let old = MultiAssetOutPoint {
@@ -36,6 +14,7 @@ fn child(count: usize, state_index: u32) -> FactoryMultiAssetChild {
     let anchor = blake2b256(&anchor);
     let since = morph_script_common::relative_block_since(6).unwrap();
     let mut args = anchor.to_vec();
+    args.extend_from_slice(&[99; 32]);
     args.extend_from_slice(&since.to_le_bytes());
     recovery.scripts.state_type = script(3, &args);
     recovery.scripts.state_lock = script(2, &blake2b256(&recovery.scripts.state_type));
@@ -62,10 +41,6 @@ fn child(count: usize, state_index: u32) -> FactoryMultiAssetChild {
     let mut child = FactoryMultiAssetChild {
         state_output_index: state_index,
         recovery,
-        creation_authorization: StateAuthorization {
-            threshold: 2,
-            signatures: vec![],
-        },
     };
     resign_child(&mut child);
     child
@@ -80,12 +55,6 @@ fn resign_child(child: &mut FactoryMultiAssetChild) {
     recovery.state.vault_outpoint_set_root =
         multi_asset_outpoint_commitment(&recovery.manifest, &recovery.outpoints).unwrap();
     sign(recovery);
-    let mut creation = recovery.state.clone();
-    creation.header.phase = Phase::Active;
-    creation.header.state_number = 0;
-    creation.vault_outpoint_set_root = [0; 32];
-    child.creation_authorization =
-        signatures(creation.root_funding_signing_digest(&[44; 32]).unwrap());
 }
 fn plan(count: usize, child_count: usize, retained: bool) -> FactoryMultiAssetMaterialisation {
     let first_state = if retained { count as u32 + 1 } else { 1 };
@@ -247,7 +216,7 @@ fn factory_partition_rejects_cross_asset_minting_reserve_subsidies_and_custody_o
                 bad.children[0].recovery.authorization.signatures.pop();
             }
             5 => {
-                bad.children[0].creation_authorization.signatures.pop();
+                bad.children[0].recovery.state.header.state_number = 0;
             }
             6 => bad.children[0].state_output_index = 0,
             7 => bad.children[0].state_output_index = 1,
@@ -264,9 +233,6 @@ fn factory_partition_rejects_cross_asset_minting_reserve_subsidies_and_custody_o
     }
     let mut bad = plan(2, 1, false);
     bad.carrier_refund_lock.clear();
-    assert!(bad.validate_contents().is_err());
-    let mut bad = good.clone();
-    bad.children[0].creation_authorization = bad.children[0].recovery.authorization.clone();
     assert!(bad.validate_contents().is_err());
     let mut bad = plan(2, 2, true);
     bad.children[1] = bad.children[0].clone();
@@ -362,4 +328,50 @@ fn shared_factory_partition_rejects_u128_aggregation_overflow() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn factory_public_witness_excludes_private_child_exit_signatures_and_is_strictly_framed() {
+    let plan = plan(2, 1, false);
+    let (members, auth) = factory_authorization(&plan, 2);
+    let raw = plan.encode_witness(&members, &auth).unwrap();
+    factory::FactoryMaterialisationWitness::parse(&raw)
+        .unwrap()
+        .verify()
+        .unwrap();
+    let intent_len = u32::from_le_bytes(raw[12..16].try_into().unwrap()) as usize;
+    let auth_len = u32::from_le_bytes(raw[16..20].try_into().unwrap()) as usize;
+    assert_eq!(raw.len(), 24 + intent_len + auth_len + 66);
+    for signature in &plan.children[0].recovery.authorization.signatures {
+        assert!(
+            !raw.windows(signature.signature.len())
+                .any(|part| part == signature.signature)
+        );
+    }
+    // Every incomplete frame and every trailing byte must fail. Exercise both
+    // the full parser and the bounds-only view used by delegated scripts.
+    for end in 0..raw.len() {
+        assert!(factory::FactoryMaterialisationWitness::parse(&raw[..end]).is_err());
+        assert!(factory::FactoryMaterialisationView::parse(&raw[..end]).is_err());
+    }
+    let mut extra = raw.clone();
+    extra.push(0);
+    assert!(factory::FactoryMaterialisationWitness::parse(&extra).is_err());
+    assert!(factory::FactoryMaterialisationView::parse(&extra).is_err());
+    let mut changed = raw;
+    *changed.last_mut().unwrap() ^= 1;
+    assert!(
+        factory::FactoryMaterialisationWitness::parse(&changed)
+            .unwrap()
+            .verify()
+            .is_err()
+    );
+    let mut missing_exit = plan;
+    missing_exit.children[0]
+        .recovery
+        .authorization
+        .signatures
+        .clear();
+    assert!(missing_exit.signing_digest().is_err());
+    assert!(missing_exit.encode_witness(&members, &auth).is_err());
 }

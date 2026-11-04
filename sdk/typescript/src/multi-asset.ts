@@ -230,8 +230,8 @@ function inspectEvidence(value: MultiAssetRecoveryPackage, verifySignatures: boo
     && u16(vaultArgs, 8) === 1 && u16(vaultArgs, 10) === 0
     && !zero(vaultArgs.slice(12, 44)) && (unsigned(vaultArgs, 44, 8) >> 56n) === 0x80n
     && same(vaultArgs.slice(52, 84), hash(stateType)) && same(vaultArgs.slice(84, 116), hash(stateLock))
-    && stateType.length === 93 && same(stateType.slice(53, 85), vaultArgs.slice(12, 44))
-    && same(stateType.slice(85), vaultArgs.slice(44, 52)) && same(stateLock.slice(53), hash(stateType))
+    && [93,125].includes(stateType.length) && (stateType.length!==125 || !zero(stateType.slice(85,117))) && same(stateType.slice(53, 85), vaultArgs.slice(12, 44))
+    && same(stateType.slice(-8), vaultArgs.slice(44, 52)) && same(stateLock.slice(53), hash(stateType))
     && same(vaultArgs.slice(12, 44), header.slice(76, 108)), "State/Vault script authority mismatch");
   const vaultHash = hash(vaultScript);
   for (let i = 0; i < 3; i++) requireValue(!same(hash(scripts[i]!), vaultHash) && !same(hash(scripts[i]!), hash(stateLock)), "payout retains channel authority");
@@ -504,6 +504,7 @@ function rootEvidence(draft: MultiAssetRootDraft): RootEvidence {
   const packageValue: MultiAssetRecoveryPackage = {schema: "morph.multi_asset_recovery_package.v1", header_hex: hex(header), witness_hex: hex(evidence),
     signature_witness_hex: hex(emptySignatureWitness(draft.participants)), state_carrier_capacity: state.capacity.toString(), cell_deps: tx.dependencies};
   const creation = inspectEvidence(packageValue, false);
+  requireValue(creation.scripts[4]!.length===93, "direct root funding cannot use a Factory-origin State Type");
   const txHash = hash(tx.raw);
   const outpoints = creation.vaults.map((vault) => {
     const matches = tx.outputs.map((output, index) => ({output, index})).filter(({output}) => same(output.lock, scripts[3]!)

@@ -99,6 +99,9 @@ impl SpliceTerms {
             .map_err(invalid)?
             .finalise_since();
         let mut args = anchor.to_vec();
+        let old_type = script(&current.scripts.state_type)?;
+        let old_args = old_type.args().raw_data();
+        args.extend_from_slice(&old_args[32..old_args.len() - 8]);
         args.extend_from_slice(&since.to_le_bytes());
         scripts.state_type = script(&scripts.state_type)?
             .as_builder()

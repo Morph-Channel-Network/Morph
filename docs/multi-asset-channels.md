@@ -106,43 +106,57 @@ for untouched rights and reserve. Existing kind-8 quantity non-increase is
 per asset and single participant; it does not authorise arbitrary cross-party
 trades or mint one asset by burning another.
 
-The shared `factory_multi_asset` partition validator and host
-`FactoryMultiAssetMaterialisation` now check the complete source reserve,
-optional retained reserve and 1–4 bilateral children, each with 1–8 Vaults.
-Reserve, business CKB and every Type's token quantity must conserve separately.
-The source/retained Factory Script and Type preimages are complete and reserve
-must cover occupied capacity. Children need distinct authorities and output
-positions, exact transaction-bound creation signatures and complete initial
-Settling/1 recovery packages. Both child signers must belong to the approving
-2–16 member Factory. Child State carriers require an explicit external
-contribution; retained Factory carrier capacity stays separate, or refunds in
-full at output zero when no reserve remains.
+The shared `factory_multi_asset` validator, host plans and Factory contracts
+support complete source custody, optional retained custody and 1–4 bilateral
+children, each with 1–8 Vaults. Reserve, business CKB and every Type's token
+quantity conserve separately. Occupied capacity, exact source OutPoints,
+transaction hash, output positions and external child carrier funding are
+checked against the actual transaction. The Factory carrier stays intact or
+refunds in full at output zero when custody closes.
 
-`morph-cli validate-factory-multi-asset-materialisation plan.json` verifies
-`morph.factory_multi_asset_materialisation.v1` public evidence and emits a
-lossless JSON review with stage `offline_plan`. Manifests and Scripts are
-canonical hex; capacities are decimal strings. Required fields have no aliases
-or defaults. Factory N-of-N signatures use
-`CKB_MORPH_FACTORY_MULTI_ASSET_MATERIALISATION_V1` and commit the source
-OutPoints, Factory identity and complete membership commitment, exact transaction hash, retained allocation,
-carrier budget and complete child terms. Child creation and exit signatures
-are prerequisites, not replaceable by Factory signatures.
+The multi-asset Factory profile has a 306-byte layout-2 State header and
+44-byte Type args (`MORPHFT!`, format, reserved bytes, Factory identity).
+`MORPHFS!` witnesses authorise transaction-bound N-of-N root creation,
+whole-set activation, and N-of-N metadata updates that preserve custody.
+`MORPHFM!` witnesses authorise complete materialisation with 2–16 members.
+Unknown formats and reserved bytes are rejected. These are distinct consensus
+profiles, with no format aliases or automatic conversion.
 
-The public package includes `chain_id`, `factory_id`, `old_state`,
-`transaction_hash`, `source_manifest_hex`, `source_outpoints`,
-`factory_vault_lock_hex`, `type_scripts_hex`, `retained_manifest_hex`,
-`factory_carrier_capacity`, `external_carrier_contribution`,
-`carrier_refund_lock_hex`, `children`, `factory_participants_commitment` and
-`factory_signature_witness_hex`. An empty `retained_manifest_hex` is `0x`;
-the refund Script is empty only when custody is retained. Each child contains
-`state_output_index`, its complete `recovery_package` and
-`creation_signature_witness_hex`.
+Children use 72-byte State Type args: anchor, originating Factory Type hash,
+and challenge since. Creation requires the authentic Factory State at input
+zero and the Factory's complete materialisation approval; both child public
+keys must belong to that Factory. After creation, each child activates,
+updates, splices and exits under its own bilateral authority. The origin hash
+remains fixed through splices and does not require the parent to remain live.
+Directly funded bilateral channels retain their distinct 40-byte Type args.
 
-This planning boundary does not yet admit a new Factory spending witness.
-Existing Factory contracts still enforce single-Vault custody. Binding the
-new plan to an authentic Factory State, actual complete input/output sets,
-activation, reduced rights and durable Factory signer history remains required
-before multi-Vault Factory funding/submission can be enabled.
+`morph-cli validate-factory-multi-asset-materialisation plan.json` checks
+`morph.factory_multi_asset_materialisation.v1` and emits a lossless JSON review
+with stage `offline_plan`. Required fields have no aliases or defaults.
+N-of-N approval uses `CKB_MORPH_FACTORY_MULTI_ASSET_MATERIALISATION_V1` and
+commits the exact source, retained allocation, child terms and raw transaction.
+Each child has `state_output_index` and a complete `recovery_package`.
+The host verifies both child signatures on its initial Settling/1 package
+before producing a Factory signing digest or witness.
+
+Recovery packages contain private pre-signed exits. Persist and deliver them
+to both child parties before Factory signing. Never publish these signatures
+in the transaction: the on-chain frame contains only Factory signatures and
+the two public keys for each child. Publishing child exit signatures would
+allow third parties to trigger premature unilateral closure.
+
+VM tests cover root creation, activation, metadata update, full and retained
+materialisation, rejection of freshly signed physical mismatches, and child
+exit after parent retirement. The 8-asset/4-child/16-member configuration with
+maximum-length asset and payout Scripts uses approximately 67.5 million cycles and 75,098 bytes
+in the test fixture, below a 70,000,000-cycle test limit. This measurement uses
+permissive test asset/wallet code; real asset and wallet verification costs
+still require deployment-specific qualification.
+
+Native Factory funding/submission remains disabled until independent durable
+signer histories, private recovery delivery, restart/reorg handling and live
+chain acceptance are implemented. Reduced rights, exits and splices also need
+separate proofs over every touched asset and untouched reserve.
 
 ### Versions and Recovery
 
