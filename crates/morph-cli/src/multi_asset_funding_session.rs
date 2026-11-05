@@ -505,9 +505,7 @@ mod tests {
                 path,
                 FundingSessionCommand::Init {
                     draft: file.clone(),
-                    local_pubkey: canonical_hex(
-                        key.verifying_key().to_encoded_point(true).as_bytes(),
-                    ),
+                    local_pubkey: canonical_hex(key.verifying_key().to_sec1_point(true).as_bytes()),
                     contracts_dir: artifacts.clone(),
                 },
             )

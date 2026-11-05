@@ -14,7 +14,7 @@ unsound = "workspace"
 yanked = "warn"
 # Rationale and removal conditions live in the AUDIT_IGNORE comment block at
 # the top of the Makefile; keep both lists in sync.
-ignore = ["RUSTSEC-2026-0306", "RUSTSEC-2026-0387"]
+ignore = ["RUSTSEC-2026-0306"]
 
 [licenses]
 confidence-threshold = 0.92
@@ -55,4 +55,7 @@ skip-tree = []
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+# Biscuit 6.0.0 on crates.io still depends on vulnerable crypto-bigint 0.5.
+# Cargo.toml pins the upstream RustCrypto migration to an immutable revision.
+# Remove this exception when a registry release includes that migration.
+allow-git = ["https://github.com/biscuit-auth/biscuit-rust"]

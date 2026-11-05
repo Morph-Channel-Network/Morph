@@ -400,7 +400,7 @@ mod tests {
         let mut receipts = vec![];
         for seed in [1u8, 2] {
             let key = SigningKey::from_slice(&[seed; 32]).unwrap();
-            let local_pubkey = canonical_hex(key.verifying_key().to_encoded_point(true).as_bytes());
+            let local_pubkey = canonical_hex(key.verifying_key().to_sec1_point(true).as_bytes());
             let path = directory.0.join(format!("party-{seed}.json"));
             run(
                 &path,

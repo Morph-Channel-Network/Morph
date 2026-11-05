@@ -1310,7 +1310,7 @@ mod tests {
             SigningKey::from_slice(&[key; 32])
                 .unwrap()
                 .verifying_key()
-                .to_encoded_point(true)
+                .to_sec1_point(true)
                 .as_bytes(),
         )
     }
@@ -1877,11 +1877,7 @@ mod tests {
 pub(crate) fn sdk_update_fixture() -> Value {
     let recovery = packages::fixture_package().unwrap().recovery().unwrap();
     let key = SigningKey::from_slice(&[1u8; 32]).unwrap();
-    let public = key
-        .verifying_key()
-        .to_encoded_point(true)
-        .as_bytes()
-        .to_vec();
+    let public = key.verifying_key().to_sec1_point(true).as_bytes().to_vec();
     let mut backend = MultiAssetChannelBackend::new(recovery, public.clone()).unwrap();
     let mut settlement = backend.current().settlement.clone();
     settlement.payouts[0].values[0].amount -= 1;
@@ -1915,10 +1911,7 @@ mod cross_language_tests {
         let key = SigningKey::from_slice(&[2u8; 32]).unwrap();
         let mut backend = MultiAssetChannelBackend::new(
             recovery,
-            key.verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .to_vec(),
+            key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
         )
         .unwrap();
         let proposal: ProposalMessage =

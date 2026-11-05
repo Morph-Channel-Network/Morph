@@ -952,7 +952,7 @@ fn validate_payee_pubkey(payee_node_id: &Bytes32, payee_pubkey_sec1: &[u8]) -> N
 fn payee_pubkey_sec1(payee_signing_key: &SigningKey) -> Vec<u8> {
     payee_signing_key
         .verifying_key()
-        .to_encoded_point(true)
+        .to_sec1_point(true)
         .as_bytes()
         .to_vec()
 }
@@ -1208,7 +1208,7 @@ mod tests {
     }
 
     fn node_id_for_key(key: &SigningKey) -> Bytes32 {
-        blake2b256(key.verifying_key().to_encoded_point(true).as_bytes())
+        blake2b256(key.verifying_key().to_sec1_point(true).as_bytes())
     }
 
     fn invoice_request(key: &SigningKey) -> NewMorphInvoice {

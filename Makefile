@@ -7,8 +7,6 @@ DENY ?= cargo deny
 #   Morph defines no custom logger that calls rand, so the documented rand
 #   re-entrancy trigger is absent.
 # - memmap2 0.5 is confined to ckb-testtool -> cacache in the test graph.
-# - proc-macro-error2 is compile-time-only through biscuit-auth's required
-#   datalog macro feature.
 # - lru 0.7 is test-only through ckb-testtool -> ckb-verification. The affected
 #   cache key is CKB Byte32 (no panicking Drop), so the advisory's required
 #   panic-unwind/catch-unwind trigger is absent. ckb-verification 1.2 removes
@@ -18,15 +16,8 @@ DENY ?= cargo deny
 #   (RUSTSEC-2026-0306). Neither the workspace nor the CKB 1.1 crates in our
 #   graph call the unsound `hex_decode_unchecked` AVX2 path; drop the waiver
 #   when CKB ships a patched faster-hex.
-# - crypto-bigint 0.5 reaches the k256 signing stack (RUSTSEC-2026-0387). The
-#   >=0.7.6 fix forces an elliptic-curve/ecdsa/k256 bump that relinks every
-#   contract ELF through morph-script-common; that is a reviewed wire change
-#   with a fresh manifest, not a lockfile patch. The timing variability only
-#   affects host-side channel signing, which stays inside the devnet-only
-#   no-real-assets envelope; removing this waiver is a mainnet-readiness
-#   precondition.
 # Remove each waiver as soon as its upstream dependency path is upgraded.
-AUDIT_IGNORE ?= --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0097 --ignore RUSTSEC-2026-0186 --ignore RUSTSEC-2026-0173 --ignore RUSTSEC-2026-0253 --ignore RUSTSEC-2026-0306 --ignore RUSTSEC-2026-0387
+AUDIT_IGNORE ?= --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0097 --ignore RUSTSEC-2026-0186 --ignore RUSTSEC-2026-0253 --ignore RUSTSEC-2026-0306
 
 .PHONY: ci full-test test lint fmt fmt-check source-hygiene audit deny supply-chain smoke fixture-checks sdk-check hub-ui-check build-contracts contract-tests verify-contract-manifest preproduction-envelope-check runbook-check release-readiness package-contract-release devnet-smoke devnet-e2e devnet-stateful-e2e fiber-morph-devnet-preflight fiber-morph-devnet-acceptance fiber-morph-devnet-acceptance-full fiber-morph-devnet-audit smoke-report smoke-assert smoke-assert-budget devnet-stateful-report devnet-stateful-assert
 

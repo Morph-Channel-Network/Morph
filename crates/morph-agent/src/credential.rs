@@ -1,7 +1,7 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use biscuit_auth::{
-    Biscuit, KeyPair, PrivateKey,
+    Biscuit, PrivateKey,
     builder::{AuthorizerBuilder, Term},
 };
 use serde::{Deserialize, Serialize};
@@ -35,13 +35,13 @@ pub struct CredentialClaims {
 
 #[derive(Clone)]
 pub struct CredentialService {
-    root: Arc<KeyPair>,
+    root: Arc<PrivateKey>,
 }
 
 impl CredentialService {
     pub fn generate() -> Self {
         Self {
-            root: Arc::new(KeyPair::new()),
+            root: Arc::new(PrivateKey::new()),
         }
     }
 
@@ -49,12 +49,12 @@ impl CredentialService {
         let private =
             PrivateKey::from_str(value).map_err(|_| CredentialError::InvalidPrivateKey)?;
         Ok(Self {
-            root: Arc::new(KeyPair::from(&private)),
+            root: Arc::new(private),
         })
     }
 
     pub fn private_key(&self) -> String {
-        self.root.private().to_prefixed_string()
+        self.root.to_prefixed_string()
     }
 
     pub fn public_key(&self) -> String {
@@ -62,7 +62,7 @@ impl CredentialService {
     }
 
     pub fn store_key(&self) -> [u8; 32] {
-        derive_store_key(&self.root.private().to_bytes())
+        derive_store_key(&self.root.to_bytes())
     }
 
     pub fn mint(&self, mut claims: CredentialClaims, now: u64) -> Result<String, CredentialError> {
@@ -89,7 +89,7 @@ impl CredentialService {
                 HashMap::new(),
             )
             .map_err(|error| CredentialError::Build(error.to_string()))?
-            .build(&self.root)
+            .build(self.root.as_ref())
             .map_err(|error| CredentialError::Build(error.to_string()))?;
         biscuit
             .to_base64()
@@ -182,6 +182,37 @@ mod tests {
         substituted.amount = "1001".to_string();
         assert!(service.verify(&token, &substituted, 150).is_err());
         assert!(service.verify(&token, &claims, 201).is_err());
+    }
+
+    #[test]
+    fn both_biscuit_root_algorithms_enforce_credential_authority_and_claims() {
+        for algorithm in ["ed25519", "secp256r1"] {
+            let key = format!("{algorithm}-private/{}", "01".repeat(32));
+            let service = CredentialService::from_private_key(&key).unwrap();
+            let restored = CredentialService::from_private_key(&service.private_key()).unwrap();
+            let claims = claims();
+            let token = service.mint(claims.clone(), 100).unwrap();
+            restored.verify(&token, &claims, 150).unwrap();
+            assert_eq!(service.public_key(), restored.public_key());
+            assert_eq!(service.store_key(), restored.store_key());
+
+            let other_key = format!("{algorithm}-private/{}", "02".repeat(32));
+            let other = CredentialService::from_private_key(&other_key).unwrap();
+            assert!(other.verify(&token, &claims, 150).is_err());
+            for field in 0..6 {
+                let mut changed = claims.clone();
+                match field {
+                    0 => changed.payment_hash.push('0'),
+                    1 => changed.asset_id.push('0'),
+                    2 => changed.amount.push('0'),
+                    3 => changed.resource.push('0'),
+                    4 => changed.operation.push('0'),
+                    _ => changed.credential_id.push('0'),
+                }
+                assert!(restored.verify(&token, &changed, 150).is_err());
+            }
+            assert!(restored.verify(&token, &claims, 201).is_err());
+        }
     }
 
     #[test]

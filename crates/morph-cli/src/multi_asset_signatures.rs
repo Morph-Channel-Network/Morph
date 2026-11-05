@@ -63,7 +63,7 @@ pub(crate) fn channel_signing_key(private_key: &str, expected: &[u8]) -> Result<
     );
     let key = SigningKey::from_slice(&raw).map_err(|_| anyhow!("invalid channel signing key"))?;
     ensure!(
-        key.verifying_key().to_encoded_point(true).as_bytes() == expected,
+        key.verifying_key().to_sec1_point(true).as_bytes() == expected,
         "key does not match session's local signer"
     );
     Ok(key)

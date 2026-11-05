@@ -779,7 +779,7 @@ async fn supported(State(service): State<Arc<AgentService>>) -> Json<SupportedRe
             service
                 .receipt_signing_key
                 .verifying_key()
-                .to_encoded_point(true)
+                .to_sec1_point(true)
                 .as_bytes(),
         ),
     })
@@ -974,7 +974,7 @@ async fn verify_credential(
             service
                 .receipt_signing_key
                 .verifying_key()
-                .to_encoded_point(true)
+                .to_sec1_point(true)
                 .as_bytes(),
         )
         .map_err(|_| ServiceError::Unauthorized)?;
@@ -1148,7 +1148,7 @@ async fn gateway_proxy(
                     service
                         .receipt_signing_key
                         .verifying_key()
-                        .to_encoded_point(true)
+                        .to_sec1_point(true)
                         .as_bytes(),
                 )
                 .map_err(|_| ServiceError::Unauthorized)?;
@@ -1350,7 +1350,7 @@ fn validate_fiber_invoice(
         .map_err(|_| ServiceError::InvalidRequest("Fiber payee key is invalid".to_string()))?;
     let verifying_key = VerifyingKey::from_sec1_bytes(&payee_pubkey)
         .map_err(|_| ServiceError::InvalidRequest("Fiber payee key is invalid".to_string()))?;
-    if verifying_key.to_encoded_point(true).as_bytes() != payee_pubkey
+    if verifying_key.to_sec1_point(true).as_bytes() != payee_pubkey
         || hex32(&blake2b256(&payee_pubkey)) != requirements.payee
     {
         return Err(ServiceError::InvalidRequest(
@@ -1474,7 +1474,7 @@ mod tests {
             SigningKey::from_slice(&[seed; 32])
                 .unwrap()
                 .verifying_key()
-                .to_encoded_point(true)
+                .to_sec1_point(true)
                 .as_bytes(),
         ))
     }
@@ -1545,7 +1545,7 @@ mod tests {
                 let payee_pubkey = SigningKey::from_slice(&[5; 32])
                     .unwrap()
                     .verifying_key()
-                    .to_encoded_point(true);
+                    .to_sec1_point(true);
                 let invoice = json!({
                     "currency": "Fibd",
                     "amount": params.get("amount").cloned().unwrap(),
@@ -1656,7 +1656,7 @@ mod tests {
                     SigningKey::from_slice(&[5; 32])
                         .unwrap()
                         .verifying_key()
-                        .to_encoded_point(true)
+                        .to_sec1_point(true)
                         .as_bytes(),
                 )),
                 outgoing_payer: None,
@@ -2020,7 +2020,7 @@ mod tests {
                 SigningKey::from_slice(&[3; 32])
                     .unwrap()
                     .verifying_key()
-                    .to_encoded_point(true)
+                    .to_sec1_point(true)
                     .as_bytes(),
             )
             .unwrap();
@@ -2032,7 +2032,7 @@ mod tests {
                     SigningKey::from_slice(&[3; 32])
                         .unwrap()
                         .verifying_key()
-                        .to_encoded_point(true)
+                        .to_sec1_point(true)
                         .as_bytes(),
                 )
                 .is_err()

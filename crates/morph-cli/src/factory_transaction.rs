@@ -851,7 +851,7 @@ pub(crate) mod tests {
         journal.reserve_signature(&id).unwrap();
         for seed in [1u8, 2] {
             let key = SigningKey::from_slice(&[seed; 32]).unwrap();
-            let public = key.verifying_key().to_encoded_point(true);
+            let public = key.verifying_key().to_sec1_point(true);
             let member = members
                 .iter()
                 .find(|m| m.pubkey_sec1 == public.as_bytes())
@@ -1011,7 +1011,7 @@ pub(crate) mod tests {
                 let key = (1u8..=2)
                     .map(|seed| SigningKey::from_slice(&[seed; 32]).unwrap())
                     .find(|key| {
-                        key.verifying_key().to_encoded_point(true).as_bytes() == member.pubkey_sec1
+                        key.verifying_key().to_sec1_point(true).as_bytes() == member.pubkey_sec1
                     })
                     .unwrap();
                 let sig: Signature = key
@@ -1193,11 +1193,7 @@ pub(crate) mod tests {
                     .sign_prehash(&private.state.signing_digest().unwrap())
                     .unwrap();
                 ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: sig.to_bytes().to_vec(),
                 }
             })
@@ -1277,11 +1273,7 @@ pub(crate) mod tests {
                     .sign_prehash(&exit.state.signing_digest().unwrap())
                     .unwrap();
                 ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 }
             })
@@ -1543,7 +1535,7 @@ pub(crate) mod tests {
                 SigningKey::from_slice(&[seed; 32])
                     .unwrap()
                     .verifying_key()
-                    .to_encoded_point(true)
+                    .to_sec1_point(true)
                     .as_bytes()
                     .to_vec()
             })
@@ -1600,11 +1592,7 @@ pub(crate) mod tests {
                         .sign_prehash(&exit.state.signing_digest().unwrap())
                         .unwrap();
                     ParticipantSignature {
-                        pubkey_sec1: key
-                            .verifying_key()
-                            .to_encoded_point(true)
-                            .as_bytes()
-                            .to_vec(),
+                        pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                         signature: sig.to_bytes().to_vec(),
                     }
                 })
@@ -1641,11 +1629,7 @@ pub(crate) mod tests {
                 .unwrap();
             let outsider = FactoryParticipantSignature {
                 participant: members[0].participant,
-                pubkey_sec1: key
-                    .verifying_key()
-                    .to_encoded_point(true)
-                    .as_bytes()
-                    .to_vec(),
+                pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                 signature: signature.to_bytes().to_vec(),
             };
             assert!(parent.record_signature(&id, outsider).is_err());

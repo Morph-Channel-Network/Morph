@@ -488,7 +488,7 @@ mod tests {
                     SigningKey::from_slice(&[seed; 32])
                         .unwrap()
                         .verifying_key()
-                        .to_encoded_point(true)
+                        .to_sec1_point(true)
                         .as_bytes(),
                 ),
             })
@@ -555,11 +555,7 @@ mod tests {
         let signature: Signature = key.sign_prehash(&reservation.signing_digest).unwrap();
         FactoryParticipantSignature {
             participant: [seed; 32],
-            pubkey_sec1: key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .to_vec(),
+            pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
             signature: signature.to_bytes().to_vec(),
         }
     }

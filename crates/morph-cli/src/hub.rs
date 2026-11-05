@@ -2781,7 +2781,7 @@ fn parse_signing_key(value: &str, label: &str) -> Result<SigningKey> {
 }
 
 fn signing_key_pubkey_sec1(signing_key: &SigningKey) -> [u8; 33] {
-    let encoded = signing_key.verifying_key().to_encoded_point(true);
+    let encoded = signing_key.verifying_key().to_sec1_point(true);
     let mut out = [0u8; 33];
     out.copy_from_slice(encoded.as_bytes());
     out
@@ -3764,11 +3764,7 @@ mod tests {
                 let key = SigningKey::from_slice(&[seed; 32]).unwrap();
                 let signature: k256::ecdsa::Signature = key.sign_prehash(&digest).unwrap();
                 morph_core::ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 }
             })
@@ -4988,9 +4984,7 @@ mod tests {
         let invoice = MorphInvoice::new_signed(
             NewMorphInvoice {
                 network: MorphNetwork::Devnet,
-                payee_node_id: blake2b256(
-                    payee_key.verifying_key().to_encoded_point(true).as_bytes(),
-                ),
+                payee_node_id: blake2b256(payee_key.verifying_key().to_sec1_point(true).as_bytes()),
                 channel_id: None,
                 asset: MorphAsset::Ckb,
                 amount: 100_000_000,
@@ -5581,12 +5575,7 @@ mod tests {
         let mut bytes = [0u8; 32];
         bytes[31] = value;
         let signing_key = k256::ecdsa::SigningKey::from_bytes((&bytes).into()).unwrap();
-        hex::encode(
-            signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes(),
-        )
+        hex::encode(signing_key.verifying_key().to_sec1_point(true).as_bytes())
     }
 
     fn signing_key_from_scalar(value: u8) -> k256::ecdsa::SigningKey {

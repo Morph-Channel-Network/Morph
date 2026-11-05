@@ -575,7 +575,7 @@ mod tests {
             SigningKey::from_slice(&[seed; 32])
                 .unwrap()
                 .verifying_key()
-                .to_encoded_point(true)
+                .to_sec1_point(true)
                 .as_bytes()
                 .to_vec()
         });

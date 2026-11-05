@@ -311,7 +311,7 @@ impl PaymentPayload {
         payment_preimage: Option<String>,
         signing_key: &SigningKey,
     ) -> ProtocolResult<Self> {
-        let public_key = signing_key.verifying_key().to_encoded_point(true);
+        let public_key = signing_key.verifying_key().to_sec1_point(true);
         let public_key_bytes = public_key.as_bytes();
         let payer = hex32(&blake2b256(public_key_bytes));
         if payer != requirements.payer {
@@ -338,7 +338,7 @@ impl PaymentPayload {
             .map_err(|_| ProtocolError::InvalidPayerAuthorization)?;
         let verifying_key = VerifyingKey::from_sec1_bytes(&public_key_bytes)
             .map_err(|_| ProtocolError::InvalidPayerAuthorization)?;
-        if verifying_key.to_encoded_point(true).as_bytes() != public_key_bytes
+        if verifying_key.to_sec1_point(true).as_bytes() != public_key_bytes
             || self.payer != hex32(&blake2b256(&public_key_bytes))
         {
             return Err(ProtocolError::InvalidPayerAuthorization);
@@ -347,7 +347,7 @@ impl PaymentPayload {
             .map_err(|_| ProtocolError::InvalidPayerAuthorization)?;
         let signature = Signature::from_slice(&signature_bytes)
             .map_err(|_| ProtocolError::InvalidPayerAuthorization)?;
-        if signature.normalize_s().is_some() {
+        if signature.normalize_s() != signature {
             return Err(ProtocolError::InvalidPayerAuthorization);
         }
         let digest = self.signing_digest(requirements)?;
@@ -565,7 +565,7 @@ mod tests {
                 SigningKey::from_slice(&[7; 32])
                     .unwrap()
                     .verifying_key()
-                    .to_encoded_point(true)
+                    .to_sec1_point(true)
                     .as_bytes(),
             )),
             payee: format!("0x{}", "09".repeat(32)),

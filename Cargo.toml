@@ -33,7 +33,9 @@ zeroize = "1.8"
 aes-gcm = "0.10"
 axum = "0.8"
 base64 = "0.22"
-biscuit-auth = "6.0.0"
+# The latest registry release retains vulnerable crypto-bigint 0.5 via p256.
+# Pin the upstream RustCrypto migration until a registry release includes it.
+biscuit-auth = { git = "https://github.com/biscuit-auth/biscuit-rust", rev = "21e650f31a8521af575f968925acbb56486172f9" }
 blake2b-rs = "0.2"
 ckb-crypto = "1.1.0"
 ckb-jsonrpc-types = "1.1.1"
@@ -48,7 +50,7 @@ thiserror = "2.0"
 ckb-std = { version = "1.1.0", default-features = false, features = ["allocator", "calc-hash", "ckb-types", "dummy-atomic"] }
 ckb-testtool = "1.1.1"
 ckb-hash = { version = "1.1.0", default-features = false, features = ["ckb-contract"] }
-k256 = { version = "0.13.4", default-features = false, features = ["ecdsa", "arithmetic"] }
+k256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "arithmetic"] }
 proptest = "1"
 rand = "0.8"
 sha2 = { version = "0.10", default-features = false }

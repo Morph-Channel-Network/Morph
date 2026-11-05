@@ -104,7 +104,7 @@ async fn main() -> Result<()> {
             println!("private_key=0x{}", hex::encode(key.to_bytes()));
             println!(
                 "public_key=0x{}",
-                hex::encode(key.verifying_key().to_encoded_point(true).as_bytes())
+                hex::encode(key.verifying_key().to_sec1_point(true).as_bytes())
             );
         }
         Command::AccountId { pubkey } => {
@@ -205,7 +205,7 @@ fn account_id_from_public_key(value: &str) -> Result<String> {
     ensure!(raw.len() == 33, "compressed public key must be 33 bytes");
     let key = VerifyingKey::from_sec1_bytes(&raw).context("invalid secp256k1 public key")?;
     ensure!(
-        key.to_encoded_point(true).as_bytes() == raw,
+        key.to_sec1_point(true).as_bytes() == raw,
         "public key must use canonical compressed SEC1 encoding"
     );
     Ok(format!("0x{}", hex::encode(blake2b256(&raw))))
@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn account_id_rejects_uncompressed_keys() {
         let key = SigningKey::from_slice(&[7; 32]).unwrap();
-        let uncompressed = hex::encode(key.verifying_key().to_encoded_point(false).as_bytes());
+        let uncompressed = hex::encode(key.verifying_key().to_sec1_point(false).as_bytes());
         assert!(account_id_from_public_key(&uncompressed).is_err());
     }
 }

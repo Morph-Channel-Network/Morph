@@ -19,11 +19,7 @@ fn key(seed: u8) -> SigningKey {
 }
 fn signature(request: &FactorySigningRequest, seed: u8) -> FactoryParticipantSignature {
     let key = key(seed);
-    let public = key
-        .verifying_key()
-        .to_encoded_point(true)
-        .as_bytes()
-        .to_vec();
+    let public = key.verifying_key().to_sec1_point(true).as_bytes().to_vec();
     let member = request
         .members()
         .unwrap()
@@ -709,7 +705,7 @@ fn child_possession_receipts_cannot_replace_parent_votes_or_cross_child_identity
     let mut wrong_recipient = receipt;
     wrong_recipient.pubkey_sec1 = key(2)
         .verifying_key()
-        .to_encoded_point(true)
+        .to_sec1_point(true)
         .as_bytes()
         .to_vec();
     assert_eq!(

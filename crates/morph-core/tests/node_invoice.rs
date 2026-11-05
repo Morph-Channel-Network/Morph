@@ -16,7 +16,7 @@ fn signing_key(byte: u8) -> SigningKey {
 }
 
 fn node_id_for_key(key: &SigningKey) -> [u8; 32] {
-    blake2b256(key.verifying_key().to_encoded_point(true).as_bytes())
+    blake2b256(key.verifying_key().to_sec1_point(true).as_bytes())
 }
 
 fn invoice_request(preimage: [u8; 32]) -> NewMorphInvoice {

@@ -419,7 +419,7 @@ impl TerminalSettlementReceipt {
         evidence.validate(status)?;
         let signer_pubkey_sec1 = signing_key
             .verifying_key()
-            .to_encoded_point(true)
+            .to_sec1_point(true)
             .as_bytes()
             .to_vec();
         let mut receipt = Self {
@@ -438,12 +438,7 @@ impl TerminalSettlementReceipt {
             .sign_prehash(&receipt.signing_digest())
             .map_err(|_| AgentError::InvalidSignature)?;
         receipt.signature = signature.to_bytes().to_vec();
-        receipt.validate_for_signer(
-            signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes(),
-        )?;
+        receipt.validate_for_signer(signing_key.verifying_key().to_sec1_point(true).as_bytes())?;
         Ok(receipt)
     }
 
@@ -459,12 +454,12 @@ impl TerminalSettlementReceipt {
         }
         let key = VerifyingKey::from_sec1_bytes(&self.signer_pubkey_sec1)
             .map_err(|_| AgentError::InvalidSignature)?;
-        if key.to_encoded_point(true).as_bytes() != self.signer_pubkey_sec1 {
+        if key.to_sec1_point(true).as_bytes() != self.signer_pubkey_sec1 {
             return Err(AgentError::InvalidSignature);
         }
         let signature = Signature::try_from(self.signature.as_slice())
             .map_err(|_| AgentError::InvalidSignature)?;
-        if signature.normalize_s().is_some() {
+        if signature.normalize_s() != signature {
             return Err(AgentError::InvalidSignature);
         }
         key.verify_prehash(&self.signing_digest(), &signature)
@@ -696,8 +691,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            receipt
-                .validate_for_signer(other_key.verifying_key().to_encoded_point(true).as_bytes(),),
+            receipt.validate_for_signer(other_key.verifying_key().to_sec1_point(true).as_bytes(),),
             Err(AgentError::UnexpectedReceiptSigner)
         );
 

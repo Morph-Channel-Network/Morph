@@ -307,7 +307,7 @@ impl ProviderEdgeDescriptor {
         {
             let key = VerifyingKey::from_sec1_bytes(public_key)
                 .map_err(|_| BridgeError::InvalidMaterialisation)?;
-            if key.to_encoded_point(true).as_bytes() != public_key
+            if key.to_sec1_point(true).as_bytes() != public_key
                 || blake2b256(public_key) != *participant
             {
                 return Err(BridgeError::InvalidMaterialisation);

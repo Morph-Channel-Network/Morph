@@ -809,7 +809,7 @@ mod tests {
         let mut options = Options {
             contracts_dir: PathBuf::from("contracts"),
             fee_authorization: super::super::multi_asset_operator::FeeAuthorization::Sponsor {
-                change_pubkey: hex::encode(key.verifying_key().to_encoded_point(true).as_bytes()),
+                change_pubkey: hex::encode(key.verifying_key().to_sec1_point(true).as_bytes()),
             },
             fee_out_point: String::new(),
             store_dir: PathBuf::from("packages"),
@@ -872,7 +872,7 @@ mod tests {
                 .into_iter()
                 .map(|v| SigningKey::from_slice(&[v; 32]).unwrap())
                 .find(|key| {
-                    key.verifying_key().to_encoded_point(true).as_bytes() == member.pubkey_sec1
+                    key.verifying_key().to_sec1_point(true).as_bytes() == member.pubkey_sec1
                 })
                 .unwrap();
             let signature: Signature = key.sign_prehash(&digest).unwrap();
