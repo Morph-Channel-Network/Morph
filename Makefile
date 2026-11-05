@@ -3,19 +3,20 @@ CONTRACT_CARGO ?= $(CARGO)
 AUDIT ?= cargo audit
 DENY ?= cargo deny
 # Explicit, reviewable upstream waivers. `audit` denies every other warning.
-# - paste and rand 0.7 arrive through the pinned CKB 1.1 dependency family.
+# - paste and rand 0.7 arrive through the published CKB dependency family.
 #   Morph defines no custom logger that calls rand, so the documented rand
 #   re-entrancy trigger is absent.
 # - memmap2 0.5 is confined to ckb-testtool -> cacache in the test graph.
 # - lru 0.7 is test-only through ckb-testtool -> ckb-verification. The affected
 #   cache key is CKB Byte32 (no panicking Drop), so the advisory's required
-#   panic-unwind/catch-unwind trigger is absent. ckb-verification 1.2 removes
-#   this line but requires Rust 1.95; remove the waiver when CKB supports the
-#   workspace's pinned Rust release.
-# - faster-hex 0.6 arrives through the pinned CKB 1.1 dependency family
-#   (RUSTSEC-2026-0306). Neither the workspace nor the CKB 1.1 crates in our
-#   graph call the unsound `hex_decode_unchecked` AVX2 path; drop the waiver
-#   when CKB ships a patched faster-hex.
+#   panic-unwind/catch-unwind trigger is absent. ckb-verification 1.2.1 still
+#   requires lru 0.7; remove the waiver once that dependency is fixed upstream.
+# - faster-hex 0.6 remains in the latest published CKB host, build and test
+#   dependencies, ckb-testtool and Molecule (RUSTSEC-2026-0306). Neither Morph
+#   nor those callers use the unsound `hex_decode_unchecked` AVX2 entrypoint.
+#   The patched >=0.10.1 release is outside their ^0.6 requirements. Remove
+#   the waiver when all seven current paths accept a patched version; see
+#   docs/ckb-toolchain-upgrade.md. A toolchain bump alone does not fix them.
 # Remove each waiver as soon as its upstream dependency path is upgraded.
 AUDIT_IGNORE ?= --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0097 --ignore RUSTSEC-2026-0186 --ignore RUSTSEC-2026-0253 --ignore RUSTSEC-2026-0306
 

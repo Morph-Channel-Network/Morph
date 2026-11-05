@@ -23,7 +23,7 @@ edition = "2024"
 license = "MIT"
 authors = ["Arthur Zhang"]
 repository = "https://github.com/a19q3/Morph"
-rust-version = "1.92.0"
+rust-version = "1.95.0"
 description = "CKB-native off-chain channels, factories, and operator tooling"
 readme = "README.md"
 
@@ -37,9 +37,9 @@ base64 = "0.22"
 # Pin the upstream RustCrypto migration until a registry release includes it.
 biscuit-auth = { git = "https://github.com/biscuit-auth/biscuit-rust", rev = "21e650f31a8521af575f968925acbb56486172f9" }
 blake2b-rs = "0.2"
-ckb-crypto = "1.1.0"
-ckb-jsonrpc-types = "1.1.1"
-ckb-types = "1.1.1"
+ckb-crypto = "1.1.1"
+ckb-jsonrpc-types = "1.2.1"
+ckb-types = "1.1.4"
 clap = { version = "4.5", features = ["derive", "env"] }
 hex = "0.4"
 getrandom = "0.3"
@@ -47,9 +47,9 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
-ckb-std = { version = "1.1.0", default-features = false, features = ["allocator", "calc-hash", "ckb-types", "dummy-atomic"] }
+ckb-std = { version = "1.1.0", default-features = false, features = ["allocator", "calc-hash", "ckb-types"] }
 ckb-testtool = "1.1.1"
-ckb-hash = { version = "1.1.0", default-features = false, features = ["ckb-contract"] }
+ckb-hash = { version = "1.1.1", default-features = false, features = ["ckb-contract"] }
 k256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "arithmetic"] }
 proptest = "1"
 rand = "0.8"

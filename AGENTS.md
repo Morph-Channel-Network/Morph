@@ -50,7 +50,7 @@ UI (`ui/morph-hub`):
 Notes:
 
 - The `audit` step carries explicit upstream waivers in `AUDIT_IGNORE` (top of `Makefile`); each has a rationale and removal condition in the comment block above it. Don't add new ignore flags without the same justification. Removing the crypto-bigint/k256 waiver (`RUSTSEC-2026-0387`) is a mainnet-readiness precondition because the fix relinks every contract ELF.
-- The CI workflow (`.github/workflows/ci.yml`) mirrors `make ci` and pins Rust 1.92.0 plus the RISC-V target.
+- The CI workflow (`.github/workflows/ci.yml`) mirrors `make ci` and pins Rust 1.95.0 plus the RISC-V target.
 - `cargo audit` historically failed with IO errors when fetching the RustSec DB; see `SECURITY-FIXES.md` "Evidence run" for context.
 
 ## Repository Layout
@@ -82,6 +82,7 @@ ui/morph-hub                   React + Vite + TypeScript operator console.
 - `morph-script-common` is `no_std` and shared by every contract crate. All current length constants, role-separated domains (e.g. `MULTI_ASSET_STATE_DOMAIN`, `MULTI_ASSET_FUNDING_CONTEXT_DOMAIN`), bounded capability frames, and helper parsers live here. Any change here is a wire-format change.
 - CKB scripts use `#![cfg_attr(target_arch = "riscv64", no_std)]` plus `#![cfg_attr(target_arch = "riscv64", no_main)]` and provide a stub `fn main() {}` for host builds so `cargo check` works. `entry!(program_entry)` and `default_alloc!()` are gated the same way.
 - Contract crates depend only on `ckb-std` + `morph-script-common`. Do not pull in `morph-core` from a contract — it would pull non-`no_std` code.
+- Rust 1.95 contract builds use `-C passes=lower-atomic` in both `.cargo/config.toml` and `scripts/build-contracts.sh`. Keep these aligned and leave `ckb-std`'s `dummy-atomic` feature disabled; the former `target-feature=-a` combination is unsupported by this toolchain. CKB-VM does not support RISC-V atomic instructions.
 
 ### Hashing and domain separation
 
@@ -180,7 +181,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 
 ## Style
 
-- Edition `2024`, Rust `1.92.0`. Pinned by `rust-toolchain.toml`; CI installs the same toolchain.
+- Edition `2024`, Rust `1.95.0`. Pinned by `rust-toolchain.toml`; CI installs the same toolchain.
 - `morph-cli` uses `clap` with the `derive` and `env` features; subcommands are an explicit `enum Command` with `#[command(subcommand)]`. New subcommands should follow the same shape and carry `#[arg(long)]` for any boolean toggle.
 - Two crates use a `devnet` Cargo feature to gate devnet-only modules behind `#[cfg(feature = "devnet")]`. Don't put devnet code paths behind `#[cfg(devnet_only)]` ad hoc.
 - JSON in/out is via `serde` + `serde_json`; many types re-export through `morph-core::*`. The codebase avoids `unwrap` in non-test code and prefers `anyhow::Result`/`ensure!` in CLI code and `Result<_, ScriptError>` in scripts.

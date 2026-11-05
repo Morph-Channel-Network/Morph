@@ -38,7 +38,9 @@ scripts=(
   morph-devnet-xudt
 )
 
-contract_rustflags="-C target-feature=-a"
+# Rust 1.95 no longer supports ckb-std dummy atomics with target-feature=-a.
+# Match .cargo/config.toml and lower atomics for the single-threaded CKB-VM.
+contract_rustflags="-C passes=lower-atomic"
 contract_rustflags+=" --remap-path-prefix=$REPO_ROOT=/morph"
 contract_rustflags+=" --remap-path-prefix=$CARGO_HOME_DIR=/cargo"
 

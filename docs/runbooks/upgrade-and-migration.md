@@ -6,7 +6,7 @@ fresh channel state, not an in-place binary replacement.
 ## Prepare a Replacement Deployment
 
 1. Freeze new Factory creation and concurrent splices.
-2. Build from a clean candidate with Rust 1.92.0 and `Cargo.lock`.
+2. Build from a clean candidate with Rust 1.95.0 and `Cargo.lock`.
 3. Run `make ci`, `make devnet-stateful-e2e`, and independent review for every
    wire-format or contract change.
 4. Generate a fresh candidate profile and manifest from the current source.

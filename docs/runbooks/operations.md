@@ -13,7 +13,7 @@ make release-readiness
 make package-contract-release
 ```
 
-The Rust release must be 1.92.0, the Git worktree must be clean, and the
+The Rust release must be 1.95.0, the Git worktree must be clean, and the
 manifest verifier must report eight matching scripts. Compare the deployment
 report's `data_hash` values with
 `release/factory-preproduction/contracts.json` before creating cells.
