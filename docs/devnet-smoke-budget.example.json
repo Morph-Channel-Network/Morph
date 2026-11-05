@@ -1,8 +1,8 @@
 {
   "schema": "morph.current_acceptance_budget.v1",
-  "basis": "Development-only current five-case native acceptance plus eight contract deployments. The complete retained run target/current-protocol-e2e/current-five-case-validation-5/scenarios/summary.json records 74 committed transactions, 344,414,193 total cycles, a 29,156,228-cycle native maximum, and 1,091,034 total bytes. Native operations account for 139,426 bytes with a 7,730-byte maximum; deployments account for 951,608 bytes with a 280,956-byte maximum. The 40M-cycle/100k-byte native transaction limits remain explicit on every native case. Deployment has its own 20M-cycle/1M-byte total and 2M-cycle/300k-byte transaction limits. The 2M-byte global allowance is additive: 1M for deployment plus 750k across the five declared native lifecycle cases, with 250k aggregate headroom. The global 300k-byte transaction cap admits deployment and does not relax the native case caps. Per-case cycle allowances remain explicit lifecycle ceilings; they are not production latency or admission evidence. The separate 70M joint-resource VM fixture ceiling is not a native-node budget.",
+  "basis": "Controlled no-value current acceptance, not protocol-wide or production admission. The clean bb6b764 native run completed 83 distinct transaction hashes observed as Committed, 465780741 measured total cycles and 1121782 bytes, then correctly failed the former uniform 40M budget: its ten-right ReducedRights transaction measured 48264869 cycles / 7488 bytes, witness 6245 bytes and 78 aggregate proof siblings. One/four-right updates measured 11392803/23676049 cycles. The outer and Factory-case cycle ceilings are 55M to admit that declared ten-right shape; every other native case remains 40M and deployment remains 2M per transaction. Explicit named Factory transaction caps retain 40M or tighter, with only the ten-right path at 55M (one-right 15M, four-right 30M). ReducedRights has an 8192-byte witness/96 aggregate-sibling/10k-byte transaction bound. Each individual compact proof still has its consensus 64-sibling bound; aggregate siblings count all proof pairs. Total 1B cycles,2M bytes and deployment byte allowances remain unchanged. These are reproducible fixture ceilings for the declared scripts/geometry, not new asset admission, universal 70M VM maxima, or challenge-window evidence.",
   "max_total_cycles": 1000000000,
-  "max_tx_cycles": 40000000,
+  "max_tx_cycles": 55000000,
   "max_total_bytes": 2000000,
   "max_tx_bytes": 300000,
   "cases": [
@@ -24,7 +24,7 @@
       "name": "factory_custody_and_children",
       "max_cycles": 400000000,
       "max_bytes": 300000,
-      "max_tx_cycles": 40000000,
+      "max_tx_cycles": 55000000,
       "max_tx_bytes": 100000
     },
     {
@@ -85,6 +85,132 @@
       "path": "$.finalise",
       "max_cycles": 20000000,
       "max_bytes": 32768
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.finalise",
+      "max_cycles": 10000000,
+      "max_bytes": 16384
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.funded",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.deposit.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[2].report",
+      "max_cycles": 55000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[0].canonical_reorg_replay.original.report",
+      "max_cycles": 15000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.latest_package_watch.publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[1].report",
+      "max_cycles": 30000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.activation",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.activation.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.old_publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.latest_package_watch.publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.full_consent_metadata.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.latest_package_watch.publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.old_publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.parent.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.parent.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.activation",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.old_publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.parent.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.activation",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.escape.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     }
   ],
   "proof_profiles": [
@@ -127,6 +253,22 @@
       "max_proof_siblings": 0,
       "max_cycles": 40000000,
       "max_bytes": 32768
+    },
+    {
+      "check": "factory_custody_and_children",
+      "operation": "ReducedRights",
+      "max_witness_len": 8192,
+      "max_proof_siblings": 96,
+      "max_cycles": 55000000,
+      "max_bytes": 10000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "operation": "metadata_update",
+      "max_witness_len": 1024,
+      "max_proof_siblings": 0,
+      "max_cycles": 15000000,
+      "max_bytes": 4096
     }
   ]
 }

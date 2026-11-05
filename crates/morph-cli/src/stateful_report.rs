@@ -1214,16 +1214,32 @@ mod tests {
             if case.name == "deployment" {
                 assert_eq!(case.max_tx_cycles, Some(2_000_000));
                 assert_eq!(case.max_tx_bytes, Some(300_000));
+            } else if case.name == "factory_custody_and_children" {
+                assert_eq!(case.max_tx_cycles, Some(55_000_000));
+                assert_eq!(case.max_tx_bytes, Some(100_000));
             } else {
                 assert_eq!(case.max_tx_cycles, Some(40_000_000));
                 assert_eq!(case.max_tx_bytes, Some(100_000));
             }
         }
-        assert_eq!(budget.proof_profiles.len(), 6);
+        assert_eq!(budget.proof_profiles.len(), 7);
+        let exceptions = budget
+            .transactions
+            .iter()
+            .filter(|limit| limit.max_cycles.is_some_and(|cycles| cycles > 40_000_000))
+            .collect::<Vec<_>>();
+        assert_eq!(exceptions.len(), 1);
+        assert_eq!(exceptions[0].check, "factory_custody_and_children");
+        assert_eq!(
+            exceptions[0].path,
+            "$.transitions.rights_updates.operations[2].report"
+        );
+        assert_eq!(exceptions[0].max_cycles, Some(55_000_000));
         assert!(budget.proof_profiles.iter().all(|proof| {
             [
                 "root_funding",
                 "ReducedRights",
+                "metadata_update",
                 "ReducedRelease",
                 "ReducedDeposit",
                 "ReducedChild",

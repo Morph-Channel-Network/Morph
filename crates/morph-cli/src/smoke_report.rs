@@ -2421,6 +2421,8 @@ mod tests {
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from([
                 "root_funding",
+                "metadata_update",
+                "ReducedRights",
                 "ReducedRelease",
                 "ReducedDeposit",
                 "ReducedChild",

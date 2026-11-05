@@ -27,6 +27,10 @@ devnet use with no real assets.
   and public proof refresh. Cover full-consent metadata, retained/full
   materialisation, private child delivery, independent child closure and parent
   retirement in the current native lifecycle.
+- Qualify the measured ten-right native update under an explicit 55M-cycle
+  fixture allowance, with 15M/30M one/four-right named caps, unchanged aggregate
+  budgets and 40M ceilings for other native cases. Export exact case,
+  transaction and proof limits with public evidence.
 - Retire obsolete State/Factory/splice codecs, commands and duplicate backends;
   preserve conditional CKB Batch and reduced Factory capabilities in the current
   descriptor-5/FS/FM/FR model. Strengthen current Factory/Batch VM negatives,

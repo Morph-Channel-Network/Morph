@@ -14,6 +14,28 @@ SPEC.loader.exec_module(PUBLIC)
 
 
 class PublicEvidenceBoundaries(unittest.TestCase):
+    def test_public_budget_export_preserves_scoped_factory_exception_without_private_fields(self):
+        policy = json.loads((PUBLIC.ROOT / "docs/devnet-stateful-budget.example.json").read_text())
+        policy["private_key"] = "never-export-budget-key"
+        policy["transactions"][0]["private_journal"] = "never-export-authority"
+        limits = PUBLIC.public_budget_limits(policy)
+        self.assertNotIn("never-export", json.dumps(limits))
+        self.assertEqual(limits["max_tx_cycles"], 55_000_000)
+        for case in limits["cases"]:
+            expected = 2_000_000 if case["name"] == "deployment" else (
+                55_000_000 if case["name"] == "factory_custody_and_children" else 40_000_000)
+            self.assertEqual(case["max_tx_cycles"], expected)
+        exceptions = [item for item in limits["transactions"] if item["max_cycles"] > 40_000_000]
+        self.assertEqual(len(exceptions), 1)
+        self.assertEqual(exceptions[0]["path"], "$.transitions.rights_updates.operations[2].report")
+        self.assertEqual(exceptions[0]["max_cycles"], 55_000_000)
+        reduced = next(item for item in limits["proof_profiles"] if item["operation"] == "ReducedRights")
+        self.assertEqual(reduced["max_proof_siblings"], 96)
+        self.assertEqual(reduced["max_witness_len"], 8192)
+        policy["transactions"][0]["max_cycles"] = True
+        with self.assertRaisesRegex(ValueError, "invalid nonnegative integer"):
+            PUBLIC.public_budget_limits(policy)
+
     def source(self):
         source = {
             "schema": "morph.current_run_provenance.v1", "phase": "pre_build",

@@ -200,6 +200,14 @@ by each fresh run. The alpha issue/acceptance map is
 [the release record](releases/v4.0.0-alpha.1.md). Historical reports above are not
 silently upgraded to those new scenarios.
 
+The first alpha ten-right native update measured 48,264,869 cycles, 7,488 fully
+signed transaction bytes and 78 aggregate proof siblings. It correctly failed
+the previous uniform 40M smoke ceiling. The qualified current profile records
+one/four/ten-right named ceilings of 15M/30M/55M; other native cases retain 40M,
+and the ten-right proof shape is also bounded by witness/aggregate-sibling/byte
+limits. See [the measured alpha scope](releases/v4.0.0-alpha.1.md#measured-reduced-right-budgets).
+The larger cap is not a protocol-wide or production admission claim.
+
 ## Independent release bundle verification
 
 At the historical pre-alpha checkpoint, two consecutive

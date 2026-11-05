@@ -243,6 +243,29 @@ def contract_evidence(reader, manifest, recorded_hashes):
     return result
 
 
+def public_budget_limits(policy):
+    """Keep nonuniform case, transaction and proof ceilings explicitly scoped."""
+    require(policy["schema"] == "morph.current_acceptance_budget.v1", "unsupported source budget")
+    limits = {key: integer(policy[key]) for key in ("max_total_cycles", "max_tx_cycles", "max_total_bytes", "max_tx_bytes")}
+    require({item["name"] for item in policy["cases"]} == CASES | {"deployment"}, "wrong source budget cases")
+    optional = lambda value: integer(value) if value is not None else None
+    limits["cases"] = [{"name": token(item["name"]), **{key: optional(item[key])
+        for key in ("max_cycles", "max_bytes", "max_tx_cycles", "max_tx_bytes")}} for item in policy["cases"]]
+    limits["transactions"] = []
+    for item in policy["transactions"]:
+        require(item["check"] in CASES | {"deployment"}, "unknown transaction budget case")
+        path = item["path"]
+        require(isinstance(path, str) and re.fullmatch(r"\$[A-Za-z0-9_.\[\]]{0,240}", path), "invalid budget transaction path")
+        limits["transactions"].append({"check": item["check"], "path": path,
+            **{key: optional(item[key]) for key in ("max_cycles", "max_bytes")}})
+    limits["proof_profiles"] = []
+    for item in policy["proof_profiles"]:
+        require(item["check"] in CASES | {"deployment"}, "unknown proof budget case")
+        limits["proof_profiles"].append({"check": item["check"], "operation": token(item["operation"]),
+            **{key: optional(item[key]) for key in ("max_witness_len", "max_proof_siblings", "max_cycles", "max_bytes")}})
+    return limits
+
+
 def ci_results(raw):
     require(len(raw) <= 20 * 1024 * 1024, "oversized CI log")
     lines = raw.decode(errors="replace").splitlines()
@@ -314,9 +337,11 @@ that every historical branch transaction is canonical at the final tip.
 
 ## Resource scopes
 
-The source-commit default node profile has a {native_cycles:,}-cycle native
-transaction ceiling. Its byte and deployment-specific limits are exported in
-`resource-budgets.json`. The separate 70,000,000-cycle joint-dimension CKB-VM
+The source-commit default node profile has a {native_cycles:,}-cycle outer
+transaction ceiling. Individual cases, named transactions and proof shapes
+retain their explicit stricter limits, all exported in `resource-budgets.json`.
+This does not assign the largest ceiling to every native operation.
+The separate 70,000,000-cycle joint-dimension CKB-VM
 fixture ceiling is not this native-node ceiling, and is not a universal bound
 for arbitrary wallet/asset scripts or all proof topologies.
 
@@ -483,11 +508,7 @@ def export(run, output, expected_commit=None, ci_log=None):
     # The source-commit profile is public configuration, never the mutable working tree.
     policy_raw = subprocess.check_output(["git", "show", f"{origin['source_commit']}:docs/devnet-stateful-budget.example.json"], cwd=ROOT)
     policy = decode(policy_raw)
-    require(policy["schema"] == "morph.current_acceptance_budget.v1", "unsupported source budget")
-    limits = {key: integer(policy[key]) for key in ("max_total_cycles", "max_tx_cycles", "max_total_bytes", "max_tx_bytes")}
-    require({item["name"] for item in policy["cases"]} == CASES | {"deployment"}, "wrong source budget cases")
-    limits["cases"] = [{"name": token(item["name"]), **{key: integer(item[key]) if item[key] is not None else None
-        for key in ("max_cycles", "max_bytes", "max_tx_cycles", "max_tx_bytes")}} for item in policy["cases"]]
+    limits = public_budget_limits(policy)
     files["resource-budgets.json"] = {"schema": "morph.public_budget_evidence.v1", "source_commit": origin["source_commit"],
         "source_profile": "docs/devnet-stateful-budget.example.json", "source_profile_sha256": sha256(policy_raw),
         "scope": "Source-commit default node profile; 70M joint-dimension VM fixture ceilings are separate measurements, not this run's native transaction budget.",
@@ -498,9 +519,7 @@ def export(run, output, expected_commit=None, ci_log=None):
         "artifacts": [{"path": key, "size_bytes": len(value), "sha256": sha256(value)} for key, value in sorted(reader.raw.items())],
         "stateful_manifest_sha256": sha256(manifest_raw)}
     encoded = {name: (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode() for name, value in files.items()}
-    native_cycles = {item["max_tx_cycles"] for item in limits["cases"] if item["name"] in CASES}
-    require(len(native_cycles) == 1, "different native cycle budgets need explicit scope")
-    encoded["README.md"] = readme(origin, totals, len(txs), count, len(audits), next(iter(native_cycles)), files.get("ci-results.json")).encode()
+    encoded["README.md"] = readme(origin, totals, len(txs), count, len(audits), limits["max_tx_cycles"], files.get("ci-results.json")).encode()
     encoded["SHA256SUMS"] = "".join(f"{sha256(raw)}  {name}\n" for name, raw in sorted(encoded.items())).encode()
     require(sum(map(len, encoded.values())) <= MAX_PUBLIC_BYTES, "public evidence exceeds size bound")
     require(not output.exists(), "output already exists; use a fresh evidence directory")
