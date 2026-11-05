@@ -86,8 +86,8 @@ On a clean checkout of the recorded source commit, run:
 make ci
 ```
 
-Run an isolated node using the same public disposable fixture scalars 1, 2
-and 3 as the CI workflow. This example supplies them directly to the child
+Run an isolated node using the public stock-dev-genesis funding fixture and
+disposable participant scalars 2 and 3 from CI. This example supplies them to the child
 process without printing key values or requiring a separate Fiber checkout:
 
 ```sh
@@ -96,7 +96,8 @@ import os
 import subprocess
 
 env = os.environ.copy()
-for scalar, name in enumerate(("MORPH_DEVNET_PRIVATE_KEY", "MORPH_ALICE_PRIVATE_KEY", "MORPH_BOB_PRIVATE_KEY"), 1):
+env["MORPH_DEVNET_PRIVATE_KEY"] = "d00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc"
+for scalar, name in ((2, "MORPH_ALICE_PRIVATE_KEY"), (3, "MORPH_BOB_PRIVATE_KEY")):
     env[name] = format(scalar, "064x")
 env["CKB_BIN"] = "/path/to/ckb"
 env["OUT_DIR"] = "target/current-protocol-e2e/reproduction"
@@ -104,7 +105,7 @@ subprocess.run(["bash", "scripts/devnet-current-e2e.sh"], env=env, check=True)
 FIXTURE
 ```
 
-These scalars are public test data for a disposable development chain; use no
+The funding fixture is published in the [pinned CKB dev specification](https://github.com/nervosnetwork/ckb/blob/2592ddf0502cd4adfe886db893cccc866db3c60f/resource/specs/dev.toml); all three keys are public development test data. Use no
 real funds. See the repository CI workflow for its pinned CKB download and the
 same fixture setup. A fresh run has new transaction hashes and its own immutable
 provenance; it must pass artifact, budget, audit-category and source-freshness

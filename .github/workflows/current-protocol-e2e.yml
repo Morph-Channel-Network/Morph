@@ -21,9 +21,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      # Public disposable scalars for the isolated no-value development chain.
+      # Public stock dev-genesis funding fixture plus disposable participant scalars.
+      # The funding fixture is built into the pinned CKB dev chain, not a secret.
       # They are not deployment credentials and must never fund real assets.
-      MORPH_DEVNET_PRIVATE_KEY: '0000000000000000000000000000000000000000000000000000000000000001'
+      MORPH_DEVNET_PRIVATE_KEY: 'd00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc'
       MORPH_ALICE_PRIVATE_KEY: '0000000000000000000000000000000000000000000000000000000000000002'
       MORPH_BOB_PRIVATE_KEY: '0000000000000000000000000000000000000000000000000000000000000003'
       CKB_ARCHIVE: ckb_v0.210.0_x86_64-unknown-linux-gnu.tar.gz
