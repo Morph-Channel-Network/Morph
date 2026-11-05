@@ -1,16 +1,18 @@
-# Multi-Asset Candidate Wire Profile
+# Current State and Vault-Set Wire Profile
 
-Status: bilateral implementation under development, 2026-11-02. These are the
-actual candidate encodings in `morph-script-common::multi_asset`, not a claim
-that the complete production extension or its release review is finished.
-Legacy profiles keep their original encodings and reject these headers.
+Status: current unpublished implementation, 2026-11-05. The shared parsers in
+`morph-script-common` are the executable wire definition. This is the sole
+current channel custody implementation; the Factory is a separate authority
+object over the same custody primitives. Unsupported prior bytes are rejected.
+See [current capability coverage](current-protocol-coverage.md) for migration,
+negative tests, measured limits and the remaining release gates.
 
 ## State and Vault Authority
 
 State layout 2 is an independent 318-byte encoding. It contains no single-Vault
 materialisation field, single-Vault OutPoint field, or duplicate content root.
 All integers use little endian order. Protocol version 1, signature scheme 1,
-bilateral mode 1, descriptor version 4, and layout version 2 are required.
+bilateral mode 1, descriptor version 5, and layout version 2 are required.
 
 | Byte offset | Field | Bytes |
 | --- | --- | --- |
@@ -50,11 +52,17 @@ entire State except its OutPoint-set root and preserves carrier capacity
 exactly. Its first N raw CellDeps must be direct Vault dependencies in manifest
 order, all from the transaction that created the unbound State. Publication
 and supersede preserve the entire funding context and require newer,
-two-participant signed settling evidence. The candidate does not admit active
-State retirement through legacy splice witnesses. The new [splice intent and
-freeze rules](multi-asset-splice.md) and State/Vault consensus execution have
-CKB-VM coverage; native submission and canonical journal transitions remain
-pending.
+two-participant signed settling evidence. The [current splice bridge](multi-asset-splice.md) implements exact-transaction
+State/Vault retirement and successor creation. Native submission, durable
+signing and canonical same-session handoff are implemented; terminal abort
+tracking and production qualification remain open.
+
+StateType args have one shared parser: `MultiAssetStateTypeArgs`. Direct args
+are `anchor[32] || since[8]`; Factory child args are
+`anchor[32] || originating_FactoryType_hash[32] || since[8]`. Only lengths 40
+and 72 are accepted. Child origin is nonzero and since is canonical relative
+block encoding. The clock is always the final eight bytes, not the beginning
+of the Factory origin.
 
 ## Manifest, Descriptor, and Witness
 
@@ -72,7 +80,7 @@ produce no Cell. A funded typed Vault has a positive quantity and exactly
 | Object | Encoding |
 | --- | --- |
 | Manifest | u16 version 1, u8 count, u8 reserved; N entries of asset ID (33), Vault lock hash (32), allocation (32). Length `4 + N*97`. |
-| Settlement descriptor | u16 version 4, u8 count, u8 reserved; two sorted nonzero payout lock hashes (64), carrier-refund lock hash (32); N entries of asset ID (33) and two allocations (64). Length `100 + N*97`. |
+| Settlement descriptor | u16 version 5, u8 count, u8 capability; two sorted nonzero payout lock hashes (64), carrier-refund lock hash (32); N entries of asset ID (33) and two allocations (64). Ordinary length `100 + N*97`; capability 1 appends a 36-byte executor prefix and 828-byte Batch terms. |
 | Recovery witness | `MORPHMA!` (8), u16 version 1, u16 flags 0, u32 manifest length, u32 descriptor length, u16 OutPoint count, u16 reserved, u32 scripts length; manifest, descriptor, OutPoints, script evidence. |
 | OutPoints | N canonical 36-byte CKB OutPoints in manifest asset order; zero entries only for an unbound State. Duplicates and zero transaction hashes are rejected. |
 | Script evidence | Six scripts (payout 0, payout 1, carrier refund, Vault Lock, State Type, State Lock), followed by each xUDT Type Script in asset order. Each is a u32 length and complete canonical Molecule Script, bounded to 512 bytes. |
@@ -92,6 +100,14 @@ challenge delay, StateType, and StateLock. Every Vault and payout reserve must
 cover its exact occupied capacity. Carrier capacity covers both the live State
 and its plain refund output.
 
+Capability tag 0 means ordinary settlement. Tag 1 requires the exact current
+CKB conditional trailer and at least one pending transfer; unknown tags,
+descriptor 4, zero/malformed conditional shapes and trailing bytes are rejected.
+The trailer commits executor code/hash type and the canonical 828-byte Batch
+terms. Those inner terms are reused by one Batch executor, not another State
+profile. Its sole 104-byte args bind channel ID, exact funding context, state
+number and complete terms commitment. See [conditional execution](conditional-batches.md).
+
 ## Conservation and Finalisation
 
 Each manifest asset must have the same descriptor identity. Its two payouts
@@ -107,7 +123,7 @@ The complete State carrier refund follows those payouts. Each position is
 checked exactly once. Subsequent plain fee change may share a payout/refund
 address without contributing to channel conservation. Extra Vault outputs and
 extra registered-token outputs are rejected. Fees require external funding;
-the candidate never deducts activation or finalisation fees from carrier value.
+the current profile never deducts activation or finalisation fees from carrier value.
 
 Signed recovery evidence must be retained before funding broadcast. The raw
 funding transaction hash excludes witnesses, so its exact future Vault
@@ -183,8 +199,9 @@ Retain complete recovery packages separately for watchtower use. The SDK's
 `createMultiAssetProposal`, `inspectMultiAssetProposal`, and
 `inspectMultiAssetProposalSignature` validate proposal content and signatures
 independently, but are stateless helpers and do not implement a signing journal.
-This state-agreement API does not yet replace Agent payment admission, Hub
-orchestration, watchtower automation, or Factory/splice/conditional workflows.
+Current payment/conditional services use this backend; SDK helpers remain
+stateless. Factory signing has a separate durable rights/custody authority,
+with the shared current custody validators.
 
 ## Multi-Asset Dispute Watch Passes
 
@@ -238,11 +255,13 @@ morph-cli devnet --devnet-only multi-asset-watch \
 Fee keys use the existing hidden-value environment option. Keep each operator's
 cursor/attempt files separate. `publication_failed` and `recovery_data_invalid`
 are critical alerts consumable by Hub. Pass reports expose State numbers as
-strings and report catch-up separately from submission. A finite pass does not
-implement the full multi-channel service/health/failover orchestration. Watch
-automation for unactivated funding, splice/Factory context migration and
-finalisation monitoring still require integration; no independent production
-approval is implied.
+strings and report catch-up separately from submission. Configured once/loop/service
+commands reuse these same passes with bounded
+backoff, health and alerts; see [current watch service](runbooks/current-watch-service.md).
+Independent-host failover, pooled publication, terminal abort tracking and
+production operational qualification remain open. Explicit service configuration
+may authorize separate bounded Sponsor funding; that policy does not turn a
+watch pass into participant signing authority.
 
 ## Tooling and Evidence
 
@@ -317,124 +336,25 @@ morph-cli devnet --devnet-only multi-asset-transact \
   --fee 100000000 --max-fee 100000000 --dry-run wallet
 ```
 
-The independent eight-asset recovery in
-`target/multi-asset-devnet/activation-recovery/report.json` rolls back to the
-funding transaction and supplies only a fee-wallet key. It proves that the
-original descriptor survives activation despite a different saved state-2
-descriptor, rejects repeated and sponsor activation, publishes state 2 directly,
-and confirms complete-set finalisation. The report identifies the orphaned
-prior checkpoint and the fresh canonical activation/publication/finalisation.
+Current release evidence must use rebuilt descriptor-5 artifacts and current
+reports. Historical descriptor-4 reports and old deployment hashes do not
+qualify this boundary. See [the coverage ledger](current-protocol-coverage.md)
+for current host/CKB-VM evidence and reproduction commands.
 
-Publication accepts `--publication-profile` with mandatory `--attempt-log` to
-reuse the existing fee estimator, bounded replacement ladder, durable attempt
-records, canonical confirmation tracking, and challenge-window deadline. The
-profile's configured challenge blocks must match the signed Vault policy.
-Without a profile, submission uses the explicit fixed fee and maximum, with no
-replacement ladder. Finalisation uses the explicit bounded fixed fee. The CLI
-entry remains under the existing `devnet --devnet-only` gate while full
-backend/watchtower and release qualification remain open.
+## Factory authority over current custody
 
-```sh
-cargo run -p morph-cli --features devnet -- devnet --devnet-only \
-  multi-asset-transact --operation publish --package recovery.json \
-  --state-out-point TX_HASH:0 --fee-out-point FEE_TX_HASH:0 \
-  --fee 100000000 --max-fee 100000000 --dry-run wallet
-```
+Factory State is 306 bytes/layout 2; its Type args are 44 bytes (`MORPHFT!`,
+format 1, reserved zero, Factory identity). `MORPHFS!` format 2 has root,
+activation and update roles. Root and update have distinct exact-transaction
+signing domains; a header-only vote cannot authorize UPDATE. Activation binds
+the complete sibling set without member keys and preserves carrier capacity.
 
-For publication, replace the final `wallet` subcommand with
-`sponsor --change-pubkey COMPRESSED_PUBLIC_KEY` to consume an explicitly funded
-Sponsor cell without a fee private key. The operator checks the policy's channel,
-StateType, state-number range, change lock, per-transaction cap and remaining
-cell budget before constructing every attempt. Sponsor code must match the
-approved local artifact. Sponsor authorization is rejected for finalisation.
-The watch command accepts the same explicit authorization; it never falls back
-to another fee source.
+`MORPHFM!` authorizes N-of-N materialisation. `MORPHFR!` version 1 is the sole
+current reduced/funded transition frame: ReducedRights, ReducedDeposit,
+ReducedRelease, ReducedChild and FullCustody. Pure metadata remains the one
+FS UPDATE path. Source, retained and child manifests use the shared custody
+encoders. The runtime authenticates actual State/StateLock identity, exact
+source OutPoints, complete custody, outputs, external funding and raw transaction.
 
-The acceptance harness's `--sponsor-publication` switch funds a separate policy
-for each publication, with both state-number bounds equal to the target and
-both fee caps taken from the explicit publication limit. Its reports retain
-`sponsor_funding` and the actual `fee_source`. The harness checks wrong change
-identity, excess fee and sponsor finalisation rejection, then runs a VM preview
-whose fee witness has no signature. Funding, activation and finalisation use
-separate wallet inputs.
-
-Two/eight-asset reports are `target/multi-asset-devnet/sponsor-two.json` and
-`target/multi-asset-devnet/sponsor-watch-eight.json`. The eight-asset case covers
-all five watch passes, including rollback and sponsor republication. Reproduce
-with the watch acceptance command below plus `--sponsor-publication`.
-
-`target/multi-asset-devnet/sponsor-no-key/report.json` records a further isolated
-rollback after that run: an independent CLI process, with all Morph private-key
-environment variables removed, passes `multi-asset-transact --dry-run sponsor`
-and confirms a `multi-asset-watch ... sponsor` correction using only the public
-change identity. Wallet-funded finalisation then retires the complete set. This
-report identifies the orphaned prior checkpoint and fresh canonical finalisation
-instead of treating the earlier branch as current.
-
-Hub provides authenticated `POST /api/multi-asset-packages` and
-`GET /api/multi-asset-packages/{package_id}`. Import verifies both channel
-participants, funding context, current state number, signatures, all roots,
-and capacity. Recovery is retained across restart and old funding contexts;
-conflicting signed states at the same context/number are rejected. The normal
-state view contains at most 32 cached summaries, with a total package count;
-full evidence is retrieved separately. The store has an explicit 4096-package
-limit and never silently evicts recovery data. Packages count as operational
-records for the bootstrap-only restore restriction.
-
-The TypeScript SDK's `inspectMultiAssetPackage` performs independent binary,
-signature, commitment, per-asset, and capacity validation. Hub's State panel
-imports and retrieves these packages. Neither local package validation nor a
-Hub record substitutes for checking chain liveness and approved contract code.
-
-Transaction and cycle measurements must come from the current 318-byte header
-and rebuilt artifacts. Reports from earlier encodings are not current release
-budget evidence. Reproduce against an isolated
-node with deployed current binaries:
-
-```sh
-cargo run -p morph-cli --features devnet -- devnet --devnet-only \
-  multi-asset-smoke --asset-count 8 --json
-```
-
-Provide the documented funding and participant keys through the hidden-value
-environment options. The harness uses the devnet-only issuer for synthetic
-assets; it does not admit that issuer for production assets.
-
-The current 318-byte acceptance report is
-`target/multi-asset-devnet/activation-watch-eight.json`, with packages and signer
-journals under `target/multi-asset-devnet/activation-watch-eight-packages/`.
-The harness uses the standalone transaction operator and separate durable
-Alice/Bob sessions, checks dependency/carrier substitutions before publication,
-and confirms complete-set finalisation after a real rollback.
-
-| Eight typed Vaults | Transaction bytes | Estimated cycles |
-| --- | --- | --- |
-| Funding | 7,087 | 8,975,523 |
-| Recovered activation | 4,673 | 2,380,464 |
-| Sponsor publication 1 | 4,547 | 6,978,942 |
-| Sponsor supersede 2 | 4,547 | 6,976,544 |
-| Finalisation | 7,730 | 3,571,803 |
-
-These measurements cover the acceptance scripts, not the maximum 512-byte
-script bound or release approval. The report contains five watch passes:
-Active-state no-op, stale-state idle, late-package correction, corrected-state
-no-op, and real rollback recovery/republication. It rejects conflicting saved
-signatures, a scan origin after funding, and a same-number on-chain conflict.
-Deliberate conflict packages are archived outside the active channel index.
-The final package's encoded header is independently checked as 318 bytes.
-This observed harness branch was later replaced by the independent interrupted
-activation recovery above; its report identifies the current canonical exit.
-
-Reproduce against an isolated node using a profile whose configured challenge
-blocks match the channel (the recorded test uses 64):
-
-```sh
-morph-cli devnet --devnet-only multi-asset-smoke --asset-count 8 \
-  --finalise-since 64 --publication-profile publication-profile.json \
-  --watch-publication --watch-reorg --json
-```
-
-`--watch-reorg` deliberately truncates the acceptance publication branch and
-must only be used on the isolated no-value devnet. Its report distinguishes the
-orphaned checkpoint from the canonical re-confirmation; it does not relabel the
-orphaned publication as final.
+See [Factory operations](factory-multi-right.md) and [the coverage ledger](current-protocol-coverage.md)
+for authority, proof data, capacity floors and supported operation limits.

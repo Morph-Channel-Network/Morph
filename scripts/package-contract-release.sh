@@ -19,7 +19,7 @@ cleanup_staging_dir() {
   esac
 }
 trap cleanup_staging_dir EXIT
-ARTIFACT_DIR="$STAGING_DIR/morph-v3-conditional-batch"
+ARTIFACT_DIR="$STAGING_DIR/morph-current-custody"
 mkdir -p "$ARTIFACT_DIR/contracts"
 
 scripts=(
@@ -49,20 +49,23 @@ install -m 0644 \
   "$REPO_ROOT/release/factory-preproduction/watch-policy.json" \
   "$ARTIFACT_DIR/watch-policy.json"
 install -m 0644 \
+  "$REPO_ROOT/release/factory-preproduction/publication-profile.json" \
+  "$ARTIFACT_DIR/publication-profile.json"
+install -m 0644 \
   "$REPO_ROOT/release/factory-preproduction/watch-config.example.json" \
   "$ARTIFACT_DIR/watch-config.example.json"
 
 (
   cd "$ARTIFACT_DIR"
   sha256sum contracts/* contracts.json envelope.json README.md \
-    watch-policy.json watch-config.example.json > SHA256SUMS
+    watch-policy.json publication-profile.json watch-config.example.json > SHA256SUMS
 )
 
-STAGED_ARCHIVE="$STAGING_DIR/morph-v3-conditional-batch.tar.gz"
+STAGED_ARCHIVE="$STAGING_DIR/morph-current-custody.tar.gz"
 tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
-  -C "$STAGING_DIR" -cf - morph-v3-conditional-batch \
+  -C "$STAGING_DIR" -cf - morph-current-custody \
   | gzip -n > "$STAGED_ARCHIVE"
-ARCHIVE_PATH="$OUTPUT_PARENT/morph-v3-conditional-batch.tar.gz"
+ARCHIVE_PATH="$OUTPUT_PARENT/morph-current-custody.tar.gz"
 install -m 0644 "$STAGED_ARCHIVE" "$ARCHIVE_PATH"
 
 echo "temporary release staging verified and scheduled for cleanup: $ARTIFACT_DIR"

@@ -30,6 +30,8 @@ pub enum MultiAssetError {
     ScriptIdentity,
     #[error("signed reserve cannot fund the required occupied capacity")]
     InsufficientReserve,
+    #[error(transparent)]
+    Conditional(#[from] crate::ConditionalError),
 }
 
 impl From<ScriptError> for MultiAssetError {
@@ -167,9 +169,23 @@ pub struct MultiAssetPayout {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MultiAssetSettlement {
+    pub capability: MultiAssetSettlementCapability,
     pub participant_lock_hashes: [Bytes32; 2],
     pub carrier_refund_lock_hash: Bytes32,
     pub payouts: Vec<MultiAssetPayout>,
+}
+
+/// A current settlement has one explicit interpretation. Conditions use the
+/// same Vault-set custody and signing engine as ordinary allocations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MultiAssetSettlementCapability {
+    Ordinary,
+    CkbConditional {
+        batch_code_hash: Bytes32,
+        batch_hash_type: u8,
+        batch: Box<crate::ConditionalBatch>,
+    },
 }
 
 impl MultiAssetSettlement {
@@ -193,6 +209,22 @@ impl MultiAssetSettlement {
                 allocations: payout.values.map(MultiAssetValue::wire),
             }
             .encode(&mut raw[offset..offset + wire::MULTI_ASSET_PAYOUT_ENTRY_LEN])?;
+        }
+        if let MultiAssetSettlementCapability::CkbConditional {
+            batch_code_hash,
+            batch_hash_type,
+            batch,
+        } = &self.capability
+        {
+            use morph_script_common::multi_asset_conditional::{
+                MULTI_ASSET_SETTLEMENT_CKB_CONDITIONAL, encode_multi_asset_conditional,
+            };
+            raw[3] = MULTI_ASSET_SETTLEMENT_CKB_CONDITIONAL;
+            raw.extend_from_slice(&encode_multi_asset_conditional(
+                batch_code_hash,
+                *batch_hash_type,
+                &batch.encode_descriptor()?,
+            )?);
         }
         wire::MultiAssetSettlementDescriptor::parse(&raw)?;
         Ok(raw)
@@ -222,6 +254,16 @@ impl MultiAssetSettlement {
             })
             .collect::<MultiAssetResult<Vec<_>>>()?;
         Ok(Self {
+            capability: match descriptor.conditional()? {
+                None => MultiAssetSettlementCapability::Ordinary,
+                Some(conditional) => MultiAssetSettlementCapability::CkbConditional {
+                    batch_code_hash: array32(&conditional.as_bytes()[4..36])?,
+                    batch_hash_type: conditional.as_bytes()[3],
+                    batch: Box::new(crate::ConditionalBatch::decode_descriptor(
+                        &conditional.as_bytes()[morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_PREFIX_LEN..],
+                    )?),
+                },
+            },
             participant_lock_hashes: [
                 array32(descriptor.lock_hash(0)?)?,
                 array32(descriptor.lock_hash(1)?)?,
@@ -244,6 +286,58 @@ impl MultiAssetSettlement {
             &wire::MultiAssetVaultManifest::parse(&encoded_manifest)?,
             &wire::MultiAssetSettlementDescriptor::parse(&encoded_descriptor)?,
         )?)
+    }
+
+    /// The sole funding interpretation of a current descriptor. A conditional
+    /// CKB transfer is funded business value awaiting resolution; it never
+    /// consumes payout reserve, State carrier, another asset, or external fees.
+    pub fn custody_manifest(
+        &self,
+        vault_lock_hash: Bytes32,
+    ) -> MultiAssetResult<MultiAssetManifest> {
+        let encoded = self.encode()?;
+        let descriptor = wire::MultiAssetSettlementDescriptor::parse(&encoded)?;
+        let pending = descriptor
+            .conditional()?
+            .map(|conditional| conditional.pending_capacity())
+            .transpose()?
+            .unwrap_or(0);
+        let vaults = self
+            .payouts
+            .iter()
+            .map(|payout| {
+                let [a, b] = payout.values;
+                let value = MultiAssetValue {
+                    reserve: a
+                        .reserve
+                        .checked_add(b.reserve)
+                        .ok_or(ScriptError::MultiAssetCapacityMismatch)?,
+                    business_ckb: a
+                        .business_ckb
+                        .checked_add(b.business_ckb)
+                        .and_then(|sum| {
+                            sum.checked_add(if payout.asset == VaultAsset::Ckb {
+                                pending
+                            } else {
+                                0
+                            })
+                        })
+                        .ok_or(ScriptError::MultiAssetCapacityMismatch)?,
+                    amount: a
+                        .amount
+                        .checked_add(b.amount)
+                        .ok_or(ScriptError::MultiAssetConservationMismatch)?,
+                };
+                Ok(MultiAssetVault {
+                    asset: payout.asset.clone(),
+                    lock_hash: vault_lock_hash,
+                    value,
+                })
+            })
+            .collect::<MultiAssetResult<Vec<_>>>()?;
+        let manifest = MultiAssetManifest { vaults };
+        self.validate_against(&manifest)?;
+        Ok(manifest)
     }
 }
 
@@ -331,7 +425,6 @@ impl MultiAssetState {
                 state_number: base.state_number,
                 mode: match base.mode {
                     Mode::BilateralPlain => 1,
-                    Mode::FactoryProof => 2,
                 },
                 phase,
                 participants_commitment: base.participants_commitment,

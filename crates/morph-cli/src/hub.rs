@@ -105,6 +105,35 @@ struct HubMultiAssetPackage {
     summary: MultiAssetPackageSummary,
 }
 
+fn validate_registered_conditional_source(
+    registry: &BTreeMap<(Bytes32, Bytes32, u64), HubMultiAssetPackage>,
+    package: &StoredConditionalBatchPackage,
+    summary: &crate::conditional_packages::ConditionalBatchPackageSummary,
+    require_latest: bool,
+) -> Result<()> {
+    let channel = parse_bytes32("channel_id", &summary.source.channel_id)?;
+    let context = parse_bytes32("funding_context_id", &summary.source.funding_context_id)?;
+    let number = summary.source.state_number.parse::<u64>()?;
+    let entry = registry
+        .get(&(channel, context, number))
+        .ok_or_else(|| anyhow!("conditional source package is not registered"))?;
+    ensure!(
+        entry.package == package.source_package,
+        "conditional source differs from the registered signed recovery package"
+    );
+    if require_latest {
+        ensure!(
+            !registry.keys().any(
+                |(other_channel, other_context, other_number)| *other_channel == channel
+                    && *other_context == context
+                    && *other_number > number
+            ),
+            "conditional source is not the latest retained state for its funding context"
+        );
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 struct HubRootFunding {
     collection: RootFundingCollection,
@@ -606,7 +635,7 @@ fn local_state_provenance() -> RecordProvenanceView {
 
 fn hub_model_view() -> HubModelView {
     HubModelView {
-        profile: "morph-v3-conditional-batch",
+        profile: crate::release::FACTORY_RELEASE_PROFILE,
         hub_role: "local_operator_projection",
         factory_authority: "factory_state_and_vault",
         channel_authority: "state_and_vault",
@@ -1235,7 +1264,7 @@ impl HubStore {
 
     fn persist(&self) -> Result<()> {
         if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)
+            crate::persistence::create_private_directories(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
         let persisted = self.persisted()?;
@@ -1356,11 +1385,11 @@ impl HubRuntimeState {
         }
         let mut conditional_batches = BTreeMap::new();
         for package in persisted.conditional_batches {
-            package.validate()?;
-            let batch_id = parse_bytes32("batch_id", &package.batch_id)?;
+            let summary = package.validate()?;
+            let batch_id = parse_bytes32("batch_lock_hash", &summary.batch_lock_hash)?;
             ensure!(
                 conditional_batches.insert(batch_id, package).is_none(),
-                "conditional batch ids must be unique"
+                "conditional Batch lock identities must be unique"
             );
         }
         for invoice in persisted.invoices {
@@ -1384,6 +1413,14 @@ impl HubRuntimeState {
                     .is_none(),
                 "multi-asset funding-context state numbers must be unique"
             );
+        }
+        for package in conditional_batches.values() {
+            validate_registered_conditional_source(
+                &multi_asset_packages,
+                package,
+                &package.validate()?,
+                false,
+            )?;
         }
         ensure!(
             persisted.root_fundings.len() <= MAX_ROOT_FUNDINGS,
@@ -1711,25 +1748,9 @@ impl HubServer {
             }
             ("POST", "/api/conditional-batches") => self.mutate(request_id, |store| {
                 let package: StoredConditionalBatchPackage = parse_body(&request.body)?;
-                package.validate()?;
-                let batch_id = parse_bytes32("batch_id", &package.batch_id)?;
-                let channel_id = parse_bytes32("channel_id", &package.channel_id)?;
-                let funding_context_id =
-                    parse_bytes32("funding_context_id", &package.funding_context_id)?;
-                let channel = store
-                    .state
-                    .node
-                    .channels
-                    .get(&channel_id)
-                    .ok_or_else(|| anyhow!("conditional package channel is not open"))?;
-                ensure!(
-                    channel.funding_context_id == funding_context_id,
-                    "conditional package funding context is stale or unknown"
-                );
-                ensure!(
-                    channel.state_number == package.state_number,
-                    "conditional package state number must match the current channel state"
-                );
+                let summary = package.validate()?;
+                let batch_id = parse_bytes32("batch_lock_hash", &summary.batch_lock_hash)?;
+                validate_registered_conditional_source(&store.state.multi_asset_packages, &package, &summary, true)?;
                 if let Some(existing) = store.state.conditional_batches.get(&batch_id) {
                     ensure!(
                         existing == &package,
@@ -3635,36 +3656,36 @@ mod tests {
     #[test]
     fn conditional_force_package_is_validated_linked_and_persisted() {
         let local_pubkey = pubkey_from_scalar(41);
-        let peer_pubkey = pubkey_from_scalar(42);
         let server = test_server(&local_pubkey);
         let package = conditional_fixture_package().unwrap();
-
-        let opened = route_json(
+        let missing_source = route_json(
             &server,
             "POST",
-            "/api/channels",
-            json!({
-                "channel_id": package.channel_id,
-                "counterparty_pubkey": peer_pubkey,
-                "counterparty_alias": "conditional-peer",
-                "funding_context_id": package.funding_context_id,
-                "local": "12000000000",
-                "remote": "8000000000",
-                "sponsor_budget": 1000000,
-                "asset": { "kind": "ckb" }
-            }),
+            "/api/conditional-batches",
+            serde_json::to_value(&package).unwrap(),
         );
-        assert_eq!(opened.status, 200);
-        let published = route_json(
-            &server,
-            "POST",
-            format!("/api/channels/{}/publish", package.channel_id),
-            json!({
-                "funding_context_id": package.funding_context_id,
-                "state_number": package.state_number
-            }),
+        assert_ne!(missing_source.status, 200);
+        // This test isolates conditional binding from registry admission: a
+        // detached package cannot acquire authority from a mock channel record.
+        let summary = package.source_package.validate().unwrap();
+        let key = (
+            parse_bytes32("channel_id", &summary.channel_id).unwrap(),
+            parse_bytes32("funding_context_id", &summary.funding_context_id).unwrap(),
+            summary.state_number.parse().unwrap(),
         );
-        assert_eq!(published.status, 200);
+        server
+            .store
+            .lock()
+            .unwrap()
+            .state
+            .multi_asset_packages
+            .insert(
+                key,
+                HubMultiAssetPackage {
+                    package: package.source_package.clone(),
+                    summary,
+                },
+            );
 
         let imported = route_json(
             &server,
@@ -3683,6 +3704,100 @@ mod tests {
         let reloaded =
             HubStore::load_or_create(path, &persisted_pubkey, MorphNetwork::Devnet).unwrap();
         assert_eq!(reloaded.state.conditional_batches.len(), 1);
+        assert_eq!(reloaded.state.multi_asset_packages.len(), 1);
+        let mut detached = reloaded.persisted().unwrap();
+        detached.multi_asset_packages.clear();
+        fs::write(&reloaded.path, serde_json::to_vec(&detached).unwrap()).unwrap();
+        assert!(
+            HubStore::load_or_create(
+                reloaded.path.clone(),
+                &persisted_pubkey,
+                MorphNetwork::Devnet
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn conditional_source_registry_rejects_alternate_evidence_and_stale_admission() {
+        use k256::ecdsa::signature::hazmat::PrehashSigner;
+        let package = conditional_fixture_package().unwrap();
+        let summary = package.validate().unwrap();
+        let key = (
+            parse_bytes32("channel_id", &summary.source.channel_id).unwrap(),
+            parse_bytes32("funding_context_id", &summary.source.funding_context_id).unwrap(),
+            summary.source.state_number.parse::<u64>().unwrap(),
+        );
+        let mut registry = BTreeMap::from([(
+            key,
+            HubMultiAssetPackage {
+                package: package.source_package.clone(),
+                summary: summary.source.clone(),
+            },
+        )]);
+        validate_registered_conditional_source(&registry, &package, &summary, true).unwrap();
+        let mut alternate = package.clone();
+        alternate.source_package.cell_deps.push(
+            crate::multi_asset_packages::StoredMultiAssetCellDep {
+                tx_hash: format!("0x{}", "ff".repeat(32)),
+                index: 0,
+                dep_type: "code".into(),
+            },
+        );
+        let alternate_summary = alternate.validate().unwrap();
+        assert_eq!(
+            alternate_summary.source.package_id,
+            summary.source.package_id
+        );
+        assert!(
+            validate_registered_conditional_source(&registry, &alternate, &alternate_summary, true)
+                .is_err()
+        );
+        let mut newer = package.source_package.recovery().unwrap();
+        newer.state.header.state_number += 1;
+        let digest = newer.state.signing_digest().unwrap();
+        newer.authorization.signatures = [1u8, 2]
+            .into_iter()
+            .map(|seed| {
+                let key = SigningKey::from_slice(&[seed; 32]).unwrap();
+                let signature: k256::ecdsa::Signature = key.sign_prehash(&digest).unwrap();
+                morph_core::ParticipantSignature {
+                    pubkey_sec1: key
+                        .verifying_key()
+                        .to_encoded_point(true)
+                        .as_bytes()
+                        .to_vec(),
+                    signature: signature.to_bytes().to_vec(),
+                }
+            })
+            .collect();
+        newer
+            .authorization
+            .signatures
+            .sort_by(|a, b| a.pubkey_sec1.cmp(&b.pubkey_sec1));
+        let stored = StoredMultiAssetPackage::from_recovery(
+            &newer,
+            &package.source_package.decode().unwrap().cell_deps,
+        )
+        .unwrap();
+        let newer_summary = stored.validate().unwrap();
+        registry.insert(
+            (key.0, key.1, key.2 + 1),
+            HubMultiAssetPackage {
+                package: stored,
+                summary: newer_summary,
+            },
+        );
+        assert!(
+            validate_registered_conditional_source(&registry, &package, &summary, true).is_err()
+        );
+        // Retaining a historical, already admitted recovery remains valid;
+        // restore must still retain its exact signed source evidence.
+        validate_registered_conditional_source(&registry, &package, &summary, false).unwrap();
+        registry.remove(&key);
+        assert!(
+            validate_registered_conditional_source(&registry, &package, &summary, false).is_err()
+        );
     }
 
     #[test]
@@ -5069,7 +5184,7 @@ mod tests {
         assert_eq!(child["factory_id"].as_str(), Some(factory_id.as_str()));
         assert_eq!(
             body["model"]["profile"].as_str(),
-            Some("morph-v3-conditional-batch")
+            Some(crate::release::FACTORY_RELEASE_PROFILE)
         );
         assert_eq!(
             body["model"]["hub_role"].as_str(),

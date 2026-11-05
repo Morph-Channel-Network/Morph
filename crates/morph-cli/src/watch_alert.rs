@@ -116,7 +116,7 @@ impl WatchtowerAlert {
 }
 
 pub fn append_watchtower_alert(path: &Path, alert: &WatchtowerAlert) -> Result<()> {
-    crate::packages::append_private_jsonl(path, alert)
+    crate::persistence::append_private_jsonl(path, alert)
 }
 
 pub fn post_watchtower_alert_webhook_with_secret(
@@ -325,7 +325,21 @@ mod tests {
         ] {
             fs::write(&path, invalid).unwrap();
             #[cfg(unix)]
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+            {
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+                assert!(
+                    append_watchtower_alert(&path, &alert)
+                        .unwrap_err()
+                        .to_string()
+                        .contains("0600")
+                );
+                assert_eq!(fs::read_to_string(&path).unwrap(), invalid);
+                assert_eq!(
+                    fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                    0o644
+                );
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+            }
             assert!(
                 append_watchtower_alert(&path, &alert)
                     .unwrap_err()
@@ -336,7 +350,7 @@ mod tests {
             #[cfg(unix)]
             assert_eq!(
                 fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-                0o644
+                0o600
             );
         }
 

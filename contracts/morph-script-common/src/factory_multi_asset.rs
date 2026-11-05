@@ -11,7 +11,19 @@ fn mismatch<T>() -> Result<T> {
     Err(ScriptError::FactoryMultiAssetPartitionMismatch)
 }
 
-fn add(left: MultiAssetAllocation, right: MultiAssetAllocation) -> Result<MultiAssetAllocation> {
+/// CKB lanes are global across physical Vault types. Token quantities never
+/// enter this aggregate: Type identity is a token domain, not a CKB domain.
+fn factory_manifest_ckb(manifest: &MultiAssetVaultManifest) -> Result<MultiAssetAllocation> {
+    let mut sum = MultiAssetAllocation::default();
+    for i in 0..manifest.count() {
+        sum = factory_add_ckb(sum, manifest.entry(i)?.allocation)?;
+    }
+    Ok(sum)
+}
+fn factory_add_ckb(
+    left: MultiAssetAllocation,
+    right: MultiAssetAllocation,
+) -> Result<MultiAssetAllocation> {
     let value = MultiAssetAllocation {
         reserve: left
             .reserve
@@ -21,10 +33,7 @@ fn add(left: MultiAssetAllocation, right: MultiAssetAllocation) -> Result<MultiA
             .business_ckb
             .checked_add(right.business_ckb)
             .ok_or(ScriptError::MultiAssetCapacityMismatch)?,
-        amount: left
-            .amount
-            .checked_add(right.amount)
-            .ok_or(ScriptError::MultiAssetConservationMismatch)?,
+        amount: 0,
     };
     value.capacity()?;
     Ok(value)
@@ -43,8 +52,8 @@ fn value_for(
     Ok(MultiAssetAllocation::default())
 }
 
-/// Preserve reserve, business CKB and token quantity independently for every
-/// source asset. No external deposit or reserve subsidy is implicit here.
+/// Preserve global reserve/business CKB lanes and each Type token quantity.
+/// CKB can move between typed and plain Vaults without becoming a new asset. No external deposit or reserve subsidy is implicit here.
 /// A missing retained manifest means the entire reserve is materialised.
 /// Canonical manifest parsing has already bounded every set to 1..=8 Vaults.
 pub fn validate_materialisation_partition(
@@ -78,24 +87,31 @@ pub fn validate_materialisation_partition(
     if outputs > FACTORY_MULTI_ASSET_MAX_OUTPUTS {
         return mismatch();
     }
+    let mut output_ckb = MultiAssetAllocation::default();
     for manifest in retained.into_iter().chain(children.iter()) {
+        output_ckb = factory_add_ckb(output_ckb, factory_manifest_ckb(manifest)?)?;
         for i in 0..manifest.count() {
             let entry = manifest.entry(i)?;
-            if value_for(source, entry.asset)? == MultiAssetAllocation::default() {
+            if entry.asset.kind == 1 && value_for(source, entry.asset)?.amount == 0 {
                 return mismatch();
             }
         }
     }
+    if output_ckb != factory_manifest_ckb(source)? {
+        return mismatch();
+    }
     for i in 0..source.count() {
         let entry = source.entry(i)?;
-        let mut total = match retained {
-            Some(retained) => value_for(retained, entry.asset)?,
-            None => MultiAssetAllocation::default(),
-        };
-        for child in children {
-            total = add(total, value_for(child, entry.asset)?)?;
+        if entry.asset.kind == 0 {
+            continue;
         }
-        if total != entry.allocation {
+        let mut amount = 0u128;
+        for manifest in retained.into_iter().chain(children.iter()) {
+            amount = amount
+                .checked_add(value_for(manifest, entry.asset)?.amount)
+                .ok_or(ScriptError::MultiAssetConservationMismatch)?;
+        }
+        if amount != entry.allocation.amount {
             return mismatch();
         }
     }
@@ -110,6 +126,8 @@ pub fn materialisation_commitment(intent: &[u8]) -> [u8; 32] {
 }
 
 mod materialisation;
+mod reduced;
 mod state;
 pub use materialisation::*;
+pub use reduced::*;
 pub use state::*;

@@ -195,7 +195,9 @@ impl MultiAssetSpliceProposal {
         recovery.validate()?;
         Ok(recovery)
     }
-    pub(crate) fn initial_recovery_contents(
+    /// Predict the exact future exit for review before all receipts exist.
+    /// Call `initial_recovery` to require its complete participant authority.
+    pub fn initial_recovery_contents(
         &self,
         current: &MultiAssetRecoveryPackage,
     ) -> MultiAssetResult<MultiAssetRecoveryPackage> {

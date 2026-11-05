@@ -636,7 +636,51 @@ fn factory_multi_asset_metadata_update_preserves_custody_and_requires_all_member
             ))
             .build(),
     );
+    let digest = factory::FactoryMultiAssetStateHeader::parse(&raw)
+        .unwrap()
+        .update_signing_digest(&tx.hash().unpack())
+        .unwrap();
+    let tx = tx
+        .as_advanced_builder()
+        .set_witnesses(vec![
+            fs_witness(
+                factory::FACTORY_STATE_WITNESS_UPDATE,
+                &f.plan.source,
+                &f.plan.source_outpoints,
+                &factory_auth(&digest, f.n),
+            )
+            .pack(),
+        ])
+        .build();
     f.template.context.verify_tx(&tx, MAX_CYCLES).unwrap();
+    let header_only = factory::FactoryMultiAssetStateHeader::parse(&raw)
+        .unwrap()
+        .signing_digest();
+    let old = tx
+        .as_advanced_builder()
+        .set_witnesses(vec![
+            fs_witness(
+                factory::FACTORY_STATE_WITNESS_UPDATE,
+                &f.plan.source,
+                &f.plan.source_outpoints,
+                &factory_auth(&header_only, f.n),
+            )
+            .pack(),
+        ])
+        .build();
+    rejects(&f.template.context, &old, &[24]);
+    let args = WitnessArgs::from_slice(&tx.witnesses().get(0).unwrap().raw_data()).unwrap();
+    let mut frame = args.input_type().to_opt().unwrap().raw_data().to_vec();
+    frame[8..10].copy_from_slice(&1u16.to_le_bytes());
+    let old = args
+        .as_builder()
+        .input_type(Some(Bytes::from(frame)).pack())
+        .build();
+    let old = tx
+        .as_advanced_builder()
+        .set_witnesses(vec![old.as_bytes().pack()])
+        .build();
+    rejects(&f.template.context, &old, &[69]);
     let short = tx
         .as_advanced_builder()
         .set_witnesses(vec![
@@ -656,6 +700,9 @@ fn factory_multi_asset_metadata_update_preserves_custody_and_requires_all_member
 #[ignore = "requires make build-contracts"]
 fn factory_multi_asset_child_uses_private_exit_after_parent_retirement() {
     let mut f = build_factory_profile(2, false, 1, false, 2, false);
+    verify_child_private_exit(&mut f);
+}
+fn verify_child_private_exit(f: &mut FactoryFixture) {
     f.template
         .context
         .verify_tx(&f.materialisation, 70_000_000)
@@ -718,6 +765,80 @@ fn factory_multi_asset_child_uses_private_exit_after_parent_retirement() {
     f.template.supersede = publication;
     let exit = finalise(&mut f.template);
     f.template.context.verify_tx(&exit, MAX_CYCLES).unwrap();
+}
+
+// Changing recipients changes the actual creation header and raw transaction.
+// Rebuild both independent child exits before obtaining a fresh parent vote.
+fn child_parties(
+    plan: &mut FactoryMultiAssetMaterialisation,
+    transaction: TransactionView,
+    keys: &[SigningKey; 2],
+) -> TransactionView {
+    let mut keys = keys.clone();
+    keys.sort_by_key(pubkey);
+    let public = keys.each_ref().map(pubkey);
+    let mut data = transaction.outputs_data().into_iter().collect::<Vec<_>>();
+    for child in &mut plan.children {
+        child.recovery.state.header.participants_commitment =
+            participants_commitment(2, &[&public[0], &public[1]]);
+        let mut creation = child.recovery.state.clone();
+        creation.header.phase = Phase::Active;
+        creation.header.state_number = 0;
+        creation.vault_outpoint_set_root = [0; 32];
+        data[child.state_output_index as usize] =
+            Bytes::from(creation.encode().unwrap().to_vec()).pack();
+    }
+    let transaction = transaction
+        .as_advanced_builder()
+        .set_outputs_data(data)
+        .build();
+    plan.transaction_hash = transaction.hash().unpack();
+    for child in &mut plan.children {
+        for point in &mut child.recovery.outpoints {
+            point.tx_hash = plan.transaction_hash;
+        }
+        child.recovery.state.vault_outpoint_set_root =
+            multi_asset_outpoint_commitment(&child.recovery.manifest, &child.recovery.outpoints)
+                .unwrap();
+        let digest = child.recovery.state.signing_digest().unwrap();
+        child.recovery.authorization = StateAuthorization {
+            threshold: 2,
+            signatures: keys
+                .iter()
+                .map(|key| ParticipantSignature {
+                    pubkey_sec1: pubkey(key).to_vec(),
+                    signature: signature(key, &digest).to_vec(),
+                })
+                .collect(),
+        };
+    }
+    transaction
+}
+
+#[test]
+#[ignore = "requires make build-contracts"]
+fn factory_multi_asset_materialises_outside_parties_with_independent_private_exits() {
+    let mut fixture = build_factory_profile(1, true, 1, false, 2, false);
+    let keys = [signing_key(9), signing_key(10)];
+    let transaction = child_parties(&mut fixture.plan, fixture.materialisation.clone(), &keys);
+    let frame = fixture
+        .plan
+        .encode_witness(
+            &members(fixture.n),
+            &factory_auth(&fixture.plan.signing_digest().unwrap(), fixture.n),
+        )
+        .unwrap();
+    fixture.materialisation = transaction
+        .as_advanced_builder()
+        .set_witnesses(vec![
+            WitnessArgs::new_builder()
+                .output_type(Some(Bytes::from(frame)).pack())
+                .build()
+                .as_bytes()
+                .pack(),
+        ])
+        .build();
+    verify_child_private_exit(&mut fixture);
 }
 
 #[test]
@@ -784,3 +905,6 @@ fn factory_multi_asset_root_approval_cannot_reprice_the_transaction() {
     let changed = f.root.as_advanced_builder().set_outputs(outputs).build();
     assert!(f.template.context.verify_tx(&changed, MAX_CYCLES).is_err());
 }
+
+#[path = "factory_multi_asset_reduced.rs"]
+mod reduced;

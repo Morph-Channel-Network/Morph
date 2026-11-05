@@ -3,16 +3,12 @@ use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result};
-use morph_core::{
-    VALUE_LIMIT_POLICY_SCHEMA, ValueLimitPolicy, ValueSubject, VaultAsset, VaultAssetAmount,
-};
+use anyhow::{Context, Result, anyhow, ensure};
+use ckb_types::{packed, prelude::*};
+use morph_core::{MultiAssetManifest, VALUE_LIMIT_POLICY_SCHEMA, ValueLimitPolicy, ValueSubject};
+use morph_script_common::factory_multi_asset::FactoryReducedReleaseWitness;
 
-use crate::{factory_packages, multi_asset_packages, splice_packages};
-
-const FACTORY_SPLICE_SCHEMA: &str = "morph.factory_splice_package";
-const FACTORY_REDUCED_SPLICE_SCHEMA: &str = "morph.factory_reduced_splice_package";
-const BILATERAL_SPLICE_SCHEMA: &str = "morph.splice_package";
+use crate::multi_asset_packages;
 
 pub fn read_value_limit_policy(path: &Path) -> Result<ValueLimitPolicy> {
     let bytes = fs::read(path)
@@ -39,80 +35,108 @@ pub fn fixture_value_limit_policy() -> Result<ValueLimitPolicy> {
     Ok(policy)
 }
 
-/// Extracts peak committed channel holdings from a fully validated package.
-/// Supported schemas are the bilateral and factory splice families and the
-/// multi-asset recovery profile; unknown/malformed packages fail closed.
-pub fn extract_value_subject(path: &Path) -> Result<(String, ValueSubject)> {
-    let bytes =
-        fs::read(path).with_context(|| format!("failed to read package {}", path.display()))?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes)
-        .with_context(|| format!("failed to parse package {}", path.display()))?;
+/// Extract validated current custody or a reviewed exact-body Factory request,
+/// preserving component-wise peaks across
+/// mutually exclusive transitions. Source-chain authority and live asset-code
+/// qualification remain the native operator's separate RPC/VM obligations.
+pub fn extract_value_subject(
+    path: &Path,
+    old_package: Option<&Path>,
+) -> Result<(String, ValueSubject)> {
+    let value: serde_json::Value =
+        multi_asset_packages::read_bounded_json(path, crate::factory_packets::MAX_PACKET_BYTES)?;
     let schema = value
         .get("schema")
         .and_then(serde_json::Value::as_str)
         .with_context(|| format!("package {} carries no schema field", path.display()))?;
-    match schema {
+    ensure!(
+        old_package.is_none() || schema == "morph.multi_asset_splice_funding.v1",
+        "--old-package applies only to a current signed splice funding bundle"
+    );
+    let subject = match schema {
         multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA => {
-            let package = multi_asset_packages::read_package(path)?;
-            Ok((
-                multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA.to_string(),
-                package.value_subject()?,
-            ))
+            multi_asset_packages::read_package(path)?.value_subject()?
         }
-        BILATERAL_SPLICE_SCHEMA => {
-            let package = splice_packages::read_splice_package(path)?;
-            let transition = package.validate()?;
-            Ok((
-                BILATERAL_SPLICE_SCHEMA.to_string(),
-                peak_vault_subject(&transition.old_vault.assets, &transition.new_vault.assets)?,
-            ))
+        "morph.conditional_batch_package.v1" => {
+            let package = crate::conditional_packages::read_package(path)?;
+            package.source_package.value_subject()?
         }
-        FACTORY_SPLICE_SCHEMA => {
-            let package = factory_packages::read_factory_splice_package(path)?;
-            let transition = package.validate()?;
-            Ok((
-                FACTORY_SPLICE_SCHEMA.to_string(),
-                peak_vault_subject(&transition.old_vault.assets, &transition.new_vault.assets)?,
-            ))
+        "morph.multi_asset_root_funding.v1" => {
+            let package: crate::multi_asset_funding::RootFundingExport =
+                serde_json::from_value(value.clone())?;
+            let recovery = package.recovery_package.recovery()?;
+            let tx = packed::Transaction::from_slice(&multi_asset_packages::decode_hex(
+                &package.transaction_hex,
+                crate::multi_asset_funding::MAX_FUNDING_BYTES,
+            )?)?;
+            crate::multi_asset_funding::validate_root_funding(&recovery, &tx)?;
+            ValueSubject::from_manifest(&recovery.manifest, recovery.state_carrier_capacity)?
         }
-        FACTORY_REDUCED_SPLICE_SCHEMA => {
-            let package = factory_packages::read_factory_reduced_splice_package(path)?;
-            let transition = package.validate()?;
-            Ok((
-                FACTORY_REDUCED_SPLICE_SCHEMA.to_string(),
-                peak_vault_subject(&transition.old_vault.assets, &transition.new_vault.assets)?,
-            ))
+        "morph.multi_asset_splice_funding.v1" => {
+            let old_path = old_package.context("current splice policy checking requires --old-package with its signed source recovery")?;
+            let old = multi_asset_packages::read_package(old_path)?.recovery()?;
+            let package: crate::multi_asset_splice_transaction::SpliceFundingExport =
+                serde_json::from_value(value.clone())?;
+            let next = package.recovery_package.recovery()?;
+            let tx = packed::Transaction::from_slice(&multi_asset_packages::decode_hex(
+                &package.transaction_hex,
+                256 * 1024,
+            )?)?;
+            crate::multi_asset_splice_transaction::SpliceDraft::from_signed_transaction(
+                &old, &next, &tx,
+            )?;
+            let mut subject =
+                ValueSubject::from_manifest(&old.manifest, old.state_carrier_capacity)?;
+            subject.include_peak(&ValueSubject::from_manifest(
+                &next.manifest,
+                next.state_carrier_capacity,
+            )?);
+            subject
         }
-        other => Err(anyhow::anyhow!(
-            "package schema {other} in {} is not a value-bearing surface covered by value-limit checks; \
-             supported schemas: {BILATERAL_SPLICE_SCHEMA}, {FACTORY_SPLICE_SCHEMA}, {FACTORY_REDUCED_SPLICE_SCHEMA}, {}",
-            path.display(),
-            multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA
-        )),
-    }
+        crate::factory_transition_packages::SCHEMA => {
+            let package = crate::factory_transition_packages::read(path)?;
+            factory_transition_subject(&package.witness()?)?
+        }
+        crate::factory_packets::REQUEST_SCHEMA => {
+            let packet = crate::factory_packets::read_for_delivery_review(path)?;
+            ValueSubject::from_factory_request(&packet.decode_for_delivery_review()?)?
+        }
+        other => {
+            return Err(anyhow!(
+                "unsupported current value-bearing package schema {other}; retired single-Vault/splice schemas are rejected"
+            ));
+        }
+    };
+    Ok((schema.to_string(), subject))
 }
 
-fn peak_vault_subject(
-    old_assets: &[VaultAssetAmount],
-    new_assets: &[VaultAssetAmount],
+pub(crate) fn factory_transition_subject(
+    frame: &FactoryReducedReleaseWitness<'_>,
 ) -> Result<ValueSubject> {
-    let old = vault_subject(old_assets)?;
-    let new = vault_subject(new_assets)?;
-    let mut peak = ValueSubject::default();
-    peak.include_peak(&old);
-    peak.include_peak(&new);
-    Ok(peak)
-}
-
-fn vault_subject(assets: &[VaultAssetAmount]) -> Result<ValueSubject> {
-    let mut subject = ValueSubject::default();
-    for amount in assets {
-        match &amount.asset {
-            VaultAsset::Ckb => subject.add_ckb(amount.amount)?,
-            VaultAsset::Xudt(type_hash) => subject.add_xudt_raw(*type_hash, amount.amount)?,
+    frame
+        .verify()
+        .map_err(|error| anyhow!("invalid current Factory transition: {error:?}"))?;
+    let mut peak = ValueSubject::from_manifest(
+        &MultiAssetManifest::decode(frame.source().as_bytes())?,
+        frame.carrier_capacity(),
+    )?;
+    let mut future = ValueSubject::from_manifest(
+        &MultiAssetManifest::decode(frame.retained().as_bytes())?,
+        frame.carrier_capacity(),
+    )?;
+    if let Some(intent) = frame.child_intent() {
+        for index in 0..intent.child_count() {
+            let child = intent
+                .child(index)
+                .map_err(|error| anyhow!("invalid Factory child: {error:?}"))?;
+            future.add_manifest(
+                &MultiAssetManifest::decode(child.evidence.manifest().as_bytes())?,
+                child.carrier_capacity,
+            )?;
         }
     }
-    Ok(subject)
+    peak.include_peak(&future);
+    Ok(peak)
 }
 
 fn now_unix_ms() -> Result<u64> {
@@ -128,32 +152,20 @@ fn now_unix_ms() -> Result<u64> {
 mod tests {
     use super::*;
     use morph_core::ValueLimitError;
-
-    fn test_path(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("morph-value-limit-{name}-{}", std::process::id()))
+    fn save(name: &str, value: &serde_json::Value) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "morph-current-value-{name}-{}-{}.json",
+            std::process::id(),
+            now_unix_ms().unwrap()
+        ));
+        fs::write(&path, serde_json::to_vec(value).unwrap()).unwrap();
+        path
     }
-
     #[test]
-    fn fixture_policy_passes_builtin_factory_splice_fixture() {
-        let package = crate::factory_packages::fixture_factory_splice_package_with_kind(
-            crate::factory_packages::FixtureFactorySpliceKind::CkbSpliceIn,
-        )
-        .unwrap();
-        let transition = package.validate().unwrap();
-        let subject =
-            peak_vault_subject(&transition.old_vault.assets, &transition.new_vault.assets).unwrap();
-        fixture_value_limit_policy()
-            .unwrap()
-            .enforce(&subject)
-            .unwrap();
-    }
-
-    #[test]
-    fn multi_asset_limits_include_all_types_reserve_business_and_state_carrier() {
+    fn current_recovery_limits_include_reserve_business_carrier_and_each_type() {
         let package = multi_asset_packages::fixture_package().unwrap();
-        let path = test_path("multi-asset");
-        fs::write(&path, serde_json::to_vec(&package).unwrap()).unwrap();
-        let (schema, subject) = extract_value_subject(&path).unwrap();
+        let path = save("recovery", &serde_json::to_value(&package).unwrap());
+        let (schema, subject) = extract_value_subject(&path, None).unwrap();
         assert_eq!(schema, multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA);
         assert_eq!(subject.ckb_capacity, 200_000_000_000);
         assert_eq!(subject.xudt_amounts.len(), 2);
@@ -181,56 +193,234 @@ mod tests {
             policy.enforce(&subject),
             Err(ValueLimitError::CkbOverLimit { .. })
         ));
+        assert!(extract_value_subject(&path, Some(&path)).is_err());
     }
-
     #[test]
-    fn bilateral_extraction_uses_validated_old_and_expected_new_vaults() {
-        let package = crate::splice_packages::fixture_package_with_kind(
-            crate::splice_packages::FixtureSpliceKind::XudtSpliceIn,
+    fn conditional_limits_use_whole_signed_custody_including_pending_ckb() {
+        let package = crate::conditional_packages::fixture_package().unwrap();
+        let path = save("conditional", &serde_json::to_value(&package).unwrap());
+        let (_, subject) = extract_value_subject(&path, None).unwrap();
+        assert_eq!(subject.ckb_capacity, 200_000_000_000);
+        assert_eq!(subject.xudt_amounts.len(), 1);
+        assert_eq!(subject.xudt_amounts.values().next(), Some(&(u128::MAX / 2)));
+        let mut json = serde_json::to_value(&package).unwrap();
+        json["source_package"]["signature_witness_hex"] = serde_json::json!("0x00");
+        let bad = save("conditional-bad", &json);
+        assert!(extract_value_subject(&bad, None).is_err());
+    }
+    #[test]
+    fn factory_request_policy_counts_simultaneous_children_and_external_carriers() {
+        let fixture = crate::factory_packets::sdk_packet_fixture();
+        let case = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|case| case["name"] == "reduced_child_delivered")
+            .unwrap();
+        let path = save("current-factory-child-request", &case["request"]);
+        let (schema, subject) = extract_value_subject(&path, None).unwrap();
+        assert_eq!(schema, crate::factory_packets::REQUEST_SCHEMA);
+        // The source holds 2000 CKB plus one 1000-CKB carrier. Afterward,
+        // retained and child custody coexist with two independent carriers.
+        assert_eq!(subject.ckb_capacity, 400_000_000_000);
+        assert_eq!(subject.xudt_amounts.len(), 1);
+        let mut unsigned_shape = case["request"].clone();
+        unsigned_shape["target_rights"] = serde_json::json!([]);
+        assert!(
+            extract_value_subject(
+                &save("invalid-current-factory-rights", &unsigned_shape),
+                None
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn current_factory_policy_preserves_all_five_verified_transition_classes() {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../sdk/typescript/test/fixtures/factory-transitions.json"
+        ))
+        .unwrap();
+        let cases = corpus["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 5);
+        let mut operations = std::collections::BTreeSet::new();
+        for (index, case) in cases.iter().enumerate() {
+            operations.insert(case["operation"].as_str().unwrap());
+            let path = save(&format!("factory-transition-{index}"), &case["package"]);
+            let (schema, subject) = extract_value_subject(&path, None).unwrap();
+            assert_eq!(schema, crate::factory_transition_packages::SCHEMA);
+            let view = crate::factory_transition_packages::read(&path).unwrap();
+            let frame = view.witness().unwrap();
+            let old = ValueSubject::from_manifest(
+                &MultiAssetManifest::decode(frame.source().as_bytes()).unwrap(),
+                frame.carrier_capacity(),
+            )
+            .unwrap();
+            assert!(subject.ckb_capacity >= old.ckb_capacity);
+            for (asset, amount) in &old.xudt_amounts {
+                assert!(
+                    subject
+                        .xudt_amounts
+                        .get(asset)
+                        .is_some_and(|maximum| maximum >= amount)
+                );
+            }
+            if case["operation"] == "ReducedDeposit" {
+                assert!(subject.ckb_capacity > old.ckb_capacity);
+            }
+            let mut bad = case["package"].clone();
+            let transaction = view.transaction();
+            let raw = transaction.raw();
+            let mut outputs = raw.outputs().into_iter().collect::<Vec<_>>();
+            outputs[0] = outputs[0]
+                .clone()
+                .as_builder()
+                .capacity(u64::from(outputs[0].capacity()) + 1)
+                .build();
+            let modified = transaction
+                .clone()
+                .as_builder()
+                .raw(raw.as_builder().outputs(outputs.pack()).build())
+                .build();
+            bad["transaction_hex"] =
+                serde_json::json!(multi_asset_packages::canonical_hex(modified.as_slice()));
+            assert!(
+                extract_value_subject(
+                    &save(&format!("factory-transition-bad-{index}"), &bad),
+                    None
+                )
+                .is_err()
+            );
+            let mut detached = case["package"].clone();
+            detached["transition_witness_hex"] = serde_json::json!("0x");
+            assert!(
+                extract_value_subject(
+                    &save(&format!("factory-transition-extra-{index}"), &detached),
+                    None
+                )
+                .is_err()
+            );
+        }
+        assert_eq!(
+            operations,
+            std::collections::BTreeSet::from([
+                "ReducedRelease",
+                "ReducedRights",
+                "ReducedDeposit",
+                "FullCustody",
+                "ReducedChild"
+            ])
+        );
+    }
+    #[test]
+    fn root_policy_checks_exact_transaction_creation_authorization() {
+        let fixture = crate::multi_asset_funding::root_collection_tests::fixture();
+        let path = save("root", &fixture["funding"]);
+        let (_, subject) = extract_value_subject(&path, None).unwrap();
+        let package: crate::multi_asset_funding::RootFundingExport =
+            serde_json::from_value(fixture["funding"].clone()).unwrap();
+        assert_eq!(subject, package.recovery_package.value_subject().unwrap());
+        let mut tx = packed::Transaction::from_slice(
+            &multi_asset_packages::decode_hex(&package.transaction_hex, 256 * 1024).unwrap(),
         )
         .unwrap();
-        let transition = package.validate().unwrap();
-        let path = test_path("bilateral");
-        fs::write(&path, serde_json::to_vec(&package).unwrap()).unwrap();
-
-        let (schema, subject) = extract_value_subject(&path).unwrap();
-        let expected =
-            peak_vault_subject(&transition.old_vault.assets, &transition.new_vault.assets).unwrap();
-        assert_eq!(schema, BILATERAL_SPLICE_SCHEMA);
-        assert_eq!(subject, expected);
+        let raw = tx.raw();
+        let mut outputs = raw.outputs().into_iter().collect::<Vec<_>>();
+        outputs[0] = outputs[0]
+            .clone()
+            .as_builder()
+            .capacity(u64::from(outputs[0].capacity()) + 1)
+            .build();
+        tx = tx
+            .as_builder()
+            .raw(raw.as_builder().outputs(outputs.pack()).build())
+            .build();
+        let mut modified = fixture["funding"].clone();
+        modified["transaction_hex"] =
+            serde_json::json!(multi_asset_packages::canonical_hex(tx.as_slice()));
+        assert!(
+            extract_value_subject(&save("root-unauthorized-reprice", &modified), None).is_err()
+        );
     }
-
     #[test]
-    fn extraction_rejects_unknown_schemas() {
-        let path = test_path("unknown");
-        fs::write(
-            &path,
-            serde_json::json!({"schema": "morph.other_package"}).to_string(),
-        )
+    fn observed_current_splices_require_old_authority_and_preserve_removed_and_admitted_assets() {
+        let transitions: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../sdk/typescript/test/fixtures/multi-asset-splice-transitions.json"
+        ))
         .unwrap();
-        assert!(extract_value_subject(&path).is_err());
+        for (index, transition) in transitions.into_iter().enumerate() {
+            let path = save(&format!("splice-{index}"), &transition["funding"]);
+            let source = save(&format!("source-{index}"), &transition["current"]);
+            assert!(extract_value_subject(&path, None).is_err());
+            let (_, subject) = extract_value_subject(&path, Some(&source)).unwrap();
+            let before: multi_asset_packages::StoredMultiAssetPackage =
+                serde_json::from_value(transition["current"].clone()).unwrap();
+            let after: multi_asset_packages::StoredMultiAssetPackage =
+                serde_json::from_value(transition["funding"]["recovery_package"].clone()).unwrap();
+            let old = before.value_subject().unwrap();
+            let new = after.value_subject().unwrap();
+            assert_eq!(subject.ckb_capacity, old.ckb_capacity.max(new.ckb_capacity));
+            let excluded = if transition["name"] == "remove" {
+                old.xudt_amounts
+                    .keys()
+                    .find(|key| !new.xudt_amounts.contains_key(*key))
+                    .unwrap()
+            } else {
+                new.xudt_amounts
+                    .keys()
+                    .find(|key| !old.xudt_amounts.contains_key(*key))
+                    .unwrap()
+            };
+            let mut policy = ValueLimitPolicy {
+                schema: VALUE_LIMIT_POLICY_SCHEMA.to_string(),
+                created_unix_ms: 1,
+                max_channel_ckb_capacity: u64::MAX,
+                max_xudt_amounts: subject.xudt_amounts.clone(),
+            };
+            policy.enforce(&subject).unwrap();
+            policy.max_xudt_amounts.remove(excluded);
+            assert!(matches!(
+                policy.enforce(&subject),
+                Err(ValueLimitError::UnlistedXudt { .. })
+            ));
+            let wrong = save(
+                &format!("wrong-source-{index}"),
+                &serde_json::to_value(multi_asset_packages::fixture_package().unwrap()).unwrap(),
+            );
+            assert!(extract_value_subject(&path, Some(&wrong)).is_err());
+        }
     }
-
     #[test]
-    fn extraction_rejects_malformed_supported_schema() {
-        let path = test_path("malformed-supported");
-        fs::write(
-            &path,
-            serde_json::json!({"schema": BILATERAL_SPLICE_SCHEMA}).to_string(),
-        )
-        .unwrap();
-        assert!(extract_value_subject(&path).is_err());
-    }
-
-    #[test]
-    fn unlisted_xudt_fails_closed() {
-        let mut policy = fixture_value_limit_policy().unwrap();
-        policy.max_xudt_amounts.clear();
-        let mut subject = ValueSubject::default();
-        subject.add_xudt_raw([0x2au8; 32], 1).unwrap();
-        assert!(matches!(
-            policy.enforce(&subject).unwrap_err(),
-            ValueLimitError::UnlistedXudt { .. }
-        ));
+    fn all_retired_and_unknown_package_schemas_fail_closed() {
+        for (index, schema) in [
+            "morph.splice_package",
+            "morph.factory_splice_package",
+            "morph.factory_reduced_splice_package",
+            "morph.factory_multi_asset_materialisation.v1",
+            "morph.other_package",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = save(
+                &format!("retired-{index}"),
+                &serde_json::json!({"schema":schema}),
+            );
+            assert!(extract_value_subject(&path, None).is_err());
+        }
+        for (index, schema) in [
+            "morph.multi_asset_root_funding.v1",
+            "morph.multi_asset_splice_funding.v1",
+            "morph.factory_transition_package.v1",
+            "morph.factory_multi_asset_materialisation.v1",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = save(
+                &format!("malformed-{index}"),
+                &serde_json::json!({"schema":schema}),
+            );
+            assert!(extract_value_subject(&path, None).is_err());
+        }
     }
 }

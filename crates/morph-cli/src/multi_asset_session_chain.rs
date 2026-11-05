@@ -28,6 +28,10 @@ pub enum SessionOrigin {
         retired_journal: std::path::PathBuf,
         retired_journal_hash: String,
     },
+    Factory {
+        origin_evidence: std::path::PathBuf,
+        origin_evidence_hash: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

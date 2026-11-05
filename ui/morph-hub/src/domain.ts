@@ -136,17 +136,19 @@ export interface FactoryRecord {
 }
 
 export interface ConditionalBatchPackage {
-  schema: 'morph.conditional_batch_package';
-  channel_id: Hex32;
-  funding_context_id: Hex32;
-  state_number: number;
-  batch_id: Hex32;
-  application_context_commitment: Hex32;
-  input_since: number;
-  descriptor_commitment: Hex32;
-  resolved_capacities: [number, number];
-  transfers: unknown[];
-  resolutions: unknown[];
+  schema: 'morph.conditional_batch_package.v1';
+  source_package: {
+    schema: 'morph.multi_asset_recovery_package.v1';
+    header_hex: string;
+    witness_hex: string;
+    signature_witness_hex: string;
+    state_carrier_capacity: string;
+    cell_deps: Array<{tx_hash: Hex32; index: number; dep_type: 'code' | 'dep_group'}>;
+  };
+  input_since: string;
+  resolution_witness_hex: string;
+  resolved_capacities: [string, string];
+  resolutions: Array<{kind: 'fulfill'; transfer_id: Hex32; preimage: string} | {kind: 'refund'; transfer_id: Hex32}>;
 }
 
 export interface HubEvent {
@@ -208,6 +210,17 @@ export interface MultiAssetRecoverySummary {
   dependency_count: number;
   state_carrier_capacity: string;
   signer_pubkeys: [string, string];
+  capability: {kind: 'ordinary'} | {
+    kind: 'ckb_conditional';
+    batch_code_hash: Hex32;
+    batch_hash_type: number;
+    batch_id: Hex32;
+    application_context_commitment: Hex32;
+    pending_ckb: string;
+    batch_lock_hash: Hex32;
+    settled_capacities: [string, string];
+    transfers: Array<{transfer_id: Hex32; payer_lock_hash: Hex32; payee_lock_hash: Hex32; hash_algorithm: 'ckb_blake2b' | 'sha256'; payment_hash: Hex32; amount: string; refund_after_block: string}>;
+  };
   assets: Array<{ type_hash: Hex32 | null; reserve: string; business_ckb: string; amount: string }>;
 }
 
@@ -223,6 +236,7 @@ export interface RootFundingSummary {
   participant_lock_hashes: [Hex32, Hex32];
   vault_outpoints: Array<{tx_hash: Hex32; index: number}>;
   assets: MultiAssetRecoverySummary['assets'];
+  capability: MultiAssetRecoverySummary['capability'];
   payouts: Array<{type_hash: Hex32 | null; allocations: [{reserve: string; business_ckb: string; amount: string}, {reserve: string; business_ckb: string; amount: string}]}>;
   input_count: number;
   output_count: number;
@@ -276,7 +290,7 @@ export const emptyState: NodeState = {
     max_invoice_expiry_secs: 604800,
   },
   model: {
-    profile: 'morph-v3-conditional-batch',
+    profile: 'morph-current-custody',
     hub_role: 'local_operator_projection',
     factory_authority: 'factory_state_and_vault',
     channel_authority: 'state_and_vault',

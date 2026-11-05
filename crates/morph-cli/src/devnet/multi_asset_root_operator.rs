@@ -2,12 +2,13 @@
 //! participant keys belong in this module; every funding input is explicit.
 use super::multi_asset_operator as operator;
 use super::*;
+use crate::funding_wallets::FundingCell;
 use crate::multi_asset_funding::{MAX_FUNDING_BYTES, validate_root_funding};
 use crate::multi_asset_packages::{
     canonical_hex, decode_dependency_records, read_package, write_package,
 };
 use crate::multi_asset_root_transaction::{
-    MAX_TERMS_BYTES, PreparedRoot, RootAuthorityHashes, RootFundingCell, RootFundingTerms,
+    MAX_TERMS_BYTES, PreparedRoot, RootAuthorityHashes, RootFundingTerms,
 };
 use crate::multi_asset_splice_transaction::{TransactionKind, write_transaction};
 use serde_json::{Value, json};
@@ -84,7 +85,7 @@ fn resolve(
                 "root input script code unavailable"
             );
         }
-        cells.push(RootFundingCell {
+        cells.push(FundingCell {
             point,
             output: cell.output.clone(),
             data: cell.data.clone(),
@@ -140,7 +141,7 @@ pub fn prepare(rpc: &CkbRpcClient, options: PrepareOptions) -> Result<Value> {
     let draft = &resolved.prepared.draft;
     let (creation, exit) = draft.evidence()?;
     let bytes = serde_json::to_vec_pretty(draft)?;
-    let _lock = crate::packages::try_lock_private_path(&options.output)?
+    let _lock = crate::persistence::try_lock_private_path(&options.output)?
         .ok_or_else(|| anyhow!("root draft artifact is busy"))?;
     if options.output.exists() {
         ensure!(
@@ -148,7 +149,7 @@ pub fn prepare(rpc: &CkbRpcClient, options: PrepareOptions) -> Result<Value> {
             "root draft output already holds another intent"
         );
     } else {
-        crate::packages::write_private_atomic(&options.output, &bytes)?;
+        crate::persistence::write_private_atomic(&options.output, &bytes)?;
     }
     let (creation_digest, exit_digest) = draft.digests()?;
     Ok(

@@ -9,6 +9,8 @@ use crate::{
 pub const FACTORY_MULTI_ASSET_STATE_HEADER_LEN: usize = 306;
 pub const FACTORY_MULTI_ASSET_STATE_LAYOUT_VERSION: u16 = 2;
 pub const FACTORY_MULTI_ASSET_STATE_DOMAIN: &[u8] = b"CKB_MORPH_FACTORY_MULTI_ASSET_STATE_V1";
+pub const FACTORY_MULTI_ASSET_UPDATE_DOMAIN: &[u8] = b"CKB_MORPH_FACTORY_MULTI_ASSET_UPDATE_V1";
+pub const FACTORY_MULTI_ASSET_STATE_WITNESS_FORMAT: u16 = 2;
 pub const FACTORY_MULTI_ASSET_ROOT_FUNDING_DOMAIN: &[u8] =
     b"CKB_MORPH_FACTORY_MULTI_ASSET_ROOT_FUNDING_V1";
 pub const FACTORY_MULTI_ASSET_TYPE_ARGS_MAGIC: &[u8; 8] = b"MORPHFT!";
@@ -109,6 +111,33 @@ impl<'a> FactoryMultiAssetStateHeader<'a> {
     pub fn outpoint_root(&self) -> &'a [u8] {
         &self.raw[270..302]
     }
+    pub fn access_manifest_root(&self) -> &'a [u8] {
+        &self.raw[140..172]
+    }
+    pub fn non_interference_digest(&self) -> &'a [u8] {
+        &self.raw[172..204]
+    }
+    /// Decodes the sole current header layout for host/native builders.
+    pub fn fields(&self) -> FactoryMultiAssetHeaderFields {
+        let hash = |bytes: &[u8]| {
+            let mut value = [0; 32];
+            value.copy_from_slice(bytes);
+            value
+        };
+        FactoryMultiAssetHeaderFields {
+            chain_id: hash(self.chain_id()),
+            factory_id: hash(self.factory_id()),
+            update_number: self.update_number(),
+            state_root: hash(self.state_root()),
+            participants_commitment: hash(self.participants_commitment()),
+            access_manifest_root: hash(self.access_manifest_root()),
+            non_interference_digest: hash(self.non_interference_digest()),
+            challenge_policy_commitment: hash(self.challenge_policy_commitment()),
+            content_root: hash(self.content_root()),
+            outpoint_root: hash(self.outpoint_root()),
+            vault_count: self.vault_count() as u16,
+        }
+    }
     pub fn vault_count(&self) -> usize {
         read_u16(self.raw, 302) as usize
     }
@@ -129,6 +158,8 @@ impl<'a> FactoryMultiAssetStateHeader<'a> {
     pub fn same_custody(&self, next: &Self) -> bool {
         self.raw[238..] == next.raw[238..]
     }
+    /// Header commitment used inside role-specific exact-transaction domains;
+    /// this digest alone is not accepted as a Factory update authorization.
     pub fn signing_digest(&self) -> [u8; 32] {
         blake2b256(&[FACTORY_MULTI_ASSET_STATE_DOMAIN, self.raw])
     }
@@ -142,8 +173,22 @@ impl<'a> FactoryMultiAssetStateHeader<'a> {
             transaction,
         ]))
     }
-    pub fn verify_signatures(&self, signatures: &FactorySignatureWitness) -> Result<()> {
-        self.verify_digest(&self.signing_digest(), signatures)
+    pub fn update_signing_digest(&self, transaction: &[u8; 32]) -> Result<[u8; 32]> {
+        if self.update_number() == 0 || !self.vaults_are_bound() || *transaction == [0; 32] {
+            return mismatch();
+        }
+        Ok(blake2b256(&[
+            FACTORY_MULTI_ASSET_UPDATE_DOMAIN,
+            &self.signing_digest(),
+            transaction,
+        ]))
+    }
+    pub fn verify_update_signatures(
+        &self,
+        transaction: &[u8; 32],
+        signatures: &FactorySignatureWitness,
+    ) -> Result<()> {
+        self.verify_digest(&self.update_signing_digest(transaction)?, signatures)
     }
     pub fn verify_root_signatures(
         &self,
@@ -191,7 +236,7 @@ impl<'a> FactoryMultiAssetStateWitness<'a> {
         if raw.len() < 24
             || raw.len() > 24 + 780 + 288 + 2068
             || &raw[..8] != FACTORY_MULTI_ASSET_STATE_WITNESS_MAGIC
-            || read_u16(raw, 8) != 1
+            || read_u16(raw, 8) != FACTORY_MULTI_ASSET_STATE_WITNESS_FORMAT
             || read_u16(raw, 10) != 0
         {
             return mismatch();

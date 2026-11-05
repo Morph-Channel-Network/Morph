@@ -37,7 +37,22 @@ pub fn materialisation_evidence() -> Result<Option<Vec<u8>>> {
         .output_type()
         .to_opt()
         .map(|data| data.raw_data())
-        .filter(|data| data.starts_with(FACTORY_MATERIALISATION_MAGIC))
+        .filter(|data| {
+            data.starts_with(FACTORY_MATERIALISATION_MAGIC)
+                || (data.starts_with(FACTORY_REDUCED_RELEASE_MAGIC)
+                    && data.len() >= 12
+                    && crate::read_u16(data, 10) == FactoryTransitionOperation::ReducedChild as u16)
+        })
+        .map(|data| data.to_vec()))
+}
+/// Explicit current reduced release; there is no old-frame fallback.
+pub fn reduced_release_evidence() -> Result<Option<Vec<u8>>> {
+    let witness = load_witness_args(0, Source::Input).map_err(encoding)?;
+    Ok(witness
+        .output_type()
+        .to_opt()
+        .map(|data| data.raw_data())
+        .filter(|data| data.starts_with(FACTORY_REDUCED_RELEASE_MAGIC))
         .map(|data| data.to_vec()))
 }
 fn state_evidence() -> Result<Vec<u8>> {
@@ -126,6 +141,12 @@ pub fn validate_type() -> Result<()> {
     let old = group_data(Source::GroupInput)?;
     let new = group_data(Source::GroupOutput)?;
     let witness = load_witness_args(0, Source::Input).map_err(encoding)?;
+    if let Some(raw) = reduced_release_evidence()? {
+        if old.is_none() || new.is_none() || witness.input_type().to_opt().is_some() {
+            return bad();
+        }
+        return verify_reduced_release(&raw, &type_hash, &transaction);
+    }
     if let Some(raw) = materialisation_evidence()? {
         if old.is_none() || witness.input_type().to_opt().is_some() {
             return bad();
@@ -233,7 +254,10 @@ pub fn validate_type() -> Result<()> {
                 {
                     return bad();
                 }
-                new.verify_signatures(proof.signatures()?)?;
+                new.verify_update_signatures(
+                    &load_tx_hash().map_err(encoding)?,
+                    proof.signatures()?,
+                )?;
             }
         }
         _ => return Err(ScriptError::WrongGroupShape),
@@ -296,6 +320,15 @@ fn verify_materialisation(
     let old_data = authenticate_source(&intent.source_context(), type_hash)?;
     let old = FactoryMultiAssetStateHeader::parse(&old_data)?;
     proof.verify()?;
+    verify_materialisation_cells(intent, &old, type_hash, tx)
+}
+
+fn verify_materialisation_cells(
+    intent: &FactoryMaterialisationIntent,
+    old: &FactoryMultiAssetStateHeader,
+    type_hash: &[u8],
+    tx: &ckb_std::ckb_types::packed::Transaction,
+) -> Result<()> {
     let inputs = tx.raw().inputs().len();
     let outputs = tx.raw().outputs().len();
     if inputs > 64
@@ -447,9 +480,7 @@ fn verify_materialisation(
         }
         for child_index in 0..intent.child_count() {
             let child = intent.child(child_index)?;
-            let scripts = child.evidence.scripts();
-            if (ty == Some(blake2b256(&[scripts.script(4)?]))
-                || lock == blake2b256(&[scripts.script(5)?]))
+            if (ty == Some(child.state_type_hash()) || lock == child.state_lock_hash())
                 && i != child.state_output_index
             {
                 return bad();
@@ -483,6 +514,29 @@ fn verify_materialisation(
 /// Requiring the materialisation frame and exact source roots prevents an
 /// ordinary metadata update or activation from authorising reserve spending.
 pub fn validate_vault_gate(raw: &[u8], factory: &[u8], type_hash: &[u8]) -> Result<()> {
+    if raw.starts_with(FACTORY_REDUCED_RELEASE_MAGIC) {
+        if raw.len() >= 12
+            && crate::read_u16(raw, 10) == FactoryTransitionOperation::ReducedChild as u16
+        {
+            let view = factory_reduced_child_view(raw)?;
+            let source = view.source_context()?;
+            if source.factory_id() != factory
+                || load_script_hash().map_err(encoding)? != source.source().entry(0)?.lock_hash
+            {
+                return bad();
+            }
+            authenticate_source(&source, type_hash)?;
+            return Ok(());
+        }
+        let proof = FactoryReducedReleaseWitness::parse(raw)?;
+        if proof.before().factory_id() != factory
+            || load_script_hash().map_err(encoding)? != proof.source().entry(0)?.lock_hash
+        {
+            return bad();
+        }
+        authenticate_reduced_source(&proof, type_hash)?;
+        return Ok(());
+    }
     let view = FactoryMaterialisationView::parse(raw)?;
     let source = view.source_context()?;
     if source.factory_id() != factory
@@ -493,16 +547,6 @@ pub fn validate_vault_gate(raw: &[u8], factory: &[u8], type_hash: &[u8]) -> Resu
     authenticate_source(&source, type_hash)?;
     Ok(())
 }
-pub fn has_multi_asset_factory_source(type_hash: &[u8]) -> Result<bool> {
-    Ok(load_cell_type_hash(0, Source::Input)
-        .map_err(encoding)?
-        .as_ref()
-        .map(|hash| hash.as_slice())
-        == Some(type_hash)
-        && load_cell_data(0, Source::Input).map_err(encoding)?.len()
-            == FACTORY_MULTI_ASSET_STATE_HEADER_LEN)
-}
-
 pub fn verify_child_creation<'a>(
     raw: &'a [u8],
     header: &crate::multi_asset::MultiAssetStateHeader,
@@ -528,7 +572,11 @@ pub fn verify_child_creation<'a>(
     {
         return bad();
     }
-    let view = FactoryMaterialisationView::parse(raw)?;
+    let view = if raw.starts_with(FACTORY_REDUCED_RELEASE_MAGIC) {
+        factory_reduced_child_view(raw)?
+    } else {
+        FactoryMaterialisationView::parse(raw)?
+    };
     let source = view.source_context()?;
     if source.old_state_outpoint()
         != load_input_out_point(0, Source::Input)
@@ -557,9 +605,238 @@ pub fn verify_child_creation<'a>(
     if header.as_bytes() != child.creation_header()?
         || child.evidence.scripts().script(4)?.len() != 125
         || child.evidence.scripts().script(4)?[85..117] != *factory_origin
-        || blake2b256(&[child.evidence.scripts().script(4)?]).as_slice() != state_type_hash
+        || child.state_type_hash().as_slice() != state_type_hash
     {
         return bad();
     }
     Ok(child)
+}
+
+fn authenticate_reduced_source(
+    proof: &FactoryReducedReleaseWitness,
+    type_hash: &[u8],
+) -> Result<()> {
+    if actual_state_index(Source::Input, type_hash)? != 0
+        || load_input_out_point(0, Source::Input)
+            .map_err(encoding)?
+            .as_slice()
+            != proof.old_state_outpoint()
+        || load_input(0, Source::Input)
+            .map_err(encoding)?
+            .since()
+            .unpack()
+            != 0u64
+        || load_cell_data(0, Source::Input)
+            .map_err(encoding)?
+            .as_slice()
+            != proof.before().as_bytes()
+        || load_cell_capacity(0, Source::Input).map_err(encoding)? != proof.carrier_capacity()
+    {
+        return bad();
+    }
+    let ty = load_cell_type(0, Source::Input)
+        .map_err(encoding)?
+        .ok_or(ScriptError::StateCellMissing)?;
+    if parse_factory_multi_asset_type_args(&ty.args().raw_data())? != proof.before().factory_id()
+        || blake2b256(&[ty.as_slice()]).as_slice() != type_hash
+        || proof.factory_lock_script()[85..117] != *type_hash
+    {
+        return bad();
+    }
+    check_state_lock(0, Source::Input, type_hash)
+}
+
+fn verify_reduced_release(
+    raw: &[u8],
+    type_hash: &[u8],
+    tx: &ckb_std::ckb_types::packed::Transaction,
+) -> Result<()> {
+    let proof = FactoryReducedReleaseWitness::parse(raw)?;
+    authenticate_reduced_source(&proof, type_hash)?;
+    if load_tx_hash().map_err(encoding)?.as_slice() != proof.transaction_hash()
+        || actual_state_index(Source::Output, type_hash)? != 0
+        || load_cell_data(0, Source::Output)
+            .map_err(encoding)?
+            .as_slice()
+            != proof.after().as_bytes()
+        || load_cell_capacity(0, Source::Output).map_err(encoding)? != proof.carrier_capacity()
+        || load_cell_lock_hash(0, Source::Input).map_err(encoding)?
+            != load_cell_lock_hash(0, Source::Output).map_err(encoding)?
+    {
+        return bad();
+    }
+    check_state_lock(0, Source::Output, type_hash)?;
+    proof.verify()?;
+    if let Some(intent) = proof.child_intent() {
+        return verify_materialisation_cells(intent, proof.before(), type_hash, tx);
+    }
+    if !proof.operation().moves_custody() {
+        no_vault_inputs(proof.source())?;
+        return verify_factory_external_contributions(&proof, tx, 1, 1);
+    }
+    let inputs = tx.raw().inputs().len();
+    let outputs = tx.raw().outputs().len();
+    let input_end = 1 + proof.source().count();
+    let protected_end = 1 + proof.retained().count() + proof.payout_count();
+    if inputs < input_end || outputs < protected_end {
+        return bad();
+    }
+    let source_positions =
+        verify_vault_manifest_set(proof.source(), Some(proof.source_points()), Source::Input)?;
+    let retained_positions = verify_vault_manifest_set(proof.retained(), None, Source::Output)?;
+    for (i, position) in source_positions
+        .iter()
+        .enumerate()
+        .take(proof.source().count())
+    {
+        if *position != i + 1
+            || load_input(*position, Source::Input)
+                .map_err(encoding)?
+                .since()
+                .unpack()
+                != 0u64
+        {
+            return bad();
+        }
+    }
+    for (i, position) in retained_positions
+        .iter()
+        .enumerate()
+        .take(proof.retained().count())
+    {
+        if *position != i + 1 {
+            return bad();
+        }
+    }
+    check_vault_args(
+        proof.source(),
+        &source_positions,
+        Source::Input,
+        proof.before().factory_id(),
+        type_hash,
+    )?;
+    check_vault_args(
+        proof.retained(),
+        &retained_positions,
+        Source::Output,
+        proof.before().factory_id(),
+        type_hash,
+    )?;
+    for i in 0..proof.payout_count() {
+        let payout = proof.payout(i)?;
+        let index = payout.output_index;
+        let ty = load_cell_type(index, Source::Output).map_err(encoding)?;
+        let data = load_cell_data(index, Source::Output).map_err(encoding)?;
+        if load_cell_capacity(index, Source::Output).map_err(encoding)?
+            != payout.allocation.capacity()?
+            || load_cell_lock(index, Source::Output)
+                .map_err(encoding)?
+                .as_slice()
+                != payout.lock_script
+            || ty.as_ref().map(|script| script.as_slice()) != proof.type_script(payout.asset)?
+            || (payout.asset.kind == 0 && !data.is_empty())
+            || (payout.asset.kind == 1 && data.as_slice() != payout.allocation.amount.to_le_bytes())
+        {
+            return bad();
+        }
+    }
+    verify_factory_external_contributions(&proof, tx, input_end, protected_end)
+}
+
+/// External wallets fund only the explicitly derived deposit and fees. Vault
+/// value and the State carrier always conserve independently. Every Type has
+/// a separate quantity equation; unrelated typed inputs/outputs are rejected.
+fn verify_factory_external_contributions(
+    proof: &FactoryReducedReleaseWitness,
+    tx: &ckb_std::ckb_types::packed::Transaction,
+    input_start: usize,
+    protected_end: usize,
+) -> Result<()> {
+    let inputs = tx.raw().inputs().len();
+    let outputs = tx.raw().outputs().len();
+    let custody_lock = proof.source().entry(0)?.lock_hash;
+    let state_lock = load_cell_lock_hash(0, Source::Input).map_err(encoding)?;
+    let (assets, count) = proof.assets()?;
+    let mut tokens_in = [0u128; 16];
+    let mut tokens_out = [0u128; 16];
+    let mut capacity_in = 0u64;
+    let mut capacity_out = 0u64;
+    for (source, start, end, amounts, capacity) in [
+        (
+            Source::Input,
+            input_start,
+            inputs,
+            &mut tokens_in,
+            &mut capacity_in,
+        ),
+        (
+            Source::Output,
+            protected_end,
+            outputs,
+            &mut tokens_out,
+            &mut capacity_out,
+        ),
+    ] {
+        for i in start..end {
+            let lock = load_cell_lock_hash(i, source).map_err(encoding)?;
+            if lock == custody_lock || lock == state_lock {
+                return bad();
+            }
+            let data = load_cell_data(i, source).map_err(encoding)?;
+            match load_cell_type_hash(i, source).map_err(encoding)? {
+                None => {
+                    if !data.is_empty() {
+                        return bad();
+                    }
+                }
+                Some(hash) => {
+                    let j = assets[..count]
+                        .iter()
+                        .position(|asset| asset.kind == 1 && asset.type_hash == hash)
+                        .ok_or(ScriptError::FactoryMultiAssetPartitionMismatch)?;
+                    if data.len() != 16 {
+                        return bad();
+                    }
+                    amounts[j] = amounts[j]
+                        .checked_add(crate::read_u128(&data, 0))
+                        .ok_or(ScriptError::MultiAssetConservationMismatch)?;
+                }
+            }
+            *capacity = capacity
+                .checked_add(load_cell_capacity(i, source).map_err(encoding)?)
+                .ok_or(ScriptError::MultiAssetCapacityMismatch)?;
+        }
+    }
+    let deposited_capacity = proof
+        .deposited_value(crate::multi_asset::MultiAssetId::CKB)?
+        .capacity()?;
+    for (j, asset) in assets.iter().enumerate().take(count) {
+        let deposit = proof.deposited_value(*asset)?;
+        if asset.kind == 1
+            && tokens_in[j]
+                != tokens_out[j]
+                    .checked_add(deposit.amount)
+                    .ok_or(ScriptError::MultiAssetConservationMismatch)?
+        {
+            return Err(ScriptError::MultiAssetConservationMismatch);
+        }
+    }
+    if capacity_in
+        < capacity_out
+            .checked_add(deposited_capacity)
+            .ok_or(ScriptError::MultiAssetCapacityMismatch)?
+    {
+        return Err(ScriptError::SponsorFeeMismatch);
+    }
+    for i in 0..outputs {
+        if load_cell_capacity(i, Source::Output).map_err(encoding)?
+            < load_cell_occupied_capacity(i, Source::Output).map_err(encoding)?
+        {
+            return bad();
+        }
+        if i != 0 && load_cell_lock_hash(i, Source::Output).map_err(encoding)? == state_lock {
+            return bad();
+        }
+    }
+    Ok(())
 }

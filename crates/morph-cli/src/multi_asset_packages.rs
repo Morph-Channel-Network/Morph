@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use crate::packages::sync_recovery_directories;
+use crate::persistence::sync_recovery_directories;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -54,7 +53,60 @@ pub struct MultiAssetPackageSummary {
     pub dependency_count: usize,
     pub state_carrier_capacity: String,
     pub signer_pubkeys: [String; 2],
+    pub capability: serde_json::Value,
     pub assets: Vec<MultiAssetPackageBalance>,
+}
+
+/// Public signing review never erases pending conditions or rounds amounts.
+pub(crate) fn capability_summary(
+    settlement: &MultiAssetSettlement,
+    state: &MultiAssetState,
+) -> Result<serde_json::Value> {
+    let encoded = settlement.encode()?;
+    let descriptor = wire::MultiAssetSettlementDescriptor::parse(&encoded).map_err(wire_error)?;
+    capability_summary_from_wire(
+        &descriptor,
+        &state.header.channel_id,
+        &state.funding_context_id()?,
+        state.header.state_number,
+    )
+}
+
+fn capability_summary_from_wire(
+    descriptor: &wire::MultiAssetSettlementDescriptor<'_>,
+    channel_id: &[u8],
+    funding_context_id: &[u8],
+    state_number: u64,
+) -> Result<serde_json::Value> {
+    let Some(conditional) = descriptor.conditional().map_err(wire_error)? else {
+        return Ok(serde_json::json!({"kind":"ordinary"}));
+    };
+    let batch = conditional.batch();
+    let mut transfers = Vec::new();
+    for index in 0..batch.transfer_count() as usize {
+        let transfer = batch.transfer(index).map_err(wire_error)?;
+        let payer = transfer.payer_index() as usize;
+        transfers.push(serde_json::json!({
+            "transfer_id": canonical_hex(transfer.transfer_id()),
+            "payer_lock_hash": canonical_hex(batch.lock_hash(payer)),
+            "payee_lock_hash": canonical_hex(batch.lock_hash(1 - payer)),
+            "hash_algorithm": if transfer.hash_algorithm() == morph_script_common::CONDITIONAL_HASH_CKB_BLAKE2B {"ckb_blake2b"} else {"sha256"},
+            "payment_hash": canonical_hex(transfer.payment_hash()),
+            "amount": transfer.amount().to_string(),
+            "refund_after_block": transfer.refund_after_since().to_string(),
+        }));
+    }
+    Ok(serde_json::json!({
+        "kind":"ckb_conditional",
+        "batch_code_hash":canonical_hex(conditional.code_hash()),
+        "batch_hash_type":conditional.hash_type(),
+        "batch_id":canonical_hex(batch.batch_id()),
+        "application_context_commitment":canonical_hex(batch.application_context_commitment()),
+        "pending_ckb":conditional.pending_capacity().map_err(wire_error)?.to_string(),
+        "batch_lock_hash":canonical_hex(&conditional.batch_lock_hash(channel_id,funding_context_id,state_number).map_err(wire_error)?),
+        "settled_capacities":[batch.settled_capacity(0).to_string(),batch.settled_capacity(1).to_string()],
+        "transfers":transfers,
+    }))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -166,17 +218,11 @@ impl StoredMultiAssetPackage {
     }
 
     pub fn value_subject(&self) -> Result<ValueSubject> {
-        let summary = self.validate()?;
-        let mut subject = ValueSubject::default();
-        subject.add_ckb(u128::from(summary.state_carrier_capacity.parse::<u64>()?))?;
-        for asset in summary.assets {
-            subject.add_ckb(u128::from(asset.reserve.parse::<u64>()?))?;
-            subject.add_ckb(u128::from(asset.business_ckb.parse::<u64>()?))?;
-            if let Some(type_hash) = asset.type_hash {
-                subject.add_xudt(&type_hash, asset.amount.parse::<u128>()?)?;
-            }
-        }
-        Ok(subject)
+        let recovery = self.recovery()?;
+        Ok(ValueSubject::from_manifest(
+            &recovery.manifest,
+            recovery.state_carrier_capacity,
+        )?)
     }
     pub fn from_recovery(
         package: &MultiAssetRecoveryPackage,
@@ -238,29 +284,19 @@ impl StoredMultiAssetPackage {
 
     pub fn validate(&self) -> Result<MultiAssetPackageSummary> {
         let decoded = self.decode()?;
+        let recovery = MultiAssetRecoveryPackage::decode(
+            &decoded.header,
+            &decoded.witness,
+            &decoded.signatures,
+            decoded.carrier_capacity,
+        )?;
+        // The core decoder is the sole authority for lifecycle, signatures,
+        // custody, conservation and occupied capacity. Borrowed wire views
+        // below only format the already validated public review.
         let header = wire::MultiAssetStateHeader::parse(&decoded.header).map_err(wire_error)?;
         let witness = wire::MultiAssetWitness::parse(&decoded.witness).map_err(wire_error)?;
-        witness.validate_header(&header).map_err(wire_error)?;
         let signatures =
             BilateralSignatureWitness::parse(&decoded.signatures).map_err(wire_error)?;
-        header.verify_signatures(&signatures).map_err(wire_error)?;
-        let scripts = witness.scripts();
-        ensure!(
-            wire::multi_asset_occupied_capacity(scripts.script(2).map_err(wire_error)?, None, 0)
-                .map_err(wire_error)?
-                <= decoded.carrier_capacity,
-            "State carrier cannot fund its refund output"
-        );
-        ensure!(
-            wire::multi_asset_occupied_capacity(
-                scripts.script(5).map_err(wire_error)?,
-                Some(scripts.script(4).map_err(wire_error)?),
-                wire::MULTI_ASSET_STATE_HEADER_LEN as u64
-            )
-            .map_err(wire_error)?
-                <= decoded.carrier_capacity,
-            "State carrier is below occupied capacity"
-        );
         let base = header;
         let mut assets = Vec::new();
         for index in 0..witness.manifest().count() {
@@ -292,6 +328,7 @@ impl StoredMultiAssetPackage {
                 canonical_hex(signatures.pubkey(0)),
                 canonical_hex(signatures.pubkey(1)),
             ],
+            capability: capability_summary(&recovery.settlement, &recovery.state)?,
             assets,
         })
     }
@@ -348,41 +385,34 @@ pub fn write_package(dir: &Path, package: &StoredMultiAssetPackage) -> Result<st
     let parent = dir
         .join(summary.channel_id.trim_start_matches("0x"))
         .join(summary.funding_context_id.trim_start_matches("0x"));
-    #[cfg(unix)]
-    let existing_parent = parent
-        .ancestors()
-        .find(|path| path.is_dir())
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
-    fs::create_dir_all(&parent)?;
+    let existing_parent = crate::persistence::create_private_directories(&parent)?;
     let path = parent.join(format!(
         "{:020}-{}.json",
         summary.state_number.parse::<u64>()?,
         summary.package_id.trim_start_matches("0x")
     ));
     if path.exists() {
+        let file = File::open(&path)?;
+        crate::persistence::require_private_file(&file)?;
         ensure!(
             read_package(&path)? == *package,
             "recovery package path already contains different evidence"
         );
-        #[cfg(unix)]
-        {
-            File::open(&path)?.sync_all()?;
-            sync_recovery_directories(&parent, &existing_parent)?;
-        }
+        file.sync_all()?;
+        sync_recovery_directories(&parent, &existing_parent)?;
         return Ok(path);
     }
-    let temporary = crate::packages::atomic_json_tmp_path(&path);
+    let temporary = crate::persistence::atomic_json_tmp_path(&path);
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     options.mode(0o600);
     let mut file = options.open(&temporary)?;
+    crate::persistence::require_private_file(&file)?;
     file.write_all(&serde_json::to_vec_pretty(package)?)?;
     file.sync_all()?;
     drop(file);
     fs::rename(&temporary, &path)?;
-    #[cfg(unix)]
     sync_recovery_directories(&parent, &existing_parent)?;
     Ok(path)
 }
@@ -428,6 +458,7 @@ pub fn fixture_package() -> Result<StoredMultiAssetPackage> {
             .collect(),
     };
     let settlement = MultiAssetSettlement {
+        capability: morph_core::MultiAssetSettlementCapability::Ordinary,
         participant_lock_hashes: locks
             .each_ref()
             .map(|script| script.calc_script_hash().unpack()),
@@ -559,6 +590,74 @@ pub fn fixture_package() -> Result<StoredMultiAssetPackage> {
 mod tests {
     use super::*;
     #[test]
+    fn signed_json_cannot_admit_settling_zero_or_plain_vote_root_creation() {
+        let original = fixture_package().unwrap();
+        for root in [false, true] {
+            let mut recovery = original.recovery().unwrap();
+            recovery.state.header.state_number = 0;
+            if root {
+                recovery.state.header.phase = Phase::Active;
+                recovery.state.vault_outpoint_set_root = [0; 32];
+                recovery.outpoints.clear();
+            }
+            let digest = recovery.state.signing_digest().unwrap();
+            recovery.authorization.signatures = [1u8, 2]
+                .into_iter()
+                .map(|seed| {
+                    let key = SigningKey::from_slice(&[seed; 32]).unwrap();
+                    let signature: Signature = key.sign_prehash(&digest).unwrap();
+                    ParticipantSignature {
+                        pubkey_sec1: key
+                            .verifying_key()
+                            .to_encoded_point(true)
+                            .as_bytes()
+                            .to_vec(),
+                        signature: signature.to_bytes().to_vec(),
+                    }
+                })
+                .collect();
+            recovery
+                .authorization
+                .signatures
+                .sort_by(|a, b| a.pubkey_sec1.cmp(&b.pubkey_sec1));
+            let mut encoded = original.clone();
+            encoded.header_hex = canonical_hex(&recovery.state.encode().unwrap());
+            encoded.witness_hex = canonical_hex(
+                &encode_multi_asset_witness(
+                    &recovery.manifest,
+                    &recovery.settlement,
+                    &recovery.outpoints,
+                    &recovery.scripts,
+                )
+                .unwrap(),
+            );
+            encoded.signature_witness_hex =
+                canonical_hex(&encode_multi_asset_signatures(&recovery.authorization).unwrap());
+            let raw_header = decode_hex(&encoded.header_hex, 318).unwrap();
+            let header = wire::MultiAssetStateHeader::parse(&raw_header).unwrap();
+            // These are genuine normal-domain signatures. Their mathematical
+            // validity cannot substitute for the required lifecycle/domain.
+            header
+                .verify_signatures(
+                    &BilateralSignatureWitness::parse(
+                        &decode_hex(&encoded.signature_witness_hex, 198).unwrap(),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            let error = encoded.validate().unwrap_err().to_string();
+            assert!(
+                error.contains(if root {
+                    "transaction-bound"
+                } else {
+                    "positive state number"
+                }),
+                "{error}"
+            );
+            assert!(encoded.recovery().is_err());
+        }
+    }
+    #[test]
     fn multi_asset_package_keeps_u128_values_lossless() {
         let package = fixture_package().unwrap();
         let summary = package.validate().unwrap();
@@ -623,6 +722,20 @@ mod tests {
                 std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
                 0o600
             );
+            for parent in path.parent().unwrap().ancestors() {
+                assert_eq!(
+                    std::fs::metadata(parent).unwrap().permissions().mode() & 0o777,
+                    0o700
+                );
+                if parent == dir {
+                    break;
+                }
+            }
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(write_package(&dir, &package).is_err());
+            assert_eq!(read_package(&path).unwrap(), package);
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            assert_eq!(write_package(&dir, &package).unwrap(), path);
         }
         let mut changed = package.clone();
         changed.state_carrier_capacity = "200000000000".to_string();

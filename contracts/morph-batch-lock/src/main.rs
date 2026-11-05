@@ -19,7 +19,8 @@ use ckb_std::{default_alloc, entry};
 use morph_script_common::{BYTE32_LEN, ConditionalBatchResolutionWitness, Result, ScriptError};
 
 #[cfg(target_arch = "riscv64")]
-const BATCH_ARGS_LEN: usize = BYTE32_LEN + 8 + BYTE32_LEN;
+const BATCH_ARGS_LEN: usize =
+    morph_script_common::multi_asset_conditional::MULTI_ASSET_BATCH_ARGS_LEN;
 
 #[cfg(target_arch = "riscv64")]
 entry!(program_entry);
@@ -41,11 +42,16 @@ fn main() {}
 fn main() -> Result<()> {
     let script = load_script().map_err(|_| ScriptError::Encoding)?;
     let args = script.args().raw_data();
-    if args.len() != BATCH_ARGS_LEN || args.as_ref()[..BYTE32_LEN].iter().all(|byte| *byte == 0) {
+    if args.len() != BATCH_ARGS_LEN
+        || args.as_ref()[..BYTE32_LEN].iter().all(|byte| *byte == 0)
+        || args.as_ref()[BYTE32_LEN..2 * BYTE32_LEN]
+            .iter()
+            .all(|byte| *byte == 0)
+    {
         return Err(ScriptError::WrongArgsLength);
     }
     let mut state_number_bytes = [0u8; 8];
-    state_number_bytes.copy_from_slice(&args.as_ref()[BYTE32_LEN..BYTE32_LEN + 8]);
+    state_number_bytes.copy_from_slice(&args.as_ref()[2 * BYTE32_LEN..2 * BYTE32_LEN + 8]);
     if u64::from_le_bytes(state_number_bytes) == 0 {
         return Err(ScriptError::ConditionalBatchLockMismatch);
     }
@@ -60,7 +66,7 @@ fn main() -> Result<()> {
     let witness_raw = input_type.raw_data();
     let witness = ConditionalBatchResolutionWitness::parse(witness_raw.as_ref())?;
     let descriptor = witness.descriptor()?;
-    if descriptor.commitment().as_slice() != &args.as_ref()[BYTE32_LEN + 8..BATCH_ARGS_LEN] {
+    if descriptor.commitment().as_slice() != &args.as_ref()[2 * BYTE32_LEN + 8..BATCH_ARGS_LEN] {
         return Err(ScriptError::ConditionalBatchLockMismatch);
     }
 

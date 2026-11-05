@@ -15,15 +15,20 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
 
 jobs:
   rust:
     name: Rust workspace and contracts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@87eb139fed4b08a67bd1fa429a21d1f5d523e03e # 1.92.0
@@ -44,13 +49,18 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Install supply-chain tools
-        run: cargo install --locked cargo-audit cargo-deny
+        run: |
+          cargo install --locked --version 0.22.2 cargo-audit
+          cargo install --locked --version 0.20.2 cargo-deny
 
       - name: Check formatting
         run: make fmt-check
 
       - name: Run clippy
         run: make lint
+
+      - name: Check source hygiene
+        run: make source-hygiene
 
       - name: Run supply-chain checks
         run: make supply-chain
@@ -79,8 +89,8 @@ jobs:
       - name: Upload contract release bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: morph-contracts-${{ github.sha }}
-          path: target/morph-v3-conditional-batch.tar.gz
+          name: morph-contracts-${{ github.event.pull_request.head.sha || github.sha }}
+          path: target/morph-current-custody.tar.gz
           if-no-files-found: error
           retention-days: 30
 
@@ -103,4 +113,4 @@ jobs:
       - name: Attest contract release provenance
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
-          subject-path: target/attestation/morph-v3-conditional-batch.tar.gz
+          subject-path: target/attestation/morph-current-custody.tar.gz

@@ -1,6 +1,6 @@
 {
   "name": "morph-hub",
-  "version": "3.0.0",
+  "version": "4.0.0-alpha.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
+    "@morph-network/agent-sdk": "file:../../sdk/typescript",
     "@vitejs/plugin-react": "^5.1.4",
     "lucide-react": "^0.577.0",
     "react": "^18.2.0",

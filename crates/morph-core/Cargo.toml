@@ -11,6 +11,8 @@ readme.workspace = true
 publish = false
 
 [dependencies]
+# Host-only canonical packed transaction/Script serialization; no RPC or VM.
+ckb-types.workspace = true
 blake2b-rs.workspace = true
 hex.workspace = true
 k256.workspace = true

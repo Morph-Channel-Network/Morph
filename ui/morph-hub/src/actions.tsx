@@ -4,6 +4,7 @@ import type React from 'react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { connectPeer, getRootFunding, getMultiAssetRecoveryPackage, getStateFile, postAction, previewStateFile, replaceStateFile, type RestorePreview } from './api';
 import { ConfirmActionDialog, ValidatedInput, ValidatedTextarea } from './components';
+import { FactoryPacketInspector } from './factory-packets';
 import {
   Asset,
   ChannelRecord,
@@ -655,8 +656,9 @@ export function FactoryActions({
 
   return (
     <div className="drawer-section">
-      <h2>Factory Layer</h2>
-      <p className="inline-note">Hub Factory controls record a 2–16 participant local projection. Factory-right proofs and reserve transactions are not built here.</p>
+      <FactoryPacketInspector />
+      <h2>Local Factory projection</h2>
+      <p className="inline-note">The following controls record local planning data. They do not create, sign, update or spend on-chain Factory custody. Use the native Factory operator and its current public requests for those operations.</p>
       {!canWrite && <small className="inline-error">The current API token needs the write scope.</small>}
       <ActionSubTabs<FactoryActionTab>
         active={activeTab}
@@ -974,6 +976,19 @@ export function RootFundingActions({state,runAction,busy}:{state:NodeState;runAc
       <p>This is a funding proposal; it does not establish a funded channel.</p>
       <p className="mono">Chain {shortHex(selected.chain_id)} · channel {shortHex(selected.channel_id)} · {selected.assets.length} assets</p>
       <p>State carrier: {selected.state_carrier_capacity} shannons</p>
+      <div data-testid="root-capability-review">
+        {selected.capability.kind==='ordinary'?<p>Settlement: ordinary allocations.</p>:<>
+          <h3>Conditional CKB settlement</h3>
+          <p>{selected.capability.pending_ckb} shannons remain pending in the signed Batch. The allocations below are already settled value.</p>
+          <p className="mono">Batch executor {selected.capability.batch_code_hash} · hash type {selected.capability.batch_hash_type}</p>
+          <p className="mono">Batch lock {selected.capability.batch_lock_hash}</p>
+          {selected.capability.transfers.map(transfer=><div key={transfer.transfer_id}>
+            <p>{transfer.amount} shannons · payer <span title={transfer.payer_lock_hash}>{shortHex(transfer.payer_lock_hash)}</span> · payee <span title={transfer.payee_lock_hash}>{shortHex(transfer.payee_lock_hash)}</span></p>
+            <p className="mono">{transfer.hash_algorithm}: {transfer.payment_hash}</p>
+            <p>Refund to payer from absolute block {transfer.refund_after_block}.</p>
+          </div>)}
+        </>}
+      </div>
       <div className="stack-list">{selected.payouts.map((payout,index)=><div key={payout.type_hash??'ckb'}>
         <strong>{payout.type_hash?`xUDT ${shortHex(payout.type_hash)}`:'CKB'}</strong>
         {payout.allocations.map((value,party)=><p key={party} className="mono">{shortHex(selected.participant_lock_hashes[party]!)}: {payout.type_hash?`${value.amount} tokens · `:''}reserve {value.reserve} · spendable {value.business_ckb} shannons</p>)}

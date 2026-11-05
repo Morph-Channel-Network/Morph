@@ -15,12 +15,47 @@ pub const MULTI_ASSET_OUTPOINT_SET_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_OUTPO
 pub const MULTI_ASSET_DESCRIPTOR_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1";
 pub const MULTI_ASSET_FUNDING_CONTEXT_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_FUNDING_CONTEXT_V1";
 pub const MULTI_ASSET_STATE_LAYOUT_VERSION: u16 = 2;
-pub const MULTI_ASSET_DESCRIPTOR_VERSION: u16 = 4;
+/// Sole current descriptor. Version 4 is intentionally rejected after the
+/// capability tag was introduced; development funding must be recreated.
+pub const MULTI_ASSET_DESCRIPTOR_VERSION: u16 = 5;
 pub const MULTI_ASSET_ENCODING_VERSION: u16 = 1;
 /// Candidate resource bounds; release requires worst-case CKB-VM budget evidence.
 pub const MULTI_ASSET_MAX_VAULTS: usize = 8;
 pub const MULTI_ASSET_MAX_OUTPUTS: usize = 2 * MULTI_ASSET_MAX_VAULTS + 1;
 pub const MULTI_ASSET_STATE_HEADER_LEN: usize = 318;
+
+/// The sole current StateType argument layout. A Factory child carries its
+/// origin between the anchor and challenge delay; both layouts end in since.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MultiAssetStateTypeArgs<'a> {
+    raw: &'a [u8],
+}
+
+impl<'a> MultiAssetStateTypeArgs<'a> {
+    pub fn parse(raw: &'a [u8]) -> Result<Self> {
+        if !matches!(raw.len(), 40 | 72) {
+            return Err(ScriptError::WrongArgsLength);
+        }
+        if raw.len() == 72 && zero(&raw[32..64]) {
+            return Err(ScriptError::MultiAssetEncoding);
+        }
+        let args = Self { raw };
+        crate::validate_relative_block_since(args.finalise_since(), args.finalise_since())?;
+        Ok(args)
+    }
+
+    pub fn funding_anchor(&self) -> &'a [u8] {
+        &self.raw[..32]
+    }
+
+    pub fn factory_origin(&self) -> Option<&'a [u8]> {
+        (self.raw.len() == 72).then(|| &self.raw[32..64])
+    }
+
+    pub fn finalise_since(&self) -> u64 {
+        read_u64(self.raw, self.raw.len() - 8)
+    }
+}
 pub const MULTI_ASSET_ID_LEN: usize = 33;
 pub const MULTI_ASSET_ALLOCATION_LEN: usize = 32;
 pub const MULTI_ASSET_VAULT_ENTRY_LEN: usize = 97;
@@ -37,6 +72,7 @@ pub const MULTI_ASSET_MAX_WITNESS_LEN: usize = MULTI_ASSET_WITNESS_PREFIX_LEN
     + MULTI_ASSET_MAX_VAULTS * MULTI_ASSET_VAULT_ENTRY_LEN
     + MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
     + MULTI_ASSET_MAX_VAULTS * MULTI_ASSET_PAYOUT_ENTRY_LEN
+    + crate::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN
     + MULTI_ASSET_MAX_VAULTS * MULTI_ASSET_OUTPOINT_LEN
     + (6 + MULTI_ASSET_MAX_VAULTS) * (4 + MULTI_ASSET_MAX_SCRIPT_LEN);
 
@@ -349,12 +385,27 @@ pub struct MultiAssetSettlementDescriptor<'a> {
 
 impl<'a> MultiAssetSettlementDescriptor<'a> {
     pub fn parse(raw: &'a [u8]) -> Result<Self> {
-        let count = parse_counted(
-            raw,
-            MULTI_ASSET_DESCRIPTOR_PREFIX_LEN,
-            MULTI_ASSET_PAYOUT_ENTRY_LEN,
-            MULTI_ASSET_DESCRIPTOR_VERSION,
-        )?;
+        use crate::multi_asset_conditional::{
+            MULTI_ASSET_CONDITIONAL_LEN, MULTI_ASSET_SETTLEMENT_CKB_CONDITIONAL,
+            MULTI_ASSET_SETTLEMENT_ORDINARY,
+        };
+        if raw.len() < MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
+            || read_u16(raw, 0) != MULTI_ASSET_DESCRIPTOR_VERSION
+            || !(1..=MULTI_ASSET_MAX_VAULTS).contains(&(raw[2] as usize))
+        {
+            return Err(ScriptError::MultiAssetEncoding);
+        }
+        let count = raw[2] as usize;
+        let extension = match raw[3] {
+            MULTI_ASSET_SETTLEMENT_ORDINARY => 0,
+            MULTI_ASSET_SETTLEMENT_CKB_CONDITIONAL => MULTI_ASSET_CONDITIONAL_LEN,
+            _ => return Err(ScriptError::MultiAssetEncoding),
+        };
+        if raw.len()
+            != MULTI_ASSET_DESCRIPTOR_PREFIX_LEN + count * MULTI_ASSET_PAYOUT_ENTRY_LEN + extension
+        {
+            return Err(ScriptError::MultiAssetEncoding);
+        }
         let descriptor = Self { raw };
         if zero(descriptor.lock_hash(0)?)
             || descriptor.lock_hash(0)? >= descriptor.lock_hash(1)?
@@ -376,6 +427,24 @@ impl<'a> MultiAssetSettlementDescriptor<'a> {
             }
             previous = Some(entry.asset);
         }
+        if let Some(conditional) = descriptor.conditional()? {
+            let ckb = descriptor.entry(0)?;
+            if ckb.asset != MultiAssetId::CKB {
+                return Err(ScriptError::ConditionalValueMismatch);
+            }
+            for participant in 0..2 {
+                if conditional.batch().lock_hash(participant)
+                    != descriptor.lock_hash(participant)?
+                    || conditional.batch().settled_capacity(participant)
+                        != ckb.allocations[participant].capacity()?
+                {
+                    return Err(ScriptError::ConditionalValueMismatch);
+                }
+            }
+            total_capacity
+                .checked_add(conditional.pending_capacity()?)
+                .ok_or(ScriptError::MultiAssetCapacityMismatch)?;
+        }
         Ok(descriptor)
     }
     pub fn count(&self) -> usize {
@@ -383,6 +452,16 @@ impl<'a> MultiAssetSettlementDescriptor<'a> {
     }
     pub fn as_bytes(&self) -> &'a [u8] {
         self.raw
+    }
+    pub fn conditional(
+        &self,
+    ) -> Result<Option<crate::multi_asset_conditional::MultiAssetConditional<'a>>> {
+        if self.raw[3] == crate::multi_asset_conditional::MULTI_ASSET_SETTLEMENT_ORDINARY {
+            return Ok(None);
+        }
+        let offset =
+            MULTI_ASSET_DESCRIPTOR_PREFIX_LEN + self.count() * MULTI_ASSET_PAYOUT_ENTRY_LEN;
+        crate::multi_asset_conditional::MultiAssetConditional::parse(&self.raw[offset..]).map(Some)
     }
     pub fn lock_hash(&self, participant: usize) -> Result<&'a [u8]> {
         if participant >= 2 {
@@ -416,9 +495,21 @@ pub fn validate_multi_asset_conservation(
         let vault = manifest.entry(i)?;
         let payouts = descriptor.entry(i)?;
         let [a, b] = payouts.allocations;
+        let pending = if vault.asset == MultiAssetId::CKB {
+            descriptor
+                .conditional()?
+                .map(|conditional| conditional.pending_capacity())
+                .transpose()?
+                .unwrap_or(0)
+        } else {
+            0
+        };
         if vault.asset != payouts.asset
             || a.reserve.checked_add(b.reserve) != Some(vault.allocation.reserve)
-            || a.business_ckb.checked_add(b.business_ckb) != Some(vault.allocation.business_ckb)
+            || a.business_ckb
+                .checked_add(b.business_ckb)
+                .and_then(|sum| sum.checked_add(pending))
+                != Some(vault.allocation.business_ckb)
             || a.amount.checked_add(b.amount) != Some(vault.allocation.amount)
         {
             return Err(ScriptError::MultiAssetConservationMismatch);
@@ -762,12 +853,11 @@ impl<'a> MultiAssetScripts<'a> {
         let state_lock = scripts.script(5)?;
         let state_type_hash = blake2b256(&[state_type]);
         let state_lock_hash = blake2b256(&[state_lock]);
+        let state_args = MultiAssetStateTypeArgs::parse(&state_type[53..])?;
         if args.state_type_hash() != state_type_hash
             || args.state_lock_hash() != state_lock_hash
-            || !matches!(state_type[53..].len(), 40 | 72)
-            || (state_type.len() == 125 && zero(&state_type[85..117]))
-            || &state_type[53..85] != args.funding_anchor()
-            || read_u64(state_type, state_type.len() - 8) != args.finalise_since()
+            || state_args.funding_anchor() != args.funding_anchor()
+            || state_args.finalise_since() != args.finalise_since()
             || state_lock[53..] != state_type_hash
         {
             return Err(ScriptError::MultiAssetCommitmentMismatch);
@@ -934,6 +1024,36 @@ impl<'a> MultiAssetWitness<'a> {
             != base.funding_anchor()
         {
             return Err(ScriptError::FundingAnchorMismatch);
+        }
+        if let Some(conditional) = self.descriptor.conditional()? {
+            let funding_context = header.funding_context_id()?;
+            let lock = conditional.batch_lock_hash(
+                header.channel_id(),
+                &funding_context,
+                header.state_number(),
+            )?;
+            if lock.as_slice() == self.descriptor.lock_hash(0)?
+                || lock.as_slice() == self.descriptor.lock_hash(1)?
+                || lock.as_slice() == self.descriptor.carrier_refund_lock()
+                || lock == blake2b256(&[self.scripts.script(3)?])
+                || lock == blake2b256(&[self.scripts.script(5)?])
+            {
+                return Err(ScriptError::ConditionalBatchLockMismatch);
+            }
+            let ckb = self.manifest.entry(0)?;
+            if ckb.asset != MultiAssetId::CKB
+                || multi_asset_occupied_capacity(
+                    &conditional.batch_script(
+                        header.channel_id(),
+                        &funding_context,
+                        header.state_number(),
+                    )?,
+                    None,
+                    0,
+                )? > ckb.allocation.reserve
+            {
+                return Err(ScriptError::MultiAssetCapacityMismatch);
+            }
         }
         if header.vaults_are_bound() {
             if multi_asset_outpoint_set_commitment(

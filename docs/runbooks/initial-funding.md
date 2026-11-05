@@ -58,7 +58,7 @@ issuance, automatic input selection, signing or broadcast. The terms contain:
 | `participants` | Two distinct compressed keys in raw key order. |
 | `participant_locks_hex` | Two actual payout Scripts, in the descriptor's sorted lock-hash order. This ordering is independent of public-key order. |
 | `carrier_refund_lock_hex` | Actual Script receiving the exact State carrier on exit. |
-| `descriptor_hex` | Canonical descriptor-4 initial allocations; Vault totals are derived from them. |
+| `descriptor_hex` | Canonical descriptor-5 allocations with an explicit ordinary/CKB-conditional capability; Vault totals include the derived pending CKB lane. |
 | `challenge_blocks` | Positive canonical decimal relative-block count. |
 | `type_scripts_hex` | Complete actual xUDT Scripts in Type-hash order; omit for plain CKB only. |
 | `cell_deps` | Explicit canonical code/dep-group records `{tx_hash,index,dep_type}`, sorted by OutPoint. |
@@ -148,6 +148,8 @@ help output. Exchange exit receipts with the peer and import the peer's receipt:
 ```sh
 morph-cli multi-asset-funding-session --session /srv/morph/alice.json add-signature \
   --target exit --signature bob-exit-signature.json
+morph-cli multi-asset-funding-session --session /srv/morph/alice.json export-recovery \
+  --store-dir /srv/morph/recovery
 morph-cli multi-asset-funding-session --session /srv/morph/alice.json sign \
   --target creation > alice-creation-signature.json
 morph-cli multi-asset-funding-session --session /srv/morph/alice.json add-signature \
@@ -169,6 +171,15 @@ Export saves the full recovery package before the Morph-authorised funding
 binary. Already signed evidence remains exportable without RPC or installed
 artifacts. A wallet may add witnesses but cannot change the raw body: the root
 creation signatures bind it and the exit signs its exact future Vault OutPoints.
+
+`export-recovery` separately saves the complete private initial exit once both
+exit signatures are retained. It needs no creation receipt, peer connection,
+RPC or installed artifacts, and emits no funding transaction. An incomplete
+exit is rejected without creating a recovery artifact. Retain this package
+even if the coordinator withholds the peer's final creation receipt: the
+coordinator can still combine both creation approvals and fund the channel.
+Keep the package private under the [recovery delivery and backup
+rules](operations.md); its path, rather than its signed contents, is returned.
 
 ## Submit and confirm the same path
 
@@ -225,6 +236,15 @@ reserved for the exact already signed exit; ordinary updates start above it.
 Failed confirmation leaves the initial journal unchanged. Retrying after a lost
 response must first inspect the existing path; never reinitialize it.
 
+Confirmation requires the complete retained exit and this journal's durably
+recorded local creation approval. A reservation without a recorded local
+signature is insufficient. The peer's creation receipt need not have been
+delivered locally: confirmation obtains the actual canonical funding witness
+and verifies both creation signatures, the exact raw-body-derived funding
+context and dependency/custody checks before handing off. The operational
+lineage retains that complete funding transaction for exact replay. No fresh
+peer signature or second authority path is required.
+
 The old `multi-asset-session init` and `bind-root` entry points have been
 removed. Recovery packages remain unilateral-exit evidence, not a replacement
 for a lost monotonic signer journal. Never clone an active path or restore a
@@ -250,3 +270,12 @@ through that same store. Public preparation and wallet-sign commands perform
 no issuance. Real-node 2/8-asset evidence additionally covers separate signing
 processes, changed-body/missing-Morph/undeclared-wallet rejection, activation,
 confirmed handoff and unilateral settlement.
+
+The sole native acceptance pipeline adds `--funding-reorg` to its isolated
+shared-funding case. This explicitly rolls back the initial funding to its
+canonical predecessor, re-exports the retained exit while the peer creation
+receipt is withheld, and replays the identical fully wallet-signed binary.
+The transaction hash, all witness bytes and both signer journals must remain
+unchanged. Activation and canonical same-path handoff then proceed without
+another peer vote. Ordinary `--shared-funding` does not truncate the chain;
+the explicit reorg flag is only for an isolated development-node rehearsal.

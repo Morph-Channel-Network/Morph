@@ -61,7 +61,7 @@ pub fn submit(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
     let current = old_stored.recovery()?;
     operator::verify_chain_id(rpc, &current.state.header.chain_id)?;
     let recovery = new_stored.recovery()?;
-    let (_, plan) = SpliceDraft::from_signed_transaction(&current, &recovery, &transaction)?;
+    let (_, plan, _) = SpliceDraft::from_signed_transaction(&current, &recovery, &transaction)?;
     let expected_package = crate::multi_asset_packages::StoredMultiAssetPackage::from_recovery(
         &recovery,
         &transaction
@@ -466,14 +466,14 @@ pub fn prepare(rpc: &CkbRpcClient, options: PrepareOptions) -> Result<Value> {
         "chain reorganized during splice preparation"
     );
     let encoded = serde_json::to_vec_pretty(&draft)?;
-    let _lock = crate::packages::lock_private_path(&options.output)?;
+    let _lock = crate::persistence::lock_private_path(&options.output)?;
     if options.output.exists() {
         ensure!(
             fs::read(&options.output)? == encoded,
             "draft output already holds another intent"
         );
     } else {
-        crate::packages::write_private_atomic(&options.output, &encoded)?;
+        crate::persistence::write_private_atomic(&options.output, &encoded)?;
     }
     Ok(
         json!({"schema":"morph.multi_asset_splice_preparation.v1", "draft":options.output,
@@ -670,7 +670,7 @@ pub struct ConfirmationOptions<'a> {
     pub contracts_dir: &'a Path,
 }
 
-fn canonical_transaction(
+pub(crate) fn canonical_transaction(
     rpc: &CkbRpcClient,
     hash: H256,
     min_confirmations: u64,
@@ -727,7 +727,7 @@ pub fn confirm_context(
     rpc: &CkbRpcClient,
     options: ConfirmationOptions<'_>,
 ) -> Result<crate::multi_asset_session_chain::ContextChainEvidence> {
-    let (_, plan) = SpliceDraft::from_signed_transaction(
+    let (_, plan, _) = SpliceDraft::from_signed_transaction(
         options.old,
         options.initial_recovery,
         options.transaction,
@@ -800,6 +800,54 @@ fn confirm_bound_state(
     };
     verify_context_guard(rpc, &evidence, min_confirmations, &stored, contracts_dir)?;
     Ok(evidence)
+}
+
+pub(crate) struct FactoryChildContext<'a> {
+    pub request: &'a morph_core::FactorySigningRequest,
+    pub child_index: u16,
+    pub initial: &'a MultiAssetRecoveryPackage,
+    pub current: &'a MultiAssetRecoveryPackage,
+    pub transaction: &'a ckb_types::packed::Transaction,
+    pub state_out_point: &'a str,
+    pub min_confirmations: u64,
+    pub contracts_dir: &'a Path,
+}
+
+/// Factory children are created by their parent's typed authorization, not by
+/// the bilateral root-funding domain. Exact private initial exit data remains
+/// local to each child participant and is checked against the public parent.
+pub(crate) fn confirm_factory_child_context(
+    rpc: &CkbRpcClient,
+    options: FactoryChildContext<'_>,
+) -> Result<crate::multi_asset_session_chain::ContextChainEvidence> {
+    let request = options.request;
+    request.verify_child_recovery(options.child_index, options.initial)?;
+    request.verify_authorized_transaction(options.transaction)?;
+    crate::factory_artifacts::validate_request_artifacts(request, options.contracts_dir)?;
+    ensure!(
+        options.current.state.funding_context_id()?
+            == options.initial.state.funding_context_id()?,
+        "Factory child signer is outside its initial funding context"
+    );
+    let (actual, funding) = canonical_transaction(
+        rpc,
+        request.transaction_hash()?.into(),
+        options.min_confirmations,
+    )?;
+    ensure!(
+        actual.as_slice() == options.transaction.as_slice(),
+        "canonical parent differs from exact authorized Factory transaction"
+    );
+    request.verify_authorized_transaction(&actual)?;
+    confirm_bound_state(
+        rpc,
+        options.current,
+        &actual,
+        funding,
+        options.state_out_point,
+        options.min_confirmations,
+        options.contracts_dir,
+    )
 }
 
 pub fn confirm_root_context(

@@ -13,9 +13,7 @@ use ckb_std::high_level::{
 #[cfg(target_arch = "riscv64")]
 use ckb_std::{default_alloc, entry};
 #[cfg(target_arch = "riscv64")]
-use morph_script_common::{
-    BYTE32_LEN, PHASE_SETTLING, Result, ScriptError, SponsorPolicy, StateHeader,
-};
+use morph_script_common::{BYTE32_LEN, PHASE_SETTLING, Result, ScriptError, SponsorPolicy};
 
 #[cfg(target_arch = "riscv64")]
 entry!(program_entry);
@@ -140,25 +138,13 @@ fn ensure_publication_backed_by_state_type_input(
 
 #[cfg(target_arch = "riscv64")]
 fn publication_state_header(data: &[u8]) -> Result<(&[u8], &[u8], u64, u8)> {
-    use morph_script_common::multi_asset::{MULTI_ASSET_STATE_HEADER_LEN, MultiAssetStateHeader};
-    if data.len() == MULTI_ASSET_STATE_HEADER_LEN {
-        let header = MultiAssetStateHeader::parse(data)?;
-        Ok((
-            header.channel_id(),
-            header.funding_anchor(),
-            header.state_number(),
-            header.phase(),
-        ))
-    } else {
-        let header = StateHeader::parse(data)?;
-        header.validate_profile()?;
-        Ok((
-            header.channel_id(),
-            header.funding_anchor(),
-            header.state_number(),
-            header.phase(),
-        ))
-    }
+    let header = morph_script_common::multi_asset::MultiAssetStateHeader::parse(data)?;
+    Ok((
+        header.channel_id(),
+        header.funding_anchor(),
+        header.state_number(),
+        header.phase(),
+    ))
 }
 
 #[cfg(target_arch = "riscv64")]

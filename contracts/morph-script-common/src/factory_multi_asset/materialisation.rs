@@ -46,8 +46,19 @@ pub struct FactoryMaterialisationChild<'a> {
     pub carrier_capacity: u64,
     pub header: MultiAssetStateHeader<'a>,
     pub evidence: MultiAssetWitness<'a>,
+    script_hashes: [[u8; 32]; 3],
 }
 impl FactoryMaterialisationChild<'_> {
+    pub fn state_type_hash(&self) -> [u8; 32] {
+        self.script_hashes[0]
+    }
+    pub fn state_lock_hash(&self) -> [u8; 32] {
+        self.script_hashes[1]
+    }
+    pub fn vault_lock_hash(&self) -> [u8; 32] {
+        self.script_hashes[2]
+    }
+
     pub fn creation_header(&self) -> Result<[u8; 318]> {
         let mut raw = [0; 318];
         raw.copy_from_slice(self.header.as_bytes());
@@ -151,6 +162,11 @@ impl<'a> FactoryMaterialisationIntent<'a> {
                 carrier_capacity: read_u64(prefix, 4),
                 header,
                 evidence,
+                script_hashes: [
+                    blake2b256(&[evidence.scripts().script(4)?]),
+                    blake2b256(&[evidence.scripts().script(5)?]),
+                    blake2b256(&[evidence.scripts().script(3)?]),
+                ],
             });
         }
         if offset != raw.len() {
@@ -404,10 +420,8 @@ impl<'a> FactoryMaterialisationIntent<'a> {
             return Ok(true);
         }
         for i in 0..self.child_count() {
-            let scripts = self.child(i)?.evidence.scripts();
-            if blake2b256(&[scripts.script(3)?]) == *hash
-                || blake2b256(&[scripts.script(5)?]) == *hash
-            {
+            let child = self.child(i)?;
+            if child.vault_lock_hash() == *hash || child.state_lock_hash() == *hash {
                 return Ok(true);
             }
         }
@@ -471,13 +485,14 @@ impl<'a> FactoryMaterialisationWitness<'a> {
         }
         Ok(&self.child_keys[index * 66 + participant * 33..index * 66 + (participant + 1) * 33])
     }
-    pub fn verify(&self) -> Result<()> {
+    /// Validates parent membership and the exact independent child key pairs.
+    /// This does not validate Factory ECDSA authorization.
+    pub fn validate_public_contents(&self) -> Result<()> {
         if self.factory.participants_commitment().as_slice()
             != self.intent.participants_commitment()
         {
             return Err(ScriptError::ParticipantCommitmentMismatch);
         }
-        crate::verify_factory_signatures_for_digest(&self.intent.signing_digest(), &self.factory)?;
         for i in 0..self.intent.child_count() {
             let first = self.child_pubkey(i, 0)?;
             let second = self.child_pubkey(i, 1)?;
@@ -487,15 +502,12 @@ impl<'a> FactoryMaterialisationWitness<'a> {
             {
                 return Err(ScriptError::ParticipantCommitmentMismatch);
             }
-            for key in [first, second] {
-                if !(0..self.factory.count() as usize)
-                    .any(|member| self.factory.pubkey(member) == key)
-                {
-                    return mismatch();
-                }
-            }
         }
         Ok(())
+    }
+    pub fn verify(&self) -> Result<()> {
+        self.validate_public_contents()?;
+        crate::verify_factory_signatures_for_digest(&self.intent.signing_digest(), &self.factory)
     }
 }
 
@@ -507,6 +519,31 @@ pub struct FactoryMaterialisationView<'a> {
     count: usize,
 }
 impl<'a> FactoryMaterialisationView<'a> {
+    /// Read-only bounded view; authorization remains the authentic Factory
+    /// Type's responsibility, exactly as for the outer materialisation frame.
+    pub fn from_intent_bytes(intent: &'a [u8]) -> Result<Self> {
+        if !(204..=FACTORY_MATERIALISATION_MAX_INTENT_LEN).contains(&intent.len())
+            || read_u16(intent, 0) != 1
+            || !(1..=4).contains(&read_u16(intent, 2))
+            || read_u16(intent, 202) != 0
+        {
+            return mismatch();
+        }
+        let view = Self {
+            intent,
+            count: read_u16(intent, 2) as usize,
+        };
+        view.source_context()?;
+        Ok(view)
+    }
+
+    pub fn from_intent(intent: &FactoryMaterialisationIntent<'a>) -> Self {
+        Self {
+            intent: intent.as_bytes(),
+            count: intent.child_count(),
+        }
+    }
+
     pub fn parse(raw: &'a [u8]) -> Result<Self> {
         if raw.len() < 24
             || raw.len() > FACTORY_MATERIALISATION_MAX_WITNESS_LEN
@@ -578,6 +615,11 @@ impl<'a> FactoryMaterialisationView<'a> {
                     carrier_capacity: read_u64(prefix, 4),
                     header,
                     evidence,
+                    script_hashes: [
+                        blake2b256(&[evidence.scripts().script(4)?]),
+                        blake2b256(&[evidence.scripts().script(5)?]),
+                        blake2b256(&[evidence.scripts().script(3)?]),
+                    ],
                 });
             }
         }

@@ -10,7 +10,7 @@ use anyhow::{Result, anyhow, ensure};
 use serde::{Deserialize, Serialize};
 
 use crate::multi_asset_packages::canonical_hex;
-use crate::packages::{
+use crate::persistence::{
     append_private_jsonl, required_option, try_lock_private_path, write_private_atomic,
 };
 use crate::watch_alert::WatchAlertSeverity;
@@ -650,7 +650,7 @@ mod tests {
         let second = run(&config_path, &health_path, &alerts, Some(1)).unwrap();
         assert_eq!(second.snapshot.cycle, 3);
         assert_eq!(std::fs::read_to_string(&alerts).unwrap().lines().count(), 1);
-        let lock = crate::packages::lock_private_path(&health_path).unwrap();
+        let lock = crate::persistence::lock_private_path(&health_path).unwrap();
         assert!(run(&config_path, &health_path, &alerts, Some(1)).is_err());
         drop(lock);
         #[cfg(unix)]
@@ -693,7 +693,7 @@ mod tests {
                 .status,
             Status::Unmanaged
         );
-        let lock = crate::packages::lock_private_path(&signer).unwrap();
+        let lock = crate::persistence::lock_private_path(&signer).unwrap();
         let busy = run(&config_path, &health_path, &alerts, Some(1)).unwrap();
         assert_eq!(busy.snapshot.sessions[0].status, Status::Busy);
         assert_eq!(

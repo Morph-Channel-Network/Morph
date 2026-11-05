@@ -1,246 +1,274 @@
 {
-  "schema": "morph.devnet_smoke_budget",
-  "description": "Budget profile schema and proof_kind values are devnet smoke evidence labels. Factory child-exit byte and cycle ceilings include the FactoryType identity now committed by each materialised child StateType and preserve roughly ten percent headroom over the 2026-08-13 full-matrix measurement. The schema suffixes do not denote the active protocol baseline; factory witnesses are interpreted through bounded WitnessEnvelope kind/body/digest envelopes on the current witness-envelope implementation line.",
-  "max_total_cycles": 1600000000,
-  "max_tx_cycles": 30000000,
+  "schema": "morph.current_acceptance_budget.v1",
+  "basis": "Controlled no-value current acceptance, not protocol-wide or production admission. The clean bb6b764 native run completed 83 distinct transaction hashes observed as Committed, 465780741 measured total cycles and 1121782 bytes, then correctly failed the former uniform 40M budget: its ten-right ReducedRights transaction measured 48264869 cycles / 7488 bytes, witness 6245 bytes and 78 aggregate proof siblings. One/four-right updates measured 11392803/23676049 cycles. The outer and Factory-case cycle ceilings are 55M to admit that declared ten-right shape; every other native case remains 40M and deployment remains 2M per transaction. Explicit named Factory transaction caps retain 40M or tighter, with only the ten-right path at 55M (one-right 15M, four-right 30M). ReducedRights has an 8192-byte witness/96 aggregate-sibling/10k-byte transaction bound. Each individual compact proof still has its consensus 64-sibling bound; aggregate siblings count all proof pairs. Total 1B cycles,2M bytes and deployment byte allowances remain unchanged. These are reproducible fixture ceilings for the declared scripts/geometry, not new asset admission, universal 70M VM maxima, or challenge-window evidence.",
+  "max_total_cycles": 1000000000,
+  "max_tx_cycles": 55000000,
   "max_total_bytes": 2000000,
-  "max_tx_bytes": 500000,
+  "max_tx_bytes": 300000,
+  "cases": [
+    {
+      "name": "bilateral_shared",
+      "max_cycles": 100000000,
+      "max_bytes": 100000,
+      "max_tx_cycles": 40000000,
+      "max_tx_bytes": 100000
+    },
+    {
+      "name": "bilateral_splice",
+      "max_cycles": 130000000,
+      "max_bytes": 100000,
+      "max_tx_cycles": 40000000,
+      "max_tx_bytes": 100000
+    },
+    {
+      "name": "factory_custody_and_children",
+      "max_cycles": 400000000,
+      "max_bytes": 300000,
+      "max_tx_cycles": 55000000,
+      "max_tx_bytes": 100000
+    },
+    {
+      "name": "watch_service_reorg",
+      "max_cycles": 100000000,
+      "max_bytes": 100000,
+      "max_tx_cycles": 40000000,
+      "max_tx_bytes": 100000
+    },
+    {
+      "name": "maximum_asset_lifecycle",
+      "max_cycles": 200000000,
+      "max_bytes": 150000,
+      "max_tx_cycles": 40000000,
+      "max_tx_bytes": 100000
+    },
+    {
+      "name": "deployment",
+      "max_cycles": 20000000,
+      "max_bytes": 1000000,
+      "max_tx_cycles": 2000000,
+      "max_tx_bytes": 300000
+    }
+  ],
   "transactions": [
     {
-      "check": "deploy-contracts",
-      "path": "$",
-      "max_cycles": 2000000,
-      "max_bytes": 500000
+      "check": "bilateral_splice",
+      "path": "$.transitions.operations[0].submission",
+      "max_cycles": 40000000,
+      "max_bytes": 16384
     },
     {
-      "check": "factory-reduced-rights-smoke",
-      "path": "$.update",
-      "max_cycles": 6000000,
-      "max_bytes": 4000
+      "check": "factory_custody_and_children",
+      "path": "$.root.report",
+      "max_cycles": 15000000,
+      "max_bytes": 8192
     },
     {
-      "check": "factory-merkle-update-smoke",
-      "path": "$.update",
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.finalise",
+      "max_cycles": 10000000,
+      "max_bytes": 16384
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.finalise",
+      "max_cycles": 10000000,
+      "max_bytes": 16384
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.finalise",
+      "max_cycles": 10000000,
+      "max_bytes": 16384
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.finalise",
+      "max_cycles": 20000000,
+      "max_bytes": 32768
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.finalise",
+      "max_cycles": 10000000,
+      "max_bytes": 16384
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.funded",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.deposit.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[2].report",
+      "max_cycles": 55000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[0].canonical_reorg_replay.original.report",
+      "max_cycles": 15000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.latest_package_watch.publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[1].report",
       "max_cycles": 30000000,
-      "max_bytes": 20000
+      "max_bytes": 100000
     },
     {
-      "check": "factory-reduced-exit-smoke",
-      "path": "$.exit",
-      "max_cycles": 11000000,
-      "max_bytes": 10000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.activation",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-reduced-xudt-exit-smoke",
-      "path": "$.exit",
-      "max_cycles": 11000000,
-      "max_bytes": 11000
+      "check": "factory_custody_and_children",
+      "path": "$.activation.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-reduced-xudt-exit-full-smoke",
-      "path": "$.exit",
-      "max_cycles": 11000000,
-      "max_bytes": 11000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.old_publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-reduced-xudt-exit-one-sided-smoke",
-      "path": "$.exit",
-      "max_cycles": 11000000,
-      "max_bytes": 11000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.latest_package_watch.publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-splice-in-smoke",
-      "path": "$.apply",
-      "max_cycles": 16000000,
-      "max_bytes": 12000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.full_consent_metadata.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-splice-out-smoke",
-      "path": "$.apply",
-      "max_cycles": 16000000,
-      "max_bytes": 12000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.latest_package_watch.publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-reduced-splice-in-smoke",
-      "path": "$.apply",
-      "max_cycles": 18000000,
-      "max_bytes": 22000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.old_publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-reduced-splice-out-smoke",
-      "path": "$.apply",
-      "max_cycles": 18000000,
-      "max_bytes": 22000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.parent.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-reduced-xudt-splice-in-smoke",
-      "path": "$.apply",
-      "max_cycles": 20000000,
-      "max_bytes": 23000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.parent.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-reduced-xudt-splice-out-smoke",
-      "path": "$.apply",
-      "max_cycles": 20000000,
-      "max_bytes": 23000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.activation",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-xudt-splice-in-smoke",
-      "path": "$.apply",
-      "max_cycles": 16000000,
-      "max_bytes": 13000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.old_publication",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-xudt-splice-out-smoke",
-      "path": "$.apply",
-      "max_cycles": 16000000,
-      "max_bytes": 13000
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.parent.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory/exit-channel",
-      "path": "$",
-      "max_cycles": 16500000,
-      "max_bytes": 4500
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.activation",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     },
     {
-      "check": "factory-xudt/smoke",
-      "path": "$.exit",
-      "max_cycles": 16500000,
-      "max_bytes": 4500
-    },
-    {
-      "check": "factory-xudt-negative/smoke",
-      "path": "$.exit",
-      "max_cycles": 16500000,
-      "max_bytes": 4500
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.escape.report",
+      "max_cycles": 40000000,
+      "max_bytes": 100000
     }
   ],
   "proof_profiles": [
     {
-      "check": "factory-reduced-rights-smoke",
-      "transaction_path": "$.update",
-      "proof_kind": "factory_reduced_rights_bounded_claim_decrease",
-      "proof_siblings": 0,
-      "max_witness_len": 3000,
-      "max_cycles": 6000000,
-      "max_bytes": 4000
+      "check": "factory_custody_and_children",
+      "operation": "root_funding",
+      "max_witness_len": 8192,
+      "max_proof_siblings": 0,
+      "max_cycles": 15000000,
+      "max_bytes": 32768
     },
     {
-      "check": "factory-merkle-update-smoke",
-      "transaction_path": "$.update",
-      "proof_kind": "factory_sparse_merkle_update",
-      "proof_siblings": 256,
-      "max_witness_len": 9000,
-      "max_cycles": 30000000,
-      "max_bytes": 20000
+      "check": "factory_custody_and_children",
+      "operation": "ReducedRelease",
+      "max_witness_len": 8192,
+      "max_proof_siblings": 8,
+      "max_cycles": 40000000,
+      "max_bytes": 32768
     },
     {
-      "check": "factory-reduced-exit-smoke",
-      "transaction_path": "$.exit",
-      "proof_kind": "factory_reduced_exit_ckb_reserve_claim",
-      "proof_siblings": 0,
-      "max_witness_len": 3600,
-      "max_cycles": 11000000,
+      "check": "factory_custody_and_children",
+      "operation": "ReducedDeposit",
+      "max_witness_len": 8192,
+      "max_proof_siblings": 8,
+      "max_cycles": 40000000,
+      "max_bytes": 32768
+    },
+    {
+      "check": "factory_custody_and_children",
+      "operation": "ReducedChild",
+      "max_witness_len": 16384,
+      "max_proof_siblings": 8,
+      "max_cycles": 40000000,
+      "max_bytes": 32768
+    },
+    {
+      "check": "factory_custody_and_children",
+      "operation": "materialisation",
+      "max_witness_len": 16384,
+      "max_proof_siblings": 0,
+      "max_cycles": 40000000,
+      "max_bytes": 32768
+    },
+    {
+      "check": "factory_custody_and_children",
+      "operation": "ReducedRights",
+      "max_witness_len": 8192,
+      "max_proof_siblings": 96,
+      "max_cycles": 55000000,
       "max_bytes": 10000
     },
     {
-      "check": "factory-reduced-xudt-exit-smoke",
-      "transaction_path": "$.exit",
-      "proof_kind": "factory_reduced_exit_xudt_change_reserve_claim",
-      "proof_siblings": 0,
-      "max_witness_len": 4000,
-      "max_cycles": 11000000,
-      "max_bytes": 11000
-    },
-    {
-      "check": "factory-reduced-xudt-exit-full-smoke",
-      "transaction_path": "$.exit",
-      "proof_kind": "factory_reduced_exit_xudt_reserve_claim",
-      "proof_siblings": 0,
-      "max_witness_len": 4000,
-      "max_cycles": 11000000,
-      "max_bytes": 11000
-    },
-    {
-      "check": "factory-reduced-xudt-exit-one-sided-smoke",
-      "transaction_path": "$.exit",
-      "proof_kind": "factory_reduced_exit_xudt_one_sided_reserve_claim",
-      "proof_siblings": 0,
-      "max_witness_len": 4000,
-      "max_cycles": 11000000,
-      "max_bytes": 11000
-    },
-    {
-      "check": "factory-splice-in-smoke",
-      "transaction_path": "$.apply",
-      "proof_kind": "factory_splice_all_participants_ckb",
-      "proof_siblings": 0,
-      "max_witness_len": 1300,
-      "max_cycles": 16000000,
-      "max_bytes": 12000
-    },
-    {
-      "check": "factory-splice-out-smoke",
-      "transaction_path": "$.apply",
-      "proof_kind": "factory_splice_all_participants_ckb",
-      "proof_siblings": 0,
-      "max_witness_len": 1300,
-      "max_cycles": 16000000,
-      "max_bytes": 12000
-    },
-    {
-      "check": "factory-reduced-splice-in-smoke",
-      "transaction_path": "$.apply",
-      "proof_kind": "factory_reduced_splice_ckb_sparse_merkle",
-      "proof_siblings": 256,
-      "max_witness_len": 10000,
-      "max_cycles": 18000000,
-      "max_bytes": 22000
-    },
-    {
-      "check": "factory-reduced-splice-out-smoke",
-      "transaction_path": "$.apply",
-      "proof_kind": "factory_reduced_splice_ckb_sparse_merkle",
-      "proof_siblings": 256,
-      "max_witness_len": 10000,
-      "max_cycles": 18000000,
-      "max_bytes": 22000
-    },
-    {
-      "check": "factory-reduced-xudt-splice-in-smoke",
-      "transaction_path": "$.apply",
-      "proof_kind": "factory_reduced_splice_xudt_sparse_merkle",
-      "proof_siblings": 256,
-      "max_witness_len": 10000,
-      "max_cycles": 20000000,
-      "max_bytes": 23000
-    },
-    {
-      "check": "factory-reduced-xudt-splice-out-smoke",
-      "transaction_path": "$.apply",
-      "proof_kind": "factory_reduced_splice_xudt_sparse_merkle",
-      "proof_siblings": 256,
-      "max_witness_len": 10000,
-      "max_cycles": 20000000,
-      "max_bytes": 23000
-    },
-    {
-      "check": "factory-xudt-splice-in-smoke",
-      "transaction_path": "$.apply",
-      "proof_kind": "factory_splice_all_participants_xudt",
-      "proof_siblings": 0,
-      "max_witness_len": 1300,
-      "max_cycles": 16000000,
-      "max_bytes": 13000
-    },
-    {
-      "check": "factory-xudt-splice-out-smoke",
-      "transaction_path": "$.apply",
-      "proof_kind": "factory_splice_all_participants_xudt",
-      "proof_siblings": 0,
-      "max_witness_len": 1300,
-      "max_cycles": 16000000,
-      "max_bytes": 13000
+      "check": "factory_custody_and_children",
+      "operation": "metadata_update",
+      "max_witness_len": 1024,
+      "max_proof_siblings": 0,
+      "max_cycles": 15000000,
+      "max_bytes": 4096
     }
   ]
 }

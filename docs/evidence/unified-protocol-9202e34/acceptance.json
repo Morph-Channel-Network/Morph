@@ -1,0 +1,786 @@
+{
+  "schema": "morph.public_acceptance_evidence.v1",
+  "source_commit": "9202e34162871f90380402bdd9d6432c46406c92",
+  "scenarios": [
+    {
+      "scenario_id": "bilateral_splice",
+      "coverage": [
+        "signed_descriptor_evolution",
+        "typed_asset_binding",
+        "state_retirement_non_orphaning",
+        "budget_regression"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/0/submission/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/0/withheld_bridge_receipt_reconciled",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/1/submission/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/1/withheld_bridge_receipt_reconciled",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/summary/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x63af40ef1db886a835c052293a0273ae48447c3e43b49c722fb7b232337f2622"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xf4bb5c725a2ebb124fd32940f2efd306ecf18ad4cf8d76265636e00e84539f92"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/1/activation/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "bilateral_unilateral_close",
+      "coverage": [
+        "canonical_relative_maturity",
+        "state_retirement_non_orphaning"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/terminal/1/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/terminal/1/package/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x63af40ef1db886a835c052293a0273ae48447c3e43b49c722fb7b232337f2622"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xf4bb5c725a2ebb124fd32940f2efd306ecf18ad4cf8d76265636e00e84539f92"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/terminal/1/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/terminal/1/resulting_state",
+          "expected": null,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_children",
+      "coverage": [
+        "factory_value_delta_binding",
+        "state_retirement_non_orphaning"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/initial_exit_required_before_parent_vote",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/private_exit_signatures_absent_from_parent",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/latest_package_watch/publication/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/same_path_handoffs/0/session/current/package_id",
+          "expected": "0x1a36663263bde8ff976d94ebf78acad6d670e2a0763131957c8358d0e7d6ede7",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/same_path_handoffs/0/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-reduced-latest-0.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "2000000000",
+              "reserve": "18000000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/same_path_handoffs/1/session/current/package_id",
+          "expected": "0x1a36663263bde8ff976d94ebf78acad6d670e2a0763131957c8358d0e7d6ede7",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/same_path_handoffs/1/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-reduced-latest-1.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "2000000000",
+              "reserve": "18000000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/external_child_carrier",
+          "expected": "49600000000",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/ledger-evidence/factory-child-reduced.json",
+          "pointer": "/delivery_count",
+          "expected": 2,
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-child-reduced.json",
+          "pointer": "/target/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "4100000000",
+              "reserve": "25900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_deposit",
+      "coverage": [
+        "factory_value_delta_binding"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/deposit/report/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-deposit.json",
+          "pointer": "/target/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "6100000000",
+              "reserve": "43900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-deposit.json",
+          "pointer": "/target_rights",
+          "expected": [
+            {
+              "asset_type": null,
+              "kind": "ReserveClaim",
+              "participant": "0x0101010101010101010101010101010101010101010101010101010101010101",
+              "quantity": "23000000000",
+              "subchannel": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "asset_type": null,
+              "kind": "ReserveClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "13000000000",
+              "subchannel": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/peer_refreshed_from_public_changes",
+          "expected": true,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_reduced_escape",
+      "coverage": [
+        "factory_value_delta_binding",
+        "non_interference_not_authorisation",
+        "negative_recovery_continuity"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/escape/report/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-escape.json",
+          "pointer": "/target/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "6100000000",
+              "reserve": "23900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-escape.json",
+          "pointer": "/target_rights",
+          "expected": [
+            {
+              "asset_type": null,
+              "kind": "ReserveClaim",
+              "participant": "0x0101010101010101010101010101010101010101010101010101010101010101",
+              "quantity": "3000000000",
+              "subchannel": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "asset_type": null,
+              "kind": "ReserveClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "13000000000",
+              "subchannel": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/peer_refreshed_from_public_changes",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/previous_approval_not_revoked",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/withheld_full_consent_escaped",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/stale_context_preserves_journal",
+          "expected": true,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_terminal_materialisation",
+      "coverage": [
+        "factory_value_delta_binding",
+        "state_retirement_non_orphaning"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/initial_exit_required_before_parent_vote",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/private_exit_signatures_absent_from_parent",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/latest_package_watch/publication/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/same_path_handoffs/0/session/current/package_id",
+          "expected": "0xb468b32cdf2826f9c4ebd9b6e84fa59716004e8bd02955f4566d5f3e56f2e94a",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/same_path_handoffs/0/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-terminal-latest-0.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "4100000000",
+              "reserve": "25900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/same_path_handoffs/1/session/current/package_id",
+          "expected": "0xb468b32cdf2826f9c4ebd9b6e84fa59716004e8bd02955f4566d5f3e56f2e94a",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/same_path_handoffs/1/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-terminal-latest-1.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "4100000000",
+              "reserve": "25900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/external_child_carrier",
+          "expected": "49600000000",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/ledger-evidence/factory-child-terminal.json",
+          "pointer": "/delivery_count",
+          "expected": 2,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/retained_factory/retired",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/retained_factory/carrier_refund/capacity",
+          "expected": "50000000000",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/ledger-evidence/factory-child-terminal.json",
+          "pointer": "/target",
+          "expected": null,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "maximum_asset_lifecycle",
+      "coverage": [
+        "typed_asset_binding",
+        "budget_regression"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/eight-asset-acceptance.json",
+          "pointer": "/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/eight-asset-acceptance.json",
+          "pointer": "/summary/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x04b3f4db3f3270c9ef719b44b91181c9248990c5a2f4a3aa818aac62a510a01a"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x436820fd2c811d3ff2719544fc95989c735d7b757602a526b167e1ba05ccfafc"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x63af40ef1db886a835c052293a0273ae48447c3e43b49c722fb7b232337f2622"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x898121b03457db4766245de32fd4a8040ba7e76a1a14c4bb7255973b52d18aca"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x91fbc8a7df56beec9c86009060fb3508dc6faffcc7155dc3b8c5fa6c420e5a05"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xc8908d3322b99bc9261f4316a674761d2b6d7803789ff3edaf6959d3dce6acde"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xf4bb5c725a2ebb124fd32940f2efd306ecf18ad4cf8d76265636e00e84539f92"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xfc7cf498058908e739cba488bc8ea2904f2495d499cb1c0acf2b7def78f79d72"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/eight-asset-acceptance.json",
+          "pointer": "/asset_count",
+          "expected": 8,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/eight-asset-acceptance.json",
+          "pointer": "/operator_checks/5",
+          "expected": "three_distinct_funders_signed_only_their_own_groups",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "root_funding",
+      "coverage": [
+        "state_authority_authenticity",
+        "state_retirement_non_orphaning",
+        "negative_recovery_continuity"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/activation/resulting_state",
+          "expected": {
+            "phase": "active",
+            "state_number": "0"
+          },
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/summary/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x63af40ef1db886a835c052293a0273ae48447c3e43b49c722fb7b232337f2622"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xf4bb5c725a2ebb124fd32940f2efd306ecf18ad4cf8d76265636e00e84539f92"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/operator_checks/2",
+          "expected": "independent_initial_exit_before_creation_and_same_path_confirmation",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/operator_checks/5",
+          "expected": "three_distinct_funders_signed_only_their_own_groups",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/operator_checks/4",
+          "expected": "unsigned_wallet_preflight_cannot_poison_funding_artifact",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "watch_service_reorg",
+      "coverage": [
+        "watchtower_authority_and_cursor",
+        "sponsor_policy_boundary",
+        "negative_recovery_continuity"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/summary/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x63af40ef1db886a835c052293a0273ae48447c3e43b49c722fb7b232337f2622"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xf4bb5c725a2ebb124fd32940f2efd306ecf18ad4cf8d76265636e00e84539f92"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/operator_checks/11",
+          "expected": "sponsor_fee_cap_rejected",
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/operator_checks/19",
+          "expected": "current_watch_service_health_verified",
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/operator_checks/21",
+          "expected": "watch_reorg_rescan_republished",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/watch_passes/2/service/published_count",
+          "expected": 1,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/watch_passes/4/reorg_recovery/reason",
+          "expected": "cursor_block_missing",
+          "matched": true
+        }
+      ]
+    }
+  ],
+  "audit_families": [
+    {
+      "id": "state_authority_authenticity",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "canonical_relative_maturity",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "state_retirement_non_orphaning",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "signed_descriptor_evolution",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "non_interference_not_authorisation",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "factory_value_delta_binding",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "typed_asset_binding",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "sponsor_policy_boundary",
+      "severity": "P1",
+      "passed": true
+    },
+    {
+      "id": "watchtower_authority_and_cursor",
+      "severity": "P2",
+      "passed": true
+    },
+    {
+      "id": "negative_recovery_continuity",
+      "severity": "P1",
+      "passed": true
+    },
+    {
+      "id": "budget_regression",
+      "severity": "P2",
+      "passed": true
+    }
+  ]
+}

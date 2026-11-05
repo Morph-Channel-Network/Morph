@@ -1,6 +1,6 @@
 //! Bounded, CKB-enforceable conditional batches for bilateral channels.
 //!
-//! A batch is signed once as part of a normal Morph `StateHeader`. Fulfilled
+//! A batch is signed once as part of a current Morph state. Fulfilled
 //! transfers are then authorised by preimages; refunds are authorised only by
 //! canonical absolute-block `since` values. The fixed-size wire profile keeps
 //! host and CKB-script parsing identical and bounded.
@@ -48,6 +48,7 @@ impl ConditionalHashAlgorithm {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConditionalParticipant {
     pub settlement_lock_hash: Bytes32,
     /// Capacity not reserved by any pending transfer.
@@ -55,6 +56,7 @@ pub struct ConditionalParticipant {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConditionalTransferSpec {
     pub transfer_id: Bytes32,
     pub payer_lock_hash: Bytes32,
@@ -66,6 +68,7 @@ pub struct ConditionalTransferSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConditionalBatch {
     pub batch_id: Bytes32,
     pub application_context_commitment: Bytes32,

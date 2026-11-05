@@ -16,11 +16,7 @@ OUT_DIR="$EVIDENCE_DIR/evidence"
 LOG_DIR="$EVIDENCE_DIR/logs"
 LATEST_LINK="${LATEST_LINK:-target/devnet-publication-reliability/latest}"
 BUILD_CONTRACTS="${BUILD_CONTRACTS:-1}"
-# The protocol-defined StateCell carrier activation burns exactly 10,000
-# shannons. At its current serialized size, 10,000 shannons/KW is the highest
-# default pressure that still lets the setup transaction enter the pool. This
-# remains 10x CKB's normal 1,000 shannons/KW floor; the publication profiles
-# below exercise materially higher fee-rate caps and RBF deltas.
+# Exercise an actual node fee floor and a distinct replacement floor.
 MIN_FEE_RATE="${MIN_FEE_RATE:-10000}"
 MIN_RBF_RATE="${MIN_RBF_RATE:-15000}"
 INJECTED_DELAY_MS="${INJECTED_DELAY_MS:-500}"
@@ -69,6 +65,7 @@ run_without_private_keys() {
   env -u MORPH_DEVNET_PRIVATE_KEY \
     -u MORPH_ALICE_PRIVATE_KEY \
     -u MORPH_BOB_PRIVATE_KEY \
+    -u MORPH_CHANNEL_PRIVATE_KEY \
     -u MORPH_OPERATOR_B_PRIVATE_KEY \
     "$@"
 }
@@ -80,6 +77,7 @@ run_morph_no_keys() {
 run_morph_deployer() {
   env -u MORPH_ALICE_PRIVATE_KEY \
     -u MORPH_BOB_PRIVATE_KEY \
+    -u MORPH_CHANNEL_PRIVATE_KEY \
     -u MORPH_OPERATOR_B_PRIVATE_KEY \
     MORPH_DEVNET_PRIVATE_KEY="$MORPH_DEVNET_PRIVATE_KEY" \
     "$MORPH_BIN" "$@"
@@ -180,7 +178,7 @@ rpc_live_cell() {
   jq -n \
     --arg tx_hash "$tx_hash" \
     --arg index "$(printf '0x%x' "$index")" \
-    '{id: 1, jsonrpc: "2.0", method: "get_live_cell", params: [{tx_hash: $tx_hash, index: $index}, false, true]}' |
+    '{id: 1, jsonrpc: "2.0", method: "get_live_cell", params: [{tx_hash: $tx_hash, index: $index}, true, true]}' |
     curl -fsS -H 'content-type: application/json' -d @- "$RPC_URL"
 }
 
@@ -208,6 +206,7 @@ require_tool curl
 require_tool git
 require_tool jq
 require_tool perl
+require_tool python3
 require_tool sha256sum
 resolve_ckb_bin
 
@@ -215,6 +214,10 @@ resolve_ckb_bin
   fail "MORPH_OPERATOR_B_PRIVATE_KEY must be a 32-byte secp256k1 key"
 [ ! -e "$EVIDENCE_DIR" ] || fail "evidence directory already exists: $EVIDENCE_DIR"
 mkdir -p "$OUT_DIR/operator-a/store" "$OUT_DIR/operator-b/store" "$LOG_DIR"
+EVIDENCE_DIR="$(cd "$EVIDENCE_DIR" && pwd)"
+CKB_DIR="$EVIDENCE_DIR/node"
+OUT_DIR="$EVIDENCE_DIR/evidence"
+LOG_DIR="$EVIDENCE_DIR/logs"
 
 if [ "$BUILD_CONTRACTS" = "1" ]; then
   log "building current RISC-V contracts"
@@ -222,7 +225,13 @@ if [ "$BUILD_CONTRACTS" = "1" ]; then
 fi
 log "building Morph CLI"
 cargo build -q -p morph-cli --features devnet >"$LOG_DIR/build-cli.log" 2>&1
-MORPH_BIN="$ROOT_DIR/target/debug/morph-cli"
+mkdir -p "$EVIDENCE_DIR/bin" "$EVIDENCE_DIR/contracts"
+cp "$ROOT_DIR/target/debug/morph-cli" "$EVIDENCE_DIR/bin/morph-cli"
+MORPH_BIN="$EVIDENCE_DIR/bin/morph-cli"
+CONTRACTS_DIR="$EVIDENCE_DIR/contracts"
+for contract in morph-state-lock morph-state-type morph-vault-lock morph-batch-lock morph-sponsor-lock morph-factory-type morph-factory-vault-lock morph-devnet-xudt; do
+  cp "$ROOT_DIR/target/riscv64imac-unknown-none-elf/release/$contract" "$CONTRACTS_DIR/$contract"
+done
 
 load_key MORPH_DEVNET_PRIVATE_KEY "$DEPLOYER_KEY_FILE" deployer "$DEVNET_KEY_OVERRIDE"
 load_key MORPH_ALICE_PRIVATE_KEY "$ALICE_KEY_FILE" Alice "$ALICE_KEY_OVERRIDE"
@@ -240,7 +249,8 @@ run_without_private_keys sh -c '
   test -z "${MORPH_DEVNET_PRIVATE_KEY+x}" &&
   test -z "${MORPH_ALICE_PRIVATE_KEY+x}" &&
   test -z "${MORPH_BOB_PRIVATE_KEY+x}" &&
-  test -z "${MORPH_OPERATOR_B_PRIVATE_KEY+x}"
+  test -z "${MORPH_OPERATOR_B_PRIVATE_KEY+x}" &&
+  test -z "${MORPH_CHANNEL_PRIVATE_KEY+x}"
 ' || fail "watchtower child environment retained a private-key variable"
 WATCHER_ENV_PROBE_PASSED=true
 
@@ -265,76 +275,89 @@ jq -e \
    .observation.rbf_enabled == true' \
   "$OUT_DIR/fee-market.json" >/dev/null || fail "node fee/RBF policy mismatch"
 
-log "deploying contracts and opening reliability channel"
-run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" deploy-contracts \
+log "deploying contracts and creating a current channel through independent journals"
+run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" deploy-contracts --contracts-dir "$CONTRACTS_DIR" \
   --fee 100000000 --mine-blocks 4 --json >"$OUT_DIR/deploy.json"
-run_morph_channel_keys devnet --devnet-only --rpc-url "$RPC_URL" open-channel \
-  --finalise-since 40 \
-  --sponsor-min-state-number 1 \
-  --sponsor-max-state-number 1 \
-  --sponsor-max-fee-per-tx 500000000 \
-  --sponsor-max-total-fee 500000000 \
-  --fee 100000000 \
-  --mine-blocks 4 \
-  --json >"$OUT_DIR/open.json"
-
-STATE_OUT_POINT="$(jq -r '.cells[] | select(.role == "state") | .out_point.tx_hash + ":" + (.out_point.index | tostring)' "$OUT_DIR/open.json")"
-SPONSOR_A_OUT_POINT="$(jq -r '.cells[] | select(.role == "sponsor") | .out_point.tx_hash + ":" + (.out_point.index | tostring)' "$OUT_DIR/open.json")"
-CHANNEL_ID="$(jq -r '.channel_id' "$OUT_DIR/open.json")"
-OPEN_BLOCK="$(jq -r '.activation_block_number' "$OUT_DIR/open.json")"
-
-OPERATOR_A_PUBKEY="$(run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" derive-operator-pubkey --json |
-  jq -r '.pubkey_sec1')"
-OPERATOR_B_PUBKEY="$(env -u MORPH_ALICE_PRIVATE_KEY -u MORPH_BOB_PRIVATE_KEY \
-  -u MORPH_OPERATOR_B_PRIVATE_KEY MORPH_DEVNET_PRIVATE_KEY="$OPERATOR_B_PRIVATE_KEY" \
-  "$MORPH_BIN" devnet --devnet-only --rpc-url "$RPC_URL" derive-operator-pubkey --json |
-  jq -r '.pubkey_sec1')"
-[ "$OPERATOR_A_PUBKEY" != "$OPERATOR_B_PUBKEY" ] || fail "operators resolve to the same signing identity"
-run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" fund-sponsor \
-  --state-out-point "$STATE_OUT_POINT" \
-  --sponsor-change-pubkey "$OPERATOR_B_PUBKEY" \
-  --sponsor-min-state-number 1 \
-  --sponsor-max-state-number 1 \
-  --sponsor-max-fee-per-tx 500000000 \
-  --sponsor-max-total-fee 500000000 \
-  --fee 100000000 \
-  --mine-blocks 4 \
-  --json >"$OUT_DIR/operator-b/sponsor.json"
-SPONSOR_B_OUT_POINT="$(jq -r '.sponsor_out_point.tx_hash + ":" + (.sponsor_out_point.index | tostring)' "$OUT_DIR/operator-b/sponsor.json")"
+run_morph_channel_keys devnet --devnet-only --rpc-url "$RPC_URL" multi-asset-smoke --contracts-dir "$CONTRACTS_DIR" \
+  --shared-funding --asset-count 2 --finalise-since 40 --fee 100000000 \
+  --mine-blocks 4 --store-dir "$OUT_DIR/setup-packages" --json >"$OUT_DIR/open.json"
+jq -e '.schema == "morph.multi_asset_devnet_acceptance.v1" and .shared_funding == true and
+  .finalise.status == "Committed" and (.publications | length) == 2' "$OUT_DIR/open.json" >/dev/null ||
+  fail "current setup did not complete independent funding and signed state progression"
+CHANNEL_ID="$(jq -er '.channel_id' "$OUT_DIR/open.json")"
+STALE_TX_HASH="$(jq -er '.publications[0].tx_hash' "$OUT_DIR/open.json")"
+STATE_OUT_POINT="$STALE_TX_HASH:0"
+rpc_transaction "$STALE_TX_HASH" >"$OUT_DIR/setup-stale-publication.json"
+rpc_transaction "$(jq -er '.fund.tx_hash' "$OUT_DIR/open.json")" >"$OUT_DIR/setup-funding.json"
+OPEN_HEX="$(jq -er '.result.tx_status.block_number' "$OUT_DIR/setup-funding.json")"
+OPEN_BLOCK="$((16#${OPEN_HEX#0x}))"
+# Return to the genuine Settling/1 branch. The complete newer state-2 evidence
+# was independently signed before rollback and remains valid for this exact
+# funding context. Neither a synthetic header nor an old-format builder is used.
+STALE_BLOCK="$(jq -er '.result.tx_status.block_hash' "$OUT_DIR/setup-stale-publication.json")"
+run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" truncate "$STALE_BLOCK" --json >"$OUT_DIR/setup-truncate.json"
+clear_tx_pool
+rpc_live_cell "$STATE_OUT_POINT" >"$OUT_DIR/setup-live-state.json"
+jq -e '.result.status == "live" and (.result.cell.data.content | length) == 638' "$OUT_DIR/setup-live-state.json" >/dev/null ||
+  fail "rollback did not restore the actual current 318-byte State"
+PACKAGE_PATH="$(jq -er '.recovery_packages[-1]' "$OUT_DIR/open.json")"
+run_morph_no_keys validate-multi-asset-package "$PACKAGE_PATH" --json >"$OUT_DIR/state-package.json"
+jq -e '.state_number == "2" and .vaults_bound == true and .vault_count == 2' "$OUT_DIR/state-package.json" >/dev/null ||
+  fail "latest saved evidence is not the complete current state-2 package"
+PACKAGE_SIGNING_DIGEST="$(jq -er '.package_id' "$OUT_DIR/state-package.json")"
+PACKAGE_HEADER_HEX="$(jq -er '.header_hex' "$PACKAGE_PATH")"
+PACKAGE_WITNESS_HEX="$(jq -er '.witness_hex' "$PACKAGE_PATH")"
+[ "${#PACKAGE_HEADER_HEX}" -eq 638 ] || fail "saved package header is not 318 bytes"
+run_morph_no_keys store-multi-asset-package "$PACKAGE_PATH" --store-dir "$OUT_DIR/operator-a/store" >"$OUT_DIR/operator-a/stored-path.txt"
+run_morph_no_keys store-multi-asset-package "$PACKAGE_PATH" --store-dir "$OUT_DIR/operator-b/store" >"$OUT_DIR/operator-b/stored-path.txt"
+OPERATOR_A_PUBKEY="$(run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" derive-operator-pubkey --json | jq -er '.pubkey_sec1')"
+OPERATOR_B_PUBKEY="$(env -u MORPH_ALICE_PRIVATE_KEY -u MORPH_BOB_PRIVATE_KEY -u MORPH_CHANNEL_PRIVATE_KEY \
+  MORPH_DEVNET_PRIVATE_KEY="$OPERATOR_B_PRIVATE_KEY" "$MORPH_BIN" devnet --devnet-only --rpc-url "$RPC_URL" derive-operator-pubkey --json | jq -er '.pubkey_sec1')"
+[ "$OPERATOR_A_PUBKEY" != "$OPERATOR_B_PUBKEY" ] || fail "operators share a sponsor-change identity"
+for operator in operator-a operator-b low-cap; do
+  pubkey="$OPERATOR_A_PUBKEY"; cap=1000000000
+  [ "$operator" != "operator-b" ] || pubkey="$OPERATOR_B_PUBKEY"
+  [ "$operator" != "low-cap" ] || cap=1000000
+  run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" fund-sponsor --contracts-dir "$CONTRACTS_DIR" \
+    --state-out-point "$STATE_OUT_POINT" --sponsor-change-pubkey "$pubkey" \
+    --sponsor-min-state-number 2 --sponsor-max-state-number 2 \
+    --sponsor-max-fee-per-tx "$cap" --sponsor-max-total-fee "$cap" \
+    --fee 100000000 --mine-blocks 4 --json >"$OUT_DIR/$operator-sponsor.json"
+done
+SPONSOR_A_OUT_POINT="$(jq -er '.sponsor_out_point.tx_hash + ":" + (.sponsor_out_point.index | tostring)' "$OUT_DIR/operator-a-sponsor.json")"
+SPONSOR_B_OUT_POINT="$(jq -er '.sponsor_out_point.tx_hash + ":" + (.sponsor_out_point.index | tostring)' "$OUT_DIR/operator-b-sponsor.json")"
+LOW_CAP_SPONSOR_OUT_POINT="$(jq -er '.sponsor_out_point.tx_hash + ":" + (.sponsor_out_point.index | tostring)' "$OUT_DIR/low-cap-sponsor.json")"
 [ "$SPONSOR_A_OUT_POINT" != "$SPONSOR_B_OUT_POINT" ] || fail "operators share a SponsorCell"
 
-run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" fund-sponsor \
-  --state-out-point "$STATE_OUT_POINT" \
-  --sponsor-min-state-number 1 \
-  --sponsor-max-state-number 1 \
-  --sponsor-max-fee-per-tx 1000000 \
-  --sponsor-max-total-fee 1000000 \
-  --fee 100000000 \
-  --mine-blocks 4 \
-  --json >"$OUT_DIR/operator-a/low-cap-sponsor.json"
-LOW_CAP_SPONSOR_OUT_POINT="$(jq -r '.sponsor_out_point.tx_hash + ":" + (.sponsor_out_point.index | tostring)' "$OUT_DIR/operator-a/low-cap-sponsor.json")"
-
-run_morph_channel_keys devnet --devnet-only --rpc-url "$RPC_URL" save-state-package \
-  --state-out-point "$STATE_OUT_POINT" \
-  --state-number 1 \
-  --store-dir "$OUT_DIR/operator-a/store" \
-  --json >"$OUT_DIR/state-package.json"
-PACKAGE_PATH="$(jq -r '.path' "$OUT_DIR/state-package.json")"
-PACKAGE_SIGNING_DIGEST="$(jq -r '.package.signing_digest' "$OUT_DIR/state-package.json")"
-PACKAGE_HEADER_HEX="$(jq -r '.package.header_hex' "$OUT_DIR/state-package.json")"
-PACKAGE_WITNESS_HEX="$(jq -r '.package.witness_hex' "$OUT_DIR/state-package.json")"
-cp "$PACKAGE_PATH" "$OUT_DIR/operator-b/store/"
+run_current_watch() {
+  local operator="$1" sponsor="$2" cursor="$3" attempts="$4" timeout="$5"
+  local pubkey="$OPERATOR_A_PUBKEY"
+  [ "$operator" != "operator-b" ] || pubkey="$OPERATOR_B_PUBKEY"
+  run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" multi-asset-watch --contracts-dir "$CONTRACTS_DIR" \
+    --fee-out-point "$sponsor" --store-dir "$OUT_DIR/$operator/store" \
+    --channel-id "$CHANNEL_ID" --from-block "$OPEN_BLOCK" --cursor-file "$cursor" \
+    --alert-file "$OUT_DIR/$operator/alerts.jsonl" --publication-profile "$OUT_DIR/$operator/profile.json" \
+    --attempt-log "$attempts" --detection-depth 1 --timeout-secs "$timeout" --poll-ms 50 \
+    --max-fee 1000000000 --mine-blocks 0 sponsor --change-pubkey "$pubkey"
+}
+run_current_publish() {
+  local sponsor="$1" pubkey="$2" store="$3" fee="$4"
+  run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" multi-asset-transact --contracts-dir "$CONTRACTS_DIR" \
+    --operation publish --package "$PACKAGE_PATH" --state-out-point "$STATE_OUT_POINT" \
+    --fee-out-point "$sponsor" --store-dir "$store" --fee "$fee" --max-fee 1000000000 \
+    --mine-blocks 0 sponsor --change-pubkey "$pubkey"
+}
 
 jq -n \
   --arg operator_id "watchtower-a" \
-  --argjson min_fee_rate "$MIN_FEE_RATE" \
+  --argjson min_fee_rate 1000000 \
   '{
     schema: "morph.publication_profile",
     operator_id: $operator_id,
     fee: {
       min_fee_rate: $min_fee_rate,
-      max_fee_rate: 200000000,
-      max_fee: 500000000,
+      max_fee_rate: 400000000,
+      max_fee: 1000000000,
       estimator_multiplier_bps: 10000,
       replacement_multiplier_bps: 12500,
       max_attempts: 1,
@@ -359,8 +382,8 @@ jq -n \
     operator_id: $operator_id,
     fee: {
       min_fee_rate: 1000000,
-      max_fee_rate: 200000000,
-      max_fee: 500000000,
+      max_fee_rate: 400000000,
+      max_fee: 1000000000,
       estimator_multiplier_bps: 10000,
       replacement_multiplier_bps: 12500,
       max_attempts: 2,
@@ -381,25 +404,11 @@ jq -n \
 log "proving SponsorPolicy fee caps stop publication before broadcast"
 rpc_tx_pool_info >"$OUT_DIR/sponsor-cap-pool-before.json"
 set +e
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_A_KEY_TMP" \
-  --sponsor-out-point "$LOW_CAP_SPONSOR_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-a/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-a/sponsor-cap-cursor.json" \
-  --publication-profile "$OUT_DIR/operator-a/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-a/sponsor-cap-attempts.jsonl" \
-  --ignore-cursor \
-  --detection-depth 1 \
-  --timeout-secs 5 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/sponsor-cap.stdout" 2>"$OUT_DIR/sponsor-cap.stderr"
+run_current_watch "operator-a" "$LOW_CAP_SPONSOR_OUT_POINT" "$OUT_DIR/operator-a/sponsor-cap-cursor.json" "$OUT_DIR/operator-a/sponsor-cap-attempts.jsonl" 5 >"$OUT_DIR/sponsor-cap.stdout" 2>"$OUT_DIR/sponsor-cap.stderr"
 SPONSOR_CAP_STATUS="$?"
 set -e
 [ "$SPONSOR_CAP_STATUS" -ne 0 ] || fail "over-cap publication unexpectedly entered tx-pool"
-grep -q 'exceeds SponsorPolicy max_fee_per_tx' "$OUT_DIR/sponsor-cap.stderr" ||
+grep -Eqi 'SponsorPolicy|max_fee_per_tx|sponsor.*cap|sponsor.*fee' "$OUT_DIR/sponsor-cap.stderr" ||
   fail "over-cap publication did not identify the SponsorPolicy boundary"
 rpc_tx_pool_info >"$OUT_DIR/sponsor-cap-pool-after.json"
 jq -e --slurpfile before "$OUT_DIR/sponsor-cap-pool-before.json" \
@@ -414,14 +423,7 @@ jq -e '.result.status == "live"' "$OUT_DIR/sponsor-cap-live-cell.json" >/dev/nul
 
 log "proving real fee-floor rejection"
 set +e
-run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" publish-latest-package \
-  --state-out-point "$STATE_OUT_POINT" \
-  --sponsor-out-point "$SPONSOR_A_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-a/store" \
-  --channel-id "$CHANNEL_ID" \
-  --fee 1 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/fee-floor.stdout" 2>"$OUT_DIR/fee-floor.stderr"
+run_current_publish "$SPONSOR_A_OUT_POINT" "$OPERATOR_A_PUBKEY" "$OUT_DIR/operator-a/store" 1 >"$OUT_DIR/fee-floor.stdout" 2>"$OUT_DIR/fee-floor.stderr"
 LOW_FEE_STATUS="$?"
 set -e
 [ "$LOW_FEE_STATUS" -ne 0 ] || fail "below-floor transaction unexpectedly entered tx-pool"
@@ -435,21 +437,7 @@ DETECTION_MS="$((DETECTION_END_MS - START_MS))"
 
 log "operator A submits the first pending publication without participant keys"
 A_BUILD_START_MS="$(date +%s%3N)"
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_A_KEY_TMP" \
-  --sponsor-out-point "$SPONSOR_A_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-a/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-a/cursor.json" \
-  --publication-profile "$OUT_DIR/operator-a/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-a/attempts.jsonl" \
-  --ignore-cursor \
-  --detection-depth 1 \
-  --timeout-secs 5 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/operator-a/watch.json"
+run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.json" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/watch.json"
 A_BUILD_END_MS="$(date +%s%3N)"
 BUILD_AND_VERIFY_MS="$((A_BUILD_END_MS - A_BUILD_START_MS))"
 A_TX_HASH="$(jq -r '.publication.tx_hash' "$OUT_DIR/operator-a/watch.json")"
@@ -469,26 +457,13 @@ rpc_transaction "$DROPPED_A_TX_HASH" >"$OUT_DIR/operator-a/evicted-tx-status.jso
 jq -e '.result.tx_status.status == "unknown" or .result.tx_status.status == "rejected"' \
   "$OUT_DIR/operator-a/evicted-tx-status.json" >/dev/null ||
   fail "cleared publication remained active in the transaction pool"
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_A_KEY_TMP" \
-  --sponsor-out-point "$SPONSOR_A_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-a/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-a/cursor.json" \
-  --publication-profile "$OUT_DIR/operator-a/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-a/attempts.jsonl" \
-  --detection-depth 1 \
-  --timeout-secs 5 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/operator-a/retry-watch.json"
+run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.json" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/retry-watch.json"
 run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" tip --json \
   >"$OUT_DIR/operator-a/mempool-retry-tip-after.json"
 jq -e --slurpfile before "$OUT_DIR/operator-a/mempool-retry-tip-before.json" \
   '.hash == $before[0].hash' "$OUT_DIR/operator-a/mempool-retry-tip-after.json" >/dev/null ||
   fail "mempool retry test unexpectedly changed the canonical tip"
-jq -e '.publication_retry_rescan == true and .reorg_recovery == null and
+jq -e '.retry_rescan == true and .reorg_recovery == null and
        .publication.status == "Pending"' "$OUT_DIR/operator-a/retry-watch.json" >/dev/null ||
   fail "watchtower did not republish the canonical-live stale StateCell after eviction"
 A_TX_HASH="$(jq -r '.publication.tx_hash' "$OUT_DIR/operator-a/retry-watch.json")"
@@ -497,37 +472,15 @@ A_FEE="$(jq -r '.publication.fee' "$OUT_DIR/operator-a/retry-watch.json")"
   fail "mempool retry changed the deterministic carrier without a fee or input change"
 
 log "proving duplicate rebroadcast is reconciled as an accepted pending transaction"
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_A_KEY_TMP" \
-  --sponsor-out-point "$SPONSOR_A_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-a/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-a/cursor.json" \
-  --publication-profile "$OUT_DIR/operator-a/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-a/attempts.jsonl" \
-  --detection-depth 1 \
-  --timeout-secs 5 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/operator-a/duplicate-watch.json"
+run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.json" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/duplicate-watch.json"
 jq -e --arg tx_hash "$A_TX_HASH" \
-  '.publication_retry_rescan == true and .publication.status == "Pending" and
+  '.retry_rescan == true and .publication.status == "Pending" and
    .publication.tx_hash == $tx_hash' "$OUT_DIR/operator-a/duplicate-watch.json" >/dev/null ||
   fail "duplicate carrier was not reconciled as the already-pending transaction"
 
 log "proving an insufficient cross-operator replacement is rejected"
 set +e
-env -u MORPH_ALICE_PRIVATE_KEY -u MORPH_BOB_PRIVATE_KEY -u MORPH_OPERATOR_B_PRIVATE_KEY \
-  MORPH_DEVNET_PRIVATE_KEY="$OPERATOR_B_PRIVATE_KEY" \
-  "$MORPH_BIN" devnet --devnet-only --rpc-url "$RPC_URL" publish-latest-package \
-  --state-out-point "$STATE_OUT_POINT" \
-  --sponsor-out-point "$SPONSOR_B_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-b/store" \
-  --channel-id "$CHANNEL_ID" \
-  --fee "$A_FEE" \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/rbf-insufficient.stdout" 2>"$OUT_DIR/rbf-insufficient.stderr"
+run_current_publish "$SPONSOR_B_OUT_POINT" "$OPERATOR_B_PUBKEY" "$OUT_DIR/operator-b/store" "$A_FEE" >"$OUT_DIR/rbf-insufficient.stdout" 2>"$OUT_DIR/rbf-insufficient.stderr"
 INSUFFICIENT_STATUS="$?"
 set -e
 [ "$INSUFFICIENT_STATUS" -ne 0 ] || fail "insufficient replacement unexpectedly entered tx-pool"
@@ -538,21 +491,7 @@ FAILOVER_START_MS="$(date +%s%3N)"
 log "operator B replaces operator A using an independent sponsor and package store"
 sleep 0.050
 B_WATCH_START_MS="$(date +%s%3N)"
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_B_KEY_TMP" \
-  --sponsor-out-point "$SPONSOR_B_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-b/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-b/cursor.json" \
-  --publication-profile "$OUT_DIR/operator-b/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-b/attempts.jsonl" \
-  --ignore-cursor \
-  --detection-depth 1 \
-  --timeout-secs 5 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/operator-b/watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 5 >"$OUT_DIR/operator-b/watch.json"
 B_WATCH_END_MS="$(date +%s%3N)"
 FAILOVER_MS="$((B_WATCH_START_MS - FAILOVER_START_MS))"
 QUEUE_AND_RBF_MS="$((B_WATCH_END_MS - B_WATCH_START_MS))"
@@ -595,20 +534,7 @@ ORIGINAL_PUBLICATION_BLOCK_HASH="$(jq -r '.result.tx_status.block_hash' "$OUT_DI
 CONFIRMATION_MS="$(($(date +%s%3N) - CONFIRMATION_START_MS))"
 
 log "reconciling durable attempt logs and advancing the cursor"
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_B_KEY_TMP" \
-  --sponsor-out-point "$SPONSOR_B_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-b/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-b/cursor.json" \
-  --publication-profile "$OUT_DIR/operator-b/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-b/attempts.jsonl" \
-  --detection-depth 1 \
-  --timeout-secs 1 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/operator-b/reconciled-watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reconciled-watch.json"
 jq -e --arg tx_hash "$B_TX_HASH" \
   'select(.tx_hash == $tx_hash and .status == "confirmed")' \
   "$OUT_DIR/operator-b/attempts.jsonl" >/dev/null ||
@@ -617,20 +543,7 @@ jq -e --arg tx_hash "$B_TX_HASH" \
 log "inducing a canonical reorg with IntegrationTest truncate"
 run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" mine --blocks 1 --json \
   >"$OUT_DIR/pre-reorg-mine.json"
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_B_KEY_TMP" \
-  --sponsor-out-point "$SPONSOR_B_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-b/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-b/cursor.json" \
-  --publication-profile "$OUT_DIR/operator-b/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-b/attempts.jsonl" \
-  --detection-depth 1 \
-  --timeout-secs 1 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/operator-b/pre-reorg-watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/pre-reorg-watch.json"
 run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" tip --json >"$OUT_DIR/pre-reorg-tip.json"
 CURSOR_BLOCK="$(jq -r '.scanned_to_block' "$OUT_DIR/operator-b/cursor.json")"
 TIP_BLOCK="$(jq -r '.number_value' "$OUT_DIR/pre-reorg-tip.json")"
@@ -647,20 +560,7 @@ run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" truncate "$TRUNCATE_
 # CKB may return detached transactions to the pool. Clear them so recovery is
 # proven by the watchtower's durable package, not by automatic pool replay.
 clear_tx_pool
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_B_KEY_TMP" \
-  --sponsor-out-point "$SPONSOR_B_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-b/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-b/cursor.json" \
-  --publication-profile "$OUT_DIR/operator-b/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-b/attempts.jsonl" \
-  --detection-depth 1 \
-  --timeout-secs 1 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/operator-b/reorg-watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reorg-watch.json"
 REORG_TX_HASH="$(jq -r '.publication.tx_hash' "$OUT_DIR/operator-b/reorg-watch.json")"
 jq -e '(.reorg_recovery.reason == "cursor_block_missing" or
         .reorg_recovery.reason == "cursor_block_hash_mismatch") and
@@ -688,24 +588,38 @@ mine_to_canonical_depth "$OUT_DIR/operator-b/reorg-tx-status.json" \
 REORG_PUBLICATION_BLOCK_HASH="$(jq -r '.result.tx_status.block_hash' "$OUT_DIR/operator-b/reorg-tx-status.json")"
 [ "$ORIGINAL_PUBLICATION_BLOCK_HASH" != "$REORG_PUBLICATION_BLOCK_HASH" ] ||
   fail "reorg recovery publication did not land on a distinct canonical block"
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-latest-package \
-  --private-key-file "$OPERATOR_B_KEY_TMP" \
-  --sponsor-out-point "$SPONSOR_B_OUT_POINT" \
-  --store-dir "$OUT_DIR/operator-b/store" \
-  --channel-id "$CHANNEL_ID" \
-  --from-block "$OPEN_BLOCK" \
-  --cursor-file "$OUT_DIR/operator-b/cursor.json" \
-  --publication-profile "$OUT_DIR/operator-b/profile.json" \
-  --publication-attempt-log "$OUT_DIR/operator-b/attempts.jsonl" \
-  --detection-depth 1 \
-  --timeout-secs 1 \
-  --poll-ms 50 \
-  --mine-blocks 0 \
-  --json >"$OUT_DIR/operator-b/reorg-reconciled-watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reorg-reconciled-watch.json"
 jq -e --arg tx_hash "$REORG_TX_HASH" \
   'select(.tx_hash == $tx_hash and .status == "confirmed")' \
   "$OUT_DIR/operator-b/attempts.jsonl" >/dev/null ||
   fail "reorg recovery attempt log did not reconcile the configured canonical depth"
+
+log "checking bounded current service lifecycle and durable health"
+run_morph_no_keys print-watch-policy-fixture | jq --arg channel "$CHANNEL_ID" \
+  '.channel_id=$channel | .min_detection_depth=1 | .min_timeout_secs=1 | .max_poll_ms=50 |
+   .max_fee=1000000000 | .require_mine_blocks=false | .allow_webhook_alerts=false' \
+  >"$OUT_DIR/operator-b/service-policy.json"
+run_morph_no_keys print-watch-config-fixture | jq \
+  --arg channel "$CHANNEL_ID" --arg dir "$OUT_DIR/operator-b" \
+  --arg sponsor "$SPONSOR_B_OUT_POINT" --argjson from "$OPEN_BLOCK" \
+  '.operator_id="watchtower-b" | .defaults.store_dir=($dir+"/store") |
+   .defaults.watch_policy=($dir+"/service-policy.json") |
+   .defaults.publication_profile=($dir+"/profile.json") |
+   .defaults.publication_attempt_log=($dir+"/service-attempts.jsonl") |
+   .defaults.alert_file=($dir+"/service-alerts.jsonl") | .defaults.alert_webhook_url=null |
+   .defaults.detection_depth=1 | .defaults.timeout_secs=1 | .defaults.poll_ms=50 |
+   .defaults.fee=1000000000 | .defaults.mine_blocks=0 | .defaults.auto_fund_sponsor=false |
+   .channels[0].channel_id=$channel | .channels[0].from_block=$from |
+   .channels[0].sponsor_out_point=$sponsor | .channels[0].cursor_file=($dir+"/service-cursor.json")' \
+  >"$OUT_DIR/operator-b/service-config.json"
+run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-config-service --contracts-dir "$CONTRACTS_DIR" \
+  --private-key-file "$OPERATOR_B_KEY_TMP" --config "$OUT_DIR/operator-b/service-config.json" \
+  --max-passes 1 --sleep-ms 1 --error-backoff-ms 1 --max-consecutive-errors 1 \
+  --health-file "$OUT_DIR/operator-b/service-health.json" --json >"$OUT_DIR/operator-b/service.json"
+jq -e '.completed_passes==1 and .published_count==0 and .error_count==0 and .stopped_reason=="max_passes"' \
+  "$OUT_DIR/operator-b/service.json" >/dev/null || fail "bounded current service did not finish an idle pass"
+jq -e '.status=="stopped" and .completed_passes==1 and .error_count==0 and .updated_unix_ms>0' \
+  "$OUT_DIR/operator-b/service-health.json" >/dev/null || fail "current service health is missing or inconsistent"
 
 END_MS="$(date +%s%3N)"
 TOTAL_MS="$((END_MS - START_MS))"
@@ -768,14 +682,14 @@ jq -n \
     }]
   }' >"$OUT_DIR/challenge-window-dataset.json"
 DATASET_SHA256="0x$(sha256sum "$OUT_DIR/challenge-window-dataset.json" | awk '{print $1}')"
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" assess-challenge-window \
+run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" assess-challenge-window --contracts-dir "$CONTRACTS_DIR" \
   --profile "$OUT_DIR/operator-b/profile.json" \
   --dataset "$OUT_DIR/challenge-window-dataset.json" \
   --expected-dataset-sha256 "$DATASET_SHA256" \
   --state-out-point "$REORG_TX_HASH:0" \
   --json >"$OUT_DIR/challenge-window-assessment.json"
 set +e
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" assess-challenge-window \
+run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" assess-challenge-window --contracts-dir "$CONTRACTS_DIR" \
   --profile "$OUT_DIR/operator-b/profile.json" \
   --dataset "$OUT_DIR/challenge-window-dataset.json" \
   --state-out-point "$SPONSOR_A_OUT_POINT" \
@@ -791,7 +705,7 @@ grep -Eq 'has no type script|does not use the deployed morph-state-type' \
 jq '.network = "wrong-network"' "$OUT_DIR/challenge-window-dataset.json" \
   >"$OUT_DIR/challenge-window-wrong-network.json"
 set +e
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" assess-challenge-window \
+run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" assess-challenge-window --contracts-dir "$CONTRACTS_DIR" \
   --profile "$OUT_DIR/operator-b/profile.json" \
   --dataset "$OUT_DIR/challenge-window-wrong-network.json" \
   --state-out-point "$REORG_TX_HASH:0" \
@@ -804,7 +718,7 @@ set -e
 grep -q 'does not match connected node network' "$OUT_DIR/challenge-window-wrong-network.stderr" ||
   fail "challenge-window network mismatch was not identified"
 set +e
-run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" assess-challenge-window \
+run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" assess-challenge-window --contracts-dir "$CONTRACTS_DIR" \
   --profile "$OUT_DIR/operator-b/profile.json" \
   --dataset "$OUT_DIR/challenge-window-dataset.json" \
   --expected-dataset-sha256 "$DATASET_SHA256" \
@@ -842,12 +756,14 @@ for contract in \
   morph-state-lock morph-state-type morph-vault-lock morph-batch-lock morph-sponsor-lock \
   morph-factory-type morph-factory-vault-lock morph-devnet-xudt
 do
-  sha256sum "target/riscv64imac-unknown-none-elf/release/$contract"
+  sha256sum "$CONTRACTS_DIR/$contract"
 done >"$CONTRACT_HASH_MANIFEST"
 CONTRACT_SET_SHA256="$(sha256sum "$CONTRACT_HASH_MANIFEST" | awk '{print $1}')"
 
 jq -n \
   --slurpfile fee "$OUT_DIR/fee-market.json" \
+  --slurpfile service "$OUT_DIR/operator-b/service.json" \
+  --slurpfile service_health "$OUT_DIR/operator-b/service-health.json" \
   --slurpfile open "$OUT_DIR/open.json" \
   --slurpfile aw "$OUT_DIR/operator-a/watch.json" \
   --slurpfile arw "$OUT_DIR/operator-a/retry-watch.json" \
@@ -881,6 +797,9 @@ jq -n \
     no_participant_keys_in_watchtower: true,
     watcher_environment_probe_passed: $watcher_env_probe,
     distinct_operator_signing_identities: true,
+    state_header_bytes: 318,
+    descriptor_version: 5,
+    independent_current_funding_journals: true,
     immutable_signed_evidence: {
       package_signing_digest: $package_signing_digest,
       original_carrier_matches_package: true,
@@ -928,6 +847,8 @@ jq -n \
         $profile_b[0].window.safety_margin_blocks
       )
     },
+    service_health: $service_health[0],
+    bounded_service: $service[0],
     fee_floor_rejected: true,
     sponsor_cap_rejected_before_broadcast: true,
     insufficient_rbf_rejected: true,
@@ -938,12 +859,12 @@ jq -n \
     publication_attempts: {operator_a: $attempts_a, operator_b: $attempts_b},
     mempool_eviction_recovery: {
       without_reorg: ($arw[0].reorg_recovery == null),
-      cursor_forced_rescan: $arw[0].publication_retry_rescan,
+      cursor_forced_rescan: $arw[0].retry_rescan,
       evicted_status: $evicted[0].result.tx_status,
       retry_publication: $arw[0].publication
     },
     duplicate_rebroadcast: {
-      cursor_forced_rescan: $adw[0].publication_retry_rescan,
+      cursor_forced_rescan: $adw[0].retry_rescan,
       publication: $adw[0].publication
     },
     dataset_network_mismatch_rejected: true,

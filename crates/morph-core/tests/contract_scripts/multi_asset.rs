@@ -172,6 +172,7 @@ fn build_profile(
             .collect(),
     };
     let settlement = MultiAssetSettlement {
+        capability: morph_core::MultiAssetSettlementCapability::Ordinary,
         participant_lock_hashes: locks
             .each_ref()
             .map(|lock| lock.calc_script_hash().unpack()),
@@ -1624,3 +1625,9 @@ fn multi_asset_splice_rejects_reserve_business_reclassification_even_with_valid_
 
 #[path = "factory_multi_asset.rs"]
 mod factory;
+
+#[path = "multi_asset_conditional.rs"]
+mod conditional;
+
+#[path = "current_boundaries.rs"]
+mod boundaries;

@@ -2,10 +2,12 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
 import { inspectMultiAssetPackage, inspectMultiAssetRootDraft, inspectMultiAssetRootCollection,
-  inspectMultiAssetFundingSignature, inspectMultiAssetRootFunding,
+  inspectMultiAssetFundingSignature, inspectMultiAssetRootFunding, inspectConditionalBatchPackage,
+  type ConditionalBatchPackage,
   type MultiAssetRecoveryPackage, type MultiAssetRootDraft, type MultiAssetRootCollection,
   type MultiAssetRootFunding, type MultiAssetSignatureReceipt, type MultiAssetFundingTarget } from "./multi-asset.js";
 export * from "./multi-asset.js";
+export * from "./factory.js";
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
@@ -83,38 +85,6 @@ export interface FairExchangeClaim {
   receipt: PaymentReceipt;
 }
 
-export type ConditionalHashAlgorithm = "ckb_blake2b" | "sha256";
-
-export interface ConditionalTransfer {
-  transfer_id: string;
-  payer_lock_hash: string;
-  hash_algorithm: ConditionalHashAlgorithm;
-  payment_hash: string;
-  amount: number;
-  refund_after_block: number;
-}
-
-export type ConditionalResolution =
-  | { kind: "fulfill"; transfer_id: string; preimage: string }
-  | { kind: "refund"; transfer_id: string };
-
-export interface ConditionalBatchPackage {
-  schema: "morph.conditional_batch_package";
-  channel_id: string;
-  funding_context_id: string;
-  state_number: number;
-  batch_id: string;
-  application_context_commitment: string;
-  participants: Array<{ settlement_lock_hash: string; settled_capacity: number }>;
-  transfers: ConditionalTransfer[];
-  resolutions: ConditionalResolution[];
-  input_since: number;
-  descriptor_hex: string;
-  descriptor_commitment: string;
-  resolution_witness_hex: string;
-  resolved_capacities: [number, number];
-}
-
 /** Authenticated client for durable conditional recovery packages in Morph Hub. */
 export class MorphHubClient {
   private readonly baseUrl: URL;
@@ -140,9 +110,7 @@ export class MorphHubClient {
   }
 
   importConditionalBatch(value: ConditionalBatchPackage): Promise<Record<string, unknown>> {
-    if (value.schema !== "morph.conditional_batch_package") {
-      throw new TypeError("unsupported conditional batch package schema");
-    }
+    inspectConditionalBatchPackage(value);
     return this.request("api/conditional-batches", value);
   }
 

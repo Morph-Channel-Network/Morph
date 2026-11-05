@@ -1,13 +1,46 @@
-use std::collections::BTreeSet;
-
 use morph_core::{
-    Bytes32, FactoryCompactMerkleSibling, FactoryCompactRightProof, FactoryMultiRightMerkleUpdate,
-    FactoryRight, FactoryRightId, FactoryRightKind, factory_empty_subtree_hash,
-    factory_right_sparse_proof, factory_right_sparse_proof_compact, factory_right_sparse_root,
-    validate_factory_multi_right_merkle_update, verify_factory_right_compact_proof,
+    Bytes32, FactoryCompactMerkleSibling, FactoryCompactRightProof, FactoryRight, FactoryRightId,
+    FactoryRightKind, factory_empty_subtree_hash, factory_right_sparse_proof,
+    factory_right_sparse_proof_compact, factory_right_sparse_root,
+    verify_factory_right_compact_proof,
 };
 use morph_script_common::FACTORY_COMPACT_PROOF_MAX_SIBLINGS;
 use proptest::prelude::*;
+
+#[path = "support/factory_reduced.rs"]
+mod support;
+
+// A test case records only the changed proofs. Authorization and all wire
+// semantics are exercised through the production current Factory frame.
+struct CurrentRightsUpdate {
+    before_root: Bytes32,
+    after_root: Bytes32,
+    before: Vec<FactoryCompactRightProof>,
+    after: Vec<FactoryCompactRightProof>,
+}
+fn validate_current_rights_update(
+    update: &CurrentRightsUpdate,
+) -> morph_core::MultiAssetResult<Vec<u8>> {
+    let (mut plan, _) = support::fixture_with_unlisted_change(false);
+    plan.operation = morph_core::FactoryTransitionOperation::ReducedRights;
+    plan.before.state_root = update.before_root;
+    plan.after.state_root = update.after_root;
+    plan.after.content_root = plan.before.content_root;
+    plan.after.outpoint_root = plan.before.outpoint_root;
+    plan.retained = plan.source.clone();
+    plan.payouts.clear();
+    plan.rights = update
+        .before
+        .iter()
+        .zip(&update.after)
+        .map(|(before, after)| morph_core::FactoryReducedReleaseRight {
+            before: before.clone(),
+            after: after.clone(),
+        })
+        .collect();
+    plan.set_locality_digest()?;
+    plan.encode_unsigned()
+}
 
 fn bytes32(value: u8) -> Bytes32 {
     [value; 32]
@@ -48,7 +81,7 @@ fn compact_update(
     before_tree: &[FactoryRight],
     after_tree: &[FactoryRight],
     changed: &[usize],
-) -> FactoryMultiRightMerkleUpdate {
+) -> CurrentRightsUpdate {
     let before_root = factory_right_sparse_root(before_tree).unwrap();
     let after_root = factory_right_sparse_root(after_tree).unwrap();
     let mut proof_pairs = Vec::new();
@@ -61,11 +94,9 @@ fn compact_update(
     }
     proof_pairs.sort_by(|(left, _), (right, _)| left.right.id.cmp(&right.right.id));
     let (before_proofs, after_proofs) = proof_pairs.into_iter().unzip();
-    FactoryMultiRightMerkleUpdate {
+    CurrentRightsUpdate {
         before_root,
         after_root,
-        touched_participants: BTreeSet::from([bytes32(1)]),
-        authorised_participants: BTreeSet::from([bytes32(1)]),
         before: before_proofs,
         after: after_proofs,
     }
@@ -168,7 +199,7 @@ fn multi_right_update_validates_decrease_and_rebalance() {
     after_tree[1].quantity = 80;
 
     let update = compact_update(&before_tree, &after_tree, &[0, 1]);
-    validate_factory_multi_right_merkle_update(&update).unwrap();
+    validate_current_rights_update(&update).unwrap();
 }
 
 #[test]
@@ -178,7 +209,7 @@ fn multi_right_update_rejects_total_increase() {
     after_tree[0].quantity = 150;
 
     let update = compact_update(&before_tree, &after_tree, &[0]);
-    assert!(validate_factory_multi_right_merkle_update(&update).is_err());
+    assert!(validate_current_rights_update(&update).is_err());
 }
 
 #[test]
@@ -193,7 +224,7 @@ fn multi_right_update_rejects_cross_asset_rebalance() {
     after_tree[second].quantity = 101;
 
     let update = compact_update(&before_tree, &after_tree, &[first, second]);
-    assert!(validate_factory_multi_right_merkle_update(&update).is_err());
+    assert!(validate_current_rights_update(&update).is_err());
 }
 
 #[test]
@@ -202,7 +233,7 @@ fn multi_right_update_rejects_unchanged_rights() {
     let after_tree = before_tree.clone();
 
     let update = compact_update(&before_tree, &after_tree, &[0]);
-    assert!(validate_factory_multi_right_merkle_update(&update).is_err());
+    assert!(validate_current_rights_update(&update).is_err());
 }
 
 #[test]
@@ -211,29 +242,19 @@ fn multi_right_update_rejects_foreign_right() {
     let mut after_tree = before_tree.clone();
     after_tree[4].quantity = 40;
 
-    let mut update = compact_update(&before_tree, &after_tree, &[0, 4]);
-    let foreign_proof = FactoryCompactRightProof {
-        right: right(2, 10, FactoryRightKind::Balance, None, 100),
-        siblings: update.before[0].siblings.clone(),
-    };
-    update.before[1] = foreign_proof.clone();
-    update.after[1] = foreign_proof;
-    assert!(validate_factory_multi_right_merkle_update(&update).is_err());
+    let update = compact_update(&before_tree, &after_tree, &[0, 4]);
+    assert!(validate_current_rights_update(&update).is_err());
 }
 
 #[test]
 fn multi_right_update_rejects_non_value_kind() {
-    let before_tree = tree();
-    let after_tree = before_tree.clone();
-
-    let mut update = compact_update(&before_tree, &after_tree, &[0, 6]);
-    let membership = FactoryCompactRightProof {
-        right: right(1, 10, FactoryRightKind::Membership, None, 1),
-        siblings: update.before[0].siblings.clone(),
-    };
-    update.before[1] = membership.clone();
-    update.after[1] = membership;
-    assert!(validate_factory_multi_right_merkle_update(&update).is_err());
+    let mut before_tree = tree();
+    before_tree.push(right(1, 10, FactoryRightKind::Membership, None, 1));
+    let mut after_tree = before_tree.clone();
+    let index = before_tree.len() - 1;
+    after_tree[index].quantity = 0;
+    let update = compact_update(&before_tree, &after_tree, &[index]);
+    assert!(validate_current_rights_update(&update).is_err());
 }
 
 #[test]
@@ -244,21 +265,21 @@ fn multi_right_update_rejects_tampered_proof() {
 
     let mut update = compact_update(&before_tree, &after_tree, &[0]);
     update.before[0].siblings[0].hash = bytes32(123);
-    assert!(validate_factory_multi_right_merkle_update(&update).is_err());
+    assert!(validate_current_rights_update(&update).is_err());
 }
 
 #[test]
-fn multi_right_update_rejects_too_many_rights() {
+fn current_rights_update_rejects_more_than_ten_rights() {
     let before_tree = tree();
     let mut after_tree = before_tree.clone();
     after_tree[0].quantity = 90;
 
     let mut update = compact_update(&before_tree, &after_tree, &[0]);
-    while update.before.len() <= 4 {
+    while update.before.len() <= 10 {
         update.before.push(update.before[0].clone());
         update.after.push(update.after[0].clone());
     }
-    assert!(validate_factory_multi_right_merkle_update(&update).is_err());
+    assert!(validate_current_rights_update(&update).is_err());
 }
 
 #[test]
@@ -270,7 +291,38 @@ fn multi_right_update_rejects_unlisted_foreign_change() {
     after_tree[4].quantity = 500;
 
     let update = compact_update(&before_tree, &after_tree, &[0, 1]);
-    assert!(validate_factory_multi_right_merkle_update(&update).is_err());
+    assert!(validate_current_rights_update(&update).is_err());
+}
+
+#[test]
+fn current_rights_update_rejects_unsorted_ids_and_proof_pairs() {
+    let before_tree = tree();
+    let mut after_tree = before_tree.clone();
+    after_tree[0].quantity -= 1;
+    after_tree[1].quantity -= 1;
+    let mut update = compact_update(&before_tree, &after_tree, &[0, 1]);
+    update.before.swap(0, 1);
+    update.after.swap(0, 1);
+    assert!(validate_current_rights_update(&update).is_err());
+    let mut update = compact_update(&before_tree, &after_tree, &[0]);
+    update.before[0].siblings.reverse();
+    assert!(validate_current_rights_update(&update).is_err());
+}
+
+#[test]
+fn current_rights_update_rejects_identity_swap_and_per_asset_sum_overflow() {
+    let mut before_tree = tree();
+    let mut after_tree = before_tree.clone();
+    after_tree[0].quantity -= 1;
+    let mut update = compact_update(&before_tree, &after_tree, &[0]);
+    update.after[0].right.id.subchannel = bytes32(99);
+    assert!(validate_current_rights_update(&update).is_err());
+    before_tree[0].quantity = u128::MAX;
+    before_tree[1].quantity = 1;
+    let mut after_tree = before_tree.clone();
+    after_tree[0].quantity -= 1;
+    let update = compact_update(&before_tree, &after_tree, &[0, 1]);
+    assert!(validate_current_rights_update(&update).is_err());
 }
 
 proptest! {

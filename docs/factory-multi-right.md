@@ -1,151 +1,127 @@
-# Factory Multi-Right Updates
+# Current Factory reduced rights and custody transitions
 
-## Wire Format: Kind 8 Multi-Right Update
+Status: current unpublished capability, 2026-11-05. All reduced operations use
+one `MORPHFR!` frame over the current Factory State and complete multi-Vault
+custody. The old kind-8 envelope, fixed-slot proofs and separate flat/sparse
+wire implementations are removed. This page describes the surviving compact
+proof algorithm and its current authority boundaries.
 
-Envelope: `WitnessEnvelope` format 1, kind
-`WITNESS_ENVELOPE_KIND_FACTORY_MULTI_RIGHT_UPDATE = 8`, body version
-`FACTORY_MULTI_RIGHT_UPDATE_WITNESS_VERSION = 1`.
+## What one member may authorize
 
-The body is fixed-layout given `(participant_count, right_count)`:
+| Operation | Signers | Rights / physical effect |
+| --- | --- | --- |
+| `ReducedRights` | Exactly the touched member | 1–10 localized value rights; per-asset total cannot increase; custody stays bound and unchanged. |
+| `ReducedRelease` | Exactly the touched member | Up to 9 localized reserve claims; exact wallet payouts and retained custody. |
+| `ReducedDeposit` | Exactly the touched member | Up to 9 localized reserve claims; actual outside funding increases retained custody. |
+| `ReducedChild` | Exactly the touched member | Up to 9 localized reserve claims; canonical 1–4 child materialisation plus retained custody. |
+| `FullCustody` | All 2–16 members | Explicit funded custody change, exact transaction and target rights data. |
 
-```text
-0        u16   witness version (= 1)
-2        u8    participant threshold (= participant_count)
-3        u8    participant count (2..=16)
-4        u8    authorised signature count (= 1)
-5        u8    right count R (1..=FACTORY_MULTI_RIGHT_MAX_COUNT = 4)
-6        u16   reserved (= 0)
-8        ..    participant entries (same 130-byte layout as kinds 2-7)
-P = 8 + N*130
-P+0      32    touched participant
-P+32     u16   compact sibling capacity (= FACTORY_COMPACT_PROOF_MAX_SIBLINGS)
-P+34     u16   reserved (= 0)
-P+36     ..    rights_before[R]  (FACTORY_RIGHT_LEN = 114 each)
-Q = P+36+R*114
-Q+0      ..    rights_after[R]
-S = Q+R*114
-S+0      ..    proof_before[R]: { u16 pair_count, pairs[64] of {u16 depth, 32 hash} }
-T = S+R*(2+64*34)
-T+0      ..    proof_after[R]:  same layout
+Pure full-consent metadata has one separate role: `MORPHFS!` UPDATE, using the
+transaction-bound update domain. There is no second full-metadata branch in
+`MORPHFR!`.
+
+`FullCustody` allows all members to approve a redistribution without applying
+the single-touched-member claim-delta predicate. Actual custody conservation
+is still enforced: source/retained Vaults, each token Type, global CKB lanes,
+occupied capacity, carrier and outside funding/fees must match the transaction.
+All-member consent is not an exception to those physical checks.
+
+The sole parser and operation tags are in
+[`factory_multi_asset/reduced.rs`](../contracts/morph-script-common/src/factory_multi_asset/reduced.rs).
+A frame commits both complete headers, the exact source State OutPoint,
+transaction hash, member identities, source custody/OutPoints, retained custody,
+Type scripts, payouts, and changed rights/proofs. Reduced child creation embeds
+the canonical materialisation intent and public child keys. The actual-cell
+checks live in
+[`factory_multi_asset_runtime.rs`](../contracts/morph-script-common/src/factory_multi_asset_runtime.rs).
+An offline parsed proof alone does not authenticate a live State or transaction.
+
+## Why compact before/after proofs are necessary
+
+A right identifies `(participant, subchannel, kind, asset)`. Its sparse-Merkle
+key is domain-separated from its leaf value. A compact proof carries only
+non-empty `(depth, hash)` sibling pairs, strictly descending from depth 255
+and bounded to 64 pairs. Omitted siblings reconstruct from the canonical
+`FACTORY_RIGHT_EMPTY_DOMAIN` chain. Omitting a real sibling fails root equality.
+A tree requiring more carried siblings is outside this bounded proof shape.
+
+With several changed leaves, another listed right can live inside a sibling
+subtree whose hash legitimately changes. Inclusion proofs on both sides alone
+would also permit hidden changes inside that subtree. The verifier therefore
+walks each pair in lockstep: any differing sibling subtree must contain another
+listed changed key. A difference with no listed key is an unlisted mutation
+and fails closed.
+
+```mermaid
+flowchart LR
+  B["Before proof + old leaf"] --> L["Paired depth-256 walk"]
+  A["After proof + new leaf"] --> L
+  K["Other listed changed keys"] --> L
+  L --> R["Both roots match committed headers"]
+  L --> N["Every differing sibling subtree has a listed key"]
+  R --> V["Check owner, identity, kind and per-asset quantities"]
+  N --> V
+  V --> T["Verify exact-TX signer and actual complete custody"]
 ```
 
-### Compact (variable-depth) sparse-Merkle proofs
+Every listed right has the same before/after identity, belongs to the one
+touched member, and appears in strict raw-right-ID order. `ReducedRights`
+allows `Balance`, `ReserveClaim` and `SponsorBudgetClaim`; membership and
+exit-path rights are excluded. At least one value changes. Checked sums enforce
+`sum(after) <= sum(before)` independently for CKB and each token Type. Value
+can rebalance between value-right kinds within one asset; burning another Type
+cannot authorize minting.
 
-Kinds 2–7 either list every right (kind 2/4) or carry all 256 sibling hashes
-per proof (kinds 3/6/7). Kind 8 carries only the non-empty siblings: a proof
-is a list of `(depth, hash)` pairs sorted by strictly descending depth.
-The verifier walks depths 255 → 0, uses the next pair when its depth matches,
-and otherwise substitutes the canonical empty-subtree hash
-`H_empty(k)` for a subtree holding `2^k` leaf slots, derived in the script
-from `FACTORY_RIGHT_EMPTY_DOMAIN` with the same recurrence as the host
-(`factory_empty_hashes`). Soundness does not depend on the claimed pair set:
-if a real sibling were omitted, the reconstructed root would not match the
-committed root and the script fails closed. The pair count is bounded by
-`FACTORY_COMPACT_PROOF_MAX_SIBLINGS = 64` per proof; a tree whose nearest
-neighbour structure needs more pairs cannot produce this witness shape and is
-rejected.
+Physical reduced operations instead consume/increase `ReserveClaim` rights
+according to actual source, retained and released quantities. Complete source
+State/StateLock identity and exact OutPoints are authenticated. Every retained
+Vault and payout is checked against the transaction; outside fees and funding
+cannot be charged to an untouched member or the collective carrier.
 
-### Update semantics verified by the script
+## Capacity and data availability
 
-1. Standard reduced prelude: 2–16 strictly sorted unique participants,
-   exactly one signed entry, reserved fields zero.
-2. `rights_before` strictly sorted by right identity; each `rights_after[i]`
-   has the identical identity (participant, subchannel, kind, asset) as
-   `rights_before[i]`.
-3. Every right belongs to the single touched participant.
-4. Every right is a value right (`Balance`, `ReserveClaim`, or
-   `SponsorBudgetClaim`); membership and exit-path rights cannot be changed
-   or spent through this path.
-5. Every `proof_before[i]` reconstructs `old_header.state_root`, every
-   `proof_after[i]` reconstructs `new_header.state_root`.
-6. Cross-side localization: each before/after proof pair is walked in
-   lockstep, and any sibling subtree whose hash differs between the two
-   sides must contain one of the other listed rights. A differing subtree
-   with no listed excuse means an unlisted right changed between the
-   committed roots, so the witness fails closed. This is what makes the
-   update non-interfering: only the listed rights may change.
-7. `old_header.access_manifest_root == new_header.access_manifest_root`
-   (identities do not change, so the manifest cannot move).
-8. The witness non-interference digest (domain
-   `CKB_MORPH_FACTORY_MULTI_RIGHT_UPDATE`, binding factory id, old/new update
-   numbers, old/new state roots, old/new access-manifest roots, the touched
-   participant, the right count, and every before/after right body) equals
-   the digest committed in the new header.
-9. Per-asset quantity conservation: for CKB and each distinct xUDT type,
-   `sum_asset(after) <= sum_asset(before)` over the touched participant's
-   listed rights. Individual rights may rebalance within one asset domain,
-   but burning one asset can never mint another. At least one right must
-   change.
-10. The touched participant's signature verifies over
-   `new_header.signing_digest()`.
+CKB reserve and business value are independent global physical lanes across
+Factory Vaults. Token quantities remain independent per Type. A whole-token
+withdrawal may leave peer CKB in a plain retained Vault. Actual external CKB
+can supplement a token-only or dust payout; rights are debited for the Factory
+withdrawal, not for that external contribution.
 
-The factory-type script additionally enforces the shared update invariants
-(monotonic update number, unchanged context, bound vault OutPoint, preserved
-carrier capacity) exactly as for kinds 1–3.
+Reduced paths retain a successor and its carrier. They cannot unilaterally
+retire the last occupied Vault floor or collective State carrier. Child
+recipients may be outside the parent roster; only parent members can authorize
+the Factory. Private initial child exits must be delivered to both child
+parties before the parent signer reserves authorization; public possession
+attestations do not publish those exit signatures.
 
-### Why per-side proofs
+The former all-member-only exit restriction is resolved for admitted reduced
+operations. A member's executable exit still requires precommitted
+`ReserveClaim` leaves, permitted proof shapes, sufficient external fees,
+admitted asset behavior and a payout/retained-floor geometry that can be
+constructed. Aggregate backing alone does not prove every allocation can exit
+or that every last shannon can be withdrawn without the other members.
 
-With several changed leaves, the sibling subtrees of right `i` contain the
-other changed rights `j != i`, whose hashes differ between the before and
-after trees. Kind 8 therefore carries a separate proof array per side; each
-proof independently localises its leaf against the committed root of its own
-tree. Per-side inclusion alone would only constrain the listed rights, so
-the verifier additionally walks both proofs in lockstep and requires every
-sibling subtree whose hash differs between the sides to contain one of the
-other listed rights. Only the listed rights may therefore differ anywhere
-between the two committed trees: an unlisted change necessarily surfaces as
-a differing subtree on some listed path that no listed key can excuse.
+Members must retain complete initial root rights data. Given that saved
+snapshot, `FactoryRightsSnapshot` applies public localized transitions and
+regenerates untouched members' proofs without peer cooperation. An arbitrary
+N-of-N root replacement needs a delivered complete new snapshot. Chain data
+and a root commitment alone cannot recreate missing leaves or proofs.
 
-## Host Surface
+## Host and public workflow
 
-- `morph-script-common`: `FactoryMultiRightUpdateWitness` parse/verify,
-  `factory_multi_right_update_witness_len`, kind-8 envelope admission, empty
-  subtree hash helper, `FACTORY_RIGHT_EMPTY_DOMAIN` and
-  `FACTORY_MULTI_RIGHT_UPDATE_DOMAIN` constants.
-- `morph-core`:
-  - `FactoryCompactMerkleSibling`, `FactoryCompactRightProof`,
-    `FactoryMultiRightMerkleUpdate` types;
-  - `factory_right_sparse_proof_compact` (generate) and
-    `verify_factory_right_compact_proof` (verify with in-host completion);
-  - `validate_factory_multi_right_merkle_update` mirroring the script
-    predicate (single touched participant, value rights only, sorted
-    identities, per-asset non-increase, at least one change);
-  - `ValueLimitPolicy` and `validate_value_limits`.
-- `morph-cli`: `print-factory-multi-right-update-fixture`,
-  `validate-factory-multi-right-update-package`,
-  `print-value-limit-policy-fixture`, `validate-value-limit-policy`,
-  `value-limit-check`, and fixture-checks integration. Live-node save/publication
-  plumbing for kind 8 remains tracked in `roadmap.md`.
-- `morph-factory-type`: kind 8 dispatch in
-  `validate_participant_authorisation` and the state-preserving update arm.
+`morph-core::FactoryMultiAssetReducedRelease` constructs all transition variants
+using the sole shared encoder/parser. `FactorySigningRequest` and independent
+durable Factory journals enforce exact-body signing roles and current custody.
+Public request/custody and exact transaction packages are reviewed by the CLI
+and SDK. `factory-session` controls each member's journal; `devnet factory`
+provides current preparation, wallet signing, keyless submission and activation.
+Required fields have no aliases or missing-field migration.
 
-## Security Boundaries
+Compact proof generation/verification, full sparse root data and generic
+per-Type conservation remain reusable primitives. The removed host
+`FactoryMultiRightMerkleUpdate` authorization mirror and old package commands
+are not retained as a second implementation.
 
-Every boundary below has a negative test; names are listed in
-`SECURITY-FIXES.md`.
-
-| Boundary | Failure mode prevented |
-| --- | --- |
-| Exactly one authorisation signature from the touched participant | Any other participant (or no signature) driving a right update. |
-| All rights belong to the touched participant | Spending or minting another participant's rights. |
-| Value-right kinds only | Burning membership or exit-path rights through the value path. |
-| Strict identity sort + pairwise same-id | Reordering or swapping rights between before/after arrays. |
-| Independent per-side root localisation | Proving an update against a tree that was never committed. |
-| Cross-side localization of every listed pair | Silently rewriting an unlisted right (for example another participant's balance) between the committed roots. |
-| Per-asset non-increase with at least one change | Cross-asset minting, same-asset minting, and no-op update-number burning. |
-| Unchanged access-manifest root | Changing the manifest while claiming a value-only update. |
-| Non-interference digest binding | Replay of a witness against different headers. |
-| Compact pairs strictly descending, bounded, all consumed | Malformed or ambiguous proof encodings. |
-
-## Verification
-
-- `morph-script-common` unit tests: parse round-trip, positive verify, and
-  one negative per boundary above.
-- `morph-core` tests: host/script digest and root parity for compact proofs,
-  generator/verifier round-trip over random trees (proptest), update
-  validation positives/negatives.
-- `hash_parity.rs`: domain parity for the new constants.
-- `contract_scripts.rs` (`make contract-tests`): on-chain CKB-VM execution of
-  a real kind-8 update on the factory-type script, plus on-chain negatives
-  (foreign right, same-asset increase, cross-asset rebalance, bad signature).
-- `make fixture-checks`: kind-8 fixture generation and validation.
+See [current protocol coverage](current-protocol-coverage.md) for operation
+parity, named safety negatives, measured resource ceilings and reproduction
+commands. These local tests do not satisfy independent review or real-asset
+release gates.

@@ -18,6 +18,91 @@ None of these closeouts is a mainnet-ready or production-ready claim. External
 review, mainnet-like fee/reorg evidence, independent release verification,
 multi-operator rehearsal, and a real-asset value policy remain required.
 
+## Current source boundary and historical evidence (2026-11-05)
+
+The current predeployment implementation has one 318-byte channel State,
+descriptor 5, one complete Vault-set lifecycle, and one 306-byte Factory
+State. The former 346/302-byte headers, single-Vault settlement/splice
+codecs, 485/469-byte bridges and `MORPHW!!` kinds 1–8 are removed. Direct and
+Factory-child StateType args use the shared strict 40/72-byte parser; both
+read canonical relative since from their final eight bytes.
+
+Current Factory root and metadata roles are exact-transaction `MORPHFS!`
+format 2; child materialisation uses `MORPHFM!`; localized rights and funded
+custody changes use `MORPHFR!`. Reduced paths authenticate the actual State,
+StateLock and complete exact custody, protect untouched rights/reserve, and
+isolate external funding/fees. Conditional CKB uses descriptor-5 capability 1
+and the sole Batch executor; 104-byte Batch args bind the exact funding context.
+The shared 828-byte inner Batch terms and compact Merkle algorithms survive
+as current capability primitives.
+
+The chronological sections below preserve the findings and fixes at their
+original baselines. Their old wire lengths, activation-fee rules, API names
+and removed test names describe historical evidence. They do **not** specify
+current parser acceptance, prove the changed binaries independently reviewed,
+or establish release readiness. Current test names, operation mapping,
+measured budgets and data-availability limits are recorded in
+[the coverage ledger](docs/current-protocol-coverage.md).
+
+| Historical negative family | Current coverage entry |
+| --- | --- |
+| `state_type_rejects_equal_state_number`, signature/context/carrier drift | `current_state_supersede_preserves_carrier_context_lock_and_signature_authority`; current header context/digest properties. |
+| Fake State header, StateLock mismatch and ambiguous authority | `multi_asset_rejects_fake_state_authority`; `current_vault_authority_checks_state_lock_identity_and_unique_authentic_state`. |
+| Raw absolute since, dirty/typed/split settlement and standalone retirement | `current_finalise_rejects_absolute_since_dirty_typed_split_and_standalone_retirement`. |
+| Sponsor diversion, dirty change, overflow and fake/unbacked publication | `current_sponsor_bounds_fee_budget_change_attribution_and_authentic_publication`. |
+| Kind-8 foreign/nonvalue/unlisted/cross-asset/proof-order negatives | Current `multi_right.rs` invokes the production reduced frame; 17 compact proof/current-rights tests and 11 reduced/proof-data tests. |
+| Old withdrawal-lock and splice physical-delta negatives | Current exact-body splice mutation matrix and Factory freshly-authorized physical mismatch tests. |
+| Factory child authority/private exit | Full/reduced materialisation VM tests, child exit after parent retirement, independent delivery/journal tests. |
+
+The original migration checkpoint passed 77 CKB-VM tests after runtime/common
+pruning and the external-child capability parity check. Current release results
+are recorded separately rather than relabelling that historical checkpoint.
+This is local migration evidence. Independent protocol/script review,
+public-network fee/reorg/latency evidence, independent operators/builds and a
+real-asset value envelope remain required. Complete repository CI and report
+refresh are tracked separately in [the migration ledger](docs/unified-protocol-migration.md).
+
+## Alpha private delivery and initial funding recovery (2026-11-05)
+
+- Private artifact writers create missing Unix directories with 0700 and
+  files/sidecars with 0600, preserving existing shared ancestor permissions and
+  directory fsync. Immutable replay, append and locks reject broader existing
+  private files. Tests:
+  `private_writers_create_restricted_trees_without_chmodding_existing_parents`,
+  `private_replay_append_and_locks_reject_broad_existing_files_without_repair`,
+  `multi_asset_recovery_store_is_durable_idempotent_and_private`.
+- Factory members keep independent durable journals. Reservation precedes the
+  signer and signature recording precedes receipt release, including actual
+  process exits and failed persistence. Tests:
+  `independent_factory_journals_require_all_members_for_two_three_and_sixteen`,
+  `factory_process_exit_preserves_reservation_and_lost_signature_receipt_is_recoverable`,
+  `failed_checkpoint_or_record_persistence_never_releases_a_factory_receipt`.
+- Private delivery verifies the exact child/context before storing recovery.
+  Both child-party possession attestations are required by every parent signer;
+  they cannot substitute for parent authority even when keys coincide. Each
+  honest child verifies and persists its complete private exit before attesting.
+  Test: `child_possession_receipts_cannot_replace_parent_votes_or_cross_child_identity`.
+  These attestations are not consensus proof of private disk availability.
+- Initial funding can export the complete retained exit offline without the
+  peer's last creation receipt. Confirmed same-path handoff still requires a
+  durable local creation vote, exact canonical funding/activation and both valid
+  on-chain creation signatures. Tests:
+  `incomplete_initial_exit_cannot_export_or_authorize_after_peer_loss`,
+  `retained_exit_survives_withheld_creation_receipt_and_requires_local_handoff_vote`.
+  The native matrix also orphans and replays the byte-identical signed funding
+  transaction without new peer votes or journal mutation.
+- Full-store signer rollback remains the separate trusted-freshness boundary in
+  #55. Neither fsync nor these crash tests establishes independent monotonicity
+  after rollback of an entire consistent authority store.
+- Current reduced Factory VM negatives independently check authentic Factory
+  Type/StateLock authority and checked u128 aggregation with valid localized
+  proofs and fresh signatures:
+  `factory_multi_asset_reduced_release_authenticates_factory_type_and_state_lock`
+  (errors 14/69) and
+  `factory_multi_asset_reduced_rights_rejects_u128_group_overflow_with_valid_locality_proofs`
+  (separate before/after sum overflow, error 39). The alpha VM corpus has 84
+  registered tests; the historical 77/82-test checkpoints remain distinct.
+
 ## Factory-materialised State authority binding (2026-08-13)
 
 - Issue: a FactoryProof State creation parsed the Factory exit envelope from
@@ -422,7 +507,7 @@ not fetch the RustSec advisory database because the GitHub request failed with
 an IO error. Later cached and CI runs passed the repository's narrow reviewed
 waiver policy. Every release candidate must still rerun `make supply-chain` and
 record fresh CI/independent-build evidence.
-# Morph 3.0 conditional-batch boundary
+## Historical Morph 3.0 conditional-batch boundary
 
 Morph 3.0 adds descriptor version 3 and `morph-batch-lock`. Conditional CKB
 value is never paid directly from an application result: the signed descriptor
@@ -433,7 +518,7 @@ Negative CKB-VM coverage rejects wrong preimages, premature refunds, descriptor
 substitution, wrong Batch Lock identity/args, and capacity loss. Conditional
 xUDT remains rejected by design.
 
-## Multi-asset bilateral candidate boundary
+## Historical multi-asset bilateral candidate boundary (descriptor 4)
 
 The candidate adds a separate 318-byte State layout and descriptor version 4.
 Legacy encodings are unchanged. Both StateType and Vault Lock validate the

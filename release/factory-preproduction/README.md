@@ -1,38 +1,51 @@
-# Morph 3 Conditional-Batch Candidate
+# Morph current custody — 4.0.0-alpha.1
 
-This directory defines the bounded `morph-v3-conditional-batch` release
-profile. It is a controlled-devnet candidate, not a mainnet or real-assets
-release.
+`morph-current-custody` is the sole current protocol family. This is a
+controlled-devnet candidate with no real assets. Selecting the shared-foundation
+architecture does not approve a mainnet release.
 
-The profile freezes these executable boundaries:
+Bilateral custody and Factory custody use distinct authority objects on the same
+bounded asset, Vault-set, persistence, signing and recovery foundation:
 
-- bilateral and dynamic 2–16 participant Factory state/Vault rules;
-- Factory N-of-N and reduced paths through witness-envelope kinds 1–8;
-- bilateral descriptor version 3 for zero to eight CKB conditional transfers;
-- SHA-256 or CKB-personalised Blake2b payment hashes, exact 32-byte preimages,
-  and canonical absolute-block refunds;
-- Vault args v2 pinning the only allowed `morph-batch-lock` code hash/hash type;
-- whole-Vault materialisation into one Batch Cell, followed by exactly two
-  plain participant outputs with no value loss;
-- durable, channel/funding/state-bound force-resolution packages in Morph Hub;
-- direct CKB flows plus the devnet-only `morph-devnet-xudt` test asset;
-- no conditional xUDT, Hub-submitted chain mutations, mainnet deployment, or
-  real-asset use.
+| Boundary | Current implementation |
+| --- | --- |
+| Bilateral State | 318 bytes; descriptor 5; one to eight Vaults |
+| Factory State | 306 bytes; two to sixteen committed members |
+| Full Factory authorization | Exact-transaction N-of-N root, update, custody and materialisation |
+| Reduced Factory authorization | One touched member; localized compact proofs; independent asset conservation |
+| CKB conditions | At most eight preimage/refund transfers; separate Batch executor |
+| Batch identity | 104 bytes, including the exact funding context |
+| Child recovery | Independent initial-exit journals and public possession receipts; private exits stay with child parties |
+| Operational recovery | Stable journals, canonical reconciliation, same-path handoff, reorg-aware watch service |
 
-`contracts.json` records the exact CKB data hash and size of all eight RISC-V
-ELFs. `envelope.json` is the machine-checked deployment policy. Both are
-checked by CI and included with the ELFs in the deterministic release archive.
+Single-asset channels use a one-entry current manifest. Retired single-Vault
+State/Factory/splice formats, old JSON schemas and old signing backends are not
+supported. Reset no-value development state after an incompatible change.
 
-Verify a clean build:
+A physical reduced Factory operation spends `ReserveClaim` rights. Precommit the
+rights identities and zero-valued future rights needed by the intended workflow;
+metadata `Balance` or sponsor rights do not implicitly create a withdrawal claim.
+Every member must retain the complete initial rights snapshot and apply public
+reduced changes. A full-consent root replacement requires delivery of its complete
+new snapshot before signing. Retained Factory custody keeps an occupied-capacity
+floor and the shared State carrier; single-member escape does not retire that
+collectively owned remainder. Fund child carriers and transaction fees separately.
+
+`contracts.json` pins all eight deterministic ELFs. `envelope.json` is the
+machine-checked devnet policy: only `morph-devnet-xudt` test assets are admitted,
+real assets remain prohibited, and local Hub projections are not chain actions.
+Its lifetime child cap is operator bookkeeping; the independent per-transaction
+child bound is enforced by the protocol. Eight Vaults means eight total entries,
+including a separate plain CKB Vault when present.
 
 ```sh
-make build-contracts
+make ci
+make devnet-current-e2e
 make release-readiness
 make package-contract-release
 ```
 
-`make build-contracts` compiles in a fresh target directory and remaps source
-paths so machine-specific paths and restored caches cannot change reviewed CKB
-Data Hashes. A contract-hash change requires protocol review, contract tests,
-devnet acceptance, and a deliberate manifest update; never update the manifest
-only to make CI green.
+The actual-node runner captures the exact ELF snapshot and transaction evidence.
+Its evidence is development acceptance, not independent release approval.
+A hash change needs a rebuilt manifest and the complete applicable gates; changing
+metadata alone cannot establish the protocol's behavior.

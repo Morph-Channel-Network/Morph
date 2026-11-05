@@ -864,6 +864,7 @@ pub struct RootFundingInspection {
     pub vault_outpoints: Vec<RootFundingPoint>,
     pub assets: Vec<crate::multi_asset_packages::MultiAssetPackageBalance>,
     pub payouts: Vec<serde_json::Value>,
+    pub capability: serde_json::Value,
     pub input_count: usize,
     pub output_count: usize,
 }
@@ -929,6 +930,10 @@ impl RootFundingDraft {
                 })
                 .collect(),
             payouts: crate::multi_asset_session::payout_summary(&creation.settlement),
+            capability: crate::multi_asset_packages::capability_summary(
+                &creation.settlement,
+                &exit.state,
+            )?,
             input_count: tx.raw().inputs().len(),
             output_count: tx.raw().outputs().len(),
         })
@@ -1107,7 +1112,9 @@ pub(crate) mod root_collection_tests {
         result
     }
     pub(crate) fn fixture() -> serde_json::Value {
-        let draft = super::tests::draft_fixture();
+        fixture_from_draft(super::tests::draft_fixture())
+    }
+    pub(crate) fn fixture_from_draft(draft: RootFundingDraft) -> serde_json::Value {
         let inspection = draft.inspection().unwrap();
         let exit = receipts(&draft, RootFundingTarget::Exit);
         let creation = receipts(&draft, RootFundingTarget::Creation);

@@ -385,6 +385,8 @@ pub fn reconciliation_plan(
     local_edges: &[ProviderEdgeDescriptor],
     mirrored_edges: &[MirroredFiberEdge],
 ) -> AdapterResult<Vec<ReconcileAction>> {
+    morph_core::validate_provider_edge_set(local_edges)
+        .map_err(|_| AdapterError::InvalidMorphEdge)?;
     let mut local = BTreeMap::new();
     for edge in local_edges {
         if edge.edge_id
@@ -625,6 +627,59 @@ mod tests {
                 .len(),
             66
         );
+    }
+
+    #[test]
+    fn reconciliation_accepts_distinct_assets_only_at_one_current_channel_snapshot() {
+        let ckb = edge(1);
+        let mut token = ckb.clone();
+        token.asset = AgentAsset::Xudt {
+            ckb_genesis_hash: [5; 32],
+            type_script_hash: [81; 32],
+        };
+        token.edge_id = token.derive_id().unwrap();
+        assert_eq!(
+            reconciliation_plan(&[ckb.clone(), token.clone()], &[])
+                .unwrap()
+                .len(),
+            2
+        );
+        let mut stale = token.clone();
+        stale.state_number += 1;
+        stale.opaque_morph_commitment = [82; 32];
+        assert!(matches!(
+            reconciliation_plan(&[ckb.clone(), stale], &[]),
+            Err(AdapterError::InvalidMorphEdge)
+        ));
+        let mut equivocation = token;
+        equivocation.opaque_morph_commitment = [83; 32];
+        assert!(matches!(
+            reconciliation_plan(&[ckb, equivocation], &[]),
+            Err(AdapterError::InvalidMorphEdge)
+        ));
+    }
+
+    #[test]
+    fn reconciliation_rejects_double_counting_one_type_under_native_and_rgbpp_aliases() {
+        let mut native = edge(1);
+        native.asset = AgentAsset::Xudt {
+            ckb_genesis_hash: [5; 32],
+            type_script_hash: [81; 32],
+        };
+        native.edge_id = native.derive_id().unwrap();
+        let mut rgbpp = native.clone();
+        rgbpp.asset = AgentAsset::Rgbpp(morph_core::RgbppAssetId {
+            ckb_genesis_hash: [5; 32],
+            xudt_type_script_hash: [81; 32],
+            bitcoin_network: morph_core::BitcoinNetwork::Regtest,
+            binding_code_hash: [82; 32],
+        });
+        rgbpp.edge_id = rgbpp.derive_id().unwrap();
+        assert_ne!(native.edge_id, rgbpp.edge_id);
+        assert!(matches!(
+            reconciliation_plan(&[native, rgbpp], &[]),
+            Err(AdapterError::InvalidMorphEdge)
+        ));
     }
 
     #[test]

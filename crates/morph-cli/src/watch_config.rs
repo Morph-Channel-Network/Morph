@@ -1,24 +1,26 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(feature = "devnet")]
+use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
-use crate::devnet::{
-    WatchLatestStatePackageOptions, WatchLatestStatePackageReport, watch_latest_state_package,
-};
-use crate::packages::canonical_hex32;
+use crate::canonical_fields::canonical_hex32;
+#[cfg(feature = "devnet")]
+use crate::devnet::multi_asset_watch::{self, AutoSponsorFunding, Options as CurrentWatchOptions};
 use crate::publication::read_publication_profile;
+#[cfg(feature = "devnet")]
 use crate::rpc::CkbRpcClient;
 
-const WATCH_CONFIG_SCHEMA: &str = "morph.watchtower_config";
+const WATCH_CONFIG_SCHEMA: &str = "morph.watchtower_config.v1";
 const WATCH_CONFIG_RUN_SCHEMA: &str = "morph.watchtower_config_run";
 const WATCH_CONFIG_LOOP_SCHEMA: &str = "morph.watchtower_config_loop";
 const WATCH_CONFIG_SERVICE_SCHEMA: &str = "morph.watchtower_config_service";
 const WATCH_CONFIG_HEALTH_SCHEMA: &str = "morph.watchtower_health";
-const DEFAULT_STORE_DIR: &str = "target/morph-state-packages";
+const DEFAULT_STORE_DIR: &str = "packages";
 const DEFAULT_DETECTION_DEPTH: u64 = 1;
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 const DEFAULT_POLL_MS: u64 = 1_000;
@@ -32,7 +34,7 @@ fn bytes32_hex(seed: u8) -> String {
     format!("0x{}", format!("{seed:02x}").repeat(32))
 }
 
-const FIXTURE_OPERATOR_ID: &str = "watchtower-local";
+const FIXTURE_OPERATOR_ID: &str = "watchtower-a";
 
 fn validate_operator_id(value: &str) -> Result<()> {
     ensure!(
@@ -64,6 +66,7 @@ fn validate_publication_profile_operator(path: &Path, operator_id: &str) -> Resu
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchtowerConfig {
     pub schema: String,
     pub operator_id: String,
@@ -72,6 +75,7 @@ pub struct WatchtowerConfig {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchtowerConfigDefaults {
     pub store_dir: Option<PathBuf>,
     pub watch_policy: Option<PathBuf>,
@@ -89,6 +93,7 @@ pub struct WatchtowerConfigDefaults {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchtowerChannelConfig {
     pub channel_id: String,
     pub from_block: u64,
@@ -147,7 +152,7 @@ pub struct WatchtowerConfigRunReport {
 #[derive(Debug, Serialize)]
 pub struct WatchtowerChannelRunReport {
     pub channel_id: String,
-    pub report: WatchLatestStatePackageReport,
+    pub report: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -183,6 +188,7 @@ pub struct WatchtowerConfigServiceReport {
     pub last_error: Option<String>,
     pub stop_file: Option<PathBuf>,
     pub health_file: Option<PathBuf>,
+    pub last_pass: Option<WatchtowerConfigRunReport>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -207,11 +213,11 @@ impl WatchtowerConfig {
             schema: WATCH_CONFIG_SCHEMA.to_string(),
             operator_id: FIXTURE_OPERATOR_ID.to_string(),
             defaults: WatchtowerConfigDefaults {
-                store_dir: Some(PathBuf::from("target/morph-state-packages")),
-                watch_policy: Some(PathBuf::from("target/watch-policy.json")),
-                publication_profile: None,
-                publication_attempt_log: None,
-                alert_file: Some(PathBuf::from("target/watch-alerts.jsonl")),
+                store_dir: Some(PathBuf::from(DEFAULT_STORE_DIR)),
+                watch_policy: Some(PathBuf::from("watch-policy.json")),
+                publication_profile: Some(PathBuf::from("publication-profile.json")),
+                publication_attempt_log: Some(PathBuf::from("watch-publication-attempts.jsonl")),
+                alert_file: Some(PathBuf::from("watch-alerts.jsonl")),
                 alert_webhook_url: None,
                 detection_depth: Some(3),
                 timeout_secs: Some(30),
@@ -331,8 +337,8 @@ impl WatchtowerConfig {
                     .or(self.defaults.publication_attempt_log.as_ref()),
             );
             ensure!(
-                profile_path.is_none() || attempt_log.is_some(),
-                "watchtower channel {} needs publication_attempt_log when publication_profile is configured",
+                profile_path.is_some() && attempt_log.is_some(),
+                "watchtower channel {} needs an explicit publication_profile and publication_attempt_log for current bounded publication",
                 channel.channel_id
             );
             if let Some(profile_path) = profile_path.as_ref() {
@@ -364,6 +370,7 @@ pub fn read_watchtower_config(path: &Path) -> Result<WatchtowerConfig> {
     Ok(config)
 }
 
+#[cfg(feature = "devnet")]
 pub fn run_watchtower_config_once(
     rpc: &CkbRpcClient,
     config_path: &Path,
@@ -375,9 +382,9 @@ pub fn run_watchtower_config_once(
     let mut reports = Vec::with_capacity(config.channels.len());
     for channel in &config.channels {
         let options = channel_options(&base_dir, &config.defaults, channel, &runtime)?;
-        let report = watch_latest_state_package(rpc, options)
+        let report = multi_asset_watch::watch(rpc, options)
             .with_context(|| format!("failed to watch channel {}", channel.channel_id))?;
-        if let Some(profile_operator_id) = report.operator_id.as_deref() {
+        if let Some(profile_operator_id) = report["operator_id"].as_str() {
             ensure!(
                 profile_operator_id == config.operator_id,
                 "publication profile operator_id {profile_operator_id} does not match watchtower config operator_id {}",
@@ -393,16 +400,12 @@ pub fn run_watchtower_config_once(
         .iter()
         .filter(|channel| {
             terminal_publication_observed(
-                channel
-                    .report
-                    .publication
-                    .as_ref()
-                    .is_some_and(|publication| publication.canonical_confirmed),
-                channel
-                    .report
-                    .publication_reconciliation
-                    .as_ref()
-                    .map_or(0, |reconciliation| reconciliation.confirmed),
+                channel.report["publication"]["canonical_confirmed"]
+                    .as_bool()
+                    .unwrap_or(false),
+                channel.report["publication_reconciliation"]["confirmed"]
+                    .as_u64()
+                    .unwrap_or(0) as usize,
             )
         })
         .count();
@@ -424,6 +427,7 @@ fn terminal_publication_observed(
     publication_canonical_confirmed || reconciled_confirmed > 0
 }
 
+#[cfg(feature = "devnet")]
 pub fn run_watchtower_config_loop(
     rpc: &CkbRpcClient,
     config_path: &Path,
@@ -431,7 +435,7 @@ pub fn run_watchtower_config_loop(
     runtime: WatchtowerRuntimeOptions,
     options: WatchtowerConfigLoopOptions,
 ) -> Result<WatchtowerConfigLoopReport> {
-    config.validate_for_path(config_path)?;
+    config.validate()?;
     ensure!(
         options.passes > 0,
         "watchtower loop passes must be non-zero"
@@ -450,7 +454,8 @@ pub fn run_watchtower_config_loop(
     let mut stopped_after_publication = false;
 
     for pass_number in 1..=options.passes {
-        let report = run_watchtower_config_once(rpc, config_path, config, runtime.clone())?;
+        let reloaded = reload_config(config_path, &config.operator_id)?;
+        let report = run_watchtower_config_once(rpc, config_path, &reloaded, runtime.clone())?;
         let pass_published = report.published_count;
         published_count += pass_published;
         pass_reports.push(WatchtowerConfigPassReport {
@@ -486,6 +491,7 @@ pub fn run_watchtower_config_loop(
     })
 }
 
+#[cfg(feature = "devnet")]
 pub fn run_watchtower_config_service(
     rpc: &CkbRpcClient,
     config_path: &Path,
@@ -493,8 +499,8 @@ pub fn run_watchtower_config_service(
     runtime: WatchtowerRuntimeOptions,
     options: WatchtowerConfigServiceOptions,
 ) -> Result<WatchtowerConfigServiceReport> {
-    config.validate_for_path(config_path)?;
     validate_service_options(&options)?;
+    config.validate()?;
 
     let config_path_string = config_path.display().to_string();
     let mut completed_passes = 0u64;
@@ -503,6 +509,7 @@ pub fn run_watchtower_config_service(
     let mut error_count = 0u64;
     let mut consecutive_errors = 0u64;
     let mut last_error = None;
+    let mut last_pass = None;
 
     write_service_health_if_requested(
         &options.health_file,
@@ -531,13 +538,17 @@ pub fn run_watchtower_config_service(
             break "max_passes".to_string();
         }
 
-        match run_watchtower_config_once(rpc, config_path, config, runtime.clone()) {
+        match reload_config(config_path, &config.operator_id).and_then(|current| {
+            run_watchtower_config_once(rpc, config_path, &current, runtime.clone())
+        }) {
             Ok(report) => {
                 completed_passes = completed_passes.saturating_add(1);
                 published_count = published_count.saturating_add(report.published_count);
                 idle_count = idle_count.saturating_add(report.idle_count);
                 consecutive_errors = 0;
                 last_error = None;
+                let pass_published = report.published_count;
+                last_pass = Some(report);
 
                 write_service_health_if_requested(
                     &options.health_file,
@@ -555,7 +566,7 @@ pub fn run_watchtower_config_service(
                     )?,
                 )?;
 
-                if options.stop_after_publication && report.published_count > 0 {
+                if options.stop_after_publication && pass_published > 0 {
                     break "publication".to_string();
                 }
                 if options
@@ -622,31 +633,93 @@ pub fn run_watchtower_config_service(
         last_error,
         stop_file: options.stop_file,
         health_file: options.health_file,
+        last_pass,
     })
 }
 
+#[cfg(feature = "devnet")]
+fn reload_config(path: &Path, operator: &str) -> Result<WatchtowerConfig> {
+    let current = read_watchtower_config(path)?;
+    ensure!(
+        current.operator_id == operator,
+        "reloaded watch config changes operator identity; restart explicitly"
+    );
+    Ok(current)
+}
+
+#[cfg(feature = "devnet")]
 fn channel_options(
     base_dir: &Path,
     defaults: &WatchtowerConfigDefaults,
     channel: &WatchtowerChannelConfig,
     runtime: &WatchtowerRuntimeOptions,
-) -> Result<WatchLatestStatePackageOptions> {
-    Ok(WatchLatestStatePackageOptions {
+) -> Result<CurrentWatchOptions> {
+    let store_dir = resolve_path(
+        base_dir,
+        channel
+            .store_dir
+            .as_ref()
+            .or(defaults.store_dir.as_ref())
+            .cloned()
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_STORE_DIR)),
+    );
+    let key = crate::devnet::parse_privkey(&runtime.private_key)
+        .map_err(|_| anyhow::anyhow!("invalid watch sponsor funding key"))?;
+    let change_pubkey = hex::encode(
+        key.pubkey()
+            .context("cannot derive watch sponsor change key")?
+            .serialize(),
+    );
+    let auto = channel
+        .auto_fund_sponsor
+        .or(defaults.auto_fund_sponsor)
+        .unwrap_or(false);
+    let fee = channel.fee.or(defaults.fee).unwrap_or(DEFAULT_FEE);
+    let publication_profile = optional_resolved_path(
+        base_dir,
+        channel
+            .publication_profile
+            .as_ref()
+            .or(defaults.publication_profile.as_ref()),
+    )
+    .context("current watch requires publication_profile")?;
+    let attempt_log = optional_resolved_path(
+        base_dir,
+        channel
+            .publication_attempt_log
+            .as_ref()
+            .or(defaults.publication_attempt_log.as_ref()),
+    )
+    .context("current watch requires publication_attempt_log")?;
+    let max_fee = read_publication_profile(&publication_profile)?.fee.max_fee;
+    let cursor_file = optional_resolved_path(base_dir, channel.cursor_file.as_ref())
+        .map(Ok)
+        .unwrap_or_else(|| {
+            crate::watch_cursor::default_watch_cursor_path(&store_dir, &channel.channel_id)
+        })?;
+    let alert_file = optional_resolved_path(
+        base_dir,
+        channel.alert_file.as_ref().or(defaults.alert_file.as_ref()),
+    )
+    .unwrap_or_else(|| {
+        store_dir.join(format!(
+            "watch-alerts-{}.jsonl",
+            channel.channel_id.trim_start_matches("0x")
+        ))
+    });
+    Ok(CurrentWatchOptions {
         contracts_dir: runtime.contracts_dir.clone(),
-        private_key: runtime.private_key.clone(),
-        sponsor_out_point: channel.sponsor_out_point.clone(),
-        store_dir: resolve_path(
-            base_dir,
-            channel
-                .store_dir
-                .as_ref()
-                .or(defaults.store_dir.as_ref())
-                .cloned()
-                .unwrap_or_else(|| PathBuf::from(DEFAULT_STORE_DIR)),
-        ),
+        fee_authorization: crate::devnet::multi_asset_operator::FeeAuthorization::Sponsor {
+            change_pubkey,
+        },
+        fee_out_point: channel.sponsor_out_point.clone().unwrap_or_default(),
+        store_dir,
         channel_id: channel.channel_id.clone(),
         from_block: channel.from_block,
-        cursor_file: optional_resolved_path(base_dir, channel.cursor_file.as_ref()),
+        cursor_file,
+        alert_file,
+        publication_profile,
+        attempt_log,
         watch_policy: optional_resolved_path(
             base_dir,
             channel
@@ -654,29 +727,10 @@ fn channel_options(
                 .as_ref()
                 .or(defaults.watch_policy.as_ref()),
         ),
-        publication_profile: optional_resolved_path(
-            base_dir,
-            channel
-                .publication_profile
-                .as_ref()
-                .or(defaults.publication_profile.as_ref()),
-        ),
-        publication_attempt_log: optional_resolved_path(
-            base_dir,
-            channel
-                .publication_attempt_log
-                .as_ref()
-                .or(defaults.publication_attempt_log.as_ref()),
-        ),
-        alert_file: optional_resolved_path(
-            base_dir,
-            channel.alert_file.as_ref().or(defaults.alert_file.as_ref()),
-        ),
         alert_webhook_url: channel
             .alert_webhook_url
             .clone()
             .or_else(|| defaults.alert_webhook_url.clone()),
-        ignore_cursor: false,
         detection_depth: channel
             .detection_depth
             .or(defaults.detection_depth)
@@ -689,19 +743,19 @@ fn channel_options(
             .poll_ms
             .or(defaults.poll_ms)
             .unwrap_or(DEFAULT_POLL_MS),
-        fee: channel.fee.or(defaults.fee).unwrap_or(DEFAULT_FEE),
+        max_fee,
         mine_blocks: channel
             .mine_blocks
             .or(defaults.mine_blocks)
             .unwrap_or(DEFAULT_MINE_BLOCKS),
-        auto_fund_sponsor: channel
-            .auto_fund_sponsor
-            .or(defaults.auto_fund_sponsor)
-            .unwrap_or(false),
-        auto_sponsor_capacity: channel
-            .auto_sponsor_capacity
-            .or(defaults.auto_sponsor_capacity)
-            .unwrap_or(DEFAULT_AUTO_SPONSOR_CAPACITY),
+        auto_fund_sponsor: auto.then(|| AutoSponsorFunding {
+            private_key: runtime.private_key.clone(),
+            capacity: channel
+                .auto_sponsor_capacity
+                .or(defaults.auto_sponsor_capacity)
+                .unwrap_or(DEFAULT_AUTO_SPONSOR_CAPACITY),
+            funding_fee: fee,
+        }),
     })
 }
 
@@ -776,7 +830,7 @@ fn write_service_health(path: &Path, health: &WatchtowerConfigServiceHealth) -> 
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create health directory {}", parent.display()))?;
     }
-    let tmp = crate::packages::atomic_json_tmp_path(path);
+    let tmp = crate::persistence::atomic_json_tmp_path(path);
     let json = serde_json::to_vec_pretty(health)?;
     fs::write(&tmp, json)
         .with_context(|| format!("failed to write temporary health file {}", tmp.display()))?;
@@ -838,6 +892,17 @@ mod tests {
             incomplete.as_object_mut().unwrap().remove(field);
             assert!(serde_json::from_value::<WatchtowerConfig>(incomplete).is_err());
         }
+        let mut retired = current.clone();
+        retired["schema"] = serde_json::json!("morph.watchtower_config");
+        assert!(
+            serde_json::from_value::<WatchtowerConfig>(retired)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+        let mut unknown = current.clone();
+        unknown["channels"][0]["legacy_package"] = serde_json::json!("old.json");
+        assert!(serde_json::from_value::<WatchtowerConfig>(unknown).is_err());
         let mut missing_origin = current;
         missing_origin["channels"][0]
             .as_object_mut()
@@ -870,37 +935,44 @@ mod tests {
         assert!(err.to_string().contains("needs sponsor_out_point"));
     }
 
+    #[cfg(feature = "devnet")]
     #[test]
     fn resolves_channel_options_relative_to_config_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "morph-current-watch-options-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
         let mut config = WatchtowerConfig::fixture();
         config.defaults.store_dir = Some(PathBuf::from("packages"));
         config.defaults.watch_policy = Some(PathBuf::from("policy.json"));
         config.defaults.alert_file = Some(PathBuf::from("alerts.jsonl"));
+        config.defaults.publication_profile = Some(PathBuf::from("profile.json"));
+        config.defaults.publication_attempt_log = Some(PathBuf::from("attempts.jsonl"));
         config.channels[0].cursor_file = Some(PathBuf::from("cursor.json"));
-        let runtime = test_runtime();
-        let options = channel_options(
-            Path::new("/tmp/morph-watch"),
-            &config.defaults,
-            &config.channels[0],
-            &runtime,
+        let profile = crate::publication::fixture_publication_profile();
+        fs::write(
+            dir.join("profile.json"),
+            serde_json::to_vec(&profile).unwrap(),
         )
         .unwrap();
+        let options =
+            channel_options(&dir, &config.defaults, &config.channels[0], &test_runtime()).unwrap();
+        assert_eq!(options.store_dir, dir.join("packages"));
+        assert_eq!(options.watch_policy, Some(dir.join("policy.json")));
+        assert_eq!(options.alert_file, dir.join("alerts.jsonl"));
+        assert_eq!(options.cursor_file, dir.join("cursor.json"));
+        assert_eq!(options.max_fee, profile.fee.max_fee);
         assert_eq!(
-            options.store_dir,
-            PathBuf::from("/tmp/morph-watch/packages")
+            options.auto_fund_sponsor.as_ref().unwrap().capacity,
+            DEFAULT_AUTO_SPONSOR_CAPACITY
         );
-        assert_eq!(
-            options.watch_policy,
-            Some(PathBuf::from("/tmp/morph-watch/policy.json"))
-        );
-        assert_eq!(
-            options.alert_file,
-            Some(PathBuf::from("/tmp/morph-watch/alerts.jsonl"))
-        );
-        assert_eq!(
-            options.cursor_file,
-            Some(PathBuf::from("/tmp/morph-watch/cursor.json"))
-        );
+        assert!(options.fee_out_point.is_empty());
+        assert!(matches!(
+            options.fee_authorization,
+            crate::devnet::multi_asset_operator::FeeAuthorization::Sponsor { .. }
+        ));
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -942,6 +1014,54 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[cfg(feature = "devnet")]
+    #[test]
+    fn service_reload_revalidates_current_policy_paths_and_freezes_operator_identity() {
+        let dir =
+            std::env::temp_dir().join(format!("morph-watch-current-reload-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let mut profile = crate::publication::fixture_publication_profile();
+        let mut config = WatchtowerConfig::fixture();
+        config.operator_id = profile.operator_id.clone();
+        config.defaults.publication_profile = Some(PathBuf::from("profile.json"));
+        config.defaults.publication_attempt_log = Some(PathBuf::from("attempts.jsonl"));
+        fs::write(
+            dir.join("profile.json"),
+            serde_json::to_vec(&profile).unwrap(),
+        )
+        .unwrap();
+        fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        assert_eq!(reload_config(&path, &config.operator_id).unwrap(), config);
+        config.defaults.poll_ms = Some(200);
+        fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        assert_eq!(
+            reload_config(&path, &config.operator_id)
+                .unwrap()
+                .defaults
+                .poll_ms,
+            Some(200)
+        );
+        let original = config.operator_id.clone();
+        profile.operator_id = "another-operator".to_string();
+        config.operator_id = profile.operator_id.clone();
+        fs::write(
+            dir.join("profile.json"),
+            serde_json::to_vec(&profile).unwrap(),
+        )
+        .unwrap();
+        fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        assert!(
+            reload_config(&path, &original)
+                .unwrap_err()
+                .to_string()
+                .contains("changes operator identity")
+        );
+        config.defaults.publication_profile = None;
+        assert!(config.validate_for_path(&path).is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn stop_count_requires_a_canonically_confirmed_publication() {
         assert!(!terminal_publication_observed(false, 0));
@@ -949,6 +1069,7 @@ mod tests {
         assert!(terminal_publication_observed(false, 1));
     }
 
+    #[cfg(feature = "devnet")]
     #[test]
     fn rejects_zero_loop_options() {
         let config = WatchtowerConfig::fixture();
@@ -982,6 +1103,7 @@ mod tests {
         assert!(err.to_string().contains("sleep_ms must be non-zero"));
     }
 
+    #[cfg(feature = "devnet")]
     #[test]
     fn rejects_unbounded_loop_report_size() {
         let config = WatchtowerConfig::fixture();
@@ -1001,6 +1123,7 @@ mod tests {
         assert!(err.to_string().contains("must not exceed"));
     }
 
+    #[cfg(feature = "devnet")]
     #[test]
     fn service_stops_before_rpc_when_stop_file_exists() {
         let dir =
@@ -1040,6 +1163,7 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[cfg(feature = "devnet")]
     #[test]
     fn service_stops_after_bounded_errors_and_writes_health() {
         let dir =
@@ -1088,6 +1212,7 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    #[cfg(feature = "devnet")]
     #[test]
     fn rejects_invalid_service_options() {
         let config = WatchtowerConfig::fixture();
