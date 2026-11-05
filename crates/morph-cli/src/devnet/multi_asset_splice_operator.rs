@@ -15,8 +15,8 @@ use std::io::Read;
 pub enum FeeAuthorization {
     Presigned,
     Wallet {
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
 }
 impl std::fmt::Debug for FeeAuthorization {

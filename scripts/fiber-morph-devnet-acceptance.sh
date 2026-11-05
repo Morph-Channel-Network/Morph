@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/private-key-files.sh"
 PARENT_DIR="$(cd "$ROOT_DIR/.." && pwd)"
 
 FIBER_DIR="${FIBER_DIR:-$PARENT_DIR/fiber}"
@@ -58,6 +59,8 @@ fail() {
   printf '[fiber-morph-acceptance] error: %s\n' "$*" >&2
   exit 1
 }
+
+morph_reject_raw_private_keys || fail "use protected private-key file paths"
 
 require_tool() {
   local name="$1"
@@ -242,10 +245,6 @@ require_devnet_fixture_key_file() {
   [ -f "$path" ] || fail "missing $label devnet fixture key file: $path"
   grep -Eq '^(0x)?[0-9a-fA-F]{64}$' "$path" ||
     fail "$label devnet fixture key file must contain exactly one secp256k1 key: $path"
-}
-
-read_devnet_fixture_key() {
-  tr -d '\r\n' <"$1"
 }
 
 rpc_ready() {
@@ -644,10 +643,6 @@ run_period_check_expiry_suite() {
 
 run_morph_stateful_on_fiber_ckb() {
   local current_dir="$OUT_DIR/morph-stateful"
-  local deployer_key alice_key bob_key
-  deployer_key="$(read_devnet_fixture_key "$MORPH_FIBER_DEPLOYER_KEY_FILE")"
-  alice_key="$(read_devnet_fixture_key "$MORPH_FIBER_ALICE_KEY_FILE")"
-  bob_key="$(read_devnet_fixture_key "$MORPH_FIBER_BOB_KEY_FILE")"
   # The runner owns its fresh output directory and never starts/stops the
   # external Fiber chain. Preserve an independent same-genesis observation.
   [ ! -e "$current_dir" ] || fail "current Morph evidence already exists: $current_dir"
@@ -661,9 +656,9 @@ run_morph_stateful_on_fiber_ckb() {
     cd "$ROOT_DIR"
     EXTERNAL_RPC_URL="$FIBER_CKB_RPC_URL" \
     CKB_BIN="$CKB_BIN" FIBER_DIR="$FIBER_DIR" \
-    MORPH_DEVNET_PRIVATE_KEY="$deployer_key" \
-    MORPH_ALICE_PRIVATE_KEY="$alice_key" \
-    MORPH_BOB_PRIVATE_KEY="$bob_key" \
+    MORPH_E2E_DEPLOYER_KEY_FILE="$MORPH_FIBER_DEPLOYER_KEY_FILE" \
+    MORPH_E2E_ALICE_KEY_FILE="$MORPH_FIBER_ALICE_KEY_FILE" \
+    MORPH_E2E_BOB_KEY_FILE="$MORPH_FIBER_BOB_KEY_FILE" \
     OUT_DIR="$current_dir" \
       scripts/devnet-current-e2e.sh
   ) >"$LOG_DIR/morph-stateful-on-fiber-ckb.log" 2>&1

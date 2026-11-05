@@ -164,8 +164,9 @@ The reservation is persisted before calling the signer and the signature is
 persisted before stdout returns its receipt. A crashed process releases the OS
 lock. Initialization refuses an existing session rather than resetting history.
 
-Each participant runs its own session and supplies its own signing key through
-`MORPH_CHANNEL_PRIVATE_KEY` (hidden from help values). `--local-pubkey` is the
+Each participant runs its own session and supplies the path to its protected
+signing-key file through `MORPH_CHANNEL_PRIVATE_KEY_FILE`; see
+[key input](runbooks/key-input.md). `--local-pubkey` is the
 canonical `0x`-prefixed compressed 33-byte key. Review `inspect` output, including
 all proposed per-asset allocations and payout-lock identities, before `sign`.
 
@@ -289,7 +290,7 @@ participant private keys and synthetic issuer helpers are not needed. It
 supports `--operation activate|publish|finalise`, an explicit live
 `--state-out-point`, a distinct plain `--fee-out-point`, mandatory `--max-fee`,
 and `--dry-run`. The required `wallet` fee authorization uses the hidden-value
-`MORPH_DEVNET_PRIVATE_KEY` environment option. Dry run persists the recovery evidence and returns the signed
+`MORPH_DEVNET_PRIVATE_KEY_FILE` environment option naming its protected key file. Dry run persists the recovery evidence and returns the signed
 transaction plus VM estimates without submitting it.
 
 Before constructing any transaction, the command validates every live Vault

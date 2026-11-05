@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { closeSync, constants as fsConstants, fstatSync, openSync, readSync } from "node:fs";
 
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 
@@ -14,7 +15,10 @@ import {
 const payeeUrl = requiredEnv("MORPH_AGENT_PAYEE_URL");
 const payerUrl = requiredEnv("MORPH_AGENT_PAYER_URL");
 const ckbNetworkId = requiredByte32Env("MORPH_AGENT_CKB_NETWORK_ID");
-const privateKey = requiredByte32Env("MORPH_AGENT_PAYER_PRIVATE_KEY");
+if (Object.hasOwn(process.env, "MORPH_AGENT_PAYER_PRIVATE_KEY")) {
+  throw new Error("raw payer key input is unsupported; use MORPH_AGENT_PAYER_PRIVATE_KEY_FILE");
+}
+const privateKey = protectedPayerKeyFile(requiredEnv("MORPH_AGENT_PAYER_PRIVATE_KEY_FILE"));
 const expectedPayee = requiredByte32Env("MORPH_AGENT_EXPECTED_PAYEE");
 const expectedFiberRoute = [
   requiredPubkeyEnv("MORPH_AGENT_FIBER_NODE1_PUBKEY"),
@@ -22,7 +26,7 @@ const expectedFiberRoute = [
   requiredPubkeyEnv("MORPH_AGENT_FIBER_NODE3_PUBKEY"),
 ];
 
-const payerPublicKey = secp256k1.getPublicKey(decodeHex(privateKey, 32), true);
+const payerPublicKey = secp256k1.getPublicKey(privateKey, true);
 const payer = deriveMorphAccountId(payerPublicKey);
 assert.notEqual(payer, expectedPayee, "payer and payee identities must differ");
 
@@ -128,6 +132,8 @@ assert.ok(outgoingIndex.payments.some(payment =>
   payment.payment_hash === requirement.payment_hash && payment.status === "Success"
 ));
 
+privateKey.fill(0);
+
 console.log(JSON.stringify({
   schema: "morph.agent_fiber_devnet_e2e",
   status: "passed",
@@ -165,6 +171,40 @@ async function retryPaymentRequired(operation) {
     }
   }
   throw lastError;
+}
+
+// This is an isolated development test input, with the same file boundary as
+// the Rust binaries. Paths are the only secret-related environment values.
+function protectedPayerKeyFile(path) {
+  if (typeof process.getuid !== "function" || typeof fsConstants.O_NOFOLLOW !== "number"
+      || typeof fsConstants.O_NONBLOCK !== "number") {
+    throw new Error("protected payer key files are unsupported on this platform");
+  }
+  let fd;
+  const buffer = Buffer.alloc(257);
+  try {
+    fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0
+        || stat.size > 256) throw new Error("invalid protected file");
+    const count = readSync(fd, buffer, 0, buffer.length, 0);
+    if (count > 256) throw new Error("oversized protected file");
+    const text = buffer.subarray(0, count).toString("utf8").replace(/^[\t-\r ]+|[\t-\r ]+$/g, "");
+    const key = decodeHex(text, 32);
+    // Validate the scalar before any RPC operation and keep failures secret-safe.
+    try {
+      secp256k1.getPublicKey(key, true);
+    } catch {
+      key.fill(0);
+      throw new Error("invalid scalar");
+    }
+    return key;
+  } catch {
+    throw new Error("protected payer key file is invalid or inaccessible");
+  } finally {
+    buffer.fill(0);
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 function requiredEnv(name) {

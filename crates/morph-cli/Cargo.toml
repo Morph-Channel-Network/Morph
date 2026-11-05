@@ -15,6 +15,8 @@ default = []
 devnet = []
 
 [dependencies]
+morph-key-input = { version = "4.0.0-alpha.1", path = "../morph-key-input" }
+zeroize.workspace = true
 anyhow.workspace = true
 ckb-crypto.workspace = true
 ckb-hash.workspace = true

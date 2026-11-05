@@ -195,7 +195,7 @@ morph-cli multi-asset-session --session alice.json export-splice --store-dir rec
 ```
 
 Both signers prepare the same exact draft and exchange each signature role.
-`MORPH_CHANNEL_PRIVATE_KEY` supplies only the local signer key. The snapshot
+`MORPH_CHANNEL_PRIVATE_KEY_FILE` supplies the protected file path for the local signer key; see [key input](runbooks/key-input.md). The snapshot
 retains the exact transaction before any signature is produced. Export durably
 writes the full future unilateral recovery package before returning a binary
 packed `.tx` with the complete Morph witness, preserving other input witnesses.
@@ -238,7 +238,8 @@ morph-cli devnet --devnet-only --rpc-url "$CKB_RPC" multi-asset-splice-submit \
   --store-dir recovery --max-fee 100000000 --dry-run wallet
 ```
 
-`wallet` uses only `MORPH_DEVNET_PRIVATE_KEY` for independent external funding
+`wallet` reads the protected key file named by `MORPH_DEVNET_PRIVATE_KEY_FILE`
+for independent external funding
 inputs. Every such input must belong to that wallet and carry only a registered
 token or plain CKB. All extra change must return to the same wallet; carrier,
 new Vault and withdrawal allocations are checked separately. `presigned` accepts

@@ -29,9 +29,9 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 #[allow(clippy::large_enum_variant)] // Parsed once at process start; boxing every CLI field adds noise.
 enum Command {
-    /// Generate a Biscuit root key for MORPH_AGENT_BISCUIT_PRIVATE_KEY.
+    /// Generate a Biscuit root key; retain its private output in a protected key file.
     GenerateKey,
-    /// Generate a secp256k1 key for MORPH_AGENT_RECEIPT_PRIVATE_KEY.
+    /// Generate a receipt-signing key; retain its private output in a protected key file.
     GenerateReceiptKey,
     /// Derive a Morph account ID from a compressed secp256k1 public key.
     AccountId {
@@ -51,11 +51,11 @@ enum Command {
         /// Bearer required by durable creation and operator routes. Mandatory for non-loopback listeners.
         #[arg(long, env = "MORPH_AGENT_API_BEARER_TOKEN", hide_env_values = true)]
         api_bearer_token: Option<String>,
-        #[arg(long, env = "MORPH_AGENT_BISCUIT_PRIVATE_KEY", hide_env_values = true)]
-        biscuit_private_key: String,
+        #[arg(long = "biscuit-private-key-file", env = "MORPH_AGENT_BISCUIT_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::biscuit_file)]
+        biscuit_private_key: morph_key_input::SecretString,
         /// secp256k1 key used to sign canonical terminal settlement receipts.
-        #[arg(long, env = "MORPH_AGENT_RECEIPT_PRIVATE_KEY", hide_env_values = true)]
-        receipt_private_key: String,
+        #[arg(long = "receipt-private-key-file", env = "MORPH_AGENT_RECEIPT_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        receipt_private_key: morph_key_input::SecretString,
         #[arg(long)]
         payee: String,
         /// Morph identity allowed to sign outgoing `/v1/pay` requests.
@@ -134,8 +134,10 @@ async fn main() -> Result<()> {
                 "--api-bearer-token is required for a non-loopback listener"
             );
             let credentials = CredentialService::from_private_key(&biscuit_private_key)
-                .context("invalid MORPH_AGENT_BISCUIT_PRIVATE_KEY")?;
+                .context("invalid Biscuit private-key file")?;
             let receipt_signing_key = parse_receipt_signing_key(&receipt_private_key)?;
+            drop(biscuit_private_key);
+            drop(receipt_private_key);
             let durable_store = Arc::new(
                 DurableStore::open(store, credentials.store_key())
                     .context("failed to open encrypted Morph Agent store")?,
@@ -189,13 +191,12 @@ async fn main() -> Result<()> {
 }
 
 fn parse_receipt_signing_key(value: &str) -> Result<SigningKey> {
-    let raw = hex::decode(value.strip_prefix("0x").unwrap_or(value))
-        .context("MORPH_AGENT_RECEIPT_PRIVATE_KEY must be hexadecimal")?;
-    ensure!(
-        raw.len() == 32,
-        "MORPH_AGENT_RECEIPT_PRIVATE_KEY must be 32 bytes"
+    let raw = zeroize::Zeroizing::new(
+        hex::decode(value.strip_prefix("0x").unwrap_or(value))
+            .context("receipt private-key file must be hexadecimal")?,
     );
-    SigningKey::from_slice(&raw).context("invalid MORPH_AGENT_RECEIPT_PRIVATE_KEY")
+    ensure!(raw.len() == 32, "receipt private-key file must be 32 bytes");
+    SigningKey::from_slice(&raw).context("invalid receipt private-key file")
 }
 
 fn account_id_from_public_key(value: &str) -> Result<String> {
@@ -228,6 +229,52 @@ fn read_asset_catalog(path: &Path) -> Result<Vec<RgbppAsset>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agent_private_keys_only_accept_protected_file_paths() {
+        use clap::CommandFactory;
+        let command = Cli::command();
+        let serve = command
+            .get_subcommands()
+            .find(|s| s.get_name() == "serve")
+            .unwrap();
+        let mut count = 0;
+        for arg in serve.get_arguments() {
+            if let Some(name) = arg.get_long() {
+                if name.contains("private-key") {
+                    assert!(name.ends_with("-file"));
+                    assert_eq!(
+                        arg.get_value_parser().type_id(),
+                        std::any::TypeId::of::<morph_key_input::SecretString>()
+                    );
+                    assert!(arg.get_all_aliases().unwrap_or_default().is_empty());
+                    count += 1;
+                }
+            }
+            if let Some(env) = arg.get_env() {
+                assert!(!env.to_string_lossy().ends_with("PRIVATE_KEY"));
+            }
+        }
+        assert_eq!(count, 2);
+        for flag in ["--biscuit-private-key", "--receipt-private-key"] {
+            for args in [
+                vec![
+                    "morph-agent".to_owned(),
+                    "serve".into(),
+                    flag.into(),
+                    "SECRET_MUST_NOT_APPEAR".into(),
+                ],
+                vec![
+                    "morph-agent".to_owned(),
+                    "serve".into(),
+                    format!("{flag}=SECRET_MUST_NOT_APPEAR"),
+                ],
+            ] {
+                let error = Cli::try_parse_from(args).unwrap_err().to_string();
+                assert!(!error.contains("SECRET_MUST_NOT_APPEAR"));
+            }
+        }
+    }
 
     #[test]
     fn account_id_matches_the_typescript_sdk_vector() {

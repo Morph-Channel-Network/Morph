@@ -391,19 +391,26 @@ make ci
 
 Run an isolated node using the same public disposable fixture scalars 1, 2
 and 3 as the CI workflow. This example supplies them directly to the child
-process without printing key values or requiring a separate Fiber checkout:
+process through protected files, without private-key argv/environment values or a separate Fiber checkout:
 
 ```sh
 python3 - <<'FIXTURE'
 import os
+from pathlib import Path
 import subprocess
+import tempfile
 
 env = os.environ.copy()
-for scalar, name in enumerate(("MORPH_DEVNET_PRIVATE_KEY", "MORPH_ALICE_PRIVATE_KEY", "MORPH_BOB_PRIVATE_KEY"), 1):
-    env[name] = format(scalar, "064x")
-env["CKB_BIN"] = "/path/to/ckb"
-env["OUT_DIR"] = "target/current-protocol-e2e/reproduction"
-subprocess.run(["bash", "scripts/devnet-current-e2e.sh"], env=env, check=True)
+with tempfile.TemporaryDirectory(prefix="morph-public-fixtures-") as directory:
+    for scalar, name in enumerate(("MORPH_DEVNET_PRIVATE_KEY_FILE", "MORPH_ALICE_PRIVATE_KEY_FILE", "MORPH_BOB_PRIVATE_KEY_FILE"), 1):
+        path = Path(directory) / name
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as output:
+            output.write(format(scalar, "064x") + "\\n")
+        env[name] = str(path)
+    env["CKB_BIN"] = "/path/to/ckb"
+    env["OUT_DIR"] = "target/current-protocol-e2e/reproduction"
+    subprocess.run(["bash", "scripts/devnet-current-e2e.sh"], env=env, check=True)
 FIXTURE
 ```
 

@@ -27,7 +27,7 @@ pub struct SignOptions {
     pub contracts_dir: PathBuf,
     pub max_fee: u64,
     pub store_dir: PathBuf,
-    pub private_key: String,
+    pub private_key: morph_key_input::SecretString,
 }
 fn read(path: &Path, max: usize) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();

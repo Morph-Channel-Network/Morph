@@ -1,5 +1,5 @@
 {
-  "schema": "morph.preproduction_envelope",
+  "schema": "morph.preproduction_envelope.v2",
   "release_profile": "morph-current-custody",
   "effective_date": "2026-11-05",
   "review_by": "2026-12-04",
@@ -11,18 +11,58 @@
   ],
   "real_assets_allowed": false,
   "hub_chain_actions_allowed": false,
+  "protocol_limits": {
+    "factory_min_participant_count": 2,
+    "factory_max_participant_count": 16,
+    "max_children_per_transaction": 4,
+    "max_vaults_per_state": 8,
+    "max_metadata_rights_per_transition": 10,
+    "max_physical_claims_per_transition": 9,
+    "compact_proof_depth": 256,
+    "max_siblings_per_compact_proof": 64
+  },
+  "qualification": {
+    "phase": "A_shape_rules",
+    "release_admitted": false,
+    "production_allowed": false,
+    "pending_evidence_issues": [
+      22,
+      28,
+      27,
+      44
+    ],
+    "exact_release_evidence_status": "pending",
+    "joint_protocol_maxima_native_qualified": false,
+    "request_shape_enforcement": "pending_exact_request_integration",
+    "contract_manifest": "release/factory-preproduction/contracts.json",
+    "acceptance_budget_profile": "docs/devnet-smoke-budget.example.json"
+  },
+  "operator_requirements": {
+    "lifetime_child_cap_mode": "operator_admission_ledger_no_chain_counter",
+    "complete_rights_snapshot_required": true,
+    "replacement_snapshot_delivery_required": true,
+    "payout_and_retained_floor_geometry_required": true,
+    "independent_carrier_and_fee_funding_required": true
+  },
   "factory": {
-    "min_participant_count": 2,
-    "max_participant_count": 16,
     "max_active_factories": 4,
     "max_children_per_factory": 10,
     "max_capacity_shannons": 1000000000000,
-    "max_children_per_transaction": 4,
-    "max_vaults_per_state": 8
+    "max_children_per_transaction": 1,
+    "max_vaults_per_state": 1,
+    "participant_count": 2,
+    "asset_scope": "plain_ckb_only",
+    "reduced_right_counts": [
+      1,
+      4,
+      10
+    ]
   },
   "channel": {
     "max_capacity_shannons": 100000000000,
-    "max_total_pilot_capacity_shannons": 4000000000000
+    "max_total_pilot_capacity_shannons": 4000000000000,
+    "max_vaults_per_state": 8,
+    "asset_scope": "ckb_and_manifest_pinned_devnet_xudt"
   },
   "conditional_batch": {
     "enabled": true,
@@ -42,8 +82,12 @@
     "allowed_scripts": [
       "morph-devnet-xudt"
     ],
-    "max_asset_types_per_factory": 8,
-    "max_units_per_factory": 1000000000000
+    "max_asset_types_per_factory": 0,
+    "max_units_per_factory": 0,
+    "max_asset_types_per_channel": 8,
+    "max_units_per_type_per_channel": 1000000000000,
+    "identity_rule": "exact_type_hash_allowlist_and_manifest_code_hash",
+    "zero_quantity_rights_require_admission": true
   },
   "watchtower": {
     "minimum_detection_depth": 3,

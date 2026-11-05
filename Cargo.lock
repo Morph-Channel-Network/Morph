@@ -1982,6 +1982,7 @@ dependencies = [
  "hex",
  "k256",
  "morph-core",
+ "morph-key-input",
  "rand 0.8.6",
  "reqwest",
  "serde",
@@ -1990,6 +1991,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -2014,12 +2016,14 @@ dependencies = [
  "hex",
  "k256",
  "morph-core",
+ "morph-key-input",
  "morph-script-common",
  "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -2075,6 +2079,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "morph-key-input"
+version = "4.0.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "hex",
+ "k256",
+ "rustix",
+ "zeroize",
 ]
 
 [[package]]

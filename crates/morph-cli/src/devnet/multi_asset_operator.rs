@@ -18,8 +18,8 @@ pub enum Operation {
 #[derive(Clone, clap::Subcommand)]
 pub enum FeeAuthorization {
     Wallet {
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     Sponsor {
         #[arg(long)]
@@ -1142,7 +1142,7 @@ mod sponsor_tests {
         assert!(private.is_none());
         assert_eq!(change, secp256k1_lock(&key).unwrap());
         let wallet = FeeAuthorization::Wallet {
-            private_key: hex::encode([1u8; 32]),
+            private_key: hex::encode([1u8; 32]).into(),
         };
         assert_eq!(format!("{wallet:?}"), "Wallet");
     }

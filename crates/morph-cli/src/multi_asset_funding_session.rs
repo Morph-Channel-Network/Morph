@@ -42,8 +42,8 @@ pub enum FundingSessionCommand {
     Sign {
         #[arg(long, value_enum)]
         target: FundingTarget,
-        #[arg(long, env = "MORPH_CHANNEL_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     AddSignature {
         #[arg(long, value_enum)]
@@ -527,7 +527,7 @@ mod tests {
                 &paths[i],
                 FundingSessionCommand::Sign {
                     target,
-                    private_key: keys[i].clone(),
+                    private_key: keys[i].clone().into(),
                 },
             )
             .unwrap();
@@ -535,7 +535,7 @@ mod tests {
                 &paths[i],
                 FundingSessionCommand::Sign {
                     target,
-                    private_key: keys[i].clone(),
+                    private_key: keys[i].clone().into(),
                 },
             )
             .unwrap();
@@ -563,7 +563,7 @@ mod tests {
                 &paths[0],
                 FundingSessionCommand::Sign {
                     target: FundingTarget::Creation,
-                    private_key: keys[0].clone()
+                    private_key: keys[0].clone().into()
                 }
             )
             .is_err()
@@ -573,7 +573,7 @@ mod tests {
                 &paths[0],
                 FundingSessionCommand::Sign {
                     target: FundingTarget::Exit,
-                    private_key: keys[1].clone()
+                    private_key: keys[1].clone().into()
                 }
             )
             .is_err()
@@ -634,7 +634,7 @@ mod tests {
                 &paths[0],
                 FundingSessionCommand::Sign {
                     target: FundingTarget::Creation,
-                    private_key: keys[0].clone()
+                    private_key: keys[0].clone().into()
                 }
             )
             .is_err()
@@ -694,7 +694,7 @@ mod tests {
             &paths[0],
             FundingSessionCommand::Sign {
                 target: FundingTarget::Exit,
-                private_key: keys[0].clone(),
+                private_key: keys[0].clone().into(),
             },
         )
         .unwrap();
@@ -715,7 +715,7 @@ mod tests {
                 &paths[0],
                 FundingSessionCommand::Sign {
                     target: FundingTarget::Exit,
-                    private_key: keys[0].clone()
+                    private_key: keys[0].clone().into()
                 }
             )
             .is_err()
@@ -750,7 +750,7 @@ mod tests {
             &paths[0],
             FundingSessionCommand::Sign {
                 target: FundingTarget::Exit,
-                private_key: keys[0].clone(),
+                private_key: keys[0].clone().into(),
             },
         )
         .unwrap();
@@ -769,7 +769,7 @@ mod tests {
             },
             FundingSessionCommand::Sign {
                 target: FundingTarget::Creation,
-                private_key: keys[0].clone(),
+                private_key: keys[0].clone().into(),
             },
         ] {
             assert!(run(&paths[0], command).is_err());
@@ -797,7 +797,7 @@ mod tests {
             &paths[0],
             FundingSessionCommand::Sign {
                 target: FundingTarget::Creation,
-                private_key: keys[0].clone(),
+                private_key: keys[0].clone().into(),
             },
         )
         .unwrap();
@@ -805,7 +805,7 @@ mod tests {
             &paths[1],
             FundingSessionCommand::Sign {
                 target: FundingTarget::Creation,
-                private_key: keys[1].clone(),
+                private_key: keys[1].clone().into(),
             },
         )
         .unwrap();

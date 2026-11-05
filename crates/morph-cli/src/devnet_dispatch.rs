@@ -549,7 +549,6 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
         DevnetCommand::WatchConfigOnce {
             contracts_dir,
             private_key,
-            private_key_file,
             config,
             json,
         } => {
@@ -560,11 +559,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 &config_data,
                 watch_config::WatchtowerRuntimeOptions {
                     contracts_dir,
-                    private_key: resolve_watchtower_private_key(
-                        rpc_url,
-                        private_key,
-                        private_key_file,
-                    )?,
+                    private_key: private_key,
                 },
             )?;
             if json {
@@ -588,7 +583,6 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
         DevnetCommand::WatchConfigLoop {
             contracts_dir,
             private_key,
-            private_key_file,
             config,
             passes,
             sleep_ms,
@@ -602,11 +596,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 &config_data,
                 watch_config::WatchtowerRuntimeOptions {
                     contracts_dir,
-                    private_key: resolve_watchtower_private_key(
-                        rpc_url,
-                        private_key,
-                        private_key_file,
-                    )?,
+                    private_key: private_key,
                 },
                 watch_config::WatchtowerConfigLoopOptions {
                     passes,
@@ -640,7 +630,6 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
         DevnetCommand::WatchConfigService {
             contracts_dir,
             private_key,
-            private_key_file,
             config,
             max_passes,
             sleep_ms,
@@ -658,11 +647,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 &config_data,
                 watch_config::WatchtowerRuntimeOptions {
                     contracts_dir,
-                    private_key: resolve_watchtower_private_key(
-                        rpc_url,
-                        private_key,
-                        private_key_file,
-                    )?,
+                    private_key: private_key,
                 },
                 watch_config::WatchtowerConfigServiceOptions {
                     max_passes,

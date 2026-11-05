@@ -47,8 +47,8 @@ pub(crate) struct WalletSignOptions {
     pub max_fee: u64,
     #[arg(long)]
     pub store_dir: PathBuf,
-    #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-    pub private_key: String,
+    #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+    pub private_key: morph_key_input::SecretString,
 }
 #[derive(Debug, clap::Args)]
 pub(crate) struct SubmitOptions {
@@ -85,8 +85,8 @@ pub(crate) struct ActivateOptions {
     pub max_fee: u64,
     #[arg(long, default_value_t = 4)]
     pub mine_blocks: u64,
-    #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-    pub private_key: String,
+    #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+    pub private_key: morph_key_input::SecretString,
 }
 
 #[derive(Debug, clap::Subcommand)]

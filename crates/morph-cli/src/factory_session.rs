@@ -61,8 +61,8 @@ pub(crate) enum FactorySessionCommand {
         rpc_url: String,
         #[arg(long)]
         request_id: String,
-        #[arg(long, env = "MORPH_CHANNEL_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     AddSignature {
         #[arg(long)]

@@ -57,8 +57,10 @@ pub(crate) fn verify_participant(
         .map_err(|_| anyhow!("invalid participant signature"))
 }
 pub(crate) fn channel_signing_key(private_key: &str, expected: &[u8]) -> Result<SigningKey> {
-    let raw = hex::decode(private_key.strip_prefix("0x").unwrap_or(private_key))
-        .map_err(|_| anyhow!("invalid channel signing key"))?;
+    let raw = zeroize::Zeroizing::new(
+        hex::decode(private_key.strip_prefix("0x").unwrap_or(private_key))
+            .map_err(|_| anyhow!("invalid channel signing key"))?,
+    );
     let key = SigningKey::from_slice(&raw).map_err(|_| anyhow!("invalid channel signing key"))?;
     ensure!(
         key.verifying_key().to_encoded_point(true).as_bytes() == expected,

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/morph-core",
+  "crates/morph-key-input",
   "crates/morph-cli",
   "crates/morph-agent",
   "crates/morph-fiber-adapter",
@@ -28,6 +29,7 @@ readme = "README.md"
 
 [workspace.dependencies]
 anyhow = "1.0"
+zeroize = "1.8"
 aes-gcm = "0.10"
 axum = "0.8"
 base64 = "0.22"

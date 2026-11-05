@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+source scripts/private-key-files.sh
+morph_reject_raw_private_keys || exit 1
 CKB_BIN="${CKB_BIN:-$(command -v ckb || true)}"
 RPC_PORT="${RPC_PORT:-19124}"
 P2P_PORT="${P2P_PORT:-19125}"
@@ -18,6 +20,7 @@ stop_node() {
     kill "$NODE_PID"
     wait "$NODE_PID" || true
   fi
+  morph_fixture_keys_cleanup
 }
 trap stop_node EXIT
 for tool in cargo make jq curl python3; do command -v "$tool" >/dev/null || fail "missing $tool"; done
@@ -30,19 +33,12 @@ CLI_BIN="$OUT_DIR/morph-cli"
 mkdir -p "$MATRIX_DIR/contracts"
 python3 scripts/current-stateful-ledger.py --run-dir "$OUT_DIR" --capture-provenance
 
-read_key() {
-  local variable="$1" path="$2" value="${!1:-}"
-  if [ -z "$value" ]; then
-    [ -f "$path" ] || fail "missing fixture key file for $variable"
-    value="$(tr -d '\r\n' <"$path")"
-  fi
-  [[ "$value" =~ ^(0x)?[0-9a-fA-F]{64}$ ]] || fail "invalid fixture key for $variable"
-  printf -v "$variable" '%s' "$value"
-  export "$variable"
-}
-read_key MORPH_DEVNET_PRIVATE_KEY "${MORPH_E2E_DEPLOYER_KEY_FILE:-$FIBER_DIR/tests/nodes/deployer/ckb/plain_key}"
-read_key MORPH_ALICE_PRIVATE_KEY "${MORPH_E2E_ALICE_KEY_FILE:-$FIBER_DIR/tests/nodes/1/ckb/plain_key}"
-read_key MORPH_BOB_PRIVATE_KEY "${MORPH_E2E_BOB_KEY_FILE:-$FIBER_DIR/tests/nodes/2/ckb/plain_key}"
+# Stage only the public development fixtures outside the evidence directory.
+# Explicit *_PRIVATE_KEY_FILE paths go unchanged to the protected Rust loader.
+morph_fixture_keys_init || fail "cannot prepare private fixture key files"
+morph_fixture_key_file MORPH_DEVNET_PRIVATE_KEY_FILE "${MORPH_E2E_DEPLOYER_KEY_FILE:-$FIBER_DIR/tests/nodes/deployer/ckb/plain_key}" deployer.key
+morph_fixture_key_file MORPH_ALICE_PRIVATE_KEY_FILE "${MORPH_E2E_ALICE_KEY_FILE:-$FIBER_DIR/tests/nodes/1/ckb/plain_key}" alice.key
+morph_fixture_key_file MORPH_BOB_PRIVATE_KEY_FILE "${MORPH_E2E_BOB_KEY_FILE:-$FIBER_DIR/tests/nodes/2/ckb/plain_key}" bob.key
 printf '[current-e2e] building current contracts and CLI\n'
 make build-contracts >"$OUT_DIR/logs/build-contracts.log" 2>&1
 cargo build -p morph-cli --features devnet >"$OUT_DIR/logs/build-cli.log" 2>&1

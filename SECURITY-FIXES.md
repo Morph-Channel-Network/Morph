@@ -62,6 +62,29 @@ public-network fee/reorg/latency evidence, independent operators/builds and a
 real-asset value envelope remain required. Complete repository CI and report
 refresh are tracked separately in [the migration ledger](docs/unified-protocol-migration.md).
 
+## Factory Vault delegated authority checks (2026-11-05)
+
+- Defense in depth: the Factory Vault gate already requires the unique exact
+  Factory Type on input zero, its authenticated StateLock/header and committed
+  source OutPoint. An input carrying that exact Type necessarily executes its
+  complete transition verifier. No signature-bypass exploit is established.
+- The gate now also asserts the same global witness-zero `output_type` frame
+  consumed by Factory Type, rejects mixed `input_type` roles, checks the actual
+  raw transaction hash, and shares the Type's existing transaction bounds.
+  Materialisation, reduced release and reduced child retain the same wire
+  formats and limits. Signatures, localized rights proofs and physical
+  conservation remain the authentic Type's responsibility; the gate does not
+  repeat N-of-N signature verification.
+- VM negatives identify the rejecting input/lock or input/Type, and verify
+  otherwise-valid frame signatures before testing authority, placement or
+  transaction binding. Valid controls include fresh exact-body reapproval and
+  an ignored per-group frame. Tests:
+  `factory_vault_delegation_uses_global_frame_and_requires_type_authorization`,
+  `factory_vault_delegation_rejects_foreign_missing_and_aliased_source_types`,
+  `factory_vault_delegation_rejects_group_frame_mixed_roles_and_source_relocation`,
+  `factory_vault_delegation_binds_actual_transaction_before_delegating_signatures`,
+  `factory_vault_delegation_applies_type_transaction_bounds`.
+
 ## Alpha private delivery and initial funding recovery (2026-11-05)
 
 - Private artifact writers create missing Unix directories with 0700 and

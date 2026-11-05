@@ -25,12 +25,12 @@ pub(crate) struct Options {
     /// Rehearse exact replay by truncating the first reduced update on this isolated devnet.
     #[arg(long)]
     pub reorg: bool,
-    #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-    pub private_key: String,
-    #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-    pub alice_private_key: String,
-    #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-    pub bob_private_key: String,
+    #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+    pub private_key: morph_key_input::SecretString,
+    #[arg(long = "alice-private-key-file", env = "MORPH_ALICE_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+    pub alice_private_key: morph_key_input::SecretString,
+    #[arg(long = "bob-private-key-file", env = "MORPH_BOB_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+    pub bob_private_key: morph_key_input::SecretString,
 }
 
 fn path_field(value: &Value, name: &str) -> Result<PathBuf> {

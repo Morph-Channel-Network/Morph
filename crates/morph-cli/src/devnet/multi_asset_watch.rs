@@ -14,7 +14,7 @@ const MAX_PACKAGES: usize = 4096;
 /// Wallet authority is used only to create a separate bounded sponsor budget.
 /// Publishing from that budget uses the public sponsor change key.
 pub struct AutoSponsorFunding {
-    pub private_key: String,
+    pub private_key: morph_key_input::SecretString,
     pub capacity: u64,
     pub funding_fee: u64,
 }
@@ -827,7 +827,7 @@ mod tests {
             watch_policy: Some(path.clone()),
             alert_webhook_url: None,
             auto_fund_sponsor: Some(AutoSponsorFunding {
-                private_key: hex::encode([1; 32]),
+                private_key: hex::encode([1; 32]).into(),
                 capacity: policy.max_auto_sponsor_capacity,
                 funding_fee: 1,
             }),

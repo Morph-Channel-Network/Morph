@@ -90,7 +90,7 @@ const CONTRACTS: [(&str, &str); 8] = [
 #[derive(Debug, Clone)]
 pub struct DeployContractsOptions {
     pub contracts_dir: PathBuf,
-    pub private_key: String,
+    pub private_key: morph_key_input::SecretString,
     pub fee: u64,
     pub mine_blocks: u64,
 }
@@ -109,7 +109,7 @@ struct PublicationRuntime {
 #[derive(Debug, Clone)]
 pub struct FundSponsorOptions {
     pub contracts_dir: PathBuf,
-    pub private_key: String,
+    pub private_key: morph_key_input::SecretString,
     pub sponsor_change_pubkey: Option<String>,
     pub state_out_point: String,
     pub sponsor_capacity: u64,
@@ -2095,8 +2095,10 @@ pub fn canonical_state_challenge_blocks(
 }
 
 fn k256_signing_key(value: &str) -> Result<SigningKey> {
-    let raw = hex::decode(value.strip_prefix("0x").unwrap_or(value))
-        .with_context(|| "private key must be hex encoded")?;
+    let raw = zeroize::Zeroizing::new(
+        hex::decode(value.strip_prefix("0x").unwrap_or(value))
+            .with_context(|| "private key must be hex encoded")?,
+    );
     ensure!(raw.len() == 32, "private key must be 32 bytes");
     SigningKey::from_slice(&raw).map_err(|err| anyhow!("invalid secp256k1 private key: {err:?}"))
 }
@@ -2400,7 +2402,11 @@ fn parse_h256(value: &str) -> Result<H256> {
 }
 
 pub(crate) fn parse_privkey(value: &str) -> Result<Privkey, ckb_crypto::secp::Error> {
-    Privkey::from_str(value.strip_prefix("0x").unwrap_or(value))
+    let mut bytes = zeroize::Zeroizing::new([0u8; 32]);
+    hex::decode_to_slice(value.strip_prefix("0x").unwrap_or(value), bytes.as_mut())
+        .map_err(|_| ckb_crypto::secp::Error::InvalidPrivKey)?;
+    SigningKey::from_slice(bytes.as_ref()).map_err(|_| ckb_crypto::secp::Error::InvalidPrivKey)?;
+    Ok(Privkey::from_slice(bytes.as_ref()))
 }
 
 fn byte32_to_h256(value: ckb_types::packed::Byte32) -> H256 {

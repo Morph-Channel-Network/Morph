@@ -21,9 +21,9 @@ use serde_json::{Value, json};
 
 pub struct MultiAssetSmokeOptions {
     pub contracts_dir: PathBuf,
-    pub private_key: String,
-    pub alice_private_key: String,
-    pub bob_private_key: String,
+    pub private_key: morph_key_input::SecretString,
+    pub alice_private_key: morph_key_input::SecretString,
+    pub bob_private_key: morph_key_input::SecretString,
     pub asset_count: usize,
     pub shared_funding: bool,
     pub funding_reorg: bool,
@@ -214,18 +214,21 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         xudt_code.cell_dep.clone(),
         secp.clone(),
     ];
-    let seed = hex::decode(options.private_key.trim_start_matches("0x"))
-        .context("invalid devnet funding key")?;
+    let seed = zeroize::Zeroizing::new(
+        hex::decode(options.private_key.trim_start_matches("0x"))
+            .context("invalid devnet funding key")?,
+    );
     let mut assets = Vec::new();
     let mut issuance = Vec::new();
     for index in 0..options.asset_count {
-        let issuer_seed = script_blake2b256(&[
+        let issuer_seed = zeroize::Zeroizing::new(script_blake2b256(&[
             b"CKB_MORPH_DEVNET_MULTI_ASSET_ISSUER",
-            &seed,
+            seed.as_slice(),
             &(index as u64).to_le_bytes(),
-        ]);
-        let issuer = parse_privkey(&hex::encode(issuer_seed))
-            .map_err(|_| anyhow!("invalid derived devnet issuer key"))?;
+        ]));
+        let issuer_hex = zeroize::Zeroizing::new(hex::encode(issuer_seed.as_ref()));
+        let issuer =
+            parse_privkey(&issuer_hex).map_err(|_| anyhow!("invalid derived devnet issuer key"))?;
         let issuer_lock = secp256k1_lock(&issuer)?;
         let script = data1_script(
             xudt_code.data_hash.clone(),
@@ -1510,7 +1513,7 @@ fn service_watch_acceptance(
         &config,
         WatchtowerRuntimeOptions {
             contracts_dir: options.contracts_dir,
-            private_key: funding_key.to_string(),
+            private_key: funding_key.to_string().into(),
         },
         WatchtowerConfigServiceOptions {
             max_passes: Some(1),

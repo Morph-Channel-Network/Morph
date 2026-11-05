@@ -142,8 +142,8 @@ morph-cli multi-asset-funding-session --session /srv/morph/alice.json sign \
   --target exit > alice-exit-signature.json
 ```
 
-`MORPH_CHANNEL_PRIVATE_KEY` supplies only this participant's secret, hidden in
-help output. Exchange exit receipts with the peer and import the peer's receipt:
+`MORPH_CHANNEL_PRIVATE_KEY_FILE` supplies the protected file path for this
+participant's secret; see [key input](key-input.md). Exchange exit receipts with the peer and import the peer's receipt:
 
 ```sh
 morph-cli multi-asset-funding-session --session /srv/morph/alice.json add-signature \
@@ -184,7 +184,8 @@ rules](operations.md); its path, rather than its signed contents, is returned.
 ## Submit and confirm the same path
 
 After the two participant roles are complete, each funding wallet signs only
-its own group. It supplies its own `MORPH_DEVNET_PRIVATE_KEY`; no participant
+its own group. It supplies its own protected key file path through
+`MORPH_DEVNET_PRIVATE_KEY_FILE`; no participant
 secret or other wallet's secret is needed. Pass each returned transaction to
 the next wallet, retaining the same raw body:
 

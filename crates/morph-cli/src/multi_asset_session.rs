@@ -51,8 +51,8 @@ pub enum SessionCommand {
     Sign {
         #[arg(long, value_enum)]
         target: SigningTarget,
-        #[arg(long, env = "MORPH_CHANNEL_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     /// Import one peer signature; its signer and exact proposal digest are verified.
     AddSignature {
@@ -1354,7 +1354,7 @@ mod tests {
                 path,
                 SessionCommand::Sign {
                     target: SigningTarget::Update,
-                    private_key: hex::encode([key; 32]),
+                    private_key: hex::encode([key; 32]).into(),
                 },
             )
             .unwrap();
@@ -1363,7 +1363,7 @@ mod tests {
                     path,
                     SessionCommand::Sign {
                         target: SigningTarget::Update,
-                        private_key: hex::encode([key; 32])
+                        private_key: hex::encode([key; 32]).into()
                     }
                 )
                 .unwrap(),
@@ -1469,7 +1469,7 @@ mod tests {
                         path,
                         SessionCommand::Sign {
                             target,
-                            private_key: hex::encode([key; 32]),
+                            private_key: hex::encode([key; 32]).into(),
                         },
                     )
                     .unwrap();
@@ -1574,7 +1574,7 @@ mod tests {
                     path,
                     SessionCommand::Sign {
                         target: SigningTarget::SpliceBridge,
-                        private_key: hex::encode([1u8; 32])
+                        private_key: hex::encode([1u8; 32]).into()
                     }
                 )
                 .is_err()
@@ -1591,7 +1591,7 @@ mod tests {
                     path,
                     SessionCommand::Sign {
                         target,
-                        private_key: hex::encode([key; 32]),
+                        private_key: hex::encode([key; 32]).into(),
                     },
                 )
                 .unwrap();
@@ -1601,7 +1601,7 @@ mod tests {
                         path,
                         SessionCommand::Sign {
                             target,
-                            private_key: hex::encode([key; 32])
+                            private_key: hex::encode([key; 32]).into()
                         }
                     )
                     .unwrap()
@@ -1798,7 +1798,7 @@ mod tests {
                 &session,
                 SessionCommand::Sign {
                     target: SigningTarget::Update,
-                    private_key: hex::encode([2u8; 32])
+                    private_key: hex::encode([2u8; 32]).into()
                 }
             )
             .is_err()
@@ -1808,7 +1808,7 @@ mod tests {
             &session,
             SessionCommand::Sign {
                 target: SigningTarget::Update,
-                private_key: hex::encode([1u8; 32]),
+                private_key: hex::encode([1u8; 32]).into(),
             },
         )
         .unwrap();
@@ -1846,7 +1846,7 @@ mod tests {
                     &worker_path,
                     SessionCommand::Sign {
                         target: SigningTarget::Update,
-                        private_key: hex::encode([1u8; 32]),
+                        private_key: hex::encode([1u8; 32]).into(),
                     },
                 ))
                 .unwrap();

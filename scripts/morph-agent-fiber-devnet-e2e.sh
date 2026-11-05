@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/private-key-files.sh"
+morph_reject_raw_private_keys || exit 1
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/target/morph-agent-fiber-devnet-e2e/$RUN_ID}"
 FIBER_CKB_RPC_URL="${FIBER_CKB_RPC_URL:-http://127.0.0.1:8114}"
@@ -12,7 +14,6 @@ PAYEE_LISTEN="${MORPH_AGENT_PAYEE_LISTEN:-127.0.0.1:24620}"
 PAYER_LISTEN="${MORPH_AGENT_PAYER_LISTEN:-127.0.0.1:24621}"
 PAYEE_URL="http://$PAYEE_LISTEN"
 PAYER_URL="http://$PAYER_LISTEN"
-PAYER_PRIVATE_KEY="${MORPH_AGENT_DEVNET_PAYER_PRIVATE_KEY:-0x$(printf '07%.0s' {1..32})}"
 PAYER_PUBLIC_KEY="${MORPH_AGENT_DEVNET_PAYER_PUBLIC_KEY:-0x02989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f}"
 AGENT_BIN="$ROOT_DIR/target/debug/morph-agent"
 PAYEE_PID=""
@@ -35,10 +36,13 @@ cleanup() {
       wait "$pid" 2>/dev/null || true
     fi
   done
+  morph_fixture_keys_cleanup
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-for tool in cargo curl jq node npm sed sha256sum; do
+for tool in cargo curl jq node npm sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing required tool: $tool"
 done
 
@@ -63,13 +67,17 @@ rpc_result() {
     <<<"$response"
 }
 
-extract_generated_secret() {
-  local command="$1"
-  local output secret
+write_generated_secret() {
+  local path="$1" command="$2" output line secret=""
   output="$("$AGENT_BIN" "$command")"
-  secret="$(sed -n 's/^private_key=//p' <<<"$output")"
-  [ -n "$secret" ] || fail "$command did not return a private key"
-  printf '%s' "$secret"
+  while IFS= read -r line; do
+    case "$line" in
+      private_key=*) secret="${line#private_key=}" ;;
+    esac
+  done <<<"$output"
+  [ -n "$secret" ] || fail "key generation did not return a private key"
+  # printf is a shell builtin: generated material never enters process argv/env.
+  (umask 077; printf '%s\n' "$secret" >"$path")
 }
 
 account_id() {
@@ -118,10 +126,21 @@ payer_account_id="$(account_id "$PAYER_PUBLIC_KEY")"
 [ "$payer_account_id" != "$node1_account_id" ] || fail "devnet payer aliases Fiber node1"
 [ "$payer_account_id" != "$node3_account_id" ] || fail "devnet payer aliases Fiber node3"
 
-payee_biscuit_key="$(extract_generated_secret generate-key)"
-payer_biscuit_key="$(extract_generated_secret generate-key)"
-payee_receipt_key="$(extract_generated_secret generate-receipt-key)"
-payer_receipt_key="$(extract_generated_secret generate-receipt-key)"
+morph_fixture_keys_init || fail "cannot prepare private fixture key files"
+PAYEE_BISCUIT_KEY_FILE="$MORPH_FIXTURE_KEY_DIR/payee-biscuit.key"
+PAYER_BISCUIT_KEY_FILE="$MORPH_FIXTURE_KEY_DIR/payer-biscuit.key"
+PAYEE_RECEIPT_KEY_FILE="$MORPH_FIXTURE_KEY_DIR/payee-receipt.key"
+PAYER_RECEIPT_KEY_FILE="$MORPH_FIXTURE_KEY_DIR/payer-receipt.key"
+write_generated_secret "$PAYEE_BISCUIT_KEY_FILE" generate-key
+write_generated_secret "$PAYER_BISCUIT_KEY_FILE" generate-key
+write_generated_secret "$PAYEE_RECEIPT_KEY_FILE" generate-receipt-key
+write_generated_secret "$PAYER_RECEIPT_KEY_FILE" generate-receipt-key
+PAYER_PRIVATE_KEY_FILE="${MORPH_AGENT_DEVNET_PAYER_PRIVATE_KEY_FILE:-}"
+if [ -z "$PAYER_PRIVATE_KEY_FILE" ]; then
+  # Public scalar 0x07 repeated is a no-value fixture for this isolated harness.
+  PAYER_PRIVATE_KEY_FILE="$MORPH_FIXTURE_KEY_DIR/sdk-payer.key"
+  (umask 077; printf '07%.0s' {1..32} >"$PAYER_PRIVATE_KEY_FILE")
+fi
 tracked_worktree_clean=false
 if [ -z "$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no)" ]; then
   tracked_worktree_clean=true
@@ -129,8 +148,8 @@ fi
 
 log "starting payee Agent on Fiber node3"
 (
-  export MORPH_AGENT_BISCUIT_PRIVATE_KEY="$payee_biscuit_key"
-  export MORPH_AGENT_RECEIPT_PRIVATE_KEY="$payee_receipt_key"
+  export MORPH_AGENT_BISCUIT_PRIVATE_KEY_FILE="$PAYEE_BISCUIT_KEY_FILE"
+  export MORPH_AGENT_RECEIPT_PRIVATE_KEY_FILE="$PAYEE_RECEIPT_KEY_FILE"
   exec "$AGENT_BIN" serve \
     --listen "$PAYEE_LISTEN" \
     --fiber-rpc "$FIBER_NODE3_RPC_URL" \
@@ -142,8 +161,8 @@ PAYEE_PID="$!"
 
 log "starting payer Agent on Fiber node1"
 (
-  export MORPH_AGENT_BISCUIT_PRIVATE_KEY="$payer_biscuit_key"
-  export MORPH_AGENT_RECEIPT_PRIVATE_KEY="$payer_receipt_key"
+  export MORPH_AGENT_BISCUIT_PRIVATE_KEY_FILE="$PAYER_BISCUIT_KEY_FILE"
+  export MORPH_AGENT_RECEIPT_PRIVATE_KEY_FILE="$PAYER_RECEIPT_KEY_FILE"
   exec "$AGENT_BIN" serve \
     --listen "$PAYER_LISTEN" \
     --fiber-rpc "$FIBER_NODE1_RPC_URL" \
@@ -163,7 +182,7 @@ log "running x402, credential, and fair-exchange payments over the Fiber route"
 MORPH_AGENT_PAYEE_URL="$PAYEE_URL" \
 MORPH_AGENT_PAYER_URL="$PAYER_URL" \
 MORPH_AGENT_CKB_NETWORK_ID="$ckb_network_id" \
-MORPH_AGENT_PAYER_PRIVATE_KEY="$PAYER_PRIVATE_KEY" \
+MORPH_AGENT_PAYER_PRIVATE_KEY_FILE="$PAYER_PRIVATE_KEY_FILE" \
 MORPH_AGENT_EXPECTED_PAYEE="$node3_account_id" \
 MORPH_AGENT_FIBER_NODE1_PUBKEY="$node1_pubkey" \
 MORPH_AGENT_FIBER_NODE2_PUBKEY="$node2_pubkey" \

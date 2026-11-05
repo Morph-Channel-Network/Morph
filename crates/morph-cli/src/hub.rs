@@ -52,7 +52,7 @@ pub struct HubServeOptions {
     pub state_path: PathBuf,
     pub pubkey: String,
     pub network: MorphNetwork,
-    pub invoice_private_key: Option<String>,
+    pub invoice_private_key: Option<morph_key_input::SecretString>,
     pub ckb_rpc_url: Option<String>,
     pub watch_alert_file: Option<PathBuf>,
     pub ui_dir: PathBuf,
@@ -776,20 +776,20 @@ fn listen_host(listen: &str) -> Option<String> {
     Some(host.to_string())
 }
 
-pub fn serve(options: HubServeOptions) -> Result<()> {
+pub fn serve(mut options: HubServeOptions) -> Result<()> {
     let auth_token = parse_hub_auth_token(options.auth_token)?;
     let cors_origin = normalise_cors_origin(options.cors_origin)?;
     let invoice_signing_key = options
         .invoice_private_key
-        .as_deref()
-        .map(|value| parse_signing_key(value, "--invoice-private-key"))
+        .take()
+        .map(|value| parse_signing_key(&value, "--invoice-private-key-file"))
         .transpose()?;
     if let Some(signing_key) = &invoice_signing_key {
         let signing_pubkey = hex::encode(signing_key_pubkey_sec1(signing_key));
         let configured_pubkey = canonical_pubkey(&options.pubkey)?;
         ensure!(
             signing_pubkey == configured_pubkey,
-            "--invoice-private-key must derive the same compressed public key as --pubkey"
+            "--invoice-private-key-file must derive the same compressed public key as --pubkey"
         );
     }
     ensure!(
@@ -1640,7 +1640,7 @@ impl HubServer {
             ("POST", "/api/invoices") => self.mutate(request_id, |store| {
                 let payee_signing_key = self.invoice_signing_key.as_ref().ok_or_else(|| {
                     anyhow!(
-                        "invoice signing is disabled; restart Morph Hub with --invoice-private-key to create signed invoices"
+                        "invoice signing is disabled; restart Morph Hub with --invoice-private-key-file to create signed invoices"
                     )
                 })?;
                 let body: CreateInvoiceRequest = parse_body(&request.body)?;
@@ -2771,8 +2771,10 @@ fn parse_pubkey_bytes(value: &str) -> Result<[u8; 33]> {
 fn parse_signing_key(value: &str, label: &str) -> Result<SigningKey> {
     let value = value.trim();
     ensure!(!value.is_empty(), "{label} must not be empty");
-    let raw = hex::decode(value.strip_prefix("0x").unwrap_or(value))
-        .with_context(|| format!("{label} must be hex encoded"))?;
+    let raw = zeroize::Zeroizing::new(
+        hex::decode(value.strip_prefix("0x").unwrap_or(value))
+            .with_context(|| format!("{label} must be hex encoded"))?,
+    );
     ensure!(raw.len() == 32, "{label} must be 32 bytes");
     SigningKey::from_slice(&raw)
         .map_err(|err| anyhow!("{label} is not a valid secp256k1 private key: {err:?}"))
