@@ -20,6 +20,12 @@ Pure full-consent metadata has one separate role: `MORPHFS!` UPDATE, using the
 transaction-bound update domain. There is no second full-metadata branch in
 `MORPHFR!`.
 
+`FullCustody` allows all members to approve a redistribution without applying
+the single-touched-member claim-delta predicate. Actual custody conservation
+is still enforced: source/retained Vaults, each token Type, global CKB lanes,
+occupied capacity, carrier and outside funding/fees must match the transaction.
+All-member consent is not an exception to those physical checks.
+
 The sole parser and operation tags are in
 [`factory_multi_asset/reduced.rs`](../contracts/morph-script-common/src/factory_multi_asset/reduced.rs).
 A frame commits both complete headers, the exact source State OutPoint,
@@ -81,16 +87,24 @@ can supplement a token-only or dust payout; rights are debited for the Factory
 withdrawal, not for that external contribution.
 
 Reduced paths retain a successor and its carrier. They cannot unilaterally
-retire the last occupied Vault floor or collective State carrier. Child recipients may be outside the parent roster; only parent members can
-authorize the Factory. Private
-initial child exits must be delivered to both child parties before the parent
-signer reserves authorization; public possession attestations do not publish
-those exit signatures.
+retire the last occupied Vault floor or collective State carrier. Child
+recipients may be outside the parent roster; only parent members can authorize
+the Factory. Private initial child exits must be delivered to both child
+parties before the parent signer reserves authorization; public possession
+attestations do not publish those exit signatures.
 
-Members must retain full root rights data. `FactoryRightsSnapshot` applies
-public localized transitions and regenerates untouched members' proofs without
-peer cooperation. An arbitrary N-of-N root replacement needs a delivered new
-full snapshot. A root commitment or parser is not a data-recovery mechanism.
+The former all-member-only exit restriction is resolved for admitted reduced
+operations. A member's executable exit still requires precommitted
+`ReserveClaim` leaves, permitted proof shapes, sufficient external fees,
+admitted asset behavior and a payout/retained-floor geometry that can be
+constructed. Aggregate backing alone does not prove every allocation can exit
+or that every last shannon can be withdrawn without the other members.
+
+Members must retain complete initial root rights data. Given that saved
+snapshot, `FactoryRightsSnapshot` applies public localized transitions and
+regenerates untouched members' proofs without peer cooperation. An arbitrary
+N-of-N root replacement needs a delivered complete new snapshot. Chain data
+and a root commitment alone cannot recreate missing leaves or proofs.
 
 ## Host and public workflow
 

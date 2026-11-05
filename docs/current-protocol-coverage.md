@@ -60,8 +60,10 @@ it does not enable a removed State format.
 
 ## Safety boundaries and current evidence
 
-The current contract harness contains **77 CKB-VM tests**, including parameterized
-negative matrices. The removed harness encoded the retired physical model;
+The current contract harness contains **82 registered CKB-VM tests**, including
+parameterized negative matrices: 77 at checkpoint `9202e341`, plus five closeout
+regressions. These are registered test functions; matrix branches are additional
+assertions, not a conversion from 67 functions into 77 cases. The removed harness encoded the retired physical model;
 its security properties are mapped below to current transactions. Historical
 audit test names remain historical evidence rather than claims that those
 obsolete constructors still run.
@@ -77,12 +79,18 @@ obsolete constructors still run.
 | Factory physical custody cannot be changed by signing a dishonest description | `factory_multi_asset_rejects_physical_changes_even_with_fresh_all_member_approval`; reduced payout/token/child redistribution negatives with fresh approvals. |
 | Per-Type funding, peer CKB and fee isolation | `factory_multi_asset_transition_rejects_external_token_underfunding_with_permissive_asset`; full-consent Type replacement, peer-reserve, one-shannon underfunding and custody-fee diversion negatives. |
 | Unlisted right changes, foreign owner, nonvalue kinds, identity/order, malformed proofs and per-asset overflow | Current `multi_right.rs` has 17 tests including random-tree proofs; its update tests invoke the production `MORPHFR!` parser/validator. Current reduced/proof-refresh tests add 11 cases. |
+| Reduced source freshness, occupied reserve floor and per-asset claim/physical deltas | `factory_multi_asset_reduced_release_rejects_replayed_frame_and_stale_before_header` (fresh locator and stale-header variants, code 69); `factory_multi_asset_reduced_release_rejects_retained_reserve_one_below_occupied_floor` and `factory_multi_asset_reduced_release_rejects_token_claim_burn_for_extra_ckb_payout` (code 39). Each has a valid baseline and independently verified fresh signatures. |
 | Private child recovery and independent child authority after parent retirement | `factory_multi_asset_child_uses_private_exit_after_parent_retirement`; reduced-child private-exit and host-signing-prerequisite tests; core Factory delivery/journal tests. |
 | Outside child recipients remain distinct from parent authorizers | Full-consent and reduced outsider-child VM positives complete private unilateral exits; an outside child key signing the Factory digest is rejected. |
 | Whole-token exit leaves peer CKB in a plain retained Vault | `factory_multi_asset_transition_entire_type_exit_preserves_peer_ckb_in_plain_retained_vault`; matching peer-CKB negative. |
 | Token-only/dust withdrawal uses actual outside CKB | Token-only and suboccupied-claim merged-output positives; external-payout top-up underfunding/peer-reserve negatives. |
-| Conditional fulfill/refund exclusivity, preimages, maturity and independent token/carrier lanes | Canonical Batch executor tests plus four current conditional CKB-VM lifecycle/negative tests. |
+| Conditional fulfill/refund exclusivity, preimages, maturity and independent token/carrier lanes | Canonical Batch executor tests plus six current conditional CKB-VM lifecycle/negative tests. New matrices bind finalisation to the exact state/channel/funding-context Batch lock (code 65), and reject capacity, Type, data, wrong-lock, missing and independently funded duplicate payouts (code 56). The existing entry-point capacity mismatch test now asserts code 56 after a valid baseline. |
 | Removed formats cannot remain alternate entrypoints | `current_contracts_reject_retired_state_vault_and_factory_shapes`; current descriptor/version, Batch-namespace and witness-magic negatives. |
+
+Batch identity is checked when the settling State creates the output lock. A
+preimage can legitimately satisfy identical hash conditions in more than one
+valid Batch; the namespace regressions change the created lock identity rather
+than introducing a global preimage-reuse prohibition.
 
 Generic partition accounting remains independently tested: 18 host invariants
 cover reserve, business CKB, per-Type quantity/overflow, carrier, Sponsor and
@@ -169,7 +177,9 @@ child finalisation, and retained-parent retirement. The separate current
 publication-reliability run records real fee/RBF/reconciliation/reorg and
 service-health behavior; see [its runbook](runbooks/current-publication-reliability.md).
 
-Full repository CI passed, including 77 current VM cases. The expanded
+The original checkpoint passed full repository CI with 77 VM cases. Current
+closeout coverage raises the registered VM count to 82; PR checks evaluate that
+new head separately, without relabelling the original evidence. The expanded
 five-case native matrix and its nine-scenario, 65-assertion evidence ledger also
 completed on a development node; source freshness and budget qualification are
 recorded separately by the candidate runner. See the [migration record](unified-protocol-migration.md)

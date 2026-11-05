@@ -45,8 +45,9 @@ contains allowlisted results, transaction measurements and the eight-ELF
 manifest for the original `9202e341` run. Publication and CI follow-up commits
 do not relabel that historical evidence as a different source revision.
 
-`make ci` passed with workspace tests, five Python evidence-boundary tests,
-current fixture generation/inspection, SDK checks, 13 UI tests, all 77 current
+At checkpoint `9202e341`, `make ci` passed with workspace tests, five Python
+evidence-boundary tests,
+current fixture generation/inspection, SDK checks, 13 UI tests, all 77 then-current
 CKB-VM cases, source hygiene, lint, supply-chain checks under the existing
 explicit waivers, and rebuilt manifest/envelope/runbook checks.
 
@@ -90,6 +91,26 @@ The extracted archive passed all checksums, eight ELF hashes, envelope and
 relative watch/profile validation. The current publication-reliability run
 also exercises real eviction/retry/reorg and service-health behavior; see
 [the runbook](runbooks/current-publication-reliability.md).
+
+## Audit closeout regressions
+
+The current harness has 82 registered VM tests: the original 77 plus three
+Factory and two Batch regressions. Reduced source replay/stale-header cases,
+retained reserve below its occupied floor, and token/CKB claim substitution
+have valid baselines and fresh signatures before asserting the intended VM
+error. Batch tests cover incorrect state/channel/context lock identities and
+six payout-shape mutations with exact errors; the earlier capacity-mismatch
+case is strengthened rather than counted as previously absent coverage.
+
+Hub model metadata and the UI fallback now use `morph-current-custody`; the
+Rust response uses the release profile constant. Documentation distinguishes
+new signing expiry from reconciliation of already issued authorization, and
+qualified reduced exits from complete Factory liquidation. Eleven unissued
+script-error variants and their CLI name mappings are retired with numeric
+slots reserved; all active error numbers are unchanged. The rebuilt eight ELF
+hashes still match the existing release manifest. Wire formats and active
+consensus rules are unchanged. The original checkpoint evidence remains
+historical; new-head validation is reported by the PR's exact-head checks.
 
 ## Clean candidate acceptance
 

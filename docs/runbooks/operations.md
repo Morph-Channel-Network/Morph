@@ -57,6 +57,13 @@ Retain:
 - smoke/stateful summaries and transaction hashes;
 - the incident timeline for any warning or critical alert.
 
+Every Factory member also retains the complete initial rights snapshot and
+authoritative signer journal. Apply public localized transitions to that saved
+snapshot to refresh proofs without peer interaction. A root commitment alone
+does not reconstruct lost leaves/proofs. Before approving an arbitrary
+all-member root replacement, retain the complete replacement snapshot. A
+restored recovery package is not permission to restore an older signer journal.
+
 Keep packages until at least 30 days after finalisation and never less than
 twice the configured challenge window. A splice starts a new funding context;
 retain both pre- and post-splice packages, but publish only a package whose
@@ -117,3 +124,23 @@ canonical block hash will deliberately trigger a critical rescan. Cursor JSON
 requires its original `from_block` and contiguous scan heights; a changed origin
 requires a fresh cursor. This reset policy does not apply to signer journals,
 whose reservations must never be rolled back.
+
+## 6. Payment Intent Expiry and Reconciliation
+
+An intent's expiry is the deadline for preparation and new local signing
+reservations. Check it before reserving a signature and preserve the normal
+durable-before-release signing order. It does not revoke an already issued
+state signature or create authority to cancel/refund a payment.
+
+If the peer supplies a valid signature late, retain that evidence. If the exact
+proposal is already co-signed, `commit_payment` may reconcile it after expiry;
+if the agreement engine committed before a metadata write was interrupted,
+the payment book recovers that exact result without new signing. A different
+successor is not proof that this payment settled. A reserved or signed proposal
+must be reconciled rather than cancelled, even when a local receipt was lost.
+
+Do not label an expired reserved payment as cancelled or issue a refund solely
+because its API deadline passed. Retain the proposal, signatures and journal
+and follow the current recovery path. Conditional Batch refunds are a separate
+on-chain rule: they require the canonical absolute-block maturity and cannot
+be inferred from an ordinary payment intent's wall-clock expiry.

@@ -232,6 +232,241 @@ fn current_conditional_lane_rejects_wrong_preimage_and_batch_destination() {
 
 #[test]
 #[ignore = "requires `make build-contracts`"]
+fn current_conditional_finalisation_binds_batch_to_exact_state_and_funding_context() {
+    let fixture = conditional_fixture();
+    fixture
+        .base
+        .context
+        .verify_tx(&fixture.finalisation, MAX_CYCLES)
+        .expect("the Batch lock for the actual settling State must verify");
+
+    let header = &fixture.base.package.state.header;
+    let context = fixture.base.package.state.funding_context_id().unwrap();
+    assert!(header.state_number > 1);
+    let mut other_channel = header.channel_id;
+    other_channel[0] ^= 1;
+    let mut other_context = context;
+    other_context[0] ^= 1;
+    let encoded = fixture.base.package.settlement.encode().unwrap();
+    let descriptor = wire::MultiAssetSettlementDescriptor::parse(&encoded).unwrap();
+    let conditional = descriptor.conditional().unwrap().unwrap();
+
+    // These are individually well-formed Batch namespaces with the same terms.
+    // The creation/finalisation boundary must match the actual State. Reusing a
+    // preimage for another legitimately created Batch is a different question.
+    for (name, channel, funding, state_number) in [
+        (
+            "previous State",
+            header.channel_id,
+            context,
+            header.state_number - 1,
+        ),
+        (
+            "future State",
+            header.channel_id,
+            context,
+            header.state_number + 1,
+        ),
+        (
+            "another channel",
+            other_channel,
+            context,
+            header.state_number,
+        ),
+        (
+            "another funding context",
+            header.channel_id,
+            other_context,
+            header.state_number,
+        ),
+    ] {
+        let wrong_lock = Script::from_slice(
+            &conditional
+                .batch_script(&channel, &funding, state_number)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_ne!(wrong_lock, fixture.batch_lock, "{name}");
+        let mut outputs = fixture
+            .finalisation
+            .outputs()
+            .into_iter()
+            .collect::<Vec<_>>();
+        outputs[0] = outputs[0].clone().as_builder().lock(wrong_lock).build();
+        let transaction = fixture
+            .finalisation
+            .clone()
+            .as_advanced_builder()
+            .set_outputs(outputs)
+            .build();
+        let error = fixture
+            .base
+            .context
+            .verify_tx(&transaction, MAX_CYCLES)
+            .expect_err("a Batch namespace from another State/context must fail finalisation");
+        assert!(
+            error.to_string().contains("error code 65 "),
+            "{name}: {error:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires `make build-contracts`"]
+fn current_conditional_batch_spend_requires_exact_plain_unique_payouts() {
+    let mut fixture = conditional_fixture();
+    fixture
+        .base
+        .context
+        .verify_tx(&fixture.finalisation, MAX_CYCLES)
+        .expect("valid conditional finalisation");
+    let valid = resolve(
+        &mut fixture,
+        ConditionalResolution::Fulfill { preimage: [34; 32] },
+        0,
+    );
+    fixture
+        .base
+        .context
+        .verify_tx(&valid, MAX_CYCLES)
+        .expect("unchanged plain, unique Batch payouts");
+
+    let outputs = valid.outputs().into_iter().collect::<Vec<_>>();
+    let data = valid.outputs_data().into_iter().collect::<Vec<_>>();
+    let mut cases = Vec::new();
+
+    let mut changed_outputs = outputs.clone();
+    changed_outputs[0] = changed_outputs[0]
+        .clone()
+        .as_builder()
+        .capacity(u64::from(changed_outputs[0].capacity()) - 1)
+        .build();
+    cases.push((
+        "one-shannon payout mismatch",
+        valid
+            .clone()
+            .as_advanced_builder()
+            .set_outputs(changed_outputs)
+            .build(),
+    ));
+
+    let harmless_type =
+        deploy_always_success_with_args(&mut fixture.base.context, Bytes::from(vec![41]));
+    let mut changed_outputs = outputs.clone();
+    changed_outputs[0] = changed_outputs[0]
+        .clone()
+        .as_builder()
+        .type_(Some(harmless_type).pack())
+        .build();
+    cases.push((
+        "typed payout with an otherwise valid Type script",
+        fixture.base.context.complete_tx(
+            valid
+                .clone()
+                .as_advanced_builder()
+                .set_outputs(changed_outputs)
+                .build(),
+        ),
+    ));
+
+    let mut changed_data = data.clone();
+    changed_data[0] = Bytes::from(vec![1]).pack();
+    cases.push((
+        "payout carrying unexpected data",
+        valid
+            .clone()
+            .as_advanced_builder()
+            .set_outputs_data(changed_data)
+            .build(),
+    ));
+
+    let unrelated_lock =
+        deploy_always_success_with_args(&mut fixture.base.context, Bytes::from(vec![42]));
+    let mut changed_outputs = outputs.clone();
+    changed_outputs[0] = changed_outputs[0]
+        .clone()
+        .as_builder()
+        .lock(unrelated_lock.clone())
+        .build();
+    cases.push((
+        "wrong payout lock",
+        valid
+            .clone()
+            .as_advanced_builder()
+            .set_outputs(changed_outputs)
+            .build(),
+    ));
+
+    cases.push((
+        "missing participant payout",
+        valid
+            .clone()
+            .as_advanced_builder()
+            .set_outputs(outputs[1..].to_vec())
+            .set_outputs_data(data[1..].to_vec())
+            .build(),
+    ));
+
+    // Fund the extra output independently. Its positive control proves that
+    // unrelated wallet value is allowed; only duplicating a participant lock
+    // changes in the negative case, without a capacity imbalance.
+    let extra_capacity = u64::from(outputs[0].capacity());
+    let extra_input = fixture.base.context.create_cell(
+        CellOutput::new_builder()
+            .capacity(extra_capacity)
+            .lock(unrelated_lock.clone())
+            .build(),
+        Bytes::new(),
+    );
+    let funded_control = fixture.base.context.complete_tx(
+        valid
+            .clone()
+            .as_advanced_builder()
+            .input(CellInput::new(extra_input, 0))
+            .output(
+                CellOutput::new_builder()
+                    .capacity(extra_capacity)
+                    .lock(unrelated_lock)
+                    .build(),
+            )
+            .output_data(Bytes::new().pack())
+            .build(),
+    );
+    fixture
+        .base
+        .context
+        .verify_tx(&funded_control, MAX_CYCLES)
+        .expect("independent wallet input/output must not disturb valid Batch payouts");
+    let mut duplicated_outputs = funded_control.outputs().into_iter().collect::<Vec<_>>();
+    let last = duplicated_outputs.len() - 1;
+    duplicated_outputs[last] = duplicated_outputs[last]
+        .clone()
+        .as_builder()
+        .lock(outputs[0].lock())
+        .build();
+    cases.push((
+        "duplicate participant payout with independent funding",
+        funded_control
+            .as_advanced_builder()
+            .set_outputs(duplicated_outputs)
+            .build(),
+    ));
+
+    for (name, transaction) in cases {
+        let error = fixture
+            .base
+            .context
+            .verify_tx(&transaction, MAX_CYCLES)
+            .expect_err("malformed Batch payout must fail its output guard");
+        assert!(
+            error.to_string().contains("error code 56 "),
+            "{name}: {error:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires `make build-contracts`"]
 fn current_conditional_lane_cannot_pay_pending_from_carrier_or_omit_token() {
     let fixture = conditional_fixture();
     let mut outputs = fixture

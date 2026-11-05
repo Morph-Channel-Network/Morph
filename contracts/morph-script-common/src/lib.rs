@@ -147,31 +147,31 @@ pub enum ScriptError {
     StateSinceNotMature = 16,
     SponsorFeeTooHigh = 17,
     SponsorBudgetExceeded = 18,
-    SponsorChangeLockMismatch = 19,
+    // 19 is reserved; retired error code.
     CapacityUnderflow = 20,
     ParticipantWitnessMissing = 21,
     ParticipantWitnessEncoding = 22,
     ParticipantCommitmentMismatch = 23,
     InvalidParticipantSignature = 24,
     SettlementWitnessMissing = 25,
-    SettlementDescriptorEncoding = 26,
-    SettlementDescriptorMismatch = 27,
-    SettlementOutputMismatch = 28,
+    // 26 is reserved; retired error code.
+    // 27 is reserved; retired error code.
+    // 28 is reserved; retired error code.
     SponsorStateOutOfRange = 29,
     XudtAmountEncoding = 30,
     XudtMintUnauthorised = 31,
     XudtConservationMismatch = 32,
-    XudtTypeMismatch = 33,
+    // 33 is reserved; retired error code.
     FactoryIdMismatch = 34,
-    FactoryLocalExitMismatch = 35,
-    FactoryReserveMismatch = 36,
+    // 35 is reserved; retired error code.
+    // 36 is reserved; retired error code.
     StateTypeMismatch = 37,
     FactoryReducedProofEncoding = 38,
     FactoryReducedProofMismatch = 39,
-    SponsorPolicyUnsupported = 44,
-    NewStateNotActive = 46,
-    VaultCellMissing = 47,
-    VaultCellAmbiguous = 48,
+    // 44 is reserved; retired error code.
+    // 46 is reserved; retired error code.
+    // 47 is reserved; retired error code.
+    // 48 is reserved; retired error code.
     VaultOutPointMismatch = 50,
     VaultActivationInvalid = 51,
     StateCarrierMismatch = 52,

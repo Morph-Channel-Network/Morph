@@ -550,8 +550,15 @@ fn batch_lock_rejects_premature_refund() {
 #[ignore = "requires `make build-contracts`"]
 #[test]
 fn batch_lock_rejects_output_capacity_mismatch() {
+    let (context, valid) = conditional_batch_resolution_tx(ConditionalBatchTamper::None);
+    context
+        .verify_tx(&valid, MAX_CYCLES)
+        .expect("unchanged Batch payouts must verify before the one-shannon mutation");
     let (context, tx) = conditional_batch_resolution_tx(ConditionalBatchTamper::OutputCapacity);
-    assert!(context.verify_tx(&tx, MAX_CYCLES).is_err());
+    let error = context
+        .verify_tx(&tx, MAX_CYCLES)
+        .expect_err("one-shannon Batch payout mismatch must be rejected");
+    assert!(error.to_string().contains("error code 56 "), "{error:?}");
 }
 
 #[ignore = "requires `make build-contracts`"]

@@ -290,7 +290,7 @@ export const emptyState: NodeState = {
     max_invoice_expiry_secs: 604800,
   },
   model: {
-    profile: 'morph-v3-conditional-batch',
+    profile: 'morph-current-custody',
     hub_role: 'local_operator_projection',
     factory_authority: 'factory_state_and_vault',
     channel_authority: 'state_and_vault',

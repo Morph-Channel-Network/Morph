@@ -2333,9 +2333,6 @@ fn morph_script_error_name(code: i16) -> Option<&'static str> {
             Some("NonMonotonicStateNumber")
         }
         value if value == ScriptError::NewStateNotSettling as i16 => Some("NewStateNotSettling"),
-        value if value == ScriptError::NewStateNotActive as i16 => Some("NewStateNotActive"),
-        value if value == ScriptError::VaultCellMissing as i16 => Some("VaultCellMissing"),
-        value if value == ScriptError::VaultCellAmbiguous as i16 => Some("VaultCellAmbiguous"),
         value if value == ScriptError::HeaderContextChanged as i16 => Some("HeaderContextChanged"),
         value if value == ScriptError::OutputBelowOccupiedCapacity as i16 => {
             Some("OutputBelowOccupiedCapacity")
@@ -2346,9 +2343,6 @@ fn morph_script_error_name(code: i16) -> Option<&'static str> {
         value if value == ScriptError::SponsorFeeTooHigh as i16 => Some("SponsorFeeTooHigh"),
         value if value == ScriptError::SponsorBudgetExceeded as i16 => {
             Some("SponsorBudgetExceeded")
-        }
-        value if value == ScriptError::SponsorChangeLockMismatch as i16 => {
-            Some("SponsorChangeLockMismatch")
         }
         value if value == ScriptError::CapacityUnderflow as i16 => Some("CapacityUnderflow"),
         value if value == ScriptError::ParticipantWitnessMissing as i16 => {
@@ -2366,15 +2360,6 @@ fn morph_script_error_name(code: i16) -> Option<&'static str> {
         value if value == ScriptError::SettlementWitnessMissing as i16 => {
             Some("SettlementWitnessMissing")
         }
-        value if value == ScriptError::SettlementDescriptorEncoding as i16 => {
-            Some("SettlementDescriptorEncoding")
-        }
-        value if value == ScriptError::SettlementDescriptorMismatch as i16 => {
-            Some("SettlementDescriptorMismatch")
-        }
-        value if value == ScriptError::SettlementOutputMismatch as i16 => {
-            Some("SettlementOutputMismatch")
-        }
         value if value == ScriptError::SponsorStateOutOfRange as i16 => {
             Some("SponsorStateOutOfRange")
         }
@@ -2383,23 +2368,13 @@ fn morph_script_error_name(code: i16) -> Option<&'static str> {
         value if value == ScriptError::XudtConservationMismatch as i16 => {
             Some("XudtConservationMismatch")
         }
-        value if value == ScriptError::XudtTypeMismatch as i16 => Some("XudtTypeMismatch"),
         value if value == ScriptError::FactoryIdMismatch as i16 => Some("FactoryIdMismatch"),
-        value if value == ScriptError::FactoryLocalExitMismatch as i16 => {
-            Some("FactoryLocalExitMismatch")
-        }
-        value if value == ScriptError::FactoryReserveMismatch as i16 => {
-            Some("FactoryReserveMismatch")
-        }
         value if value == ScriptError::StateTypeMismatch as i16 => Some("StateTypeMismatch"),
         value if value == ScriptError::FactoryReducedProofEncoding as i16 => {
             Some("FactoryReducedProofEncoding")
         }
         value if value == ScriptError::FactoryReducedProofMismatch as i16 => {
             Some("FactoryReducedProofMismatch")
-        }
-        value if value == ScriptError::SponsorPolicyUnsupported as i16 => {
-            Some("SponsorPolicyUnsupported")
         }
         value if value == ScriptError::StateCarrierMismatch as i16 => Some("StateCarrierMismatch"),
         value if value == ScriptError::MultiAssetEncoding as i16 => Some("MultiAssetEncoding"),

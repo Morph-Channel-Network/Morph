@@ -31,7 +31,7 @@ is necessary evidence, but it is not enough for mainnet.
 | Factory state sovereignty | FactoryState uses the type-bound Morph StateLock; participant/reduced proofs, rather than a fee payer's secp lock, authorise state transitions. | Implemented for the sole unpublished Factory shape; independent review remains open. |
 | Factory child provenance | A current Factory child StateType commits and verifies the exact input FactoryType script hash that authorises materialisation. | Implemented with a CKB-VM negative test; independent review remains open. |
 | State-carrier conservation | Current channel and Factory updates/activation preserve carrier capacity exactly. Fees are external; reduced Factory successors retain the collective carrier and full parent materialisation retirement refunds it explicitly. | Implemented and covered by CKB-VM negative tests; independent review remains open. |
-| Timed payment commit | The bilateral backend rejects commits before preparation and at/after the signed intent expiry. Conditional batches enforce preimages and absolute-block refunds in CKB-VM. | Implemented for bounded CKB batches; xUDT conditions and production watchtower broadcast remain open. |
+| Payment intent expiry and recovery | Preparation and new local signing reservations reject expired intents. Already issued valid state signatures remain enforceable; the exact co-signed proposal can be committed/reconciled after expiry without inventing cancellation or refund authority. | Implemented in the current payment lifecycle, including late-commit and interrupted-metadata recovery tests. Conditional CKB batches separately enforce preimages and absolute-block refunds in CKB-VM; xUDT conditions and production watchtower broadcast remain open. |
 | Morph-backed routed edge | A provider-neutral edge and minimal Fiber hook prove real routed/MPP traffic against live Morph materialisation and failure callbacks. | Open; current real Fiber route is not Morph-backed. |
 | RGB++ proof and reorg pipeline | Bitcoin proof, CKB binding/leap, confirmation, quarantine, and rollback evidence for admitted RGB++ assets. | Open. |
 | Reproducible release artefacts | CI-built script ELFs, data hashes, signed release manifests, and clean rebuild instructions. | Release tooling, data-hash manifests and provenance checks exist. The current consolidation changes binaries and requires fresh complete CI/report/manifest evidence. An independent external rebuild and release-owner sign-off remain open. |
@@ -80,6 +80,16 @@ Local evidence covers:
   locally induced chain reorganisation.
 
 ## What Local Evidence Does Not Prove
+
+The former all-member-only Factory exit restriction is resolved for admitted
+single-member reduced operations. That does not establish an unconditional
+exit for every backed allocation. An executable release still requires the
+member's precommitted `ReserveClaim`, usable rights/proof data, admitted asset
+behavior, fee capacity, a feasible payout and retained occupied-floor/carrier
+geometry. Proof refresh uses a saved complete initial rights snapshot plus
+public localized changes; chain commitments alone cannot recover lost data.
+An arbitrary all-member replacement root requires delivery of its complete new
+snapshot. These conditions remain part of liveness qualification.
 
 Local devnet evidence does not prove:
 

@@ -635,7 +635,7 @@ fn local_state_provenance() -> RecordProvenanceView {
 
 fn hub_model_view() -> HubModelView {
     HubModelView {
-        profile: "morph-v3-conditional-batch",
+        profile: crate::release::FACTORY_RELEASE_PROFILE,
         hub_role: "local_operator_projection",
         factory_authority: "factory_state_and_vault",
         channel_authority: "state_and_vault",
@@ -5184,7 +5184,7 @@ mod tests {
         assert_eq!(child["factory_id"].as_str(), Some(factory_id.as_str()));
         assert_eq!(
             body["model"]["profile"].as_str(),
-            Some("morph-v3-conditional-batch")
+            Some(crate::release::FACTORY_RELEASE_PROFILE)
         );
         assert_eq!(
             body["model"]["hub_role"].as_str(),

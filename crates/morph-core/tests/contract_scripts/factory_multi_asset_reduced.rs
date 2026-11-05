@@ -1,4 +1,5 @@
 use super::*;
+use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use morph_core::{
     FactoryMultiAssetReducedRelease, FactoryReducedReleasePayout, FactoryReducedReleaseRight,
 };
@@ -9,6 +10,8 @@ enum ExitShape {
     WholeTokenToPlain,
     TokenOnlyExternalCkb,
     DustMergedWallet,
+    RetainedFloor,
+    CrossAssetUnitBoundary,
 }
 struct ReducedFixture {
     base: FactoryFixture,
@@ -62,6 +65,85 @@ fn resign(fixture: &mut ReducedFixture, transaction: TransactionView) -> Transac
         }
     }
     sign_release(&fixture.plan, transaction)
+}
+
+fn release_frame(transaction: &TransactionView) -> Vec<u8> {
+    WitnessArgs::from_slice(&transaction.witnesses().get(0).unwrap().raw_data())
+        .unwrap()
+        .output_type()
+        .to_opt()
+        .unwrap()
+        .raw_data()
+        .to_vec()
+}
+
+// Start with a production-encoded valid frame, then bypass only the host's
+// transition prevalidation. Every adversarial body still has a fresh exact-tx
+// signature, checked independently below, so the VM must enforce the invariant.
+fn sign_raw_release(mut transaction: TransactionView, mut frame: Vec<u8>) -> TransactionView {
+    assert_eq!(u16::from_le_bytes(frame[10..12].try_into().unwrap()), 0);
+    let locality = factory::factory_transition_locality_digest(&frame, 788).unwrap();
+    frame[590..622].copy_from_slice(&locality);
+    let mut data: Vec<_> = transaction.outputs_data().into_iter().collect();
+    data[0] = Bytes::copy_from_slice(&frame[418..724]).pack();
+    transaction = transaction
+        .as_advanced_builder()
+        .set_outputs_data(data)
+        .build();
+    frame[72..104].copy_from_slice(transaction.hash().as_slice());
+    let digest = factory::FactoryReducedReleaseWitness::parse(&frame)
+        .unwrap()
+        .signing_digest();
+    let key = signing_key(1);
+    let signed = signature(&key, &digest);
+    key.verifying_key()
+        .verify_prehash(
+            &digest,
+            &k256::ecdsa::Signature::from_slice(&signed).unwrap(),
+        )
+        .expect("fresh valid touched-member signature over the mutated exact body");
+    frame[724..788].copy_from_slice(&signed);
+    let witness = WitnessArgs::new_builder()
+        .output_type(Some(Bytes::from(frame)).pack())
+        .build();
+    transaction
+        .as_advanced_builder()
+        .set_witnesses(vec![witness.as_bytes().pack()])
+        .build()
+}
+
+fn replace_release_values(
+    transaction: &TransactionView,
+    retained: &MultiAssetManifest,
+    payouts: &[FactoryReducedReleasePayout],
+) -> Vec<u8> {
+    let mut frame = release_frame(transaction);
+    // Locate already-encoded slices with the production parser instead of
+    // maintaining a second frame encoder in these negative tests.
+    let view = factory::FactoryReducedReleaseWitness::parse(&frame).unwrap();
+    let start = view.retained().as_bytes().as_ptr() as usize - frame.as_ptr() as usize;
+    let old_len = view.retained().as_bytes().len();
+    let allocation_offsets: Vec<_> = (0..view.payout_count())
+        .map(|i| {
+            view.payout(i).unwrap().lock_script.as_ptr() as usize - frame.as_ptr() as usize - 69
+                + 33
+        })
+        .collect();
+    assert_eq!(allocation_offsets.len(), payouts.len());
+    let encoded = retained.encode().unwrap();
+    assert_eq!(encoded.len(), old_len);
+    frame[start..start + old_len].copy_from_slice(&encoded);
+    for (offset, payout) in allocation_offsets.into_iter().zip(payouts) {
+        wire::MultiAssetAllocation {
+            reserve: payout.value.reserve,
+            business_ckb: payout.value.business_ckb,
+            amount: payout.value.amount,
+        }
+        .encode(&mut frame[offset..offset + 32])
+        .unwrap();
+    }
+    frame[656..688].copy_from_slice(&retained.commitment().unwrap());
+    frame
 }
 fn reduced_fixture() -> ReducedFixture {
     reduced_fixture_profile(1, true, 2)
@@ -150,6 +232,13 @@ fn reduced_fixture_shape(
         retained = source.clone();
         retained.vaults[0].value.business_ckb -= 1;
     }
+    if matches!(shape, ExitShape::RetainedFloor) {
+        assert_eq!(typed, 0);
+        assert!(plain);
+        retained.vaults[0].value.reserve =
+            wire::multi_asset_occupied_capacity(base.factory_vault_lock.as_slice(), None, 0)
+                .unwrap();
+    }
     let mut changes = Vec::new();
     let mut changed_capacity = 0u128;
     for (i, (large, small)) in large.vaults.iter().zip(&small.vaults).enumerate() {
@@ -169,6 +258,22 @@ fn reduced_fixture_shape(
             lock_script: base.template.locks[0].as_slice().to_vec(),
             output_index: (1 + retained.vaults.len() + i) as u16,
         });
+    }
+    if matches!(shape, ExitShape::RetainedFloor) {
+        changes[0].value.reserve =
+            source.vaults[0].value.reserve - retained.vaults[0].value.reserve;
+        changed_capacity = changes[0].value.capacity().unwrap() as u128;
+    }
+    if matches!(shape, ExitShape::CrossAssetUnitBoundary) {
+        assert_eq!(typed, 1);
+        assert!(plain);
+        // A fully backed positive allocation: one fewer shannon of CKB and
+        // one more token unit belong to the touched member's release.
+        retained.vaults[0].value.business_ckb += 1;
+        changes[0].value.business_ckb -= 1;
+        retained.vaults[1].value.amount -= 1;
+        changes[1].value.amount += 1;
+        changed_capacity -= 1;
     }
     if matches!(
         shape,
@@ -881,6 +986,251 @@ fn factory_multi_asset_reduced_release_rejects_cloned_state_outpoint_and_state_l
         .build();
     let tx = resign(&mut fixture, tx);
     rejects(&fixture.base.template.context, &tx, &[69]);
+}
+
+#[test]
+#[ignore = "requires make build-contracts"]
+fn factory_multi_asset_reduced_release_rejects_replayed_frame_and_stale_before_header() {
+    let mut fixture = reduced_fixture();
+    fixture
+        .base
+        .template
+        .context
+        .verify_tx(&fixture.transaction, MAX_CYCLES)
+        .expect("original exact-source release is valid");
+
+    // Advance the authentic State with a valid N-of-N metadata update while
+    // retaining the same rights and physical Vaults.
+    let mut current = fixture.plan.before;
+    current.update_number += 1;
+    let metadata = fixture.base.template.context.complete_tx(
+        TransactionBuilder::default()
+            .input(fixture.transaction.inputs().get(0).unwrap())
+            .output(state_cell(
+                CELL_CAPACITY,
+                &fixture.base.factory_state_lock,
+                &fixture.base.factory_type,
+            ))
+            .output_data(Bytes::from(current.encode().unwrap().to_vec()).pack())
+            .witness(Bytes::new())
+            .build(),
+    );
+    let digest = factory::FactoryMultiAssetStateHeader::parse(&current.encode().unwrap())
+        .unwrap()
+        .update_signing_digest(&metadata.hash().unpack())
+        .unwrap();
+    let metadata = metadata
+        .as_advanced_builder()
+        .set_witnesses(vec![
+            fs_witness(
+                factory::FACTORY_STATE_WITNESS_UPDATE,
+                &fixture.plan.source,
+                &fixture.plan.source_outpoints,
+                &factory_auth(&digest, 2),
+            )
+            .pack(),
+        ])
+        .build();
+    fixture
+        .base
+        .template
+        .context
+        .verify_tx(&metadata, MAX_CYCLES)
+        .expect("all-member metadata successor is independently valid");
+    materialise(&mut fixture.base.template.context, &metadata);
+    let mut inputs: Vec<_> = fixture.transaction.inputs().into_iter().collect();
+    inputs[0] = inputs[0]
+        .clone()
+        .as_builder()
+        .previous_output(point(&metadata, 0))
+        .build();
+    let current_source = fixture
+        .transaction
+        .as_advanced_builder()
+        .set_inputs(inputs)
+        .build();
+
+    // Even a fresh exact-body signature cannot make an old State locator
+    // authorize consumption of its authentic successor.
+    let replay = sign_raw_release(current_source.clone(), release_frame(&fixture.transaction));
+    factory::FactoryReducedReleaseWitness::parse(&release_frame(&replay))
+        .unwrap()
+        .verify()
+        .expect("replayed proof and fresh signature remain internally valid");
+    rejects(&fixture.base.template.context, &replay, &[69]);
+
+    // Correct the locator too: now only the before-header bytes are stale.
+    let mut frame = release_frame(&fixture.transaction);
+    frame[36..68].copy_from_slice(metadata.hash().as_slice());
+    frame[68..72].copy_from_slice(&0u32.to_le_bytes());
+    let stale = sign_raw_release(current_source.clone(), frame);
+    factory::FactoryReducedReleaseWitness::parse(&release_frame(&stale))
+        .unwrap()
+        .verify()
+        .expect("stale header frame has valid locality, proofs and new signature");
+    rejects(&fixture.base.template.context, &stale, &[69]);
+
+    // Updating the claimed before/after progress makes this same source and
+    // payout valid, isolating authentication from signatures and cell geometry.
+    fixture.plan.before = current;
+    fixture.plan.after.update_number = current.update_number + 1;
+    fixture.plan.old_state.tx_hash = metadata.hash().unpack();
+    fixture.plan.set_locality_digest().unwrap();
+    let mut data: Vec<_> = current_source.outputs_data().into_iter().collect();
+    data[0] = Bytes::from(fixture.plan.after.encode().unwrap().to_vec()).pack();
+    let corrected = current_source
+        .as_advanced_builder()
+        .set_outputs_data(data)
+        .build();
+    let corrected = resign(&mut fixture, corrected);
+    fixture
+        .base
+        .template
+        .context
+        .verify_tx(&corrected, MAX_CYCLES)
+        .expect("fresh before-header and exact source permit release");
+}
+
+#[test]
+#[ignore = "requires make build-contracts"]
+fn factory_multi_asset_reduced_release_rejects_retained_reserve_one_below_occupied_floor() {
+    let fixture = reduced_fixture_shape(
+        0,
+        true,
+        2,
+        false,
+        morph_core::FactoryTransitionOperation::ReducedRelease,
+        1,
+        ExitShape::RetainedFloor,
+    );
+    fixture
+        .base
+        .template
+        .context
+        .verify_tx(&fixture.root, MAX_CYCLES)
+        .expect("occupied-boundary claims are fully backed at funding");
+    fixture
+        .base
+        .template
+        .context
+        .verify_tx(&fixture.transaction, MAX_CYCLES)
+        .expect("retained reserve exactly at occupied floor is valid");
+    let floor =
+        wire::multi_asset_occupied_capacity(fixture.base.factory_vault_lock.as_slice(), None, 0)
+            .unwrap();
+    assert_eq!(fixture.plan.retained.vaults[0].value.reserve, floor);
+
+    // Keep actual capacities, CKB claims and both reserve/business totals
+    // unchanged. Only the retained Vault's independently reserved floor fails.
+    let mut retained = fixture.plan.retained.clone();
+    let mut payouts = fixture.plan.payouts.clone();
+    retained.vaults[0].value.reserve -= 1;
+    retained.vaults[0].value.business_ckb += 1;
+    payouts[0].value.reserve += 1;
+    payouts[0].value.business_ckb -= 1;
+    let frame = replace_release_values(&fixture.transaction, &retained, &payouts);
+    let bad = sign_raw_release(fixture.transaction.clone(), frame);
+    let raw = release_frame(&bad);
+    let view = factory::FactoryReducedReleaseWitness::parse(&raw).unwrap();
+    assert_eq!(
+        view.retained().entry(0).unwrap().allocation.reserve,
+        floor - 1
+    );
+    assert_eq!(
+        view.withdrawn_value(wire::MultiAssetId::CKB).unwrap(),
+        view.released_ckb().unwrap(),
+        "reserve and business lanes remain exactly balanced"
+    );
+    assert_eq!(
+        view.deposited_value(wire::MultiAssetId::CKB).unwrap(),
+        wire::MultiAssetAllocation::default()
+    );
+    rejects(&fixture.base.template.context, &bad, &[39]);
+}
+
+#[test]
+#[ignore = "requires make build-contracts"]
+fn factory_multi_asset_reduced_release_rejects_token_claim_burn_for_extra_ckb_payout() {
+    let fixture = reduced_fixture_shape(
+        1,
+        true,
+        2,
+        false,
+        morph_core::FactoryTransitionOperation::ReducedRelease,
+        1,
+        ExitShape::CrossAssetUnitBoundary,
+    );
+    fixture
+        .base
+        .template
+        .context
+        .verify_tx(&fixture.root, MAX_CYCLES)
+        .expect("both members' CKB and token claims are fully backed");
+    fixture
+        .base
+        .template
+        .context
+        .verify_tx(&fixture.transaction, MAX_CYCLES)
+        .expect("independent per-asset claim decrements match positive payouts");
+
+    // Preserve the valid membership, roots and localized proofs. Burn one
+    // extra token claim unit for one extra shannon of physical CKB instead.
+    // A cross-asset numeric sum would pass; each asset's own equation must fail.
+    let mut retained = fixture.plan.retained.clone();
+    let mut payouts = fixture.plan.payouts.clone();
+    retained.vaults[0].value.business_ckb -= 1;
+    payouts[0].value.business_ckb += 1;
+    retained.vaults[1].value.amount += 1;
+    payouts[1].value.amount -= 1;
+    let frame = replace_release_values(&fixture.transaction, &retained, &payouts);
+    let mut outputs: Vec<_> = fixture.transaction.outputs().into_iter().collect();
+    let mut data: Vec<_> = fixture.transaction.outputs_data().into_iter().collect();
+    outputs[1] = outputs[1]
+        .clone()
+        .as_builder()
+        .capacity(retained.vaults[0].value.capacity().unwrap())
+        .build();
+    let ckb_payout = payouts[0].output_index as usize;
+    outputs[ckb_payout] = outputs[ckb_payout]
+        .clone()
+        .as_builder()
+        .capacity(payouts[0].value.capacity().unwrap())
+        .build();
+    data[2] = xudt_amount_data(retained.vaults[1].value.amount).pack();
+    data[payouts[1].output_index as usize] = xudt_amount_data(payouts[1].value.amount).pack();
+    let bad = fixture
+        .transaction
+        .as_advanced_builder()
+        .set_outputs(outputs)
+        .set_outputs_data(data)
+        .build();
+    let bad = sign_raw_release(bad, frame);
+    let raw = release_frame(&bad);
+    let view = factory::FactoryReducedReleaseWitness::parse(&raw).unwrap();
+    let token = match retained.vaults[1].asset {
+        VaultAsset::Xudt(type_hash) => wire::MultiAssetId { kind: 1, type_hash },
+        VaultAsset::Ckb => unreachable!("typed fixture"),
+    };
+    let claim_ckb = view.right(0).unwrap().before.quantity();
+    let claim_token = view.right(1).unwrap().before.quantity();
+    let actual_ckb = view
+        .withdrawn_value(wire::MultiAssetId::CKB)
+        .unwrap()
+        .capacity()
+        .unwrap() as u128;
+    let actual_token = view.withdrawn_value(token).unwrap().amount;
+    assert_eq!(claim_ckb + 1, actual_ckb);
+    assert_eq!(claim_token, actual_token + 1);
+    assert_eq!(claim_ckb + claim_token, actual_ckb + actual_token);
+    assert_eq!(
+        view.deposited_value(wire::MultiAssetId::CKB).unwrap(),
+        wire::MultiAssetAllocation::default()
+    );
+    assert_eq!(
+        view.deposited_value(token).unwrap(),
+        wire::MultiAssetAllocation::default()
+    );
+    rejects(&fixture.base.template.context, &bad, &[39]);
 }
 
 #[test]

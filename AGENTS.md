@@ -33,9 +33,10 @@ Devnet orchestration (requires a local CKB node binary and `jq`):
 | --- | --- |
 | `scripts/check-devnet-env.sh` | Confirms `ckb`, `jq`, and the `riscv64imac-unknown-none-elf` target are present. |
 | `scripts/devnet-node.sh` | Boots a local CKB devnet with the IntegrationTest RPC module enabled. |
-| `scripts/devnet-smoke.sh` / `make devnet-smoke` | Drives the smoke matrix against the local node. |
-| `scripts/devnet-e2e.sh` / `make devnet-e2e` | End-to-end smoke. |
-| `scripts/devnet-stateful-e2e.sh` / `make devnet-stateful-e2e` | Stateful acceptance matrix. |
+| `scripts/devnet-current-e2e.sh` / `make devnet-current-e2e` | Runs the sole current native matrix, derived stateful evidence, budgets and clean-source checks on a fresh development node; `EXTERNAL_RPC_URL` explicitly selects an existing development RPC. |
+| `scripts/devnet-smoke.sh` / `make devnet-smoke` | Delegates to the same current acceptance pipeline. |
+| `scripts/devnet-e2e.sh` / `make devnet-e2e` | Delegates to the same current acceptance pipeline. |
+| `scripts/devnet-stateful-e2e.sh` / `make devnet-stateful-e2e` | Delegates to the same current acceptance pipeline. |
 | `scripts/fiber-morph-devnet-{preflight,acceptance,audit}.sh` | Cross-stack acceptance with Fiber (see `docs/fiber-morph-devnet-runbook.md`). |
 
 UI (`ui/morph-hub`):
@@ -58,7 +59,7 @@ Notes:
 crates/morph-core          Host-side protocol objects, signing digests, validation. No CKB runtime deps.
 crates/morph-cli           CLI entry point. Subcommands: print/validate fixtures, devnet ops (devnet feature),
                            Morph Hub server, splice/factory/watchtower packages, smoke reports.
-contracts/morph-script-common    Shared no_std parsers, lengths, domains, witness envelope dispatch.
+contracts/morph-script-common    Shared no_std parsers, lengths, domains and typed capability frames.
 contracts/morph-state-{lock,type}      State cell boundary.
 contracts/morph-vault-lock            Vault settlement, splice checks.
 contracts/morph-batch-lock            Bounded CKB conditional preimage/refund settlement.
@@ -100,7 +101,8 @@ ui/morph-hub                   React + Vite + TypeScript operator console.
 - Reduced transitions commit the complete membership and carry exactly the touched member's signature. Compact SMT proofs have depth 256 and at most 64 descending sibling pairs per leaf. Public before/after root localization prevents unlisted leaf changes. Raw `FactoryRightId` order is canonical; never sort by hashed key.
 - Reduced metadata supports up to 10 value rights; physical transitions support at most 9 claims (global CKB plus up to 8 token Types). Quantity rules are independent for every asset. CKB reserve/business lanes are global across Vaults; tokens remain per-Type. Never sum token amounts across Types or use carriers/fees as claims.
 - Physical release, deposit and child operations use precommitted `ReserveClaim` leaves. Initial allocation must provide intended rights and enough operating reserve for payout geometry and the retained Factory floor. Backing checks alone do not prove arbitrary allocations withdrawable. Last retained reserve and the shared carrier require full consent.
-- Every member retains a complete rights snapshot. Reduced public changes permit local proof refresh without peer data; full-consent replacement requires delivery of a complete new snapshot before signing. `factory-session refresh/reconcile` retains prior reservations and approvals across canonical changes. Explicit replacement does not revoke an older approval: first canonical source consumption settles the operation.
+- Every member retains a complete initial rights snapshot. Given that saved data, reduced public changes permit local proof refresh without peer interaction; the chain's root commitment alone cannot reconstruct lost rights data. Full-consent replacement requires delivery of a complete new snapshot before signing. `factory-session refresh/reconcile` retains prior reservations and approvals across canonical changes. Explicit replacement does not revoke an older approval: first canonical source consumption settles the operation.
+- Full-consent `FullCustody` permits all-member rights redistribution without the single-member claim-delta predicate. It still enforces actual complete custody, independent asset conservation, occupied capacity, carrier and external fee/funding checks. Never describe it as skipping physical conservation.
 - Child parties may be outside the Factory roster. Their committed two keys and private exits are independent of parent authority: only roster members/all-N or the touched member can authorize Factory consumption. Provider routing reservation/liquidity admission is a separate check.
 - Child initial exits use independent `factory-child-session` journals. Both child parties persist their complete private exit before public possession attestations. Parent requests contain only public terms/receipts. Confirmed Factory-origin provenance performs same-path handoff into the ordinary bilateral journal; it cannot masquerade as Root funding or initialise another authority.
 - Operator value limits are fail-closed and admit every committed token right even when its quantity is zero. They remain an operator control, never a weaker consensus rule.
@@ -142,6 +144,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - Public root construction uses `multi-asset-funding-prepare` and strict `morph.multi_asset_root_terms.v1`: canonical explicit funders/inputs, exact per-wallet CKB/fee and per-Type token contributions, and owner-only change. The native builder never mints or selects replacement inputs. `multi-asset-funding-wallet-sign` reconstructs the exact body before signing only the declared wallet group, after complete root/exit authorization. `multi-asset-funding-submit` is keyless with no wallet/presigned fallback; full VM preflight precedes immutable binary persistence, preventing partial-witness attempts from poisoning that path. The harness uses these public paths.
 - `multi-asset-supervise` observes 1–32 registered session paths with four workers, nonblocking journal locks and one total RPC budget per check. Its atomic health has a config-bound expiry and is never signing authority; `multi-asset-supervision-health` fails on stale/unverified entries. Stable alert history survives busy checks and restart. Unguarded epoch-0 sessions are explicitly unmanaged; failover and pooled publication remain open. Runbook: `docs/runbooks/signer-supervision.md`.
 - Public proposal/signature messages use decimal strings and canonical hex. The private backend snapshot uses Rust serde integers and is not a JavaScript interchange format. SDK inspection is stateless and does not reserve a signer state number.
+- Payment intent expiry gates preparation and new local signing reservations. Already issued valid state signatures remain authority after expiry; `commit_payment` may reconcile the exact co-signed proposal or recover its already committed result. Expiry alone never authorizes cancellation, refund or journal reset.
 
 ### Morph Hub server
 
@@ -171,7 +174,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 
 - Unit / invariant / hash-parity / invoice tests are plain Rust: `crates/morph-core/tests/{invariants,hash_parity,node_invoice}.rs` use `cargo test --workspace` and `proptest` for invariant fuzzing.
 - Script integration tests live in `crates/morph-core/tests/contract_scripts.rs` and require the RISC-V ELFs on disk. They are `#[ignore]`-marked and run via `make contract-tests` with `--test-threads=1`. They read binaries from `target/riscv64imac-unknown-none-elf/release/` and will panic with a clear "run `make build-contracts` first" message if missing.
-- Devnet smoke / stateful reports produce JSON + Markdown reports under `target/devnet-smoke/` and `target/devnet-stateful-e2e/` respectively; a `latest` symlink points to the newest successful run. `morph-cli` has `devnet-smoke-report`, `devnet-smoke-compare`, `devnet-smoke-assert`, `devnet-stateful-report`, `devnet-stateful-assert`, and `devnet-stateful-compare` subcommands for summarising and diffing these.
+- The current native runner writes JSON evidence under `target/current-protocol-e2e/<run>/scenarios/smoke` and derived stateful scenarios under `.../scenarios`. Only a successful budget/audit/source-freshness run updates `target/current-protocol-e2e/latest`. The default `devnet-smoke-report|compare|assert` and `devnet-stateful-report|assert|compare` commands consume these current directories; the earlier shell entrypoints delegate to this same runner.
 - Negative tests are first-class: every safety boundary in `SECURITY-FIXES.md` lists the negative-path test names. Add new negatives when adding new safety boundaries.
 - Sample budget profiles are in `docs/devnet-smoke-budget.example.json`, `docs/devnet-stateful-budget.example.json`, and `docs/devnet-audit-profile.example.json`.
 
@@ -181,13 +184,13 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - `morph-cli` uses `clap` with the `derive` and `env` features; subcommands are an explicit `enum Command` with `#[command(subcommand)]`. New subcommands should follow the same shape and carry `#[arg(long)]` for any boolean toggle.
 - Two crates use a `devnet` Cargo feature to gate devnet-only modules behind `#[cfg(feature = "devnet")]`. Don't put devnet code paths behind `#[cfg(devnet_only)]` ad hoc.
 - JSON in/out is via `serde` + `serde_json`; many types re-export through `morph-core::*`. The codebase avoids `unwrap` in non-test code and prefers `anyhow::Result`/`ensure!` in CLI code and `Result<_, ScriptError>` in scripts.
-- RISC-V contracts store `i8` error codes cast from `ScriptError` discriminants; `program_entry` returns `err as i8`. When adding a new error variant, also assign it a distinct numeric value (existing variants live in `morph-script-common`).
+- RISC-V contracts store `i8` error codes cast from `ScriptError` discriminants; `program_entry` returns `err as i8`. When adding a new error variant, assign it a distinct numeric value (existing variants live in `morph-script-common`). Retired values remain reserved; do not renumber or reuse them.
 
 ## Gotchas and Non-Obvious Rules
 
 - **Both domain-string locations must change together.** `morph-core/src/hash.rs` and `contracts/morph-script-common/src/lib.rs` declare duplicate domain constants for use across the host/script boundary. `hash_parity.rs` enforces equality at test time.
-- **`vault_materialisation_root` is the only accepted JSON name.** Do not reintroduce unpublished aliases.
-- **Boundary versions are not free.** Bumping `WITNESS_ENVELOPE_FORMAT`, any `FACTORY_*_WITNESS_VERSION`, the `STATE_HEADER_LEN`, or any `*_LEN` constant is a wire-format break and breaks every dependency on it (parsers, fixtures, contract tests, devnet smoke). Check fixtures and security audits first.
+- **Current custody commits complete sets.** Bilateral `MultiAssetState` has `vault_content_set_root`, `vault_outpoint_set_root` and `vault_count`; Factory headers have their corresponding content/OutPoint commitments. Use the current encoders and exact set helpers, not removed single-Vault fields or aliases.
+- **Boundary versions are not free.** Changes to `MULTI_ASSET_STATE_HEADER_LEN`, `FACTORY_MULTI_ASSET_STATE_HEADER_LEN`, `MULTI_ASSET_DESCRIPTOR_VERSION`, `FACTORY_MULTI_ASSET_STATE_WITNESS_FORMAT`, `MULTI_ASSET_SPLICE_FORMAT` or other current length/format constants affect the wire boundary and its parsers, fixtures, contract tests and native evidence. Check those dependencies before changing them.
 - **Reduced factories accept only current documented proofs.** Signer membership is 2–16; rights and physical custody share current per-asset compact proofs and resource limits. Unknown shapes remain rejected.
 - **Devnet-only `morph-devnet-xudt`.** It is not safe for non-devnet use. The contract name and the README both call this out.
 - **`devnet` feature on `morph-cli`.** The `devnet` feature gates RPC client, fixture-server utilities, `watch_*`, and the entire `devnet` subcommand. A default build will silently lack these.
@@ -199,10 +202,10 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 
 ## Where to Look
 
-- Protocol object model: `crates/morph-core/src/types.rs`
+- Protocol object model: `crates/morph-core/src/{types,multi_asset,factory_multi_asset,factory_backend}.rs`
 - Signing digests and domain strings: `crates/morph-core/src/hash.rs`, `contracts/morph-script-common/src/lib.rs`
 - Validation errors and rules: `crates/morph-core/src/validation.rs`
-- Witnesses, splice envelopes: `contracts/morph-script-common/src/lib.rs` (length table, envelope dispatch)
+- Current witnesses and dispatch: `contracts/morph-script-common/src/{multi_asset,multi_asset_splice,factory_multi_asset,factory_multi_asset_runtime}.rs` and `factory_multi_asset/{state,materialisation,reduced}.rs`; shared primitives/errors remain in `lib.rs`
 - State cell script entrypoint and shape dispatch: `contracts/morph-state-type/src/main.rs`
 - Fixtures: `crates/morph-cli/src/{multi_asset_packages,factory_packets,factory_transaction,fixture_exports}.rs`
 - Hub server: `crates/morph-cli/src/hub.rs`
