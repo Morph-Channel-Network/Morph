@@ -37,7 +37,7 @@ CASES = {
 SCENARIOS = {
     "root_funding", "bilateral_splice", "bilateral_unilateral_close",
     "factory_reduced_escape", "factory_deposit", "factory_children",
-    "factory_terminal_materialisation", "watch_service_reorg", "maximum_asset_lifecycle",
+    "factory_retained_materialisation", "factory_terminal_materialisation", "watch_service_reorg", "maximum_asset_lifecycle",
 }
 PUBLIC_ARTIFACTS = {
     "smoke/acceptance.json", "smoke/shared-acceptance.json",
@@ -47,19 +47,22 @@ PUBLIC_ARTIFACTS = {
     f"smoke/ledger-evidence/{name}.json" for name in (
         "child-reduced-latest-0", "child-reduced-latest-1",
         "child-terminal-latest-0", "child-terminal-latest-1",
-        "factory-child-reduced", "factory-child-terminal", "factory-deposit", "factory-escape",
+        "child-retained-latest-0", "child-retained-latest-1",
+        "factory-child-reduced", "factory-child-retained", "factory-child-terminal", "factory-deposit", "factory-escape",
     )
 }
 POINTER_PARTS = set("""transitions operations submission status
 withheld_bridge_receipt_reconciled summary assets activation canonical_confirmed
-terminal package resulting_state child reduced finalise
+terminal package resulting_state child reduced retained finalise
 initial_exit_required_before_parent_vote private_exit_signatures_absent_from_parent
 latest_package_watch publication same_path_handoffs session current package_id
 lineage origin kind external_child_carrier delivery_count target retained_factory
 retired carrier_refund capacity escape deposit report peer_refreshed_from_public_changes
 previous_approval_not_revoked withheld_full_consent_escaped stale_context_preserves_journal
 target_rights operator_checks service published_count watch_passes reorg_recovery reason
-asset_count""".split())
+asset_count rights_updates full_consent_metadata changed_right_count funding_replay
+orphaned exact_body_and_witnesses unchanged_signer_journals peer_creation_receipt_withheld
+canonical_reorg_replay authentic_source_live no_new_participant_signatures""".split())
 VALUE_FIELDS = {
     "type_hash", "reserve", "business_ckb", "amount", "state_number", "phase",
     "asset_type", "kind", "participant", "quantity", "subchannel",
@@ -288,7 +291,7 @@ attestation, a public-network finality proof or production approval.
 | Item | Local result |
 | --- | ---: |
 | Native acceptance cases | 5 |
-| Derived stateful scenarios | 9 |
+| Derived stateful scenarios | {len(SCENARIOS)} |
 | Exact retained-artifact assertions | {assertions} |
 | Passing audit categories | {audits} |
 | CKB-VM tests in supplied local CI stdout | {ci["contract_vm_tests"]["passed"] if ci and ci["contract_vm_tests"] else "Not inferred"} |
@@ -429,7 +432,7 @@ def export(run, output, expected_commit=None, ci_log=None):
         public_scenarios.append({"scenario_id": identifier,
             "coverage": [token(tag) for tag in scenario["coverage"]],
             "assertions": [inspect_assertion(reader, item) for item in scenario["assertions"]]})
-    require({s["scenario_id"] for s in public_scenarios} == SCENARIOS and len(public_scenarios) == 9, "scenario set differs")
+    require({s["scenario_id"] for s in public_scenarios} == SCENARIOS and len(public_scenarios) == len(SCENARIOS), "scenario set differs")
     count = sum(len(item["assertions"]) for item in public_scenarios)
     require(count == assertion["evidence_assertions"], "assertion count mismatch")
     audits = []
@@ -465,7 +468,7 @@ def export(run, output, expected_commit=None, ci_log=None):
             "cli_sha256": digest(facts["cli_sha256"]), "release_manifest_sha256": sha256(release_raw),
             "release_manifest_matches_captured": True, "contracts": elf_hashes,
             "scope": "Controlled development-node local evidence; not independent attestation or production approval.",
-            "counts": {"native_cases": 5, "deployment_transactions": 8, "stateful_scenarios": 9,
+            "counts": {"native_cases": 5, "deployment_transactions": 8, "stateful_scenarios": len(public_scenarios),
                        "evidence_assertions": count, "audit_families": len(audits), "unique_transactions": len(txs),
                        "transaction_observations": len(smoke["transaction_observations"])},
             "totals": totals},

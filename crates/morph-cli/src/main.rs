@@ -712,6 +712,9 @@ enum DevnetCommand {
         /// Fund assets from both participants and use a third fee/carrier wallet.
         #[arg(long)]
         shared_funding: bool,
+        /// Orphan and replay this exact funding transaction on the isolated devnet.
+        #[arg(long, requires = "shared_funding", conflicts_with_all = ["watch_publication", "splice_transitions"])]
+        funding_reorg: bool,
         /// Exercise real 2-to-1 removal and 1-to-2 admission, including a withheld bridge receipt.
         #[arg(long, conflicts_with_all = ["watch_publication", "sponsor_publication"])]
         splice_transitions: bool,

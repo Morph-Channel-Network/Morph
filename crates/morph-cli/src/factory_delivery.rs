@@ -65,6 +65,9 @@ pub(crate) fn run(command: DeliveryCommand) -> Result<Value> {
             let request = read_for_delivery_review(&request)?.decode_for_delivery_review()?;
             let package = read_package(&package)?;
             let recovery = package.recovery()?;
+            // A valid exit for another parent/child is not this delivery.
+            // Reject it before writing anything into the recipient's store.
+            request.verify_child_recovery(child_index, &recovery)?;
             let expected = crate::canonical_fields::public(&local_pubkey)?;
             ensure!(
                 recovery
@@ -133,6 +136,98 @@ mod tests {
     use crate::multi_asset_packages::StoredMultiAssetPackage;
     use ckb_types::{packed, prelude::*};
     use k256::ecdsa::SigningKey;
+
+    #[test]
+    fn failed_private_persistence_or_acknowledgement_keeps_parent_unsigned_and_retryable() {
+        let (request, members, rights, children) =
+            crate::factory_journal_fixture::reduced_child_request();
+        let dir = std::env::temp_dir().join(format!(
+            "morph-factory-delivery-fault-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let request_path = dir.join("request.json");
+        std::fs::write(
+            &request_path,
+            serde_json::to_vec(&StoredFactoryRequest::from_delivery_review(&request).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        let raw = request.raw_transaction().unwrap();
+        let private = StoredMultiAssetPackage::from_recovery(
+            &children[0],
+            &raw.cell_deps().into_iter().collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let input = dir.join("private-input.json");
+        std::fs::write(&input, serde_json::to_vec(&private).unwrap()).unwrap();
+        let key = SigningKey::from_slice(&[1; 32]).unwrap();
+        let receive = |package: &Path, store: &Path, receipt: &Path| DeliveryCommand::Receive {
+            request: request_path.clone(),
+            child_index: 0,
+            package: package.to_path_buf(),
+            local_pubkey: canonical_hex(key.verifying_key().to_encoded_point(true).as_bytes()),
+            store_dir: store.to_path_buf(),
+            receipt: receipt.to_path_buf(),
+            private_key: hex::encode([1; 32]),
+        };
+        // A complete but foreign exit is rejected before store creation.
+        let foreign = dir.join("foreign.json");
+        let other = crate::multi_asset_packages::fixture_package().unwrap();
+        other.recovery().unwrap().validate().unwrap();
+        std::fs::write(&foreign, serde_json::to_vec(&other).unwrap()).unwrap();
+        let rejected_store = dir.join("foreign-store");
+        let rejected_receipt = dir.join("foreign-receipt.json");
+        assert!(run(receive(&foreign, &rejected_store, &rejected_receipt)).is_err());
+        assert!(!rejected_store.exists() && !rejected_receipt.exists());
+
+        // Storage failure cannot issue even the first possession receipt.
+        let blocker = dir.join("not-a-directory");
+        std::fs::write(&blocker, b"injected storage failure").unwrap();
+        let receipt = dir.join("receipt.json");
+        assert!(run(receive(&input, &blocker.join("private"), &receipt)).is_err());
+        assert!(!receipt.exists());
+
+        // Acknowledgement failure occurs only after the complete exit is
+        // retained. A disconnected participant can retry without the peer.
+        let store = dir.join("private-store");
+        assert!(run(receive(&input, &store, &blocker.join("receipt.json"))).is_err());
+        let saved = write_package(&store, &private).unwrap();
+        request
+            .verify_child_recovery(0, &read_package(&saved).unwrap().recovery().unwrap())
+            .unwrap();
+        let mut journal = morph_core::FactorySignerJournal::from_confirmed(
+            request.source.clone().unwrap(),
+            rights,
+            members.clone(),
+            members[0].participant,
+        )
+        .unwrap();
+        assert_eq!(
+            journal.prepare_request(request.clone()),
+            Err(morph_core::FactoryBackendError::InvalidDelivery)
+        );
+        assert!(journal.active_request_id().is_none());
+        run(receive(&input, &store, &receipt)).unwrap();
+        let partial_path = dir.join("one-receipt.json");
+        attach(&request_path, &receipt, &partial_path).unwrap();
+        let partial = read_for_delivery_review(&partial_path)
+            .unwrap()
+            .decode_for_delivery_review()
+            .unwrap();
+        assert_eq!(partial.missing_delivery_receipts().unwrap().len(), 1);
+        assert_eq!(
+            journal.prepare_request(partial),
+            Err(morph_core::FactoryBackendError::InvalidDelivery)
+        );
+        assert!(journal.active_request_id().is_none());
+        assert_eq!(read_package(&saved).unwrap(), private);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn native_child_delivery_persists_private_exit_then_attaches_exact_public_receipts() {

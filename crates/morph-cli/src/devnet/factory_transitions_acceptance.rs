@@ -82,6 +82,7 @@ pub(crate) fn prepare(
 pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
     let options = context.options;
     let directory = options.store_dir.join("transitions");
+    let rights_updates = qualify_state_updates(rpc, &context, &directory.join("rights-updates"))?;
     let before_path = directory.join("before.json");
     let before = public_context(&context.sessions[0], &before_path)?;
     let funder = fee_wallet(rpc, options, 0)?;
@@ -190,7 +191,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
         "rejected stale context changed member authority"
     );
     let mut deposit_rights = alice_context.rights.clone();
-    deposit_rights[0].quantity = "23000000000".to_string();
+    deposit_rights[0].quantity = "43000000000".to_string();
     let deposit = FactoryPreparationTerms {
         schema: metadata.schema,
         context: alice_context,
@@ -198,7 +199,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
             participant: before.members[0].participant.clone(),
             retained: vec![FactoryReserveTerms {
                 type_hash: None,
-                reserve: "43900000000".to_string(),
+                reserve: "63900000000".to_string(),
                 business_ckb: "6100000000".to_string(),
                 amount: "0".to_string(),
             }],
@@ -206,7 +207,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
         },
         target_rights: deposit_rights,
         cell_deps: context.cell_deps.to_vec(),
-        funders: vec![fee_wallet(rpc, options, 20_000_000_000)?],
+        funders: vec![fee_wallet(rpc, options, 40_000_000_000)?],
     };
     let deposit_directory = directory.join("reduced-deposit");
     let deposit_packet = prepare(rpc, &context, &deposit_directory, &deposit)?;
@@ -215,8 +216,100 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
     let child = super::factory_child_acceptance::run(rpc, &context, &directory.join("child"))?;
     Ok(
         json!({"withheld_full_consent_escaped":true,"previous_approval_not_revoked":true,
-        "peer_refreshed_from_public_changes":true,"stale_context_preserves_journal":true,"escape":escaped,"deposit":deposited,"child":child}),
+        "peer_refreshed_from_public_changes":true,"stale_context_preserves_journal":true,"rights_updates":rights_updates,"escape":escaped,"deposit":deposited,"child":child}),
     )
+}
+
+fn qualify_state_updates(
+    rpc: &CkbRpcClient,
+    context: &Context<'_>,
+    directory: &Path,
+) -> Result<Value> {
+    let before = public_context(
+        &context.sessions[0],
+        &directory.join("before-metadata.json"),
+    )?;
+    let metadata = FactoryPreparationTerms {
+        schema: "morph.factory_preparation_terms.v1".to_string(),
+        context: before.clone(),
+        intent: FactoryPreparationOperation::Metadata {
+            access_manifest_root: canonical_hex(&[82; 32]),
+        },
+        target_rights: before.rights.clone(),
+        cell_deps: context.cell_deps.to_vec(),
+        funders: vec![fee_wallet(rpc, context.options, 0)?],
+    };
+    let metadata_directory = directory.join("full-consent-metadata");
+    let packet = prepare(rpc, context, &metadata_directory, &metadata)?;
+    let full_consent_metadata = execute(rpc, context, &metadata_directory, &packet, None)?;
+    let mut operations = Vec::new();
+    for count in [1usize, 4, 10] {
+        let operation_directory = directory.join(format!("reduced-rights-{count}"));
+        let before = public_context(
+            &context.sessions[1],
+            &operation_directory.join("before.json"),
+        )?;
+        let participant = before.members[1].participant.clone();
+        let mut rights = before.rights.clone();
+        let mut changed = 0usize;
+        for right in &mut rights {
+            if right.participant == participant
+                && right.kind == morph_core::FactoryRightKind::SponsorBudgetClaim
+                && changed < count
+            {
+                let quantity = right.quantity.parse::<u128>()?;
+                right.quantity = quantity
+                    .checked_sub(1)
+                    .ok_or_else(|| anyhow!("native reduced right exhausted"))?
+                    .to_string();
+                changed += 1;
+            }
+        }
+        ensure!(changed == count, "missing precommitted native rights");
+        let terms = FactoryPreparationTerms {
+            schema: metadata.schema.clone(),
+            context: before,
+            intent: FactoryPreparationOperation::ReducedRights { participant },
+            target_rights: rights,
+            cell_deps: context.cell_deps.to_vec(),
+            funders: vec![fee_wallet(rpc, context.options, 0)?],
+        };
+        let packet = prepare(rpc, context, &operation_directory, &terms)?;
+        let request = read_request(&packet)?.decode()?;
+        let frame = morph_script_common::factory_multi_asset::FactoryReducedReleaseWitness::parse(
+            &request.witness,
+        )
+        .map_err(|error| anyhow!("native reduced frame: {error:?}"))?;
+        ensure!(
+            frame.right_count() == count && request.required_members()?.len() == 1,
+            "native reduced request has the wrong proof or authority shape"
+        );
+        let mut operation = execute_inner(
+            rpc,
+            context,
+            &operation_directory,
+            &packet,
+            None,
+            context.options.reorg && count == 1,
+        )?;
+        refresh_member(rpc, context, &operation, 0)?;
+        let owner = public_context(
+            &context.sessions[1],
+            &operation_directory.join("after-owner.json"),
+        )?;
+        let peer = public_context(
+            &context.sessions[0],
+            &operation_directory.join("after-peer.json"),
+        )?;
+        ensure!(
+            serde_json::to_value(owner)? == serde_json::to_value(peer)?,
+            "native reduced update did not refresh untouched member proofs"
+        );
+        operation["changed_right_count"] = json!(count);
+        operation["peer_refreshed_from_public_changes"] = json!(true);
+        operations.push(operation);
+    }
+    Ok(json!({"full_consent_metadata":full_consent_metadata,"operations":operations}))
 }
 
 pub(crate) fn refresh_peer(
@@ -224,8 +317,17 @@ pub(crate) fn refresh_peer(
     context: &Context<'_>,
     operation: &Value,
 ) -> Result<()> {
+    refresh_member(rpc, context, operation, 1)
+}
+
+fn refresh_member(
+    rpc: &CkbRpcClient,
+    context: &Context<'_>,
+    operation: &Value,
+    member_index: usize,
+) -> Result<()> {
     session(
-        &context.sessions[1],
+        &context.sessions[member_index],
         FactorySessionCommand::Refresh {
             rpc_url: rpc.endpoint().to_string(),
             transaction_hash: operation["report"]["tx_hash"]
@@ -249,6 +351,17 @@ pub(crate) fn execute(
     directory: &Path,
     packet: &Path,
     replacement: Option<&str>,
+) -> Result<Value> {
+    execute_inner(rpc, context, directory, packet, replacement, false)
+}
+
+fn execute_inner(
+    rpc: &CkbRpcClient,
+    context: &Context<'_>,
+    directory: &Path,
+    packet: &Path,
+    replacement: Option<&str>,
+    orphan_replay: bool,
 ) -> Result<Value> {
     let request = read_request(packet)?.decode()?;
     let id = canonical_hex(&request.request_id()?);
@@ -335,7 +448,20 @@ pub(crate) fn execute(
             .as_str()
             .ok_or_else(|| anyhow!("missing wallet transaction"))?,
     );
-    let submitted = operator::submit(
+    let replay_baseline = if orphan_replay {
+        Some((
+            rpc.tip_header()?,
+            fs::read(&tx)?,
+            context
+                .sessions
+                .iter()
+                .map(fs::read)
+                .collect::<std::io::Result<Vec<_>>>()?,
+        ))
+    } else {
+        None
+    };
+    let mut submitted = operator::submit(
         rpc,
         operator::SubmitOptions {
             request: packet.to_path_buf(),
@@ -352,6 +478,58 @@ pub(crate) fn execute(
         submitted["report"]["status"] == "Committed",
         "Factory transition did not commit"
     );
+    let canonical_reorg_replay = if let Some((tip, signed_bytes, journals)) = replay_baseline {
+        let original = submitted.clone();
+        rpc.truncate(parse_h256(&tip.hash)?)?;
+        ensure!(
+            rpc.tip_header()?.hash == tip.hash,
+            "Factory orphan replay did not restore its canonical predecessor"
+        );
+        ensure!(
+            rpc.transaction(request.transaction_hash()?.into())?
+                .tx_status
+                .status
+                != Status::Committed,
+            "Factory transition remained committed after controlled rollback"
+        );
+        let source = request
+            .source
+            .as_ref()
+            .ok_or_else(|| anyhow!("Factory orphan replay requires an existing source"))?;
+        operator::validate_live_custody(rpc, source, &context.options.contracts_dir)?;
+        // Reuse the complete immutable wallet/protocol transaction. No sign,
+        // add-signature or participant journal command occurs after rollback.
+        submitted = operator::submit(
+            rpc,
+            operator::SubmitOptions {
+                request: packet.to_path_buf(),
+                transaction: tx.clone(),
+                contracts_dir: context.options.contracts_dir.clone(),
+                policy: context.policy.to_path_buf(),
+                max_fee: context.options.fee,
+                mine_blocks: context.options.mine_blocks,
+                store_dir: directory.join("submitted"),
+                dry_run: false,
+            },
+        )?;
+        ensure!(
+            submitted["report"]["status"] == "Committed"
+                && submitted["report"]["tx_hash"] == original["report"]["tx_hash"]
+                && fs::read(&tx)? == signed_bytes
+                && context
+                    .sessions
+                    .iter()
+                    .map(fs::read)
+                    .collect::<std::io::Result<Vec<_>>>()?
+                    == journals,
+            "Factory orphan replay changed the signed transaction or participant authority"
+        );
+        json!({"orphaned":true,"authentic_source_live":true,"exact_body_and_witnesses":true,
+            "unchanged_signer_journals":true,"no_new_participant_signatures":true,
+            "original":original,"replayed":submitted})
+    } else {
+        Value::Null
+    };
     let state_point = if request.requires_activation()? {
         let key = parse_privkey(&context.options.private_key)
             .map_err(|_| anyhow!("invalid acceptance wallet key"))?;
@@ -400,6 +578,6 @@ pub(crate) fn execute(
         )?;
     }
     Ok(
-        json!({"request":packet,"request_id":id,"transaction":tx,"state_out_point":state_point,"report":submitted["report"]}),
+        json!({"request":packet,"request_id":id,"transaction":tx,"state_out_point":state_point,"report":submitted["report"],"canonical_reorg_replay":canonical_reorg_replay}),
     )
 }

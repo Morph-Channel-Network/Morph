@@ -1264,7 +1264,7 @@ impl HubStore {
 
     fn persist(&self) -> Result<()> {
         if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)
+            crate::persistence::create_private_directories(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
         let persisted = self.persisted()?;

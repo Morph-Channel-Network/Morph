@@ -49,6 +49,28 @@ Keep participant-signed state/Factory packages on storage writable only by the
 package owner. Give the watchtower a read-only replicated copy. Back up a new
 package before using it to supersede, exit, or splice.
 
+Current native private persistence is supported on Unix permission-controlled
+filesystems. CLI-created private files and stable lock sidecars use mode 0600;
+every newly created private directory uses mode 0700 from creation. Existing
+shared ancestors are not chmodded. Provision an existing private store root
+with mode 0700 yourself. Immutable replay, append and lock operations reject
+existing files whose mode is not 0600; inspect the owner and contents before
+securing such a file and retrying. The CLI fails closed on platforms without
+implemented equivalent ACL controls, rather than treating default permissions
+as private storage. Replicated copies may be read-only and are not signing
+authority.
+
+Factory parent requests and delivery receipts contain public child terms and
+possession attestations. Each complete pre-signed child exit remains private:
+deliver it only to its two child participants and their explicitly appointed
+recovery/watch operators, over an authenticated confidential channel. Each
+participant retains its own complete copy before issuing a delivery receipt;
+the coordinator's copy or an acknowledgement alone is not a backup. Private
+backups must retain these access restrictions. Do not put initial-exit packages
+or their signatures in public parent requests, examples, issue attachments or
+operator logs. A delivery failure or disconnect leaves the parent ceremony
+incomplete until both valid possession receipts are available.
+
 Retain:
 
 - every signed state, conditional-batch, Factory, reduced-right, exit, and splice package;

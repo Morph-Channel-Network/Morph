@@ -60,7 +60,7 @@ pub fn run(
     let mut observations = Vec::new();
     for (name, removing) in [("remove", true), ("admit", false)] {
         let directory = options.store_dir.join(format!("splice-{name}"));
-        fs::create_dir_all(&directory)?;
+        crate::persistence::create_private_directories(&directory)?;
         let before = StoredMultiAssetPackage::from_recovery(&current, context.recovery_deps)?;
         let before_path = write_package(&directory, &before)?;
         let mut settlement = current.settlement.clone();

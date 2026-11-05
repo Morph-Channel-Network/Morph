@@ -206,6 +206,10 @@ def generate(run, cli):
     evidence.check(scenario, "persistence", shared_path, "independent_initial_exit_before_creation_and_same_path_confirmation")
     evidence.check(scenario, "authority", shared_path, "three_distinct_funders_signed_only_their_own_groups")
     evidence.check(scenario, "authority", shared_path, "unsigned_wallet_preflight_cannot_poison_funding_artifact")
+    evidence.check(scenario, "persistence", shared_path, "withheld_root_creation_receipt_recovered_from_canonical_funding")
+    evidence.check(scenario, "reorg", shared_path, "root_funding_orphaned_and_exact_signed_replayed_without_peer")
+    for fact in ("orphaned", "exact_body_and_witnesses", "unchanged_signer_journals", "peer_creation_receipt_withheld"):
+        evidence.add(scenario, "reorg", shared_path, f"/funding_replay/{fact}", True)
     evidence.keep(scenario, initial_path, shared["pre_funding_recovery_package"], shared["root_funding_terms"], shared["root_funding_draft"])
     scenarios.append(scenario)
 
@@ -236,11 +240,13 @@ def generate(run, cli):
     factory_transitions = factory["transitions"]
     for name, identifier, reserve, business, quantities in [
         ("escape", "factory_reduced_escape", 239, 61, ["3000000000", "13000000000"]),
-        ("deposit", "factory_deposit", 439, 61, ["23000000000", "13000000000"]),
+        ("deposit", "factory_deposit", 639, 61, ["43000000000", "13000000000"]),
     ]:
         entry = factory_transitions[name]
         review_path, review = evidence.inspect(f"factory-{name}", "inspect-factory-request", entry["request"])
-        require([right["quantity"] for right in review["target_rights"]] == quantities,
+        claims = [right["quantity"] for right in review["target_rights"]
+                  if right["kind"] == "ReserveClaim" and right["asset_type"] is None]
+        require(claims == quantities,
                 f"{name}: incorrect per-member claims")
         scenario = evidence.scenario(identifier,
             "A withheld all-member approval remains recorded while an explicit unilateral escape spends the exact source." if name == "escape" else
@@ -252,6 +258,22 @@ def generate(run, cli):
         evidence.add(scenario, "assets", review_path, "/target_rights", review["target_rights"])
         evidence.add(scenario, "authority", factory_path, "/transitions/peer_refreshed_from_public_changes", True)
         if name == "escape":
+            updates = factory_transitions["rights_updates"]
+            require([entry["changed_right_count"] for entry in updates["operations"]] == [1, 4, 10],
+                    "native reduced-right cardinalities are incomplete")
+            evidence.add(scenario, "state", factory_path,
+                         "/transitions/rights_updates/full_consent_metadata/report/status", "Committed")
+            for index, count in enumerate((1, 4, 10)):
+                base = f"/transitions/rights_updates/operations/{index}"
+                evidence.add(scenario, "state", factory_path, base + "/report/status", "Committed")
+                evidence.add(scenario, "authority", factory_path, base + "/changed_right_count", count)
+                evidence.add(scenario, "authority", factory_path, base + "/peer_refreshed_from_public_changes", True)
+                evidence.keep(scenario, updates["operations"][index]["request"],
+                              updates["operations"][index]["transaction"])
+            for fact in ("orphaned", "authentic_source_live", "exact_body_and_witnesses",
+                         "unchanged_signer_journals", "no_new_participant_signatures"):
+                evidence.add(scenario, "reorg", factory_path,
+                             f"/transitions/rights_updates/operations/0/canonical_reorg_replay/{fact}", True)
             evidence.add(scenario, "persistence", factory_path, "/transitions/previous_approval_not_revoked", True)
             evidence.add(scenario, "authority", factory_path, "/transitions/withheld_full_consent_escaped", True)
             evidence.add(scenario, "persistence", factory_path, "/transitions/stale_context_preserves_journal", True)
@@ -260,7 +282,8 @@ def generate(run, cli):
 
     for kind, identifier, reserve, business in [
         ("reduced", "factory_children", 180, 20),
-        ("terminal", "factory_terminal_materialisation", 259, 41),
+        ("retained", "factory_retained_materialisation", 180, 20),
+        ("terminal", "factory_terminal_materialisation", 279, 21),
     ]:
         child = factory_transitions["child"][kind]
         base = f"/transitions/child/{kind}"
@@ -294,7 +317,8 @@ def generate(run, cli):
             evidence.add(scenario, "assets", factory_path, base + "/retained_factory/carrier_refund/capacity", "50000000000")
             evidence.add(scenario, "state", review_path, "/target", None)
         else:
-            evidence.add(scenario, "assets", review_path, "/target/assets", ckb_assets(259, 41))
+            retained_assets = ckb_assets(459, 41) if kind == "reduced" else ckb_assets(279, 21)
+            evidence.add(scenario, "assets", review_path, "/target/assets", retained_assets)
         evidence.keep(scenario, child["parent"]["request"], child["parent"]["transaction"])
         scenarios.append(scenario)
 
@@ -333,7 +357,7 @@ def generate(run, cli):
     evidence.keep(scenario, maximum_initial_path, maximum["pre_funding_recovery_package"])
     scenarios.append(scenario)
 
-    require(len(scenarios) == 9, "incomplete current stateful matrix")
+    require(len(scenarios) == 10, "incomplete current stateful matrix")
     for scenario in scenarios:
         write_immutable(evidence.directory / f"{scenario['scenario_id']}.json", scenario)
     unchanged = (provenance["git_commit_full"] == git("rev-parse", "HEAD") and
@@ -356,7 +380,7 @@ def generate(run, cli):
     else:
         with path.open("xb") as output:
             output.write(raw)
-    print(f"[current-ledger] nine verified scenarios; {sum(len(s['assertions']) for s in scenarios)} evidence assertions; provenance={provenance['phase']}; dirty={str(dirty).lower()}")
+    print(f"[current-ledger] ten verified scenarios; {sum(len(s['assertions']) for s in scenarios)} evidence assertions; provenance={provenance['phase']}; dirty={str(dirty).lower()}")
 
 
 def main():

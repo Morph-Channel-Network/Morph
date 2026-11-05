@@ -75,7 +75,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
         "child acceptance requires preceding plain Factory deposit"
     );
     ensure!(
-        before.rights[0].quantity == "23000000000",
+        before.rights[0].quantity == "43000000000",
         "expected backed Alice claim after native deposit"
     );
     let keys = [
@@ -148,7 +148,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
         Some(blake2b256(&custody.state_type)),
     )?;
     let mut rights = before.rights.clone();
-    rights[0].quantity = "3000000000".to_string();
+    rights[0].quantity = "23000000000".to_string();
     let terms = FactoryPreparationTerms {
         schema: "morph.factory_preparation_terms.v1".to_string(),
         context: before.clone(),
@@ -156,7 +156,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
             participant: before.members[0].participant.clone(),
             retained: vec![FactoryReserveTerms {
                 type_hash: None,
-                reserve: "25900000000".to_string(),
+                reserve: "45900000000".to_string(),
                 business_ckb: "4100000000".to_string(),
                 amount: "0".to_string(),
             }],
@@ -176,21 +176,84 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
         )?],
     };
     let reduced = run_case(rpc, context, &directory.join("reduced"), &terms, false)?;
+    // Full-consent materialisation with retained custody uses a distinct FM
+    // authorization from the reduced child above. Both parties still obtain
+    // their own private exit before either parent journal can approve it.
+    let retained_context = parent::public_context(
+        &context.sessions[0],
+        &directory.join("retained-context.json"),
+    )?;
+    let retained_source = retained_context.custody.decode()?;
+    let FactoryPreparationOperation::ReducedChild { children, .. } = &terms.intent else {
+        return Err(anyhow!("unexpected child intent"));
+    };
+    let retained_child = children[0].clone();
+    let retained_input = CellInput::new(
+        OutPoint::new(
+            retained_source.state_out_point.tx_hash.pack(),
+            retained_source.state_out_point.index,
+        ),
+        0,
+    );
+    let mut retained_anchor = retained_input.as_slice().to_vec();
+    retained_anchor.extend_from_slice(&2u64.to_le_bytes());
+    let retained_creation = retained_child.channel.build(
+        retained_source.state()?.fields().chain_id,
+        authority,
+        blake2b256(&retained_anchor),
+        Some(blake2b256(&retained_source.state_type)),
+    )?;
+    let mut retained_rights = retained_context.rights.clone();
+    retained_rights[0].quantity = "3000000000".to_string();
+    let retained_terms = FactoryPreparationTerms {
+        schema: terms.schema.clone(),
+        context: retained_context,
+        intent: FactoryPreparationOperation::Materialise {
+            retained: Some(vec![FactoryReserveTerms {
+                type_hash: None,
+                reserve: "27900000000".to_string(),
+                business_ckb: "2100000000".to_string(),
+                amount: "0".to_string(),
+            }]),
+            children: vec![retained_child],
+            carrier_refund_lock_hex: "0x".to_string(),
+            access_manifest_root: canonical_hex(&[90; 32]),
+        },
+        target_rights: retained_rights,
+        cell_deps: context.cell_deps.to_vec(),
+        funders: vec![parent::fee_wallet(
+            rpc,
+            context.options,
+            retained_creation.state_carrier_capacity,
+        )?],
+    };
+    let retained = run_case(
+        rpc,
+        context,
+        &directory.join("retained"),
+        &retained_terms,
+        false,
+    )?;
     let terminal_context = parent::public_context(
         &context.sessions[0],
         &directory.join("terminal-context.json"),
     )?;
     let terminal_source = terminal_context.custody.decode()?;
-    let FactoryPreparationOperation::ReducedChild { children, .. } = &terms.intent else {
-        return Err(anyhow!("unexpected child intent"));
-    };
     let mut terminal_child = children[0].clone();
     let mut terminal_settlement = settlement;
-    terminal_settlement.payouts[0].values = [MultiAssetValue {
-        reserve: 12_950_000_000,
-        business_ckb: 2_050_000_000,
-        amount: 0,
-    }; 2];
+    let terminal_value = terminal_source.manifest.vaults[0].value;
+    terminal_settlement.payouts[0].values = [
+        MultiAssetValue {
+            reserve: terminal_value.reserve / 2,
+            business_ckb: terminal_value.business_ckb / 2,
+            amount: 0,
+        },
+        MultiAssetValue {
+            reserve: terminal_value.reserve - terminal_value.reserve / 2,
+            business_ckb: terminal_value.business_ckb - terminal_value.business_ckb / 2,
+            amount: 0,
+        },
+    ];
     terminal_child.channel.descriptor_hex = canonical_hex(&terminal_settlement.encode()?);
     let input = CellInput::new(
         OutPoint::new(
@@ -231,7 +294,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
         &terminal_terms,
         true,
     )?;
-    Ok(json!({"reduced":reduced,"terminal":terminal}))
+    Ok(json!({"reduced":reduced,"retained":retained,"terminal":terminal}))
 }
 
 fn run_case(
@@ -367,7 +430,7 @@ fn run_case(
         );
     }
     let executed = parent::execute(rpc, context, directory, &complete, None)?;
-    if !terminal {
+    if !terminal && request.required_members()?.len() == 1 {
         parent::refresh_peer(rpc, context, &executed)?;
     }
     let raw_hash = request.transaction_hash()?;
@@ -614,8 +677,7 @@ fn run_case(
             &directory.join("retained-parent.json"),
         )?;
         ensure!(
-            remaining.rights[0].quantity == "3000000000"
-                && remaining.rights[1].quantity == "13000000000",
+            serde_json::to_value(&remaining.rights)? == serde_json::to_value(&terms.target_rights)?,
             "child lifecycle changed unrelated Factory claims"
         );
         serde_json::to_value(remaining)?

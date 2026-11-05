@@ -56,6 +56,11 @@ pub enum FundingSessionCommand {
         #[arg(long)]
         store_dir: PathBuf,
     },
+    /// Export the complete private exit without waiting for the peer's creation receipt.
+    ExportRecovery {
+        #[arg(long)]
+        store_dir: PathBuf,
+    },
     /// Switch this same path to a guarded operational session after chain confirmation.
     #[cfg(feature = "devnet")]
     Confirm {
@@ -244,6 +249,18 @@ impl FundingJournal {
         validate_root_funding(&self.exit()?, &transaction)?;
         Ok(transaction)
     }
+    #[cfg(any(feature = "devnet", test))]
+    fn eligible_for_handoff(&self) -> Result<()> {
+        self.eligible(FundingTarget::Creation)?;
+        ensure!(
+            self.creation_reserved
+                && self.creation_signatures.iter().any(|signature| {
+                    canonical_hex(&signature.pubkey_sec1) == self.local_pubkey
+                }),
+            "canonical handoff requires the durable local creation approval"
+        );
+        Ok(())
+    }
     fn summary(&self) -> Result<Value> {
         let (creation, exit) = self.draft.evidence()?;
         Ok(
@@ -255,6 +272,7 @@ impl FundingJournal {
             "exit_digest":canonical_hex(&self.digest(FundingTarget::Exit)?),
             "exit_reserved":self.exit_reserved,"creation_reserved":self.creation_reserved,
             "exit_signature_count":self.exit_signatures.len(),"creation_signature_count":self.creation_signatures.len(),
+            "recovery_available":self.exit_signatures.len()==2,
             "participant_lock_hashes":exit.settlement.participant_lock_hashes.map(|hash|canonical_hex(&hash)),
             "payouts":payout_summary(&exit.settlement),"state_carrier_capacity":exit.state_carrier_capacity.to_string(),
             "ready_to_export":self.exit_signatures.len()==2 && self.creation_signatures.len()==2}),
@@ -386,6 +404,10 @@ pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {
                 "requires_wallet_authorization":true}),
             )
         }
+        FundingSessionCommand::ExportRecovery { store_dir } => {
+            let package = write_package(&store_dir, &journal.package()?)?;
+            Ok(json!({"recovery_package":package}))
+        }
         #[cfg(feature = "devnet")]
         FundingSessionCommand::Confirm {
             rpc_url,
@@ -395,8 +417,13 @@ pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {
             contracts_dir,
         } => {
             journal.verify_artifacts()?;
-            journal.transaction()?;
+            journal.eligible_for_handoff()?;
             let package = journal.package()?;
+            // The peer may have withheld its creation receipt after collecting
+            // ours. The retained complete exit is sufficient to authenticate
+            // canonical funding and activation: confirm_initial_funding reads
+            // the actual transaction and verifies both creation signatures,
+            // exact custody/context and dependencies before switching this path.
             // Seal all initial votes before replacing the active path. An
             // orphaned archive is harmless if RPC validation later fails.
             let bytes = serde_json::to_vec(
@@ -715,6 +742,117 @@ mod tests {
         std::fs::write(&paths[0], serde_json::to_vec(&value).unwrap()).unwrap();
         assert!(run(&paths[0], FundingSessionCommand::Inspect).is_err());
         let _ = dir;
+    }
+    #[test]
+    fn incomplete_initial_exit_cannot_export_or_authorize_after_peer_loss() {
+        let (dir, paths, keys, _) = fixture();
+        run(
+            &paths[0],
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Exit,
+                private_key: keys[0].clone(),
+            },
+        )
+        .unwrap();
+        // The peer disappears before supplying its exit authorization. The
+        // locally persisted partial exit must not create a usable artifact or
+        // reserve a creation vote, including after reopening the journal.
+        std::fs::remove_file(&paths[1]).unwrap();
+        let before = read(&paths[0]).unwrap();
+        let store = dir.path().join("must-not-exist");
+        for command in [
+            FundingSessionCommand::ExportRecovery {
+                store_dir: store.clone(),
+            },
+            FundingSessionCommand::Export {
+                store_dir: store.clone(),
+            },
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Creation,
+                private_key: keys[0].clone(),
+            },
+        ] {
+            assert!(run(&paths[0], command).is_err());
+            assert_eq!(read(&paths[0]).unwrap(), before);
+            assert!(!store.exists());
+        }
+        let inspected = run(&paths[0], FundingSessionCommand::Inspect).unwrap();
+        assert_eq!(inspected["exit_signature_count"], 1);
+        assert_eq!(inspected["creation_reserved"], false);
+        assert_eq!(inspected["recovery_available"], false);
+    }
+    #[test]
+    fn retained_exit_survives_withheld_creation_receipt_and_requires_local_handoff_vote() {
+        let (dir, paths, keys, artifacts) = fixture();
+        collect(&paths, &keys, dir.path(), FundingTarget::Exit);
+        let mut journal: FundingJournal =
+            serde_json::from_slice(&read(&paths[0]).unwrap()).unwrap();
+        assert!(journal.eligible_for_handoff().is_err());
+        // A crash after reservation alone also cannot bootstrap a fresh
+        // operational authority. Resume and record this same local vote first.
+        journal.creation_reserved = true;
+        save(&paths[0], &journal).unwrap();
+        assert!(journal.eligible_for_handoff().is_err());
+        let local = run(
+            &paths[0],
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Creation,
+                private_key: keys[0].clone(),
+            },
+        )
+        .unwrap();
+        let peer = run(
+            &paths[1],
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Creation,
+                private_key: keys[1].clone(),
+            },
+        )
+        .unwrap();
+        assert_ne!(local["pubkey"], peer["pubkey"]);
+        // Both creation approvals now exist, but a coordinator can withhold
+        // the peer receipt. No peer journal, receipt or local ELF is needed to
+        // extract the complete exit already retained before our approval.
+        std::fs::remove_file(&paths[1]).unwrap();
+        std::fs::remove_dir_all(artifacts).unwrap();
+        let before = read(&paths[0]).unwrap();
+        let journal: FundingJournal = serde_json::from_slice(&before).unwrap();
+        journal.eligible_for_handoff().unwrap();
+        assert_eq!(journal.creation_signatures.len(), 1);
+        let summary = run(&paths[0], FundingSessionCommand::Inspect).unwrap();
+        assert_eq!(summary["recovery_available"], true);
+        assert_eq!(summary["ready_to_export"], false);
+        let store = dir.path().join("retained-recovery");
+        let exported = run(
+            &paths[0],
+            FundingSessionCommand::ExportRecovery {
+                store_dir: store.clone(),
+            },
+        )
+        .unwrap();
+        let path = Path::new(exported["recovery_package"].as_str().unwrap());
+        let recovery = crate::multi_asset_packages::read_package(path)
+            .unwrap()
+            .recovery()
+            .unwrap();
+        recovery.validate().unwrap();
+        assert_eq!(recovery.authorization.signatures.len(), 2);
+        assert_eq!(recovery.state.header.state_number, 1);
+        assert_eq!(
+            recovery,
+            journal.exit().unwrap(),
+            "recovery must remain the exact originally retained allocation"
+        );
+        assert_eq!(read(&paths[0]).unwrap(), before);
+        assert!(!store.join("funding-intents").exists());
+        assert!(
+            run(
+                &paths[0],
+                FundingSessionCommand::Export { store_dir: store }
+            )
+            .is_err()
+        );
+        assert_eq!(read(&paths[0]).unwrap(), before);
     }
     #[test]
     fn recovery_package_cannot_bypass_initial_funding_ceremony() {

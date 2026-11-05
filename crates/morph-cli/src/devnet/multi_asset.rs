@@ -26,6 +26,7 @@ pub struct MultiAssetSmokeOptions {
     pub bob_private_key: String,
     pub asset_count: usize,
     pub shared_funding: bool,
+    pub funding_reorg: bool,
     pub splice_transitions: bool,
     pub fee: u64,
     pub finalise_since: u64,
@@ -167,6 +168,13 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     ensure!(
         !options.watch_reorg || options.watch_publication,
         "watch reorg acceptance requires watch publication"
+    );
+    ensure!(
+        !options.funding_reorg
+            || (options.shared_funding
+                && !options.watch_publication
+                && !options.splice_transitions),
+        "funding reorg acceptance requires isolated shared funding without watch or splice"
     );
     let publication_max_fee = options
         .publication_profile
@@ -547,6 +555,12 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             )?;
         }
         for (index, session) in [&alice_session, &bob_session].into_iter().enumerate() {
+            if matches!(target, FundingTarget::Creation) && index == 0 {
+                // A coordinator can collect Alice's approval and fund while
+                // withholding Bob's final creation receipt from her. Her full
+                // initial exit must remain independently usable in that case.
+                continue;
+            }
             funding_run(
                 session,
                 FundingSessionCommand::AddSignature {
@@ -557,7 +571,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         }
     }
     let exported = funding_run(
-        &alice_session,
+        &bob_session,
         FundingSessionCommand::Export {
             store_dir: options.store_dir.clone(),
         },
@@ -571,6 +585,17 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         exported["recovery_package"]
             .as_str()
             .ok_or_else(|| anyhow!("missing initial exit"))?,
+    );
+    let independently_retained = funding_run(
+        &alice_session,
+        FundingSessionCommand::ExportRecovery {
+            store_dir: options.store_dir.clone(),
+        },
+    )?;
+    ensure!(
+        independently_retained["recovery_package"].as_str()
+            == Some(pre_funding_recovery.to_string_lossy().as_ref()),
+        "withheld creation receipt prevented exact initial-exit recovery"
     );
     let initial_recovery =
         crate::multi_asset_packages::read_package(&pre_funding_recovery)?.recovery()?;
@@ -643,7 +668,8 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
                 .ok_or_else(|| anyhow!("missing wallet-signed funding"))?,
         );
     }
-    let fund = super::multi_asset_funding_operator::submit(
+    let before_funding_tip = rpc.tip_header()?;
+    let mut fund = super::multi_asset_funding_operator::submit(
         rpc,
         super::multi_asset_funding_operator::Options {
             transaction: intent,
@@ -664,6 +690,60 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         funding_hash.pack() == predicted_funding_hash,
         "funding transaction changed after unilateral recovery was retained"
     );
+    let funding_replay = if options.funding_reorg {
+        let journals_before = [fs::read(&alice_session)?, fs::read(&bob_session)?];
+        let signed_path = PathBuf::from(
+            fund["signed_transaction"]
+                .as_str()
+                .ok_or_else(|| anyhow!("funding submission has no immutable binary"))?,
+        );
+        let exact_signed_bytes = fs::read(&signed_path)?;
+        let first_inclusion = fund.clone();
+        rpc.truncate(parse_h256(&before_funding_tip.hash)?)?;
+        ensure!(
+            rpc.tip_header()?.hash == before_funding_tip.hash,
+            "funding orphan acceptance did not restore its canonical predecessor"
+        );
+        let orphaned = rpc.transaction(funding_hash.clone())?;
+        ensure!(
+            orphaned.tx_status.status != Status::Committed,
+            "funding remained committed after controlled rollback"
+        );
+        let recovery = funding_run(
+            &alice_session,
+            FundingSessionCommand::ExportRecovery {
+                store_dir: options.store_dir.clone(),
+            },
+        )?;
+        ensure!(
+            recovery["recovery_package"] == independently_retained["recovery_package"],
+            "funding orphan changed the saved private initial exit"
+        );
+        let replayed = super::multi_asset_funding_operator::submit(
+            rpc,
+            super::multi_asset_funding_operator::Options {
+                transaction: signed_path.clone(),
+                package: pre_funding_recovery.clone(),
+                contracts_dir: options.contracts_dir.clone(),
+                store_dir: options.store_dir.clone(),
+                max_fee: options.fee,
+                mine_blocks: options.mine_blocks,
+                dry_run: false,
+            },
+        )?;
+        ensure!(
+            replayed["tx_hash"] == first_inclusion["tx_hash"]
+                && replayed["status"] == "Committed"
+                && fs::read(&signed_path)? == exact_signed_bytes
+                && [fs::read(&alice_session)?, fs::read(&bob_session)?] == journals_before,
+            "exact root replay changed transaction bytes or signer authority"
+        );
+        fund = replayed;
+        json!({"orphaned":true,"exact_body_and_witnesses":true,"unchanged_signer_journals":true,
+            "peer_creation_receipt_withheld":true,"original":first_inclusion,"replayed":fund})
+    } else {
+        Value::Null
+    };
     let funding_block_number = fund["block_number"]
         .as_u64()
         .ok_or_else(|| anyhow!("funding inclusion height missing"))?;
@@ -772,6 +852,10 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     }
     operator_checks.push("root_creation_bound_without_resetting_votes");
     operator_checks.push("independent_initial_exit_before_creation_and_same_path_confirmation");
+    operator_checks.push("withheld_root_creation_receipt_recovered_from_canonical_funding");
+    if options.funding_reorg {
+        operator_checks.push("root_funding_orphaned_and_exact_signed_replayed_without_peer");
+    }
     operator_checks.push("public_root_builder_explicit_funder_budgets");
     operator_checks.push("unsigned_wallet_preflight_cannot_poison_funding_artifact");
     if options.shared_funding {
@@ -1356,7 +1440,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     }
     Ok(
         json!({"schema": "morph.multi_asset_devnet_acceptance.v1", "channel_id": format!("0x{}", hex::encode(channel_id)),
-        "asset_count": assets.len(), "shared_funding":options.shared_funding, "operator_checks": operator_checks, "watch_passes":watch_passes, "issuance": issuance, "fund": fund, "activation": activation,
+        "asset_count": assets.len(), "shared_funding":options.shared_funding, "operator_checks": operator_checks, "watch_passes":watch_passes, "issuance": issuance, "fund": fund, "funding_replay":funding_replay,"activation": activation,
         "publications": publications, "sponsor_funding": sponsor_funding, "finalise": finalise, "recovery_packages": package_paths,
         "pre_funding_recovery_package": pre_funding_recovery.display().to_string(),"root_funding_terms":terms_path,"root_funding_draft":draft_path,
         "summary": StoredMultiAssetPackage::from_recovery(&package, &recovery_deps)?.validate()?}),

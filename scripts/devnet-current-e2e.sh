@@ -86,13 +86,13 @@ curl --fail --silent -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","i
 "$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" deploy-contracts --contracts-dir "$MATRIX_DIR/contracts" --json >"$MATRIX_DIR/deployment.json"
 "$CLI_BIN" print-contract-manifest --contracts-dir "$MATRIX_DIR/contracts" >"$MATRIX_DIR/contracts.json"
 printf '[current-e2e] running independent shared-wallet bilateral lifecycle\n'
-"$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" multi-asset-smoke --shared-funding --fee 100000 \
+"$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" multi-asset-smoke --shared-funding --funding-reorg --fee 100000 \
   --contracts-dir "$MATRIX_DIR/contracts" --store-dir "$MATRIX_DIR/shared-packages" --json >"$MATRIX_DIR/shared-acceptance.json" 2>"$OUT_DIR/logs/shared-acceptance.log"
 printf '[current-e2e] running independent funding, asset removal/admission and unilateral settlement\n'
 "$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" multi-asset-smoke --splice-transitions --fee 100000 \
   --contracts-dir "$MATRIX_DIR/contracts" --store-dir "$MATRIX_DIR/splice-packages" --json >"$MATRIX_DIR/acceptance.json" 2>"$OUT_DIR/logs/acceptance.log"
 printf '[current-e2e] running native Factory funding, independent journals and same-path activation handoff\n'
-"$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" factory smoke \
+"$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" factory smoke --reorg \
   --contracts-dir "$MATRIX_DIR/contracts" --store-dir "$MATRIX_DIR/factory-packages" >"$MATRIX_DIR/factory-acceptance.json" 2>"$OUT_DIR/logs/factory-acceptance.log"
 printf '[current-e2e] running continuous watch service, sponsor and canonical reorg recovery\n'
 "$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" publication-profile-fixture --json >"$MATRIX_DIR/publication-profile.json"
@@ -131,10 +131,17 @@ assert factory['activation']['report']['status']=='Committed'
 assert factory['canonical_replay']['canonical_replay']
 assert factory['wrong_key_preserves_journal'] and factory['partial_export_cannot_poison_path'] and factory['same_path_handoff']
 assert factory['transitions']['withheld_full_consent_escaped'] and factory['transitions']['peer_refreshed_from_public_changes']
+updates=factory['transitions']['rights_updates']
+assert updates['full_consent_metadata']['report']['status']=='Committed'
+assert [entry['changed_right_count'] for entry in updates['operations']]==[1,4,10]
+assert all(entry['report']['status']=='Committed' and entry['peer_refreshed_from_public_changes'] for entry in updates['operations'])
+assert all(updates['operations'][0]['canonical_reorg_replay'][key] for key in ('orphaned','authentic_source_live','exact_body_and_witnesses','unchanged_signer_journals','no_new_participant_signatures'))
 assert factory['transitions']['child']['reduced']['finalise']['status']=='Committed'
+assert factory['transitions']['child']['retained']['finalise']['status']=='Committed'
 assert factory['transitions']['child']['terminal']['finalise']['status']=='Committed'
 assert factory['transitions']['child']['terminal']['retained_factory']['retired']
 assert shared['shared_funding'] and shared['finalise']['status']=='Committed'
+assert all(shared['funding_replay'][key] for key in ('orphaned','exact_body_and_witnesses','unchanged_signer_journals','peer_creation_receipt_withheld'))
 assert watched['finalise']['status']=='Committed' and any(p.get('reorg_recovery') for p in watched['watch_passes'])
 assert any(p.get('service',{}).get('published_count')==1 for p in watched['watch_passes'])
 assert maximum['asset_count']==8 and maximum['shared_funding'] and maximum['finalise']['status']=='Committed'

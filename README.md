@@ -4,9 +4,10 @@ Morph Channel is a CKB-native production off-chain channel and factory
 implementation. Two participants, or a small factory of participants, move
 channel state off chain while CKB keeps the enforceable evidence on chain.
 
-Source version: **v4.0.0**. The current unpublished custody consolidation uses
-one channel implementation and one Factory authority; CI, report refresh and
-release qualification are tracked in the [migration ledger](docs/unified-protocol-migration.md).
+Source version: **v4.0.0-alpha.1**. This controlled-devnet prerelease uses
+one current channel implementation and one Factory authority. Recovery and
+release evidence are tracked in the [migration ledger](docs/unified-protocol-migration.md).
+Mainnet and real assets remain outside the release scope.
 
 The short version is:
 

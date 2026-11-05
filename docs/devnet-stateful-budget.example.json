@@ -1,6 +1,6 @@
 {
   "schema": "morph.current_acceptance_budget.v1",
-  "basis": "Development-only current five-case native acceptance plus eight contract deployments. The complete retained run target/current-protocol-e2e/current-five-case-validation-5/scenarios/summary.json records 74 committed transactions, 344,414,193 total cycles, a 29,156,228-cycle native maximum, and 1,091,034 total bytes. Native operations account for 139,426 bytes with a 7,730-byte maximum; deployments account for 951,608 bytes with a 280,956-byte maximum. The 40M-cycle/100k-byte native transaction limits remain explicit on every native case. Deployment has its own 20M-cycle/1M-byte total and 2M-cycle/300k-byte transaction limits. The 2M-byte global allowance is additive: 1M for deployment plus 750k across the five declared native lifecycle cases, with 250k aggregate headroom. The global 300k-byte transaction cap admits deployment and does not relax the native case caps. Per-case cycle allowances remain explicit lifecycle ceilings; they are not production latency or admission evidence. The separate 70M joint-resource VM fixture ceiling is not a native-node budget.",
+  "basis": "Development-only current five-case native acceptance plus eight contract deployments. The historical pre-alpha retained run target/current-protocol-e2e/current-five-case-validation-5/scenarios/summary.json records 74 committed transactions, 344,414,193 total cycles, a 29,156,228-cycle native maximum, and 1,091,034 total bytes. Native operations account for 139,426 bytes with a 7,730-byte maximum; deployments account for 951,608 bytes with a 280,956-byte maximum. The 40M-cycle/100k-byte native transaction limits remain explicit on every native case. Deployment has its own 20M-cycle/1M-byte total and 2M-cycle/300k-byte transaction limits. The 2M-byte global allowance is additive: 1M for deployment plus 750k across the five declared native lifecycle cases, with 250k aggregate headroom. The global 300k-byte transaction cap admits deployment and does not relax the native case caps. Per-case cycle allowances remain explicit lifecycle ceilings; they are not production latency or admission evidence. The separate 70M joint-resource VM fixture ceiling is not a native-node budget. The alpha matrix adds real full-consent metadata, 1/4/10-right ReducedRights publication, retained full-consent child materialisation and exact root orphan/replay. Existing aggregate and per-native transaction caps remain in force; the new paths must pass them rather than widening them implicitly.",
   "max_total_cycles": 1000000000,
   "max_tx_cycles": 40000000,
   "max_total_bytes": 2000000,
@@ -85,6 +85,12 @@
       "path": "$.finalise",
       "max_cycles": 20000000,
       "max_bytes": 32768
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.finalise",
+      "max_cycles": 10000000,
+      "max_bytes": 16384
     }
   ],
   "proof_profiles": [
@@ -125,6 +131,14 @@
       "operation": "materialisation",
       "max_witness_len": 16384,
       "max_proof_siblings": 0,
+      "max_cycles": 40000000,
+      "max_bytes": 32768
+    },
+    {
+      "check": "factory_custody_and_children",
+      "operation": "ReducedRights",
+      "max_witness_len": 16384,
+      "max_proof_siblings": 64,
       "max_cycles": 40000000,
       "max_bytes": 32768
     }

@@ -22,6 +22,9 @@ pub(crate) struct Options {
     pub fee: u64,
     #[arg(long, default_value_t = 32)]
     pub mine_blocks: u64,
+    /// Rehearse exact replay by truncating the first reduced update on this isolated devnet.
+    #[arg(long)]
+    pub reorg: bool,
     #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
     pub private_key: String,
     #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
@@ -47,7 +50,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         options.fee >= 2 && options.fee.is_multiple_of(2) && options.mine_blocks > 0,
         "Factory smoke requires an even positive fee and mining budget"
     );
-    fs::create_dir_all(&options.store_dir)?;
+    crate::persistence::create_private_directories(&options.store_dir)?;
     let directory = fs::canonicalize(&options.store_dir)?;
     let contracts_dir = fs::canonicalize(&options.contracts_dir)?;
     let owner =
@@ -129,7 +132,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         })
         .collect::<Result<Vec<_>>>()?;
     funders.sort_by(|a, b| a.pubkey.cmp(&b.pubkey));
-    let rights = participant_terms
+    let mut rights = participant_terms
         .iter()
         .map(|member| FactoryRightTerms {
             participant: member.participant.clone(),
@@ -138,7 +141,19 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
             asset_type: None,
             quantity: "13000000000".to_string(),
         })
-        .collect();
+        .collect::<Vec<_>>();
+    // Precommit separate value rights so the native matrix can actually
+    // publish the admitted one/four/ten-right ReducedRights shapes. Keep
+    // the two primary ReserveClaims first for the later physical exits.
+    for index in 0..10u8 {
+        rights.push(FactoryRightTerms {
+            participant: participant_terms[1].participant.clone(),
+            subchannel: canonical_hex(&[64 + index; 32]),
+            kind: morph_core::FactoryRightKind::SponsorBudgetClaim,
+            asset_type: None,
+            quantity: "100".to_string(),
+        });
+    }
     let terms = FactoryRootTerms {
         schema: "morph.factory_root_terms.v1".to_string(),
         members: participant_terms.clone(),

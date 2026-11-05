@@ -24,6 +24,7 @@ const REQUIRED_SCENARIOS: &[&str] = &[
     "factory_reduced_escape",
     "factory_deposit",
     "factory_children",
+    "factory_retained_materialisation",
     "factory_terminal_materialisation",
     "watch_service_reorg",
     "maximum_asset_lifecycle",
@@ -58,12 +59,16 @@ fn required_dimensions(scenario: &str) -> Result<BTreeSet<StatefulEvidenceDimens
             | "bilateral_splice"
             | "factory_reduced_escape"
             | "factory_children"
+            | "factory_retained_materialisation"
             | "factory_terminal_materialisation"
             | "watch_service_reorg"
     ) {
         required.insert(Persistence);
     }
-    if scenario == "watch_service_reorg" {
+    if matches!(
+        scenario,
+        "watch_service_reorg" | "root_funding" | "factory_reduced_escape"
+    ) {
         required.insert(Reorg);
     }
     Ok(required)
@@ -1214,10 +1219,11 @@ mod tests {
                 assert_eq!(case.max_tx_bytes, Some(100_000));
             }
         }
-        assert_eq!(budget.proof_profiles.len(), 5);
+        assert_eq!(budget.proof_profiles.len(), 6);
         assert!(budget.proof_profiles.iter().all(|proof| {
             [
                 "root_funding",
+                "ReducedRights",
                 "ReducedRelease",
                 "ReducedDeposit",
                 "ReducedChild",

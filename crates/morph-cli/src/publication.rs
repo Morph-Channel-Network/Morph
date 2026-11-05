@@ -482,7 +482,7 @@ pub fn append_publication_attempt(path: &Path, record: &PublicationAttemptRecord
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
-        fs::create_dir_all(parent).with_context(|| {
+        crate::persistence::create_private_directories(parent).with_context(|| {
             format!(
                 "failed to create attempt-log directory {}",
                 parent.display()

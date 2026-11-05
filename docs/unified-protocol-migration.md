@@ -85,7 +85,7 @@ still uses the unchanged dynamic estimator and 200,000,000-shannon cap; the
 preserved. These are controlled test parameters, not a production window
 measurement or an increase to release admission.
 
-Two independent package builds produced the identical archive hash recorded in
+Two pre-alpha local package builds produced the identical historical archive hash recorded in
 [the coverage ledger](current-protocol-coverage.md#independent-release-bundle-verification).
 The extracted archive passed all checksums, eight ELF hashes, envelope and
 relative watch/profile validation. The current publication-reliability run
@@ -94,7 +94,7 @@ also exercises real eviction/retry/reorg and service-health behavior; see
 
 ## Audit closeout regressions
 
-The current harness has 82 registered VM tests: the original 77 plus three
+The `4ae2d47` closeout has 82 registered VM tests: the original 77 plus three
 Factory and two Batch regressions. Reduced source replay/stale-header cases,
 retained reserve below its occupied floor, and token/CKB claim substitution
 have valid baselines and fresh signatures before asserting the intended VM
@@ -112,6 +112,27 @@ hashes still match the existing release manifest. Wire formats and active
 consensus rules are unchanged. The original checkpoint evidence remains
 historical; new-head validation is reported by the PR's exact-head checks.
 
+## Alpha recovery closeout
+
+Version 4.0.0-alpha.1 adds private Unix directory/file permission enforcement,
+N=2/3/16 independent Factory journal and real process-exit tests, exact private
+child delivery checks, and offline root recovery despite a withheld creation
+receipt. Canonical confirmation supplies the authentic missing peer approval
+without cloning or resetting the participant journal.
+
+The current native matrix explicitly orphans and replays signed root and
+Factory transactions without new participant votes, publishes one/four/ten-right
+updates, and exercises all-member retained materialisation before terminal
+parent retirement. It derives ten stateful scenarios. Two additional VM
+negatives isolate false Factory Type/StateLock authority and checked u128
+group overflow, bringing the registered VM count to 84. No contract implementation
+or wire format changes accompany these host/recovery/test fixes.
+
+The issue/acceptance map, reproduction steps and release boundaries are recorded
+in [the alpha release record](releases/v4.0.0-alpha.1.md). Current source-bound
+CI/native artifacts and fresh package digests are published with that prerelease;
+the `9202e341` checkpoint and its reports remain unchanged historical evidence.
+
 ## Clean candidate acceptance
 
 Run the complete matrix from a clean committed tree with no fixture-writing
@@ -125,7 +146,7 @@ CKB_BIN=/path/to/ckb \
 
 Before building, the runner immutably records HEAD, tracked/untracked
 implementation state and a source digest. It freezes its CLI and ELFs, retains
-actual native reports, derives the nine evidence scenarios, then checks the
+actual native reports, derives the ten current evidence scenarios, then checks the
 finite deployment/operation/proof budgets, audit families and source freshness.
 Post-run captures, changed source, dirty authority implementations and old
 artifacts cannot be restamped as clean. Only a completely successful run updates

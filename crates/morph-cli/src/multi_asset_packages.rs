@@ -1,4 +1,3 @@
-#[cfg(unix)]
 use crate::persistence::sync_recovery_directories;
 use std::fs::File;
 use std::io::Read;
@@ -386,28 +385,21 @@ pub fn write_package(dir: &Path, package: &StoredMultiAssetPackage) -> Result<st
     let parent = dir
         .join(summary.channel_id.trim_start_matches("0x"))
         .join(summary.funding_context_id.trim_start_matches("0x"));
-    #[cfg(unix)]
-    let existing_parent = parent
-        .ancestors()
-        .find(|path| path.is_dir())
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
-    fs::create_dir_all(&parent)?;
+    let existing_parent = crate::persistence::create_private_directories(&parent)?;
     let path = parent.join(format!(
         "{:020}-{}.json",
         summary.state_number.parse::<u64>()?,
         summary.package_id.trim_start_matches("0x")
     ));
     if path.exists() {
+        let file = File::open(&path)?;
+        crate::persistence::require_private_file(&file)?;
         ensure!(
             read_package(&path)? == *package,
             "recovery package path already contains different evidence"
         );
-        #[cfg(unix)]
-        {
-            File::open(&path)?.sync_all()?;
-            sync_recovery_directories(&parent, &existing_parent)?;
-        }
+        file.sync_all()?;
+        sync_recovery_directories(&parent, &existing_parent)?;
         return Ok(path);
     }
     let temporary = crate::persistence::atomic_json_tmp_path(&path);
@@ -416,11 +408,11 @@ pub fn write_package(dir: &Path, package: &StoredMultiAssetPackage) -> Result<st
     #[cfg(unix)]
     options.mode(0o600);
     let mut file = options.open(&temporary)?;
+    crate::persistence::require_private_file(&file)?;
     file.write_all(&serde_json::to_vec_pretty(package)?)?;
     file.sync_all()?;
     drop(file);
     fs::rename(&temporary, &path)?;
-    #[cfg(unix)]
     sync_recovery_directories(&parent, &existing_parent)?;
     Ok(path)
 }
@@ -730,6 +722,20 @@ mod tests {
                 std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
                 0o600
             );
+            for parent in path.parent().unwrap().ancestors() {
+                assert_eq!(
+                    std::fs::metadata(parent).unwrap().permissions().mode() & 0o777,
+                    0o700
+                );
+                if parent == dir {
+                    break;
+                }
+            }
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(write_package(&dir, &package).is_err());
+            assert_eq!(read_package(&path).unwrap(), package);
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            assert_eq!(write_package(&dir, &package).unwrap(), path);
         }
         let mut changed = package.clone();
         changed.state_carrier_capacity = "200000000000".to_string();

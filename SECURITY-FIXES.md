@@ -20,7 +20,7 @@ multi-operator rehearsal, and a real-asset value policy remain required.
 
 ## Current source boundary and historical evidence (2026-11-05)
 
-The current unpublished implementation has one 318-byte channel State,
+The current predeployment implementation has one 318-byte channel State,
 descriptor 5, one complete Vault-set lifecycle, and one 306-byte Factory
 State. The former 346/302-byte headers, single-Vault settlement/splice
 codecs, 485/469-byte bridges and `MORPHW!!` kinds 1–8 are removed. Direct and
@@ -54,12 +54,54 @@ measured budgets and data-availability limits are recorded in
 | Old withdrawal-lock and splice physical-delta negatives | Current exact-body splice mutation matrix and Factory freshly-authorized physical mismatch tests. |
 | Factory child authority/private exit | Full/reduced materialisation VM tests, child exit after parent retirement, independent delivery/journal tests. |
 
-The current CKB-VM harness passed 77 tests after runtime/common pruning and the external-child
-capability parity check.
+The original migration checkpoint passed 77 CKB-VM tests after runtime/common
+pruning and the external-child capability parity check. Current release results
+are recorded separately rather than relabelling that historical checkpoint.
 This is local migration evidence. Independent protocol/script review,
 public-network fee/reorg/latency evidence, independent operators/builds and a
 real-asset value envelope remain required. Complete repository CI and report
 refresh are tracked separately in [the migration ledger](docs/unified-protocol-migration.md).
+
+## Alpha private delivery and initial funding recovery (2026-11-05)
+
+- Private artifact writers create missing Unix directories with 0700 and
+  files/sidecars with 0600, preserving existing shared ancestor permissions and
+  directory fsync. Immutable replay, append and locks reject broader existing
+  private files. Tests:
+  `private_writers_create_restricted_trees_without_chmodding_existing_parents`,
+  `private_replay_append_and_locks_reject_broad_existing_files_without_repair`,
+  `multi_asset_recovery_store_is_durable_idempotent_and_private`.
+- Factory members keep independent durable journals. Reservation precedes the
+  signer and signature recording precedes receipt release, including actual
+  process exits and failed persistence. Tests:
+  `independent_factory_journals_require_all_members_for_two_three_and_sixteen`,
+  `factory_process_exit_preserves_reservation_and_lost_signature_receipt_is_recoverable`,
+  `failed_checkpoint_or_record_persistence_never_releases_a_factory_receipt`.
+- Private delivery verifies the exact child/context before storing recovery.
+  Both child-party possession attestations are required by every parent signer;
+  they cannot substitute for parent authority even when keys coincide. Each
+  honest child verifies and persists its complete private exit before attesting.
+  Test: `child_possession_receipts_cannot_replace_parent_votes_or_cross_child_identity`.
+  These attestations are not consensus proof of private disk availability.
+- Initial funding can export the complete retained exit offline without the
+  peer's last creation receipt. Confirmed same-path handoff still requires a
+  durable local creation vote, exact canonical funding/activation and both valid
+  on-chain creation signatures. Tests:
+  `incomplete_initial_exit_cannot_export_or_authorize_after_peer_loss`,
+  `retained_exit_survives_withheld_creation_receipt_and_requires_local_handoff_vote`.
+  The native matrix also orphans and replays the byte-identical signed funding
+  transaction without new peer votes or journal mutation.
+- Full-store signer rollback remains the separate trusted-freshness boundary in
+  #55. Neither fsync nor these crash tests establishes independent monotonicity
+  after rollback of an entire consistent authority store.
+- Current reduced Factory VM negatives independently check authentic Factory
+  Type/StateLock authority and checked u128 aggregation with valid localized
+  proofs and fresh signatures:
+  `factory_multi_asset_reduced_release_authenticates_factory_type_and_state_lock`
+  (errors 14/69) and
+  `factory_multi_asset_reduced_rights_rejects_u128_group_overflow_with_valid_locality_proofs`
+  (separate before/after sum overflow, error 39). The alpha VM corpus has 84
+  registered tests; the historical 77/82-test checkpoints remain distinct.
 
 ## Factory-materialised State authority binding (2026-08-13)
 

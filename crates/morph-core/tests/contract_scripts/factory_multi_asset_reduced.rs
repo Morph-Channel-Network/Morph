@@ -81,7 +81,10 @@ fn release_frame(transaction: &TransactionView) -> Vec<u8> {
 // transition prevalidation. Every adversarial body still has a fresh exact-tx
 // signature, checked independently below, so the VM must enforce the invariant.
 fn sign_raw_release(mut transaction: TransactionView, mut frame: Vec<u8>) -> TransactionView {
-    assert_eq!(u16::from_le_bytes(frame[10..12].try_into().unwrap()), 0);
+    assert!(matches!(
+        u16::from_le_bytes(frame[10..12].try_into().unwrap()),
+        0 | 1
+    ));
     let locality = factory::factory_transition_locality_digest(&frame, 788).unwrap();
     frame[590..622].copy_from_slice(&locality);
     let mut data: Vec<_> = transaction.outputs_data().into_iter().collect();
@@ -986,6 +989,292 @@ fn factory_multi_asset_reduced_release_rejects_cloned_state_outpoint_and_state_l
         .build();
     let tx = resign(&mut fixture, tx);
     rejects(&fixture.base.template.context, &tx, &[69]);
+}
+
+#[test]
+#[ignore = "requires make build-contracts"]
+fn factory_multi_asset_reduced_release_authenticates_factory_type_and_state_lock() {
+    for false_type in [true, false] {
+        let mut fixture = reduced_fixture();
+        fixture
+            .base
+            .template
+            .context
+            .verify_tx(&fixture.transaction, MAX_CYCLES)
+            .unwrap();
+        let original = fixture
+            .transaction
+            .inputs()
+            .get(0)
+            .unwrap()
+            .previous_output();
+        let (cell, data) = fixture.base.template.context.get_cell(&original).unwrap();
+        let wallet = fixture.base.template.locks[0].clone();
+        let ty = if false_type {
+            // Retain valid Factory args but execute a permissive foreign Type.
+            // Remove the genuine Type from BOTH sides, so only the authentic
+            // reserve lock can catch the missing source authority.
+            fixture
+                .base
+                .factory_type
+                .clone()
+                .as_builder()
+                .code_hash(wallet.code_hash())
+                .hash_type(wallet.hash_type())
+                .build()
+        } else {
+            fixture.base.factory_type.clone()
+        };
+        let fake = fixture.base.template.context.create_cell(
+            cell.as_builder()
+                .lock(wallet.clone())
+                .type_(Some(ty.clone()).pack())
+                .build(),
+            data,
+        );
+        let mut inputs: Vec<_> = fixture.transaction.inputs().into_iter().collect();
+        inputs[0] = inputs[0]
+            .clone()
+            .as_builder()
+            .previous_output(fake.clone())
+            .build();
+        let mut outputs: Vec<_> = fixture.transaction.outputs().into_iter().collect();
+        outputs[0] = outputs[0]
+            .clone()
+            .as_builder()
+            .lock(wallet)
+            .type_(Some(ty).pack())
+            .build();
+        fixture.plan.old_state = MultiAssetOutPoint {
+            tx_hash: fake.tx_hash().unpack(),
+            index: fake.index().unpack(),
+        };
+        fixture.plan.set_locality_digest().unwrap();
+        let mut data: Vec<_> = fixture.transaction.outputs_data().into_iter().collect();
+        data[0] = Bytes::from(fixture.plan.after.encode().unwrap().to_vec()).pack();
+        let tx = fixture
+            .transaction
+            .as_advanced_builder()
+            .set_inputs(inputs)
+            .set_outputs(outputs)
+            .set_outputs_data(data)
+            .build();
+        let tx = resign(&mut fixture, tx);
+        factory::FactoryReducedReleaseWitness::parse(&release_frame(&tx))
+            .unwrap()
+            .verify()
+            .expect("the exact-body signature, both roots and all allocation proofs remain valid");
+        let code = if false_type {
+            ScriptError::StateCellMissing
+        } else {
+            ScriptError::FactoryMultiAssetPartitionMismatch
+        };
+        rejects(&fixture.base.template.context, &tx, &[code as i8]);
+    }
+}
+
+fn approve_reduced_rights_root(
+    fixture: &mut ReducedFixture,
+    rights: &[FactoryRight],
+) -> (TransactionView, factory::FactoryMultiAssetHeaderFields) {
+    let mut header = fixture.plan.before;
+    header.update_number += 1;
+    header.state_root = factory_right_sparse_root(rights).unwrap();
+    let metadata = fixture.base.template.context.complete_tx(
+        TransactionBuilder::default()
+            .input(
+                CellInput::new_builder()
+                    .previous_output(
+                        OutPoint::new_builder()
+                            .tx_hash(fixture.plan.old_state.tx_hash.pack())
+                            .index(fixture.plan.old_state.index)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .output(state_cell(
+                CELL_CAPACITY,
+                &fixture.base.factory_state_lock,
+                &fixture.base.factory_type,
+            ))
+            .output_data(Bytes::from(header.encode().unwrap().to_vec()).pack())
+            .witness(Bytes::new())
+            .build(),
+    );
+    let digest = factory::FactoryMultiAssetStateHeader::parse(&header.encode().unwrap())
+        .unwrap()
+        .update_signing_digest(&metadata.hash().unpack())
+        .unwrap();
+    let metadata = metadata
+        .as_advanced_builder()
+        .set_witnesses(vec![
+            fs_witness(
+                factory::FACTORY_STATE_WITNESS_UPDATE,
+                &fixture.plan.source,
+                &fixture.plan.source_outpoints,
+                &factory_auth(&digest, fixture.plan.members.len() as u8),
+            )
+            .pack(),
+        ])
+        .build();
+    fixture
+        .base
+        .template
+        .context
+        .verify_tx(&metadata, MAX_CYCLES)
+        .expect("the complete member set independently approves the exact source root");
+    materialise(&mut fixture.base.template.context, &metadata);
+    (metadata, header)
+}
+
+#[test]
+#[ignore = "requires make build-contracts"]
+fn factory_multi_asset_reduced_rights_rejects_u128_group_overflow_with_valid_locality_proofs() {
+    for (old_quantities, new_quantities) in [
+        ([u128::MAX, 2], [u128::MAX - 1, 1]),
+        ([u128::MAX - 2, 2], [u128::MAX - 1, 3]),
+    ] {
+        let mut fixture = reduced_fixture_operation(
+            0,
+            true,
+            2,
+            false,
+            morph_core::FactoryTransitionOperation::ReducedRights,
+        );
+        let make_rights = |quantities: [u128; 2]| {
+            quantities
+                .into_iter()
+                .enumerate()
+                .map(|(i, quantity)| {
+                    let mut right = reserve_claim(1, None, quantity);
+                    right.id.subchannel = [i as u8; 32];
+                    right
+                })
+                .collect::<Vec<_>>()
+        };
+        let before = make_rights([100, 20]);
+        let after = make_rights([99, 19]);
+        let (approved, header) = approve_reduced_rights_root(&mut fixture, &before);
+        fixture.plan.before = header;
+        fixture.plan.after.update_number = header.update_number + 1;
+        fixture.plan.after.state_root = factory_right_sparse_root(&after).unwrap();
+        fixture.plan.old_state = MultiAssetOutPoint {
+            tx_hash: approved.hash().unpack(),
+            index: 0,
+        };
+        fixture.plan.rights = before
+            .iter()
+            .map(|right| FactoryReducedReleaseRight {
+                before: factory_right_sparse_proof_compact(&before, &right.id).unwrap(),
+                after: factory_right_sparse_proof_compact(&after, &right.id).unwrap(),
+            })
+            .collect();
+        fixture.plan.set_locality_digest().unwrap();
+        let mut inputs: Vec<_> = fixture.transaction.inputs().into_iter().collect();
+        inputs[0] = inputs[0]
+            .clone()
+            .as_builder()
+            .previous_output(point(&approved, 0))
+            .build();
+        let mut data: Vec<_> = fixture.transaction.outputs_data().into_iter().collect();
+        data[0] = Bytes::from(fixture.plan.after.encode().unwrap().to_vec()).pack();
+        let baseline = fixture
+            .transaction
+            .as_advanced_builder()
+            .set_inputs(inputs)
+            .set_outputs_data(data)
+            .build();
+        let baseline = resign(&mut fixture, baseline);
+        fixture
+            .base
+            .template
+            .context
+            .verify_tx(&baseline, MAX_CYCLES)
+            .expect("two same-asset localized changes execute with ordinary bounded quantities");
+
+        let bad_before = make_rights(old_quantities);
+        let bad_after = make_rights(new_quantities);
+        // Deliberately bypass host initial-allocation admission. Consensus must
+        // still reject arithmetic overflow if all members commit such a root.
+        let (approved, header) = approve_reduced_rights_root(&mut fixture, &bad_before);
+        let mut next = fixture.plan.after;
+        next.update_number = header.update_number + 1;
+        next.state_root = factory_right_sparse_root(&bad_after).unwrap();
+        let mut frame = release_frame(&baseline);
+        let view = factory::FactoryReducedReleaseWitness::parse(&frame).unwrap();
+        let before_header = view.before().as_bytes().as_ptr() as usize - frame.as_ptr() as usize;
+        let after_header = view.after().as_bytes().as_ptr() as usize - frame.as_ptr() as usize;
+        let offsets: Vec<_> = (0..2)
+            .map(|i| {
+                view.right(i).unwrap().before.raw().as_ptr() as usize - frame.as_ptr() as usize
+            })
+            .collect();
+        frame[before_header..before_header + 306].copy_from_slice(&header.encode().unwrap());
+        frame[after_header..after_header + 306].copy_from_slice(&next.encode().unwrap());
+        frame[36..68].copy_from_slice(approved.hash().as_slice());
+        frame[68..72].copy_from_slice(&0u32.to_le_bytes());
+        for (i, offset) in offsets.into_iter().enumerate() {
+            let proofs = [
+                factory_right_sparse_proof_compact(&bad_before, &bad_before[i].id).unwrap(),
+                factory_right_sparse_proof_compact(&bad_after, &bad_after[i].id).unwrap(),
+            ];
+            let mut proof_offset = offset + 2 * morph_script_common::FACTORY_RIGHT_LEN;
+            for (side, proof) in proofs.into_iter().enumerate() {
+                morph_core::verify_factory_right_compact_proof(
+                    if side == 0 {
+                        header.state_root
+                    } else {
+                        next.state_root
+                    },
+                    &proof,
+                )
+                .unwrap();
+                let quantity_offset =
+                    offset + (side + 1) * morph_script_common::FACTORY_RIGHT_LEN - 16;
+                frame[quantity_offset..quantity_offset + 16]
+                    .copy_from_slice(&proof.right.quantity.to_le_bytes());
+                let count = morph_script_common::read_u16(&frame, proof_offset) as usize;
+                assert_eq!(count, proof.siblings.len());
+                for (j, sibling) in proof.siblings.iter().enumerate() {
+                    let pair = proof_offset + 2 + j * 34;
+                    assert_eq!(morph_script_common::read_u16(&frame, pair), sibling.depth);
+                    frame[pair + 2..pair + 34].copy_from_slice(&sibling.hash);
+                }
+                proof_offset += 2 + count * 34;
+            }
+        }
+        let mut inputs: Vec<_> = baseline.inputs().into_iter().collect();
+        inputs[0] = inputs[0]
+            .clone()
+            .as_builder()
+            .previous_output(point(&approved, 0))
+            .build();
+        let bad = baseline.as_advanced_builder().set_inputs(inputs).build();
+        let bad = sign_raw_release(bad, frame);
+        let frame = release_frame(&bad);
+        let view = factory::FactoryReducedReleaseWitness::parse(&frame).unwrap();
+        for i in 0..2 {
+            factory::verify_factory_localized_right_change(
+                &view.right(i).unwrap(),
+                view.touched_participant(),
+                view.before().state_root(),
+                view.after().state_root(),
+                &[view.right(1 - i).unwrap().key()],
+            )
+            .expect(
+                "both changed leaves have valid roots, canonical proofs and complete localization",
+            );
+        }
+        assert_eq!(
+            view.validate_transition(),
+            Err(ScriptError::FactoryReducedProofMismatch)
+        );
+        rejects(
+            &fixture.base.template.context,
+            &bad,
+            &[ScriptError::FactoryReducedProofMismatch as i8],
+        );
+    }
 }
 
 #[test]

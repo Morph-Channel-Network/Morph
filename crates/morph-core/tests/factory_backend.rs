@@ -681,6 +681,44 @@ fn delivery_signer_rejects_missing_wrong_or_invalid_private_recovery_before_atte
 }
 
 #[test]
+fn child_possession_receipts_cannot_replace_parent_votes_or_cross_child_identity() {
+    let (request, members, _, children) = support::reduced_child_request();
+    let receipt =
+        FactoryChildDeliveryReceipt::new_signed(&request, 0, &children[0], &key(1)).unwrap();
+    receipt.verify(&request).unwrap();
+    request
+        .verify_participant_signature(&signature(&request, 1))
+        .unwrap();
+    // The fixture deliberately reuses one key in the child and parent roles;
+    // domain separation, rather than different keys, must reject substitution.
+    let parent = members
+        .iter()
+        .find(|member| member.pubkey_sec1 == receipt.pubkey_sec1)
+        .unwrap();
+    assert_eq!(
+        request.verify_participant_signature(&FactoryParticipantSignature {
+            participant: parent.participant,
+            pubkey_sec1: receipt.pubkey_sec1.clone(),
+            signature: receipt.signature.clone(),
+        }),
+        Err(FactoryBackendError::InvalidSignature)
+    );
+    let mut wrong_child = receipt.clone();
+    wrong_child.child_index = 1;
+    assert!(wrong_child.verify(&request).is_err());
+    let mut wrong_recipient = receipt;
+    wrong_recipient.pubkey_sec1 = key(2)
+        .verifying_key()
+        .to_encoded_point(true)
+        .as_bytes()
+        .to_vec();
+    assert_eq!(
+        wrong_recipient.verify(&request),
+        Err(FactoryBackendError::InvalidSignature)
+    );
+}
+
+#[test]
 fn factory_child_public_fixture_matches_current_rust_vm_terms() {
     let (request, _, _, _) = support::reduced_child_request();
     let child = request.public_child(0).unwrap();

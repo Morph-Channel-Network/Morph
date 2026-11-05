@@ -1,5 +1,45 @@
 # Changelog
 
+## v4.0.0-alpha.1 — 2026-11-05
+
+This prerelease consolidates the unpublished channel and Factory capabilities
+onto one current custody/signing/recovery implementation. It is for controlled
+devnet use with no real assets.
+
+- Close #15: separate public Factory intent/possession receipts from private
+  child exits; create private Unix directories with 0700 and files/sidecars with
+  0600, reject overly broad existing private files, and document confidential
+  delivery/backup recipients. Platforms without equivalent implemented access
+  controls fail closed for private persistence.
+- Close #19: verify independent two-, three- and sixteen-member Factory journals,
+  OS locks, partial authorization and actual process crashes before/after durable
+  signing. Reject foreign child recovery before persistence; failed delivery or
+  receipt writes retain the complete private exit without releasing parent
+  authority. Parent members validate both child-key possession attestations;
+  private exit signatures remain with child parties.
+- Close #56: retain/export complete root recovery even if a peer withholds its
+  final creation receipt; recover the missing authorization from authenticated
+  canonical funding during the same-path handoff. Add actual root orphaning and
+  byte-identical signed replay without new peer votes. Incomplete initial exits
+  still cannot authorize creation or export recovery.
+- Close #46 and #20: exercise one/four/ten-right current reduced updates through
+  native preparation, independent signing, wallet funding, keyless submission
+  and public proof refresh. Cover full-consent metadata, retained/full
+  materialisation, private child delivery, independent child closure and parent
+  retirement in the current native lifecycle.
+- Retire obsolete State/Factory/splice codecs, commands and duplicate backends;
+  preserve conditional CKB Batch and reduced Factory capabilities in the current
+  descriptor-5/FS/FM/FR model. Strengthen current Factory/Batch VM negatives,
+  align Hub/UI profile metadata and isolate CI evidence from restored caches.
+- Align Rust workspace, SDK and Hub versions to 4.0.0-alpha.1. Publish the
+  deterministic eight-ELF current-custody bundle and sanitized source-bound
+  acceptance evidence using the existing `vMAJOR.MINOR.PATCH` tag convention.
+
+This does not add conditional token routing, cooperative terminal bilateral
+close, membership changes or protection against rollback of an entire signer
+authority store. Public-network, independent-operator and real-asset admission
+remain separate readiness work. See [the alpha release record](docs/releases/v4.0.0-alpha.1.md).
+
 ## v4.0.0 — 2026-11-04
 
 - Add multi-asset Factory consensus to the Factory Type and Factory Vault Lock

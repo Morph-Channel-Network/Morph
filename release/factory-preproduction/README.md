@@ -1,6 +1,6 @@
-# Morph current custody candidate
+# Morph current custody — 4.0.0-alpha.1
 
-`morph-current-custody` is the sole unpublished protocol family. This is a
+`morph-current-custody` is the sole current protocol family. This is a
 controlled-devnet candidate with no real assets. Selecting the shared-foundation
 architecture does not approve a mainnet release.
 

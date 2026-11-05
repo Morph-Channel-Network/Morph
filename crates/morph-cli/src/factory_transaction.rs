@@ -909,6 +909,62 @@ pub(crate) mod tests {
         };
         (terms, cells)
     }
+
+    fn reduced_rights_fixture() -> (FactoryPreparationTerms, Vec<FundingCell>) {
+        let (mut terms, cells) = fixture();
+        let (mut source, members, mut rights) = terms.context.decode().unwrap();
+        let participant = members[0].participant;
+        // Keep all candidate leaves in the retained initial snapshot. Eleven
+        // value leaves also let the negative exercise the ten-change bound.
+        for index in 1u8..=11 {
+            rights.push(FactoryRight {
+                id: FactoryRightId {
+                    participant,
+                    subchannel: [index; 32],
+                    kind: FactoryRightKind::SponsorBudgetClaim,
+                    asset_type: None,
+                },
+                quantity: 100,
+            });
+        }
+        rights.push(FactoryRight {
+            id: FactoryRightId {
+                participant,
+                subchannel: [90; 32],
+                kind: FactoryRightKind::Membership,
+                asset_type: None,
+            },
+            quantity: 1,
+        });
+        rights.sort_by(|a, b| a.id.cmp(&b.id));
+        let mut fields = source.state().unwrap().fields();
+        fields.state_root = factory_right_sparse_root(&rights).unwrap();
+        source.header = fields.encode().unwrap().to_vec();
+        terms.context.custody =
+            crate::factory_packets::StoredFactoryCustody::from_core(&source).unwrap();
+        terms.context.rights = rights.iter().map(FactoryRightTerms::from_core).collect();
+        terms.context.decode().unwrap();
+        terms.target_rights = terms.context.rights.clone();
+        terms.intent = FactoryPreparationOperation::ReducedRights {
+            participant: canonical_hex(&participant),
+        };
+        (terms, cells)
+    }
+
+    fn reduce_value_rights(terms: &mut FactoryPreparationTerms, count: usize) {
+        let participant = &terms.context.members[0].participant;
+        let mut changed = 0;
+        for right in &mut terms.target_rights {
+            if right.participant == *participant
+                && right.kind == FactoryRightKind::SponsorBudgetClaim
+                && changed < count
+            {
+                right.quantity = "99".to_string();
+                changed += 1;
+            }
+        }
+        assert_eq!(changed, count);
+    }
     fn released(
         terms: &FactoryPreparationTerms,
     ) -> (
@@ -1380,6 +1436,98 @@ pub(crate) mod tests {
         terms.funders[0].ckb_contribution = "10000000000".to_string();
         let deposit = terms.build(&cells, 1000).unwrap();
         authorize(&deposit);
+    }
+
+    #[test]
+    fn native_reduced_rights_prepares_exact_one_four_and_ten_change_requests() {
+        for count in [1, 4, 10] {
+            let (mut terms, cells) = reduced_rights_fixture();
+            reduce_value_rights(&mut terms, count);
+            let request = terms.build(&cells, 1000).unwrap();
+            let frame = wire::FactoryReducedReleaseWitness::parse(&request.witness).unwrap();
+            assert_eq!(frame.operation(), FactoryTransitionOperation::ReducedRights);
+            assert_eq!(frame.right_count(), count);
+            assert_eq!(request.required_members().unwrap().len(), 1);
+            let source = request.source.as_ref().unwrap();
+            let target = request.target.as_ref().unwrap();
+            assert_eq!(source.manifest, target.manifest);
+            assert_eq!(source.vault_outpoints, target.vault_outpoints);
+            assert_eq!(source.state_carrier_capacity, target.state_carrier_capacity);
+            assert!(!request.requires_activation().unwrap());
+            assert_eq!(request.raw_transaction().unwrap().inputs().len(), 2);
+            for index in 0..count {
+                let right = frame.right(index).unwrap();
+                assert_eq!(right.before.quantity(), 100);
+                assert_eq!(right.after.quantity(), 99);
+                assert_eq!(right.before.participant(), frame.touched_participant());
+                if index > 0 {
+                    let previous = frame.right(index - 1).unwrap().before;
+                    assert!(previous.subchannel() < right.before.subchannel());
+                }
+            }
+            authorize(&request);
+            let packet = crate::factory_packets::StoredFactoryRequest::from_core(&request).unwrap();
+            let restored: crate::factory_packets::StoredFactoryRequest =
+                serde_json::from_slice(&serde_json::to_vec(&packet).unwrap()).unwrap();
+            assert_eq!(restored.decode().unwrap(), request);
+        }
+    }
+
+    #[test]
+    fn native_reduced_rights_rejects_noop_foreign_nonvalue_noncanonical_and_overbound_changes() {
+        let (terms, cells) = reduced_rights_fixture();
+        assert!(
+            terms.build(&cells, 1000).is_err(),
+            "no changed right is not an update"
+        );
+        let mut valid = terms.clone();
+        reduce_value_rights(&mut valid, 1);
+        authorize(&valid.build(&cells, 1000).unwrap());
+
+        let mut foreign = valid.clone();
+        let peer = foreign.context.members[1].participant.clone();
+        let right = foreign
+            .target_rights
+            .iter_mut()
+            .find(|r| r.participant == peer)
+            .unwrap();
+        right.quantity = (decimal_u128(&right.quantity).unwrap() - 1).to_string();
+        assert!(
+            foreign.build(&cells, 1000).is_err(),
+            "the touched member cannot change a peer leaf"
+        );
+
+        let mut nonvalue = valid.clone();
+        nonvalue
+            .target_rights
+            .iter_mut()
+            .find(|r| r.kind == FactoryRightKind::Membership)
+            .unwrap()
+            .quantity = "0".to_string();
+        assert!(
+            nonvalue.build(&cells, 1000).is_err(),
+            "value-only authority cannot modify membership"
+        );
+
+        let mut unordered = valid.clone();
+        unordered.target_rights.swap(0, 1);
+        assert!(
+            unordered.build(&cells, 1000).is_err(),
+            "raw right IDs remain canonically ordered"
+        );
+        let mut duplicate = valid;
+        duplicate.target_rights[1] = duplicate.target_rights[0].clone();
+        assert!(
+            duplicate.build(&cells, 1000).is_err(),
+            "duplicate IDs are not alternate proof ordering"
+        );
+
+        let mut overbound = terms;
+        reduce_value_rights(&mut overbound, 11);
+        assert!(
+            overbound.build(&cells, 1000).is_err(),
+            "a request cannot silently truncate its eleventh change"
+        );
     }
     #[test]
     fn external_child_parties_receive_private_exits_without_gaining_factory_authority() {

@@ -60,9 +60,10 @@ it does not enable a removed State format.
 
 ## Safety boundaries and current evidence
 
-The current contract harness contains **82 registered CKB-VM tests**, including
-parameterized negative matrices: 77 at checkpoint `9202e341`, plus five closeout
-regressions. These are registered test functions; matrix branches are additional
+The current contract harness contains **84 registered CKB-VM tests**, including
+parameterized negative matrices: 77 at checkpoint `9202e341`, five earlier
+closeout regressions and two alpha Factory authority/overflow negatives.
+These are registered test functions; matrix branches are additional
 assertions, not a conversion from 67 functions into 77 cases. The removed harness encoded the retired physical model;
 its security properties are mapped below to current transactions. Historical
 audit test names remain historical evidence rather than claims that those
@@ -180,7 +181,7 @@ service-health behavior; see [its runbook](runbooks/current-publication-reliabil
 The original checkpoint passed full repository CI with 77 VM cases. Current
 closeout coverage raises the registered VM count to 82; PR checks evaluate that
 new head separately, without relabelling the original evidence. The expanded
-five-case native matrix and its nine-scenario, 65-assertion evidence ledger also
+historical five-case native matrix and its nine-scenario, 65-assertion evidence ledger also
 completed on a development node; source freshness and budget qualification are
 recorded separately by the candidate runner. See the [migration record](unified-protocol-migration.md)
 for exact results and clean-candidate acceptance. Updated Fiber scripts require
@@ -190,9 +191,19 @@ in this update. An external-party Factory child is valid custody; admission
 through a provider's parent-right reservation still has separate owner and
 liquidity requirements.
 
+The alpha matrix extends that source-bound runner with actual root orphan/replay
+and withheld creation-receipt recovery, full-consent Factory metadata, native
+1/4/10-right updates with public proof refresh, retained full-consent
+materialisation and Factory operation orphan/replay. It derives ten current
+stateful scenarios; the exact assertion count and resource totals are recorded
+by each fresh run. The alpha issue/acceptance map is
+[the release record](releases/v4.0.0-alpha.1.md). Historical reports above are not
+silently upgraded to those new scenarios.
+
 ## Independent release bundle verification
 
-Two consecutive `make package-contract-release` runs produced byte-identical
+At the historical pre-alpha checkpoint, two consecutive
+`make package-contract-release` runs produced byte-identical
 `target/morph-current-custody.tar.gz` archives with SHA-256:
 
 ```text
@@ -213,6 +224,8 @@ reproducibility for those exact bytes. It is development evidence, not an
 independent security review, a mainnet approval, a production availability
 measurement or an assertion that an arbitrary node runs those scripts. Any
 subsequent ELF or release-file change requires a fresh archive and verification.
+The alpha release README changes the bundle bytes; its fresh archive digest and
+verification belong to the alpha release evidence, not the historical hash above.
 
 | Entry boundary | Current implementation and retirement check |
 | --- | --- |

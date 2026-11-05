@@ -21,7 +21,7 @@ ckb-types.workspace = true
 clap.workspace = true
 hex.workspace = true
 k256.workspace = true
-morph-core = { version = "4.0.0", path = "../morph-core" }
+morph-core = { version = "4.0.0-alpha.1", path = "../morph-core" }
 rand.workspace = true
 reqwest.workspace = true
 serde.workspace = true
