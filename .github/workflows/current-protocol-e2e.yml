@@ -66,19 +66,20 @@ jobs:
           set -euo pipefail
           env -u MORPH_UPDATE_FIXTURES \
             CKB_BIN="$GITHUB_WORKSPACE/target/ci-ckb/ckb" \
-            OUT_DIR=target/current-protocol-e2e/github \
+            OUT_DIR="$RUNNER_TEMP/morph-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/run" \
             bash scripts/devnet-current-e2e.sh
 
       - name: Export public evidence
+        # Keep per-attempt evidence outside Cargo's cached target directory.
         run: >-
           python3 scripts/export-current-public-evidence.py
-          --run-dir target/current-protocol-e2e/github
-          --output-dir target/current-public-evidence
+          --run-dir "$RUNNER_TEMP/morph-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/run"
+          --output-dir "$RUNNER_TEMP/morph-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/public-evidence"
 
       - name: Upload public acceptance evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: morph-native-evidence-${{ github.event.pull_request.head.sha || github.sha }}
-          path: target/current-public-evidence/
+          path: ${{ runner.temp }}/morph-native-${{ github.run_id }}-${{ github.run_attempt }}/public-evidence/
           if-no-files-found: error
           retention-days: 30
