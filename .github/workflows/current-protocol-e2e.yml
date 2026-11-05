@@ -1,0 +1,83 @@
+name: Current protocol native acceptance
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-acceptance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+
+jobs:
+  native-e2e:
+    name: Clean-head CKB lifecycle and recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # Public disposable scalars for the isolated no-value development chain.
+      # They are not deployment credentials and must never fund real assets.
+      MORPH_DEVNET_PRIVATE_KEY: '0000000000000000000000000000000000000000000000000000000000000001'
+      MORPH_ALICE_PRIVATE_KEY: '0000000000000000000000000000000000000000000000000000000000000002'
+      MORPH_BOB_PRIVATE_KEY: '0000000000000000000000000000000000000000000000000000000000000003'
+      CKB_ARCHIVE: ckb_v0.210.0_x86_64-unknown-linux-gnu.tar.gz
+      CKB_ARCHIVE_SHA256: 68a94c191109bae172f8dcb71828dbdf0383e2c314e0658743db217472b27bdf
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@87eb139fed4b08a67bd1fa429a21d1f5d523e03e # 1.92.0
+        with:
+          targets: riscv64imac-unknown-none-elf
+
+      - name: Cache cargo build outputs
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          shared-key: current-native-acceptance
+
+      - name: Install pinned CKB release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-ckb
+          curl --fail --location --retry 3 --connect-timeout 15 \
+            "https://github.com/nervosnetwork/ckb/releases/download/v0.210.0/$CKB_ARCHIVE" \
+            --output "target/ci-ckb/$CKB_ARCHIVE"
+          printf '%s  %s\n' "$CKB_ARCHIVE_SHA256" "target/ci-ckb/$CKB_ARCHIVE" | sha256sum --check
+          tar --extract --gzip --file "target/ci-ckb/$CKB_ARCHIVE" \
+            --directory target/ci-ckb --strip-components=1
+          target/ci-ckb/ckb --version
+
+      - name: Run the sole native acceptance pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          env -u MORPH_UPDATE_FIXTURES \
+            CKB_BIN="$GITHUB_WORKSPACE/target/ci-ckb/ckb" \
+            OUT_DIR=target/current-protocol-e2e/github \
+            bash scripts/devnet-current-e2e.sh
+
+      - name: Export public evidence
+        run: >-
+          python3 scripts/export-current-public-evidence.py
+          --run-dir target/current-protocol-e2e/github
+          --output-dir target/current-public-evidence
+
+      - name: Upload public acceptance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: morph-native-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: target/current-public-evidence/
+          if-no-files-found: error
+          retention-days: 30

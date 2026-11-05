@@ -1,0 +1,85 @@
+{
+  "schema": "morph.public_checkpoint_evidence.v1",
+  "source_commit": "9202e34162871f90380402bdd9d6432c46406c92",
+  "provenance_phase": "pre_build",
+  "git_dirty": false,
+  "source_unchanged": true,
+  "recorded_at_utc": "2026-11-04T20:17:42.810649+00:00",
+  "source_tree_sha256": "5743fb1bd45a6e49815fab8788d940c3ffa72c94eef827825713424908b11a20",
+  "runner_sha256": "c0840225eac11a86a047e1ffaf4e59bc81e4b432d4c4aa76a519201508d8fce4",
+  "ledger_generator_sha256": "d7b953976ac7bb68384fe1fcd1ce260081da0b83e7957b367394eda7b265de8a",
+  "genesis_hash": "0x366ad2cdb74f0a5ffc5f0aa665bd545833b3fda2fb8c191f4f1d80e80846efb9",
+  "descriptor_version": 5,
+  "cli_sha256": "3a893b147342c88a3b2a1293f6fd11b1af092ae67d02dd8be69037856221b3e6",
+  "release_manifest_sha256": "ab3ba77c904758a576621f2f7df5c35729a94f78266965ca02ed5d76237eda0d",
+  "release_manifest_matches_captured": true,
+  "contracts": [
+    {
+      "name": "morph-state-lock",
+      "size_bytes": 21368,
+      "sha256": "5f3acf49b0774909f56a4460f4ed68b566af2aaeda42c86def337bb629663763",
+      "ckb_data_hash": "0x7b1a3f66e71f5b553cbd7396825b98b41effec692ada19d3bb0f92ca5e71af74"
+    },
+    {
+      "name": "morph-state-type",
+      "size_bytes": 235088,
+      "sha256": "009262ab16c4e3b45581e455bede821cccfc4044ad265bd1fd6b66a500860c91",
+      "ckb_data_hash": "0x267529a7f65571cd5b4596050bf584da0564c46ba10409b3c53b3421719ac9d4"
+    },
+    {
+      "name": "morph-factory-type",
+      "size_bytes": 280496,
+      "sha256": "05c5d67b6af9b8e77dc1d9b886f9fd5035476b0c353d2a93dd2906a9747f9a68",
+      "ckb_data_hash": "0xecfcd70b5092bbe734e6426a4346e9ff0c4d52ac41d70c9e4be951fee91d621d"
+    },
+    {
+      "name": "morph-factory-vault-lock",
+      "size_bytes": 97728,
+      "sha256": "f527e3a4a907610c2a0efe610f1bf4fe8824dd25654974ac81d1ce63d30bf49c",
+      "ckb_data_hash": "0x47c23a004fcbdc452b125b5d8336a3817b63cfede5e136e4d19c100e70675594"
+    },
+    {
+      "name": "morph-vault-lock",
+      "size_bytes": 212096,
+      "sha256": "b2238eb85841ee795a7bf5f264c20c21ebe91697c34551ffd23516fb3cf57aa5",
+      "ckb_data_hash": "0x263c35722beae9720821dcd3bf243269e2df00f0a7a1ce452a1a8e78ed698299"
+    },
+    {
+      "name": "morph-batch-lock",
+      "size_bytes": 53896,
+      "sha256": "d0a7f4df9167cea76832e6b938cae9a3839e8d31eb828f30ca49347c121deaf7",
+      "ckb_data_hash": "0x51b7e94acf6ad6b8cb009e4ed08d94443dbaa900e9cb13417a9fc614c3d6abb9"
+    },
+    {
+      "name": "morph-sponsor-lock",
+      "size_bytes": 25232,
+      "sha256": "7bba4fc60e9e4c00311cc48314fc0c6f4c90662910bf4c0a063d945448f2e162",
+      "ckb_data_hash": "0xa227af8665ff296c4d1a48791290be9247dad225d5906885ab2c17b2cdea3277"
+    },
+    {
+      "name": "morph-devnet-xudt",
+      "size_bytes": 22024,
+      "sha256": "38cd89a04af1ff09f8ba3acf859122be46dc858400fb884be76a5ccb70a271de",
+      "ckb_data_hash": "0xeb5e9a7c3db5ebe45ab882203059ebd5c3d4aad71a1fd47fb34c4b1d752f7268"
+    }
+  ],
+  "scope": "Controlled development-node local evidence; not independent attestation or production approval.",
+  "counts": {
+    "native_cases": 5,
+    "deployment_transactions": 8,
+    "stateful_scenarios": 9,
+    "evidence_assertions": 65,
+    "audit_families": 11,
+    "unique_transactions": 74,
+    "transaction_observations": 78
+  },
+  "totals": {
+    "transaction_count": 74,
+    "committed_count": 74,
+    "pending_count": 0,
+    "total_estimated_cycles": 344443484,
+    "max_estimated_cycles": 29129250,
+    "total_tx_size_bytes": 1091034,
+    "max_tx_size_bytes": 280956
+  }
+}

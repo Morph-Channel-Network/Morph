@@ -1,0 +1,57 @@
+{
+  "schema": "morph.public_budget_evidence.v1",
+  "source_commit": "9202e34162871f90380402bdd9d6432c46406c92",
+  "source_profile": "docs/devnet-stateful-budget.example.json",
+  "source_profile_sha256": "c8b0e656fbd091b0f6f28decf86504d2f0b46a86c75156e85ad5d1f5af57db70",
+  "scope": "Source-commit default node profile; 70M joint-dimension VM fixture ceilings are separate measurements, not this run's native transaction budget.",
+  "limits": {
+    "max_total_cycles": 1000000000,
+    "max_tx_cycles": 40000000,
+    "max_total_bytes": 2000000,
+    "max_tx_bytes": 300000,
+    "cases": [
+      {
+        "name": "bilateral_shared",
+        "max_cycles": 100000000,
+        "max_bytes": 100000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "bilateral_splice",
+        "max_cycles": 130000000,
+        "max_bytes": 100000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "factory_custody_and_children",
+        "max_cycles": 400000000,
+        "max_bytes": 300000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "watch_service_reorg",
+        "max_cycles": 100000000,
+        "max_bytes": 100000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "maximum_asset_lifecycle",
+        "max_cycles": 200000000,
+        "max_bytes": 150000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "deployment",
+        "max_cycles": 20000000,
+        "max_bytes": 1000000,
+        "max_tx_cycles": 2000000,
+        "max_tx_bytes": 300000
+      }
+    ]
+  }
+}

@@ -40,6 +40,11 @@ use them; retaining those algorithms does not retain an old physical protocol.
 
 ## Performed local verification
 
+The [public checkpoint evidence](evidence/unified-protocol-9202e34/README.md)
+contains allowlisted results, transaction measurements and the eight-ELF
+manifest for the original `9202e341` run. Publication and CI follow-up commits
+do not relabel that historical evidence as a different source revision.
+
 `make ci` passed with workspace tests, five Python evidence-boundary tests,
 current fixture generation/inspection, SDK checks, 13 UI tests, all 77 current
 CKB-VM cases, source hygiene, lint, supply-chain checks under the existing
