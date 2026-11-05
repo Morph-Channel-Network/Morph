@@ -176,7 +176,7 @@ async function retryPaymentRequired(operation) {
 // This is an isolated development test input, with the same file boundary as
 // the Rust binaries. Paths are the only secret-related environment values.
 function protectedPayerKeyFile(path) {
-  if (typeof process.getuid !== "function" || typeof fsConstants.O_NOFOLLOW !== "number"
+  if (process.platform !== "linux" || typeof process.geteuid !== "function" || typeof fsConstants.O_NOFOLLOW !== "number"
       || typeof fsConstants.O_NONBLOCK !== "number") {
     throw new Error("protected payer key files are unsupported on this platform");
   }
@@ -185,7 +185,7 @@ function protectedPayerKeyFile(path) {
   try {
     fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
     const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0
+    if (!stat.isFile() || stat.uid !== process.geteuid() || (stat.mode & 0o077) !== 0
         || stat.size > 256) throw new Error("invalid protected file");
     const count = readSync(fd, buffer, 0, buffer.length, 0);
     if (count > 256) throw new Error("oversized protected file");

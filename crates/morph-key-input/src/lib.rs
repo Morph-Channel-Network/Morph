@@ -7,7 +7,9 @@ use std::fmt;
 use std::ops::Deref;
 use std::path::Path;
 
-use anyhow::{Result, ensure};
+use anyhow::Result;
+#[cfg(target_os = "linux")]
+use anyhow::ensure;
 use zeroize::Zeroizing;
 
 pub const MAX_SECRET_FILE_BYTES: usize = 256;
@@ -51,7 +53,7 @@ impl From<&str> for SecretString {
 /// Load a private, owner-controlled ordinary file through the opened descriptor.
 /// NOFOLLOW rejects leaf symlinks; NONBLOCK prevents a FIFO from blocking before
 /// the file-type check. The operator must also control the containing directory.
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub fn read_secret_file(path: &Path) -> Result<SecretString> {
     use rustix::fs::{Mode, OFlags, open};
     use std::io::Read;
@@ -101,7 +103,7 @@ pub fn read_secret_file(path: &Path) -> Result<SecretString> {
     Ok(SecretString::new(text.to_owned()))
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 pub fn read_secret_file(_path: &Path) -> Result<SecretString> {
     anyhow::bail!("protected private-key file input is unsupported on this platform")
 }
@@ -135,7 +137,7 @@ pub fn biscuit_file(path: &str) -> Result<SecretString, String> {
     Ok(key)
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
     use std::fs::{self, OpenOptions};
@@ -239,4 +241,21 @@ mod tests {
             assert!(secp256k1_file(f.path()).is_err());
         }
     }
+}
+
+#[cfg(all(test, not(target_os = "linux")))]
+#[test]
+fn unsupported_platform_never_opens_a_private_key_file() {
+    assert!(
+        read_secret_file(Path::new("unused"))
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported")
+    );
+    assert!(
+        secp256k1_file("unused")
+            .unwrap_err()
+            .contains("unsupported")
+    );
+    assert!(biscuit_file("unused").unwrap_err().contains("unsupported"));
 }

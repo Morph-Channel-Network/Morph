@@ -40,9 +40,12 @@ digits with an optional `0x` prefix; zero and out-of-range scalars are rejected.
 Biscuit roots use `ed25519-private/` or `secp256r1-private/` followed by 64 hex
 digits. Use the format emitted by Agent's explicit `generate-key` operation.
 
-Protected input requires Unix ownership, permissions and safe-open controls.
-Platforms without these controls fail closed instead of accepting an unprotected
-file. Errors do not include file contents. In Rust, `SecretString` Debug output
+Protected input is currently supported only on Linux filesystems enforcing the
+checked ownership and POSIX permissions. Other platforms, including macOS, fail
+closed. Mode bits alone do not establish equivalent confidentiality on macOS:
+[Apple documents ACL grants evaluated before BSD permission fallback](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/FileSystemProgrammingGuide/FileSystemDetails/FileSystemDetails.html).
+A future platform implementation must validate its effective ACL boundary before
+enabling key loading. Errors do not include file contents. In Rust, `SecretString` Debug output
 is redacted and its owned storage is zeroized on drop; this does not guarantee
 erasure of OS caches, swap or memory retained by upstream signing libraries.
 

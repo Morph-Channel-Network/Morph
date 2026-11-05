@@ -47,3 +47,5 @@ Activation is allowed only when all items are true:
 7. Stop, incident, and migration procedures have been rehearsed.
 
 If any item is false, the decision is no-go.
+
+- [Protected private-key file input](key-input.md): Linux safe-open, ownership/permission and bounded-format checks; file paths replace private-key argv and environment values.

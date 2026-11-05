@@ -56,3 +56,25 @@ encodings. Fresh integrated ELFs, the release manifest, VM boundary tests,
 worst-case cycle/capacity budgets, native acceptance and final CI remain required
 before release. Passing dependency and host/no_std checks alone does not satisfy
 those gates or authorize real-asset deployment.
+
+## Integrated VM and ELF measurements
+
+The combined development candidate includes the Factory delegation checks and
+CKB/Rust 1.95 migration, so these results must not be attributed solely to the
+crypto dependency. Its rebuilt eight ELFs total 755,456 bytes, versus 947,928 in
+the published `c8787f0` baseline. Their exact code identities and sizes are in
+`release/factory-preproduction/contracts.json`; historical release assets remain
+unchanged. All 89 registered VM tests pass against the rebuilt scripts, including
+the five new delegated-boundary tests.
+
+| Same bounded VM fixture | Published baseline cycles | Combined candidate cycles | Transaction bytes |
+| --- | ---: | ---: | ---: |
+| Full materialisation, 8 assets / 4 children / 16 members / maximum Scripts | 64,410,680 | 51,988,923 | 75,098 |
+| Reduced child, 8 assets / 4 children / 16 members / 9 claims | 61,741,373 | 61,243,393 | 85,535 |
+| Reduced release, 8 assets / 16 members / 9 claims | 49,018,410 | 48,121,086 | 32,985 |
+| Reduced metadata, 10 rights / 8 assets / 16 members / maximum Scripts | 50,019,528 | 48,698,490 | 14,600 |
+
+These are CKB-VM fixture resource counts under the existing 70M ceiling, not
+production fees or latency. The native two-member/one-child experiment and its
+separate one/four/ten-right budgets still require fresh clean-source execution.
+The phase-A envelope continues to report `release_admitted=false`.

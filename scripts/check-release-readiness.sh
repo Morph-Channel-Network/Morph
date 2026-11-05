@@ -14,6 +14,7 @@ required_files=(
   "docs/preproduction-envelope.md"
   "docs/runbooks/README.md"
   "docs/runbooks/operations.md"
+  "docs/runbooks/key-input.md"
   "docs/runbooks/incident-response.md"
   "docs/runbooks/upgrade-and-migration.md"
   "docs/runbooks/rehearsal-2026-08-15.md"

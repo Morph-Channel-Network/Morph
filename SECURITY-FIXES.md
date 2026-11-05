@@ -732,3 +732,31 @@ transaction's path. The synthetic shared-funding harness retains that negative
 and completes submission through the same store. Unit negatives:
 `root_builder_rejects_cross_wallet_subsidies_ownership_and_cross_type_quantity_changes`
 and `root_builder_keeps_tiny_change_with_the_owner_without_changing_fee`.
+
+## Protected signing-key input
+
+Private signing keys no longer enter either binary through argv or raw-key
+environment values. All bilateral, funding, Factory, child, delivery, invoice,
+wallet, watch and Agent key options use explicit protected-file parsers from
+`morph-key-input`; no raw-key aliases are retained. Linux loading checks the
+opened descriptor with no leaf-symlink following and nonblocking open, requires
+an owner-controlled regular file with no group/other permissions, and bounds
+the complete single-key input to 256 bytes. Scalars and role-specific encodings
+are validated before use. Unsupported platforms fail closed: POSIX mode bits
+alone do not establish equivalent macOS ACL confidentiality.
+
+Owned runtime key strings redact Debug and zeroize on drop, as do owned decode
+buffers. This is not a claim of OS cache/swap or upstream-library memory erasure.
+Development harnesses pass only paths and keep public fixture staging outside
+published evidence; explicit user files are never chmodded or copied to bypass
+their permission checks. Existing signing reservation/fsync ordering is kept.
+
+Negative and legitimate controls:
+`every_private_key_argument_is_a_protected_file_without_raw_env_or_aliases`,
+`retired_raw_key_argument_forms_reject_without_echoing_the_value`,
+`agent_private_keys_only_accept_protected_file_paths`,
+`rejects_exposed_symlink_directory_and_fifo_inputs`,
+`rejects_oversize_multiple_tokens_and_invalid_scalars_without_echo`,
+`protected_file_accepts_valid_key_and_redacts_debug`, and
+`validates_biscuit_encoding_separately`. The non-Linux implementation has a
+separate fail-closed test; no native macOS/Windows key-input support is claimed.

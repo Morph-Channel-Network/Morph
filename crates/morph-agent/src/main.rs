@@ -240,16 +240,16 @@ mod tests {
             .unwrap();
         let mut count = 0;
         for arg in serve.get_arguments() {
-            if let Some(name) = arg.get_long() {
-                if name.contains("private-key") {
-                    assert!(name.ends_with("-file"));
-                    assert_eq!(
-                        arg.get_value_parser().type_id(),
-                        std::any::TypeId::of::<morph_key_input::SecretString>()
-                    );
-                    assert!(arg.get_all_aliases().unwrap_or_default().is_empty());
-                    count += 1;
-                }
+            if let Some(name) = arg.get_long()
+                && name.contains("private-key")
+            {
+                assert!(name.ends_with("-file"));
+                assert_eq!(
+                    arg.get_value_parser().type_id(),
+                    std::any::TypeId::of::<morph_key_input::SecretString>()
+                );
+                assert!(arg.get_all_aliases().unwrap_or_default().is_empty());
+                count += 1;
             }
             if let Some(env) = arg.get_env() {
                 assert!(!env.to_string_lossy().ends_with("PRIVATE_KEY"));

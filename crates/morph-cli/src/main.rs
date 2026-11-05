@@ -1949,15 +1949,15 @@ mod cli_secret_tests {
     fn every_private_key_argument_is_a_protected_file_without_raw_env_or_aliases() {
         fn check(command: &clap::Command) {
             for arg in command.get_arguments() {
-                if let Some(name) = arg.get_long() {
-                    if name.contains("private-key") {
-                        assert!(name.ends_with("-file"), "raw key argument: {name}");
-                        assert_eq!(
-                            arg.get_value_parser().type_id(),
-                            std::any::TypeId::of::<morph_key_input::SecretString>()
-                        );
-                        assert!(arg.get_all_aliases().unwrap_or_default().is_empty());
-                    }
+                if let Some(name) = arg.get_long()
+                    && name.contains("private-key")
+                {
+                    assert!(name.ends_with("-file"), "raw key argument: {name}");
+                    assert_eq!(
+                        arg.get_value_parser().type_id(),
+                        std::any::TypeId::of::<morph_key_input::SecretString>()
+                    );
+                    assert!(arg.get_all_aliases().unwrap_or_default().is_empty());
                 }
                 if let Some(env) = arg.get_env() {
                     assert!(!env.to_string_lossy().ends_with("PRIVATE_KEY"));

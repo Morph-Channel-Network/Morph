@@ -559,7 +559,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 &config_data,
                 watch_config::WatchtowerRuntimeOptions {
                     contracts_dir,
-                    private_key: private_key,
+                    private_key,
                 },
             )?;
             if json {
@@ -596,7 +596,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 &config_data,
                 watch_config::WatchtowerRuntimeOptions {
                     contracts_dir,
-                    private_key: private_key,
+                    private_key,
                 },
                 watch_config::WatchtowerConfigLoopOptions {
                     passes,
@@ -647,7 +647,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 &config_data,
                 watch_config::WatchtowerRuntimeOptions {
                     contracts_dir,
-                    private_key: private_key,
+                    private_key,
                 },
                 watch_config::WatchtowerConfigServiceOptions {
                     max_passes,
