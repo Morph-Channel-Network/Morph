@@ -134,12 +134,17 @@ children and refunding its carrier.
 
 Local CKB-VM fixtures rebuilt after runtime retirement produced:
 
+The following measurements use the combined first-batch Factory/RustCrypto/CKB
+candidate, rebuilt with Rust 1.95.0. The published alpha.1 values remain
+historical; [the migration comparison](rustcrypto-upgrade.md#integrated-vm-and-elf-measurements)
+records both. These are VM fixtures, not joint-maximum native admission.
+
 | Current fixture | Cycles | Transaction bytes | Test ceiling |
 | --- | ---: | ---: | ---: |
-| Full-consent materialisation: 8 assets, 4 children, 16 members, maximum-length scripts | 64,410,680 | 75,098 | 70,000,000 |
-| Reduced child: same dimensions, 9 physical claims | 61,741,373 | 85,535 | 70,000,000 |
-| Reduced release: 8 assets, 16 members, 9 physical claims | 49,018,410 | 32,985 | 70,000,000 |
-| Reduced rights: 10 changed rights, 8 assets, 16 members, maximum-length scripts | 50,019,528 | 14,600 | 70,000,000 |
+| Full-consent materialisation: 8 assets, 4 children, 16 members, maximum-length scripts | 51,988,923 | 75,098 | 70,000,000 |
+| Reduced child: same dimensions, 9 physical claims | 61,243,393 | 85,535 | 70,000,000 |
+| Reduced release: 8 assets, 16 members, 9 physical claims | 48,121,086 | 32,985 | 70,000,000 |
+| Reduced rights: 10 changed rights, 8 assets, 16 members, maximum-length scripts | 48,698,490 | 14,600 | 70,000,000 |
 
 Each compact proof carries at most 64 strictly descending sibling pairs over
 a depth-256 tree. Reduced physical paths admit at most 9 changed claims;

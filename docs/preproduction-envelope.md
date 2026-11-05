@@ -7,6 +7,11 @@ Phase A defines the experiment shapes and admission obligations for
 #44. Real assets, mainnet, public-value testnet trials, externally issued xUDTs
 and production traffic remain prohibited. Completing A does not close #21.
 
+| Operating boundary | Status |
+| --- | --- |
+| Real assets | Prohibited |
+| Production release admission | Pending phase B evidence and approval |
+
 The canonical policy is
 [`release/factory-preproduction/envelope.json`](../release/factory-preproduction/envelope.json),
 schema `morph.preproduction_envelope.v2`. The validator requires explicit

@@ -31,12 +31,22 @@ new snapshot before signing. Retained Factory custody keeps an occupied-capacity
 floor and the shared State carrier; single-member escape does not retire that
 collectively owned remainder. Fund child carriers and transaction fees separately.
 
-`contracts.json` pins all eight deterministic ELFs. `envelope.json` is the
-machine-checked devnet policy: only `morph-devnet-xudt` test assets are admitted,
-real assets remain prohibited, and local Hub projections are not chain actions.
-Its lifetime child cap is operator bookkeeping; the independent per-transaction
-child bound is enforced by the protocol. Eight Vaults means eight total entries,
-including a separate plain CKB Vault when present.
+`contracts.json` pins all eight deterministic ELFs built with Rust 1.95.0.
+The phase-A `envelope.json` separates those protocol maxima from declared
+experiments: Factory is two members, one plain-CKB Vault, one child at a time
+and one/four/ten-right updates; bilateral experiments have at most eight total
+Vaults and only the manifest-pinned devnet issuer. Zero-quantity token rights
+still require asset admission. Real assets remain prohibited, and local Hub
+projections are not chain actions.
+
+Policy verification returns `policy_verified=true`, `release_admitted=false`.
+Exact-request shape integration, durable operator lifetime accounting and final
+phase-B evidence/approval remain outstanding. Current native commands execute
+ValueLimitPolicy and their exact-source/VM checks, not an implicit full envelope
+admission service. Its lifetime child cap of ten is operator bookkeeping; the
+independent per-transaction child bound is enforced by the protocol. Eight
+Vaults means eight total entries, including a separate plain CKB Vault when
+present. See `docs/preproduction-envelope.md` for #22/#28/#27/#44 evidence gates.
 
 ```sh
 make ci
