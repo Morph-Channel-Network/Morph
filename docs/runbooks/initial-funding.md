@@ -1,8 +1,11 @@
 # Initial Multi-Asset Funding
 
 Each participant keeps one authoritative session path from the initial funding
-ceremony through later splice epochs. Initial signing runs offline with the
-default CLI build. Chain submission and confirmed handoff require
+ceremony through later splice epochs. Every new initial Exit or Creation
+signature refreshes the pinned controlled-devnet RPC and shared admission
+ledger, including the current refund horizon when conditional. Draft review,
+receipt import and saved exit export can run offline with the default CLI
+build. Chain submission and confirmed handoff require
 `cargo build -p morph-cli --features devnet`. No ceremony command accepts both
 participant secrets.
 
@@ -85,8 +88,21 @@ if it has no token change the builder rejects dust instead of increasing fees.
 The first declared input fixes the funding anchor and derived channel ID.
 The RPC genesis and locally approved `data1` artifacts fix chain and authority.
 
+All new root custody requires an explicit reviewed `--admission-config`. Create
+it with `devnet factory admission-config --no-real-assets`, naming the exact
+built artifact manifest, controlled-devnet genesis, one stable pilot ledger and
+every permitted token Type hash through `--admitted-asset-type`. The same ledger
+must cover Factory custody, its children and bilateral channels. The exact
+manifest plus State carrier must fit the current 4,000 CKB channel limit and
+40,000 CKB combined pilot limit; each token Type is bounded to 10^12 units.
+Zero participant token balances still require an allowlisted Type whose code is the
+reviewed `morph-devnet-xudt`. Preparation and wallet/submission paths check the
+current envelope, actual fees and occupied output capacity before reserving the
+exact body under the stable, fsynced ledger lock.
+
 ```sh
 morph-cli devnet --devnet-only --rpc-url "$CKB_RPC" multi-asset-funding-prepare \
+  --admission-config /srv/morph/admission.json \
   --terms root-terms.json --max-fee 100000000 \
   --contracts-dir /srv/morph/contracts --output root-draft.json
 ```
@@ -98,6 +114,13 @@ allocations, funder budgets and transaction identity. Identical retries reuse
 the artifact; another intent cannot overwrite it. A concurrent reorg rejects
 the preparation. Output count and transaction bytes retain the root profile's
 bounds. The smoke harness now uses this same public constructor.
+
+New conditional updates on a confirmed channel use the canonical session RPC
+tip and the binary's reviewed public envelope/Batch artifact pin. Each new
+proposal, acceptance and local signature enforces the 2,016-block refund horizon.
+This applies equally to Root and Factory-origin channels and requires no Factory
+operator ledger or private policy file. Already signed states remain recovery
+authority after their deadlines; export and finalisation do not rerun admission.
 
 ## Review the exact proposal
 
@@ -121,8 +144,11 @@ State capacity and dependencies are not repeated as independently editable
 proposal fields. Extra Vaults, duplicate State authority outputs and StateLock
 clones are rejected.
 
-The offline ceremony checks proposed outputs and authority; preparation and
-submission separately establish live inputs and canonical chain evidence.
+The ceremony checks proposed outputs and authority. Each new participant
+signature also rechecks the configured RPC genesis/network, canonical Factory
+closure observations, current combined pilot capacity and conditional refund
+horizon. Preparation and submission additionally verify live exact inputs and
+canonical chain evidence.
 Submission checks the RPC genesis against the signed chain ID, deployed code,
 occupied capacity, CKB fees and independent conservation of every registered
 Type before VM preflight and network writes.
@@ -130,11 +156,19 @@ Type before VM preflight and network writes.
 Each signer independently chooses approved local `data1` artifacts named
 `morph-state-type`, `morph-state-lock`, and `morph-vault-lock`. Their hashes must
 match the proposal before initialization and each signing operation; the
-absolute artifact path is persisted. Review the chain ID, channel, participants, funding
+absolute artifact path is persisted. Initialization also requires the exact
+body's prior shared-ledger reservation and persists the admission configuration
+path and content hash, including its required `rpc_url`. Each new signing
+operation rechecks that binding and refreshes canonical admission under the same
+ledger lock immediately before using the participant key. Configuration edits, expired policy, lost ledger or
+artifact drift stop new signatures. Exporting a complete saved exit or funding
+body and confirmed same-path handoff remain available without admission policy
+access. Review the chain ID, channel, participants, funding
 hash, payout-lock hashes, carrier and every allocation in `inspect` output.
 
 ```sh
 morph-cli multi-asset-funding-session --session /srv/morph/alice.json init \
+  --admission-config /srv/morph/admission.json \
   --draft root-draft.json --local-pubkey "$LOCAL_PUBKEY" \
   --contracts-dir /srv/morph/contracts
 morph-cli multi-asset-funding-session --session /srv/morph/alice.json inspect
@@ -191,6 +225,7 @@ the next wallet, retaining the same raw body:
 
 ```sh
 morph-cli devnet --devnet-only --rpc-url "$CKB_RPC" multi-asset-funding-wallet-sign \
+  --admission-config /srv/morph/admission.json \
   --terms root-terms.json --transaction exported-funding.tx \
   --package initial-exit.json --max-fee 100000000 \
   --contracts-dir /srv/morph/contracts --store-dir /srv/morph/recovery
@@ -207,6 +242,7 @@ After all wallets sign, submit the complete binary:
 
 ```sh
 morph-cli devnet --devnet-only --rpc-url "$CKB_RPC" multi-asset-funding-submit \
+  --admission-config /srv/morph/admission.json \
   --transaction fully-signed-funding.tx --package initial-exit.json \
   --contracts-dir /srv/morph/contracts --store-dir /srv/morph/recovery \
   --max-fee 100000000 --mine-blocks 4

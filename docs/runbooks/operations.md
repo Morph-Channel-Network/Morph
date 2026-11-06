@@ -77,7 +77,8 @@ Retain:
 
 - every signed state, conditional-batch, Factory, reduced-right, exit, and splice package;
 - watch configuration, policy, cursor, health, and JSONL alerts;
-- the deployment report and exact release bundle;
+- the deployment report and exact local contract bundle;
+- the immutable admission configuration, complete pilot ledger and its identity marker;
 - smoke/stateful summaries and transaction hashes;
 - the incident timeline for any warning or critical alert.
 

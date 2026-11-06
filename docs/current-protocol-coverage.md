@@ -60,9 +60,10 @@ it does not enable a removed State format.
 
 ## Safety boundaries and current evidence
 
-The current contract harness contains **84 registered CKB-VM tests**, including
+The current contract harness contains **89 registered CKB-VM tests**, including
 parameterized negative matrices: 77 at checkpoint `9202e341`, five earlier
-closeout regressions and two alpha Factory authority/overflow negatives.
+closeout regressions, two alpha Factory authority/overflow negatives and five
+Factory delegated-authority regressions.
 These are registered test functions; matrix branches are additional
 assertions, not a conversion from 67 functions into 77 cases. The removed harness encoded the retired physical model;
 its security properties are mapped below to current transactions. Historical
@@ -191,7 +192,7 @@ completed on a development node; source freshness and budget qualification are
 recorded separately by the candidate runner. See the [migration record](unified-protocol-migration.md)
 for exact results and clean-candidate acceptance. Updated Fiber scripts require
 that same current matrix on the actual shared RPC and
-retain real Bruno/Agent receipts. A complete fresh Fiber run was not executed
+retain real Bruno/Payment Gateway receipts. A complete fresh Fiber run was not executed
 in this update. An external-party Factory child is valid custody; admission
 through a provider's parent-right reservation still has separate owner and
 liquidity requirements.

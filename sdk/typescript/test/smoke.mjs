@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./protected-key-file.test.mjs";
 import { readFile } from "node:fs/promises";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -6,7 +7,8 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import {
   createSignedPaymentPayload,
   deriveMorphAccountId,
-  MorphAgentClient,
+  MorphPaymentGatewayClient,
+  MorphPaymentGatewayError,
   MorphHubClient,
   inspectMultiAssetPackage,
   inspectMultiAssetRootDraft,
@@ -29,6 +31,7 @@ import {
   inspectFactorySignature,
   inspectFactoryTransitionPackage,
   verifySignedPaymentPayload,
+  x402Fetch,
 } from "../dist/index.js";
 
 import { inspectMultiAssetPublicExitTerms } from "../dist/multi-asset.js";
@@ -418,10 +421,10 @@ assert.equal(
 );
 
 assert.throws(
-  () => new MorphAgentClient("http://agent.example.com"),
+  () => new MorphPaymentGatewayClient("http://payment-gateway.example.com"),
   /must use HTTPS/,
 );
-assert.doesNotThrow(() => new MorphAgentClient("http://127.4.3.2:4617"));
+assert.doesNotThrow(() => new MorphPaymentGatewayClient("http://127.4.3.2:4617"));
 assert.doesNotThrow(() => new MorphHubClient("http://127.0.0.1:4617"));
 assert.throws(
   () => new MorphHubClient("http://hub.example.com"),
@@ -438,8 +441,31 @@ globalThis.fetch = async (_url, init) => {
   });
 };
 try {
-  const client = new MorphAgentClient("https://agent.example.com", { apiBearerToken });
+  const client = new MorphPaymentGatewayClient("https://payment-gateway.example.com", { apiBearerToken });
   assert.deepEqual(await client.supported(), { network: "morph-ckb" });
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+globalThis.fetch = async () => new Response(JSON.stringify({ error: "access denied" }), {
+  status: 403,
+  headers: { "content-type": "application/json" },
+});
+try {
+  const gateway = new MorphPaymentGatewayClient("https://payment-gateway.example.com");
+  const hub = new MorphHubClient("https://hub.example.com");
+  for (const request of [
+    () => gateway.supported(),
+    () => gateway.createX402Challenge({}),
+    () => hub.state(),
+    () => x402Fetch("https://payment-gateway.example.com/resource", { requirements, payload }),
+  ]) {
+    await assert.rejects(request, error =>
+      error instanceof MorphPaymentGatewayError
+      && error.name === "MorphPaymentGatewayError"
+      && error.status === 403
+    );
+  }
 } finally {
   globalThis.fetch = originalFetch;
 }
@@ -488,7 +514,7 @@ globalThis.fetch = async () => new Response(
   { status: 200 },
 );
 try {
-  const client = new MorphAgentClient("https://agent.example.com");
+  const client = new MorphPaymentGatewayClient("https://payment-gateway.example.com");
   await assert.rejects(
     client.supported(),
     /response exceeds the maximum size/,

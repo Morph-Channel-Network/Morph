@@ -15,6 +15,8 @@ required_files=(
   "docs/runbooks/README.md"
   "docs/runbooks/operations.md"
   "docs/runbooks/key-input.md"
+  "docs/runbooks/experiment-admission.md"
+  "docs/runbooks/local-candidate-qualification.md"
   "docs/runbooks/incident-response.md"
   "docs/runbooks/upgrade-and-migration.md"
   "docs/runbooks/rehearsal-2026-08-15.md"

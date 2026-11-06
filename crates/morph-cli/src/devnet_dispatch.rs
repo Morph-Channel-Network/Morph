@@ -88,6 +88,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         DevnetCommand::MultiAssetFundingPrepare {
+            admission_config,
             terms,
             max_fee,
             contracts_dir,
@@ -96,6 +97,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             let report = devnet::multi_asset_root_operator::prepare(
                 &rpc,
                 devnet::multi_asset_root_operator::PrepareOptions {
+                    admission_config,
                     terms,
                     max_fee,
                     contracts_dir,
@@ -105,6 +107,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         DevnetCommand::MultiAssetFundingWalletSign {
+            admission_config,
             terms,
             transaction,
             package,
@@ -116,6 +119,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             let report = devnet::multi_asset_root_operator::sign_wallet(
                 &rpc,
                 devnet::multi_asset_root_operator::SignOptions {
+                    admission_config,
                     terms,
                     transaction,
                     package,
@@ -128,6 +132,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         DevnetCommand::MultiAssetFundingSubmit {
+            admission_config,
             transaction,
             package,
             contracts_dir,
@@ -139,6 +144,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             let report = devnet::multi_asset_funding_operator::submit(
                 &rpc,
                 devnet::multi_asset_funding_operator::Options {
+                    admission_config,
                     transaction,
                     package,
                     contracts_dir,
@@ -151,6 +157,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         DevnetCommand::MultiAssetSplicePrepare {
+            admission_config,
             old_package,
             state_out_point,
             terms,
@@ -163,6 +170,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             let report = devnet::multi_asset_splice_operator::prepare(
                 &rpc,
                 devnet::multi_asset_splice_operator::PrepareOptions {
+                    admission_config,
                     old_package,
                     state_out_point,
                     terms,
@@ -176,6 +184,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         DevnetCommand::MultiAssetSpliceSubmit {
+            admission_config,
             transaction,
             old_package,
             new_package,
@@ -189,6 +198,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             let report = devnet::multi_asset_splice_operator::submit(
                 &rpc,
                 devnet::multi_asset_splice_operator::Options {
+                    admission_config,
                     transaction,
                     old_package,
                     new_package,

@@ -18,6 +18,8 @@ use morph_core::*;
 #[cfg(feature = "devnet")]
 use rpc::{CkbRpcClient, HeaderView};
 
+mod admission;
+mod admission_channel;
 mod canonical_fields;
 #[cfg(any(feature = "devnet", test))]
 mod channel_creation;
@@ -615,6 +617,8 @@ enum DevnetCommand {
     /// Construct exact root funding with explicit per-wallet CKB/token/fee contributions.
     MultiAssetFundingPrepare {
         #[arg(long)]
+        admission_config: PathBuf,
+        #[arg(long)]
         terms: PathBuf,
         #[arg(long)]
         max_fee: u64,
@@ -625,6 +629,8 @@ enum DevnetCommand {
     },
     /// Sign only the declared wallet's group after reviewing exact funding terms and exit.
     MultiAssetFundingWalletSign {
+        #[arg(long)]
+        admission_config: PathBuf,
         #[arg(long)]
         terms: PathBuf,
         #[arg(long)]
@@ -643,6 +649,8 @@ enum DevnetCommand {
     /// Submit a fully signed epoch-0 funding transaction or replay its exact bytes.
     MultiAssetFundingSubmit {
         #[arg(long)]
+        admission_config: PathBuf,
+        #[arg(long)]
         transaction: PathBuf,
         #[arg(long)]
         package: PathBuf,
@@ -659,6 +667,8 @@ enum DevnetCommand {
     },
     /// Construct an exact unsigned splice draft from explicit funding inputs and value terms.
     MultiAssetSplicePrepare {
+        #[arg(long)]
+        admission_config: PathBuf,
         #[arg(long)]
         old_package: PathBuf,
         #[arg(long)]
@@ -678,6 +688,8 @@ enum DevnetCommand {
     },
     /// Verify live complete sets and code, then submit an exact signed splice body.
     MultiAssetSpliceSubmit {
+        #[arg(long)]
+        admission_config: PathBuf,
         #[arg(long)]
         transaction: PathBuf,
         #[arg(long)]

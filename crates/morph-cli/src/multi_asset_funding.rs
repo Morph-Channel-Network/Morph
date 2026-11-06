@@ -455,8 +455,14 @@ pub(crate) mod tests {
         authorize(package);
     }
     fn fixture() -> (MultiAssetRecoveryPackage, packed::Transaction) {
+        fixture_with_admission(false)
+    }
+    fn fixture_with_admission(admitted: bool) -> (MultiAssetRecoveryPackage, packed::Transaction) {
         let stored = crate::multi_asset_packages::fixture_package().unwrap();
         let mut current = stored.recovery().unwrap();
+        if admitted {
+            current = crate::admission_channel::tests::recovery(current);
+        }
         for (raw, binary) in [
             (
                 &mut current.scripts.state_type,
@@ -624,7 +630,13 @@ pub(crate) mod tests {
         (current, transaction)
     }
     pub(crate) fn draft_fixture() -> RootFundingDraft {
-        let (current, tx) = fixture();
+        draft_fixture_with_admission(false)
+    }
+    pub(crate) fn admitted_draft_fixture() -> RootFundingDraft {
+        draft_fixture_with_admission(true)
+    }
+    fn draft_fixture_with_admission(admitted: bool) -> RootFundingDraft {
+        let (current, tx) = fixture_with_admission(admitted);
         let raw = tx.witnesses().get(0).unwrap().raw_data();
         let witness = packed::WitnessArgs::from_slice(&raw)
             .unwrap()

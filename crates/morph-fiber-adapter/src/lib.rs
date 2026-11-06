@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use morph_core::{AgentAsset, Bytes32, ProviderEdgeDescriptor};
+use morph_core::{Bytes32, GatewayAsset, ProviderEdgeDescriptor};
 use reqwest::{Client, Url, header};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -77,17 +77,17 @@ impl TryFrom<&ProviderEdgeDescriptor> for FiberExternalEdge {
             return Err(AdapterError::InvalidMorphEdge);
         }
         let asset = match &edge.asset {
-            AgentAsset::Ckb { ckb_genesis_hash } => FiberEdgeAsset::Ckb {
+            GatewayAsset::Ckb { ckb_genesis_hash } => FiberEdgeAsset::Ckb {
                 ckb_genesis_hash: hex32(ckb_genesis_hash),
             },
-            AgentAsset::Xudt {
+            GatewayAsset::Xudt {
                 ckb_genesis_hash,
                 type_script_hash,
             } => FiberEdgeAsset::Xudt {
                 ckb_genesis_hash: hex32(ckb_genesis_hash),
                 type_script_hash: hex32(type_script_hash),
             },
-            AgentAsset::Rgbpp(asset) => FiberEdgeAsset::Rgbpp {
+            GatewayAsset::Rgbpp(asset) => FiberEdgeAsset::Rgbpp {
                 ckb_genesis_hash: hex32(&asset.ckb_genesis_hash),
                 type_script_hash: hex32(&asset.xudt_type_script_hash),
                 bitcoin_network: format!("{:?}", asset.bitcoin_network).to_ascii_lowercase(),
@@ -590,7 +590,7 @@ mod tests {
                 blake2b256(&participant_pubkeys_sec1[1]),
             ],
             participant_pubkeys_sec1,
-            asset: AgentAsset::Ckb {
+            asset: GatewayAsset::Ckb {
                 ckb_genesis_hash: [tag + 4; 32],
             },
             directional_liquidity: [60, 40],
@@ -633,7 +633,7 @@ mod tests {
     fn reconciliation_accepts_distinct_assets_only_at_one_current_channel_snapshot() {
         let ckb = edge(1);
         let mut token = ckb.clone();
-        token.asset = AgentAsset::Xudt {
+        token.asset = GatewayAsset::Xudt {
             ckb_genesis_hash: [5; 32],
             type_script_hash: [81; 32],
         };
@@ -662,13 +662,13 @@ mod tests {
     #[test]
     fn reconciliation_rejects_double_counting_one_type_under_native_and_rgbpp_aliases() {
         let mut native = edge(1);
-        native.asset = AgentAsset::Xudt {
+        native.asset = GatewayAsset::Xudt {
             ckb_genesis_hash: [5; 32],
             type_script_hash: [81; 32],
         };
         native.edge_id = native.derive_id().unwrap();
         let mut rgbpp = native.clone();
-        rgbpp.asset = AgentAsset::Rgbpp(morph_core::RgbppAssetId {
+        rgbpp.asset = GatewayAsset::Rgbpp(morph_core::RgbppAssetId {
             ckb_genesis_hash: [5; 32],
             xudt_type_script_hash: [81; 32],
             bitcoin_network: morph_core::BitcoinNetwork::Regtest,

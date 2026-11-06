@@ -3,26 +3,23 @@ CONTRACT_CARGO ?= $(CARGO)
 AUDIT ?= cargo audit
 DENY ?= cargo deny
 # Explicit, reviewable upstream waivers. `audit` denies every other warning.
-# - paste and rand 0.7 arrive through the published CKB dependency family.
+# - rand 0.7 arrives through CKB's numext integer APIs, VM and PHF codegen.
 #   Morph defines no custom logger that calls rand, so the documented rand
-#   re-entrancy trigger is absent.
-# - memmap2 0.5 is confined to ckb-testtool -> cacache in the test graph.
-# - lru 0.7 is test-only through ckb-testtool -> ckb-verification. The affected
-#   cache key is CKB Byte32 (no panicking Drop), so the advisory's required
-#   panic-unwind/catch-unwind trigger is absent. ckb-verification 1.2.1 still
-#   requires lru 0.7; remove the waiver once that dependency is fixed upstream.
-# - faster-hex 0.6 remains in the latest published CKB host, build and test
-#   dependencies, ckb-testtool and Molecule (RUSTSEC-2026-0306). Neither Morph
-#   nor those callers use the unsound `hex_decode_unchecked` AVX2 entrypoint.
-#   The patched >=0.10.1 release is outside their ^0.6 requirements. Remove
-#   the waiver when all seven current paths accept a patched version; see
-#   docs/ckb-toolchain-upgrade.md. A toolchain bump alone does not fix them.
-# Remove each waiver as soon as its upstream dependency path is upgraded.
-AUDIT_IGNORE ?= --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0097 --ignore RUSTSEC-2026-0186 --ignore RUSTSEC-2026-0253 --ignore RUSTSEC-2026-0306
+#   re-entrancy trigger is absent. Upgrading numext requires changing generated
+#   public RNG trait implementations; do not remove its support_rand feature.
+#   Remove this last waiver when all three incoming roots use patched rand
+#   without losing those APIs. See docs/ckb-toolchain-upgrade.md.
+# faster-hex, paste, memmap2 and lru are migrated by the exact consumer patches
+# verified by vendor-check; their former advisory waivers must not return.
+AUDIT_IGNORE ?= --ignore RUSTSEC-2026-0097
 
-.PHONY: ci full-test test lint fmt fmt-check source-hygiene audit deny supply-chain smoke fixture-checks sdk-check hub-ui-check build-contracts contract-tests verify-contract-manifest preproduction-envelope-check runbook-check release-readiness package-contract-release devnet-smoke devnet-e2e devnet-stateful-e2e fiber-morph-devnet-preflight fiber-morph-devnet-acceptance fiber-morph-devnet-acceptance-full fiber-morph-devnet-audit smoke-report smoke-assert smoke-assert-budget devnet-stateful-report devnet-stateful-assert
+.PHONY: ci full-test test lint fmt fmt-check source-hygiene vendor-check audit deny supply-chain smoke fixture-checks sdk-check hub-ui-check build-contracts contract-tests verify-contract-manifest preproduction-envelope-check runbook-check release-readiness package-contract-release devnet-smoke devnet-e2e devnet-stateful-e2e fiber-morph-devnet-preflight fiber-morph-devnet-acceptance fiber-morph-devnet-acceptance-full fiber-morph-devnet-audit smoke-report smoke-assert smoke-assert-budget devnet-stateful-report devnet-stateful-assert
 
 ci: fmt-check lint source-hygiene supply-chain test fixture-checks sdk-check hub-ui-check contract-tests release-readiness
+
+.PHONY: qualify-local-candidate
+qualify-local-candidate:
+	scripts/qualify-local-candidate.sh
 
 full-test: test fixture-checks contract-tests
 
@@ -48,10 +45,13 @@ source-hygiene:
 audit:
 	$(AUDIT) --deny warnings $(AUDIT_IGNORE)
 
+vendor-check:
+	PYTHONDONTWRITEBYTECODE=1 python3 vendor/check.py
+
 deny:
 	$(DENY) check
 
-supply-chain: audit deny
+supply-chain: vendor-check audit deny
 
 smoke:
 	$(CARGO) test --workspace

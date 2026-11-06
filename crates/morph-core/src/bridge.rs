@@ -12,8 +12,8 @@ use morph_script_common::multi_asset::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::agent::AgentAsset;
 use crate::backend::{ChannelParticipant, validate_participant_identities};
+use crate::payment_gateway::GatewayAsset;
 use crate::rgbpp::CkbOutPoint;
 use crate::{
     Amount, Bytes32, FactoryRightId, FactoryRightKind, FactoryRightMerkleProof, Mode,
@@ -242,7 +242,7 @@ pub struct MaterializedChannelEvidence {
     /// Exact manifest order, with no extra, missing or substituted Cell.
     pub vaults: Vec<MaterializedCellEvidence>,
     pub participants: [ChannelParticipant; 2],
-    pub asset: AgentAsset,
+    pub asset: GatewayAsset,
     #[serde(deserialize_with = "required_option")]
     pub factory_reservation_id: Option<Bytes32>,
     #[serde(deserialize_with = "required_option")]
@@ -270,7 +270,7 @@ pub struct ProviderEdgeDescriptor {
     pub participants: [Bytes32; 2],
     /// State-signer keys corresponding positionally to `participants`.
     pub participant_pubkeys_sec1: [Vec<u8>; 2],
-    pub asset: AgentAsset,
+    pub asset: GatewayAsset,
     pub directional_liquidity: [Amount; 2],
     pub deployment_id: Bytes32,
     pub factory_id: Option<Bytes32>,
@@ -524,7 +524,11 @@ impl SovereignEdgeRegistry {
             .insert(lifecycle_key, EdgeLifecycle::Active(edge.clone()));
         Ok(edge)
     }
-    pub fn begin_draining(&mut self, channel_id: &Bytes32, asset: &AgentAsset) -> BridgeResult<()> {
+    pub fn begin_draining(
+        &mut self,
+        channel_id: &Bytes32,
+        asset: &GatewayAsset,
+    ) -> BridgeResult<()> {
         let key = *self
             .channel_edges
             .get(&(*channel_id, routing_asset_commitment(asset)?))
@@ -595,7 +599,7 @@ impl SovereignEdgeRegistry {
     pub fn disable(
         &mut self,
         channel_id: &Bytes32,
-        asset: &AgentAsset,
+        asset: &GatewayAsset,
         reason: String,
         disabled_at_unix: u64,
     ) -> BridgeResult<()> {
@@ -624,7 +628,7 @@ impl SovereignEdgeRegistry {
     pub fn invalidate(
         &mut self,
         channel_id: &Bytes32,
-        asset: &AgentAsset,
+        asset: &GatewayAsset,
         reason: String,
         invalidated_at_unix: u64,
     ) -> BridgeResult<()> {
@@ -660,7 +664,7 @@ impl SovereignEdgeRegistry {
     pub fn edge_for_channel(
         &self,
         channel_id: &Bytes32,
-        asset: &AgentAsset,
+        asset: &GatewayAsset,
     ) -> BridgeResult<Option<&ProviderEdgeDescriptor>> {
         let Some(key) = self
             .channel_edges
@@ -725,9 +729,9 @@ fn validate_reason(reason: &str) -> BridgeResult<()> {
 
 /// RGB++ and a native xUDT view of the same Type share one physical balance.
 /// They must never each advertise that full balance as separate liquidity.
-fn routing_asset_commitment(asset: &AgentAsset) -> BridgeResult<Bytes32> {
+fn routing_asset_commitment(asset: &GatewayAsset) -> BridgeResult<Bytes32> {
     let physical = match asset {
-        AgentAsset::Rgbpp(asset) => AgentAsset::Xudt {
+        GatewayAsset::Rgbpp(asset) => GatewayAsset::Xudt {
             ckb_genesis_hash: asset.ckb_genesis_hash,
             type_script_hash: asset.xudt_type_script_hash,
         },
@@ -824,8 +828,8 @@ fn derive_edge(
         enforce_reservation_quantity,
     )?;
     match (&evidence.asset, evidence.rgbpp_proof_commitment) {
-        (AgentAsset::Rgbpp(_), Some(commitment)) if !is_zero(&commitment) => {}
-        (AgentAsset::Rgbpp(_), _) | (_, Some(_)) => return Err(BridgeError::RgbppProofMismatch),
+        (GatewayAsset::Rgbpp(_), Some(commitment)) if !is_zero(&commitment) => {}
+        (GatewayAsset::Rgbpp(_), _) | (_, Some(_)) => return Err(BridgeError::RgbppProofMismatch),
         _ => {}
     }
     let mut edge = ProviderEdgeDescriptor {
@@ -900,7 +904,7 @@ fn validate_complete_vaults(evidence: &MaterializedChannelEvidence) -> BridgeRes
 
 fn directional_asset_liquidity(
     recovery: &MultiAssetRecoveryPackage,
-    asset: &AgentAsset,
+    asset: &GatewayAsset,
 ) -> BridgeResult<[Amount; 2]> {
     if let Some(hash) = asset_type_hash(asset) {
         let payout = recovery
@@ -994,22 +998,22 @@ fn signer_pubkey_for_node(
         .map(|signature| signature.pubkey_sec1.clone())
         .ok_or(BridgeError::InvalidMaterialisation)
 }
-fn asset_ckb_genesis_hash(asset: &AgentAsset) -> &Bytes32 {
+fn asset_ckb_genesis_hash(asset: &GatewayAsset) -> &Bytes32 {
     match asset {
-        AgentAsset::Ckb { ckb_genesis_hash }
-        | AgentAsset::Xudt {
+        GatewayAsset::Ckb { ckb_genesis_hash }
+        | GatewayAsset::Xudt {
             ckb_genesis_hash, ..
         } => ckb_genesis_hash,
-        AgentAsset::Rgbpp(asset) => &asset.ckb_genesis_hash,
+        GatewayAsset::Rgbpp(asset) => &asset.ckb_genesis_hash,
     }
 }
-fn asset_type_hash(asset: &AgentAsset) -> Option<Bytes32> {
+fn asset_type_hash(asset: &GatewayAsset) -> Option<Bytes32> {
     match asset {
-        AgentAsset::Ckb { .. } => None,
-        AgentAsset::Xudt {
+        GatewayAsset::Ckb { .. } => None,
+        GatewayAsset::Xudt {
             type_script_hash, ..
         } => Some(*type_script_hash),
-        AgentAsset::Rgbpp(asset) => Some(asset.xudt_type_script_hash),
+        GatewayAsset::Rgbpp(asset) => Some(asset.xudt_type_script_hash),
     }
 }
 
@@ -1085,7 +1089,7 @@ pub enum BridgeError {
     #[error("RGB++ proof commitment is missing or unexpected")]
     RgbppProofMismatch,
     #[error(transparent)]
-    Agent(#[from] crate::agent::AgentError),
+    Gateway(#[from] crate::payment_gateway::GatewayError),
     #[error(transparent)]
     Evidence(#[from] MultiAssetError),
 }

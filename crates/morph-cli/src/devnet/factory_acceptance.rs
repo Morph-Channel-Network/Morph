@@ -53,6 +53,8 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
     crate::persistence::create_private_directories(&options.store_dir)?;
     let directory = fs::canonicalize(&options.store_dir)?;
     let contracts_dir = fs::canonicalize(&options.contracts_dir)?;
+    let admission_config =
+        crate::admission::create_harness_config(rpc, &directory, &contracts_dir)?;
     let owner =
         parse_privkey(&options.private_key).map_err(|_| anyhow!("invalid smoke funding key"))?;
     let alice =
@@ -205,6 +207,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         PrepareOptions {
             terms: terms_path.clone(),
             contracts_dir: contracts_dir.clone(),
+            admission_config: admission_config.clone(),
             policy: policy_path.clone(),
             max_fee: options.fee,
             output: request_path.clone(),
@@ -224,6 +227,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                 policy: policy_path.clone(),
                 max_fee: options.fee,
                 contracts_dir: contracts_dir.clone(),
+                admission_config: admission_config.clone(),
             },
         )?;
         // A wrong local key cannot reserve a number or mutate the journal.
@@ -302,6 +306,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                 request: request_path.clone(),
                 transaction,
                 contracts_dir: contracts_dir.clone(),
+                admission_config: admission_config.clone(),
                 policy: policy_path.clone(),
                 max_fee: options.fee,
                 store_dir: directory.join("wallets"),
@@ -316,6 +321,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
             request: request_path.clone(),
             transaction: transaction.clone(),
             contracts_dir: contracts_dir.clone(),
+            admission_config: admission_config.clone(),
             policy: policy_path.clone(),
             max_fee: options.fee,
             mine_blocks: options.mine_blocks,
@@ -333,6 +339,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
             request: request_path.clone(),
             transaction,
             contracts_dir: contracts_dir.clone(),
+            admission_config: admission_config.clone(),
             policy: policy_path.clone(),
             max_fee: options.fee,
             mine_blocks: 0,
@@ -351,6 +358,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
             request: request_path.clone(),
             fee_out_point: format_out_point(&fee_cell.out_point),
             contracts_dir: contracts_dir.clone(),
+            admission_config: admission_config.clone(),
             store_dir: directory.join("activated"),
             fee: options.fee,
             max_fee: options.fee,
@@ -378,13 +386,22 @@ pub(crate) fn run(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         rpc,
         super::factory_transitions_acceptance::Context {
             options: &options,
+            admission_config: &admission_config,
             sessions: &sessions,
             cell_deps: &terms.cell_deps,
             policy: &policy_path,
         },
     )?;
+    let admission = crate::admission::facts(&admission_config, &contracts_dir)?;
+    ensure!(
+        admission["lifetime_child_reservations"] == 3
+            && admission["retained_child_reservations"] == 2
+            && admission["terminal_child_reservations"] == 1
+            && admission["active_factories"] == 0,
+        "Factory lifetime admission did not retain all three children across terminal closure"
+    );
     Ok(
-        json!({"schema":"morph.current_factory_acceptance.v1","scope":"development node acceptance; not release approval",
+        json!({"schema":"morph.current_factory_acceptance.v1","operator_checks":{"admission":admission},"scope":"development node acceptance; not release approval",
         "prepared":prepared,"funded":report_json(&funded),"root":submitted,"activation":activated,"canonical_replay":replay,
         "independent_sessions":sessions,"wrong_key_preserves_journal":true,"partial_export_cannot_poison_path":true,"same_path_handoff":true,"transitions":transitions}),
     )

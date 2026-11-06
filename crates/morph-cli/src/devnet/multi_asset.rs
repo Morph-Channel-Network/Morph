@@ -483,10 +483,26 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     let terms_path = options.store_dir.join("root-funding-terms.json");
     ensure!(!terms_path.exists(), "root funding terms already exist");
     crate::persistence::write_private_atomic(&terms_path, &serde_json::to_vec_pretty(&terms)?)?;
+    let admission_config = options.store_dir.join("bilateral-admission-config.json");
+    crate::admission::create_config(
+        rpc,
+        crate::admission::ConfigOptions {
+            envelope: PathBuf::from("release/factory-preproduction/envelope.json"),
+            contracts_dir: options.contracts_dir.clone(),
+            ledger: options.store_dir.join("bilateral-admission-ledger.json"),
+            output: admission_config.clone(),
+            admitted_asset_types: assets
+                .iter()
+                .map(|asset| canonical_root_hex(asset.script.calc_script_hash().as_slice()))
+                .collect(),
+            no_real_assets: true,
+        },
+    )?;
     let draft_path = options.store_dir.join("root-funding-draft.json");
     super::multi_asset_root_operator::prepare(
         rpc,
         super::multi_asset_root_operator::PrepareOptions {
+            admission_config: admission_config.clone(),
             terms: terms_path.clone(),
             contracts_dir: options.contracts_dir.clone(),
             max_fee: options.fee,
@@ -512,6 +528,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         funding_run(
             session,
             FundingSessionCommand::Init {
+                admission_config: admission_config.clone(),
                 draft: draft_path.clone(),
                 local_pubkey: canonical_root_hex(&k256_pubkey(&k256_signing_key(secret)?)),
                 contracts_dir: options.contracts_dir.clone(),
@@ -605,6 +622,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     let rejected = super::multi_asset_funding_operator::submit(
         rpc,
         super::multi_asset_funding_operator::Options {
+            admission_config: admission_config.clone(),
             transaction: intent.clone(),
             package: pre_funding_recovery.clone(),
             contracts_dir: options.contracts_dir.clone(),
@@ -653,6 +671,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         let signed = super::multi_asset_root_operator::sign_wallet(
             rpc,
             super::multi_asset_root_operator::SignOptions {
+                admission_config: admission_config.clone(),
                 terms: terms_path.clone(),
                 transaction: intent,
                 package: pre_funding_recovery.clone(),
@@ -675,6 +694,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     let mut fund = super::multi_asset_funding_operator::submit(
         rpc,
         super::multi_asset_funding_operator::Options {
+            admission_config: admission_config.clone(),
             transaction: intent,
             package: pre_funding_recovery.clone(),
             contracts_dir: options.contracts_dir.clone(),
@@ -725,6 +745,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         let replayed = super::multi_asset_funding_operator::submit(
             rpc,
             super::multi_asset_funding_operator::Options {
+                admission_config: admission_config.clone(),
                 transaction: signed_path.clone(),
                 package: pre_funding_recovery.clone(),
                 contracts_dir: options.contracts_dir.clone(),

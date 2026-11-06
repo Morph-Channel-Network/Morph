@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use std::io::Read;
 
 pub struct Options {
+    pub admission_config: PathBuf,
     pub transaction: PathBuf,
     pub package: PathBuf,
     pub contracts_dir: PathBuf,
@@ -124,6 +125,14 @@ pub fn submit(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         super::multi_asset_splice_operator::canonical_checkpoint(rpc, &checkpoint)?,
         "chain reorganized during root input validation"
     );
+    crate::admission_channel::reserve(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &recovery,
+        &transaction,
+        capacity,
+    )?;
     let durable = write_package(&options.store_dir, &stored)?;
     let tx = transaction.into_view();
     let metrics = transaction_metrics(rpc, &tx)?;

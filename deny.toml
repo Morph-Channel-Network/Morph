@@ -12,9 +12,9 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 unmaintained = "workspace"
 unsound = "workspace"
 yanked = "warn"
-# Rationale and removal conditions live in the AUDIT_IGNORE comment block at
-# the top of the Makefile; keep both lists in sync.
-ignore = ["RUSTSEC-2026-0306"]
+# The former faster-hex waiver is removed: verified upstream-consumer patches
+# select the actual patched registry release. No advisory is suppressed here.
+ignore = []
 
 [licenses]
 confidence-threshold = 0.92

@@ -171,25 +171,25 @@ export class MorphHubClient {
       const message = isRecord(decoded) && typeof decoded.error === "string"
         ? decoded.error
         : "Morph Hub request failed";
-      throw new MorphAgentError(message, response.status);
+      throw new MorphPaymentGatewayError(message, response.status);
     }
     if (!isRecord(decoded)) throw new Error("Morph Hub returned a non-object response");
     return decoded;
   }
 }
 
-export class MorphAgentError extends Error {
+export class MorphPaymentGatewayError extends Error {
   constructor(
     message: string,
     readonly status: number,
   ) {
     super(message);
-    this.name = "MorphAgentError";
+    this.name = "MorphPaymentGatewayError";
   }
 }
 
-/** Browser/Node client for the standalone Morph Agent HTTP API. */
-export class MorphAgentClient {
+/** Browser/Node client for the standalone Morph Payment Gateway HTTP API. */
+export class MorphPaymentGatewayClient {
   private readonly baseUrl: URL;
   private readonly apiBearerToken: string | undefined;
 
@@ -199,10 +199,10 @@ export class MorphAgentClient {
       this.baseUrl.protocol !== "https:"
       && !(this.baseUrl.protocol === "http:" && isLoopbackHostname(this.baseUrl.hostname))
     ) {
-      throw new TypeError("Morph Agent URL must use HTTPS unless it is loopback HTTP");
+      throw new TypeError("Morph Payment Gateway URL must use HTTPS unless it is loopback HTTP");
     }
     if (options.apiBearerToken !== undefined && options.apiBearerToken.length < 32) {
-      throw new TypeError("Morph Agent API bearer token must contain at least 32 bytes");
+      throw new TypeError("Morph Payment Gateway API bearer token must contain at least 32 bytes");
     }
     this.apiBearerToken = options.apiBearerToken;
   }
@@ -241,7 +241,7 @@ export class MorphAgentClient {
       redirect: "error",
     });
     if (response.status !== 402) {
-      throw new MorphAgentError("Morph Agent did not return an x402 challenge", response.status);
+      throw new MorphPaymentGatewayError("Morph Payment Gateway did not return an x402 challenge", response.status);
     }
     const header = response.headers.get("payment-required");
     if (header === null) throw new Error("x402 challenge is missing PAYMENT-REQUIRED");
@@ -327,8 +327,8 @@ export class MorphAgentClient {
     if (!response.ok) {
       const message = isRecord(value) && typeof value.error === "string"
         ? value.error
-        : "Morph Agent request failed";
-      throw new MorphAgentError(message, response.status);
+        : "Morph Payment Gateway request failed";
+      throw new MorphPaymentGatewayError(message, response.status);
     }
     return value as T;
   }
@@ -348,7 +348,7 @@ async function readJsonResponseLimited(response: Response, maximum: number): Pro
   if (declaredLength !== null) {
     const parsedLength = Number(declaredLength);
     if (!Number.isSafeInteger(parsedLength) || parsedLength < 0 || parsedLength > maximum) {
-      throw new Error("Morph Agent response exceeds the maximum size");
+      throw new Error("Morph Payment Gateway response exceeds the maximum size");
     }
   }
 
@@ -363,7 +363,7 @@ async function readJsonResponseLimited(response: Response, maximum: number): Pro
       total += value.byteLength;
       if (total > maximum) {
         await reader.cancel();
-        throw new Error("Morph Agent response exceeds the maximum size");
+        throw new Error("Morph Payment Gateway response exceeds the maximum size");
       }
       chunks.push(value);
     }
@@ -442,7 +442,7 @@ export function createSignedPaymentPayload(
   };
 }
 
-/** Verify payer ownership and payload binding before sending it to an Agent. */
+/** Verify payer ownership and payload binding before sending it to a Morph Payment Gateway. */
 export function verifySignedPaymentPayload(
   requirements: PaymentRequirements,
   payload: PaymentPayload,
@@ -522,7 +522,7 @@ export async function x402Fetch(
   headers.set("payment-signature", encodeX402Header(settlement));
   const response = await fetch(resourceUrl, { ...init, headers, redirect: "error" });
   if (!response.ok) {
-    throw new MorphAgentError("Morph x402 Gateway request failed", response.status);
+    throw new MorphPaymentGatewayError("Morph x402 Gateway request failed", response.status);
   }
   const encodedReceipt = response.headers.get("payment-response");
   if (encodedReceipt === null) throw new Error("Gateway response is missing PAYMENT-RESPONSE");

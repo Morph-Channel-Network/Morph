@@ -32,7 +32,7 @@ floor and the shared State carrier; single-member escape does not retire that
 collectively owned remainder. Fund child carriers and transaction fees separately.
 
 `contracts.json` pins all eight deterministic ELFs built with Rust 1.95.0.
-The phase-A `envelope.json` separates those protocol maxima from declared
+The local controlled-devnet `envelope.json` separates those protocol maxima from declared
 experiments: Factory is two members, one plain-CKB Vault, one child at a time
 and one/four/ten-right updates; bilateral experiments have at most eight total
 Vaults and only the manifest-pinned devnet issuer. Zero-quantity token rights
@@ -40,13 +40,22 @@ still require asset admission. Real assets remain prohibited, and local Hub
 projections are not chain actions.
 
 Policy verification returns `policy_verified=true`, `release_admitted=false`.
-Exact-request shape integration, durable operator lifetime accounting and final
-phase-B evidence/approval remain outstanding. Current native commands execute
-ValueLimitPolicy and their exact-source/VM checks, not an implicit full envelope
-admission service. Its lifetime child cap of ten is operator bookkeeping; the
-independent per-transaction child bound is enforced by the protocol. Eight
-Vaults means eight total entries, including a separate plain CKB Vault when
-present. See `docs/preproduction-envelope.md` for #22/#28/#27/#44 evidence gates.
+Schema v3 requires exact-request admission before value-creating signatures,
+wallet signing and submission. One private OS-locked/fsynced operator ledger
+tracks active Factories, lifetime child reservations and bilateral capacity
+peaks, including retained batches and canonical closure/reorg reconciliation.
+It is not a consensus lifetime counter. Existing complete private exits and
+keyless finalisation remain recovery authority.
+
+The owner removed #27 independent-operator measurements and #44 external
+records as prerequisites for #21 on 2026-11-06. Exact local CI/native/source/
+ELF/policy/bundle verification is required instead. `make qualify-local-candidate`
+produces only a local qualification receipt and archive; it does not publish a
+release or authorize production. No real assets are allowed. Eight Vaults means
+eight total entries; the 4,000 CKB channel experiment ceiling covers the
+measured 3,536 CKB eight-token shape, including its State carrier. The larger
+joint Factory maxima remain outside the experiment. See
+`docs/preproduction-envelope.md` and `docs/runbooks/experiment-admission.md`.
 
 ```sh
 make ci

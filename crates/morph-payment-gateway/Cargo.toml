@@ -1,0 +1,36 @@
+[package]
+name = "morph-payment-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Morph Payment Gateway: application-layer payments, receipts, and paid API access"
+readme.workspace = true
+publish = false
+
+[dependencies]
+morph-key-input = { version = "4.0.0-alpha.1", path = "../morph-key-input" }
+zeroize.workspace = true
+anyhow.workspace = true
+aes-gcm.workspace = true
+axum.workspace = true
+base64.workspace = true
+biscuit-auth.workspace = true
+ckb-jsonrpc-types.workspace = true
+ckb-types.workspace = true
+clap.workspace = true
+hex.workspace = true
+k256.workspace = true
+morph-core = { version = "4.0.0-alpha.1", path = "../morph-core" }
+rand.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

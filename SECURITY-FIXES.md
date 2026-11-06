@@ -737,7 +737,7 @@ and `root_builder_keeps_tiny_change_with_the_owner_without_changing_fee`.
 
 Private signing keys no longer enter either binary through argv or raw-key
 environment values. All bilateral, funding, Factory, child, delivery, invoice,
-wallet, watch and Agent key options use explicit protected-file parsers from
+wallet, watch and Payment Gateway key options use explicit protected-file parsers from
 `morph-key-input`; no raw-key aliases are retained. Linux loading checks the
 opened descriptor with no leaf-symlink following and nonblocking open, requires
 an owner-controlled regular file with no group/other permissions, and bounds
@@ -754,9 +754,22 @@ their permission checks. Existing signing reservation/fsync ordering is kept.
 Negative and legitimate controls:
 `every_private_key_argument_is_a_protected_file_without_raw_env_or_aliases`,
 `retired_raw_key_argument_forms_reject_without_echoing_the_value`,
-`agent_private_keys_only_accept_protected_file_paths`,
+`payment_gateway_private_keys_only_accept_protected_file_paths`,
 `rejects_exposed_symlink_directory_and_fifo_inputs`,
 `rejects_oversize_multiple_tokens_and_invalid_scalars_without_echo`,
 `protected_file_accepts_valid_key_and_redacts_debug`, and
 `validates_biscuit_encoding_separately`. The non-Linux implementation has a
 separate fail-closed test; no native macOS/Windows key-input support is claimed.
+
+The Linux process regressions
+`protected_keys_start_real_gateway_without_process_or_output_leakage` and
+`real_gateway_key_file_errors_never_echo_private_material` launch the actual
+Payment Gateway binary with only protected-file paths in its environment. They
+require healthy HTTP startup and the configured receipt public key, inspect
+the live process's `/proc` command line and environment for both encoded and
+decoded public fixture keys, and check captured stdout/stderr on successful
+startup and rejected files. The SDK's
+`protected_payer_key_file_rejects_unsafe_inputs_before_rpc` uses the same helper
+as its Fiber harness and runs that harness as a subprocess against exposed
+permissions, symlinks, directories, FIFOs, oversized/malformed files, invalid
+scalars and retired raw-key input; these cases fail before RPC configuration.

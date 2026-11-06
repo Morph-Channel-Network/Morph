@@ -1,0 +1,12 @@
+--- ckb-types-1.1.4/Cargo.toml.orig-registry
++++ ckb-types-1.1.4/Cargo.toml
+@@ -87,7 +87,8 @@
+ ]
+ 
+ [dependencies.paste]
+-version = "1.0"
++version = "=0.2.3"
++package = "pastey"
+ 
+ [dev-dependencies.proptest]
+ version = "1.0"

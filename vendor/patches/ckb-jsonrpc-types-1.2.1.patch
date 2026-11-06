@@ -1,0 +1,13 @@
+--- ckb-jsonrpc-types-1.2.1/Cargo.toml.orig-registry
++++ ckb-jsonrpc-types-1.2.1/Cargo.toml
+@@ -35,7 +35,9 @@
+ version = "1"
+ 
+ [dependencies.faster-hex]
+-version = "0.6"
++version = "=0.10.1"
++default-features = false
++features = ["std"]
+ 
+ [dependencies.schemars]
+ version = "1"

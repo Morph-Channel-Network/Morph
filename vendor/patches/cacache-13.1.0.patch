@@ -1,0 +1,11 @@
+--- cacache-13.1.0/Cargo.toml.orig-registry
++++ cacache-13.1.0/Cargo.toml
+@@ -57,7 +57,7 @@
+ version = "0.4.3"
+ 
+ [dependencies.memmap2]
+-version = "0.5.8"
++version = "=0.9.12"
+ optional = true
+ 
+ [dependencies.miette]

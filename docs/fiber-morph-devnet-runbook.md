@@ -19,7 +19,7 @@ evidence to trust.
 | Need | Command | Expected result |
 | --- | --- | --- |
 | Check local dependencies only | `make fiber-morph-devnet-preflight` | Creates a run directory with `status=preflight-passed`. |
-| Prove Morph/Fiber coexistence and Agent multi-hop | `make fiber-morph-devnet-acceptance` | Runs Morph stateful scenarios, Fiber external funding, and Morph Agent x402/fair-exchange over a real three-node Fiber route. |
+| Prove Morph/Fiber coexistence and Payment Gateway multi-hop | `make fiber-morph-devnet-acceptance` | Runs Morph stateful scenarios, Fiber external funding, and Morph Payment Gateway x402/fair-exchange over a real three-node Fiber route. |
 | Prove the full Morph plus Fiber matrix | `make fiber-morph-devnet-acceptance-full` | Runs coexistence, strict Fiber Bruno suites, funding-tx verification, and the combined audit. |
 | Recheck existing evidence | `make fiber-morph-devnet-audit FIBER_MORPH_ACCEPTANCE_RUN=target/fiber-morph-devnet-acceptance/<run-id>` | Rebuilds `business-flow-audit.json` from an existing run. |
 | Debug only the Fiber strict matrix | `FIBER_MORPH_ACCEPTANCE_MODE=fiber scripts/fiber-morph-devnet-acceptance.sh` | Runs Fiber suites without the Morph stateful matrix. |
@@ -94,7 +94,7 @@ The full gate performs these phases:
 5. Runs Fiber external funding on the same CKB devnet.
 6. Runs the Fiber external-funding restart regression.
 7. Starts a fresh Fiber `router-pay` topology and runs its Bruno suite.
-8. Runs Morph Agent x402/credential and fair-exchange payments from Fiber
+8. Runs Morph Payment Gateway x402/credential and fair-exchange payments from Fiber
    node1 through node2 to node3.
 9. Starts fresh Fiber devnets for the remaining strict Fiber Bruno suite set.
 10. Runs the four Fiber funding-transaction verification cases.
@@ -147,12 +147,12 @@ captured contracts, and exact same-genesis observations. It does not reuse
 transaction counts or separate proof-profile counters from the retired physical
 implementation. See [current coverage](current-protocol-coverage.md).
 
-### Morph Agent Business Flows
+### Morph Payment Gateway Business Flows
 
 | Flow | User story | Security point |
 | --- | --- | --- |
 | x402 over Fiber multi-hop | A signed payer challenge is paid from node1 through node2 to node3, then yields a terminal Morph receipt and reusable Biscuit credential. | `Created`/`Inflight` are never treated as settlement; payer/payee identity and the paid resource remain bound. |
-| Fair exchange over Fiber multi-hop | An encrypted Agent result is paid across the same route and decrypted with the released hash preimage. | The key and plaintext remain unavailable until terminal paid evidence, and the result hash/AAD bind the exchange. |
+| Fair exchange over Fiber multi-hop | An encrypted result is paid across the same route and decrypted with the released hash preimage. | The key and plaintext remain unavailable until terminal paid evidence, and the result hash/AAD bind the exchange. |
 
 ### Fiber Business Flows
 
@@ -209,10 +209,10 @@ Fiber families:
 - `fiber_typed_asset_channel_binding`
 - `fiber_periodic_expiry_recovery`
 
-Morph Agent families:
+Morph Payment Gateway families:
 
-- `morph_agent_terminal_payment_identity_binding`
-- `morph_agent_credential_hashlock_release`
+- `morph_payment_gateway_terminal_payment_identity_binding`
+- `morph_payment_gateway_credential_hashlock_release`
 
 For release evidence, every listed family must be present in
 `business-flow-audit.json`, and the top-level run summary must say
@@ -239,8 +239,8 @@ target/fiber-morph-devnet-acceptance/<run-id>/morph-stateful/scenarios/smoke/mat
 target/fiber-morph-devnet-acceptance/<run-id>/morph-stateful/evidence.json
 target/fiber-morph-devnet-acceptance/<run-id>/fiber-coexistence-genesis.json
 target/fiber-morph-devnet-acceptance/<run-id>/logs/morph-stateful-on-fiber-ckb.log
-target/fiber-morph-devnet-acceptance/<run-id>/morph-agent-fiber-e2e/result.json
-target/fiber-morph-devnet-acceptance/<run-id>/morph-agent-fiber-e2e/manifest.json
+target/fiber-morph-devnet-acceptance/<run-id>/morph-payment-gateway-fiber-e2e/result.json
+target/fiber-morph-devnet-acceptance/<run-id>/morph-payment-gateway-fiber-e2e/manifest.json
 target/fiber-morph-devnet-acceptance/<run-id>/fiber-bruno-*.json
 target/fiber-morph-devnet-acceptance/<run-id>/logs/fiber-bruno-*.log
 ```
@@ -260,8 +260,8 @@ For a full run, expect:
 - 22 security families
 - 19 required Fiber business flows
 - 9 required Fiber security families
-- 2 required Morph Agent business flows
-- 2 required Morph Agent security families
+- 2 required Morph Payment Gateway business flows
+- 2 required Morph Payment Gateway security families
 - 4 Fiber funding-transaction verification cases
 
 ## Failure Handling
@@ -287,7 +287,7 @@ Common causes:
 | Missing CKB or ckb-cli binary | Sibling checkout is absent or not built. | Run preflight, then build the reported dependency. |
 | Morph freshness failure | Artefacts were generated from a different Morph commit. | Rerun the gate from a clean current commit. |
 | Missing Fiber result file | A strict Fiber suite or funding case was skipped. | Use the default `FIBER_BRUNO_SUITES` and `FIBER_FUNDING_TX_VERIFICATION_CASES`. |
-| Missing Morph Agent result | The Agent process, terminal payment polling, or three-node `router-pay` substrate failed. | Inspect `logs/morph-agent-fiber-e2e.log`, both Agent logs, and the router-pay Bruno log. |
+| Missing Morph Payment Gateway result | The Payment Gateway process, terminal payment polling, or three-node `router-pay` substrate failed. | Inspect `logs/morph-payment-gateway-fiber-e2e.log`, both Payment Gateway logs, and the router-pay Bruno log. |
 | Missing Fiber log marker | The Bruno suite did not produce the required behavioural evidence. | Inspect the suite log and update the test or marker deliberately. |
 | `external-funding-open` balance/readiness failure | Current Fiber Bruno balance deltas can be stale even when open/sign/submit/close/inspect requests succeed. | The coexistence harness accepts only the known stale shape and still requires the critical request markers. |
 
@@ -327,7 +327,7 @@ following are true:
   watchtower, and negative-path floors.
 - Every strict Fiber suite and funding-transaction verification case has both a
   passing JSON result and the required log evidence.
-- Morph Agent evidence contains both terminal three-node payments, matching
+- Morph Payment Gateway evidence contains both terminal three-node payments, matching
   identities/network IDs, and a manifest with `secrets_recorded=false`.
 
 This is a local devnet acceptance gate. It proves the committed same-devnet
@@ -336,11 +336,11 @@ protocol merger by itself.
 
 ## Evidence scope after current-protocol consolidation
 
-The same-chain Morph phase and the restarted Fiber Agent routing phase are
-separate recorded phases. Preserve all Bruno/restart logs and actual terminal
-Agent receipts. The Agent manifest records its executed binary and SDK digest
-and explicitly says that routed Fiber traffic does not prove Morph custody
-backing. The current Factory can create children whose parties are outside
+The same-chain Morph phase and the restarted Fiber Payment Gateway routing
+phase are separate recorded phases. Preserve all Bruno/restart logs and actual
+terminal Payment Gateway receipts. The Payment Gateway manifest records its
+executed binary and SDK digest and explicitly says that routed Fiber traffic
+does not prove Morph custody backing. The current Factory can create children whose parties are outside
 its membership; this does not turn those parties into Factory authorizers or
 remove provider-specific reservation/liquidity admission requirements.
 

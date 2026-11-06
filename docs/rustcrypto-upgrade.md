@@ -75,6 +75,9 @@ the five new delegated-boundary tests.
 | Reduced metadata, 10 rights / 8 assets / 16 members / maximum Scripts | 50,019,528 | 48,698,490 | 14,600 |
 
 These are CKB-VM fixture resource counts under the existing 70M ceiling, not
-production fees or latency. The native two-member/one-child experiment and its
-separate one/four/ten-right budgets still require fresh clean-source execution.
-The phase-A envelope continues to report `release_admitted=false`.
+production fees or latency. The clean `ed870817` native checkpoint subsequently passed the five-case matrix
+and its separate one/four/ten-right budgets. That historical evidence does not
+qualify the later vendor/admission candidate. The current no-value envelope is
+`B_controlled_devnet_local`; `make qualify-local-candidate` re-executes all local
+gates against its exact source and artifact identities, with
+`release_admitted=false` and no publication.

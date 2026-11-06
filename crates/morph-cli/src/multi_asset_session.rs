@@ -74,6 +74,10 @@ pub enum SessionCommand {
     /// Persist an exact raw transaction and unsigned new-context evidence.
     PrepareSplice {
         #[arg(long)]
+        admission_config: PathBuf,
+        #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
+        contracts_dir: PathBuf,
+        #[arg(long)]
         draft: PathBuf,
     },
     /// Cancel only before a local old-context bridge signature is reserved.
@@ -199,6 +203,8 @@ struct StoredSession {
     #[serde(deserialize_with = "required_option")]
     splice_draft: Option<SpliceDraft>,
     #[serde(deserialize_with = "required_option")]
+    splice_admission: Option<crate::admission_channel::Binding>,
+    #[serde(deserialize_with = "required_option")]
     lineage: Option<SessionLineage>,
 }
 
@@ -289,6 +295,41 @@ pub(crate) fn payout_summary(settlement: &MultiAssetSettlement) -> Vec<Value> {
 }
 
 impl StoredSession {
+    fn verify_conditional_policy(&self, settlement: &MultiAssetSettlement) -> Result<()> {
+        if matches!(
+            settlement.capability,
+            MultiAssetSettlementCapability::Ordinary
+        ) {
+            return Ok(());
+        }
+        let lineage = self
+            .lineage
+            .as_ref()
+            .ok_or_else(|| anyhow!("conditional signing requires canonical session lineage"))?;
+        let rpc = crate::rpc::CkbRpcClient::new(&lineage.rpc_url)?;
+        let tip = rpc.tip_header()?;
+        crate::admission_channel::validate_conditional_horizon(
+            settlement,
+            tip.number_value()?,
+            &lineage.contracts_dir,
+        )
+    }
+    fn require_splice_admission(&self) -> Result<()> {
+        let plan = self
+            .backend
+            .splice_proposal()
+            .ok_or_else(|| anyhow!("missing prepared splice"))?;
+        let recovery = plan.initial_recovery_contents(self.backend.current())?;
+        let transaction = self
+            .splice_draft
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing exact splice draft"))?
+            .transaction()?;
+        self.splice_admission
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing splice admission review"))?
+            .require_fresh(&recovery, &transaction)
+    }
     fn package(&self) -> Result<StoredMultiAssetPackage> {
         ensure!(
             self.schema == SESSION_SCHEMA,
@@ -296,6 +337,10 @@ impl StoredSession {
         );
         self.backend.validate()?;
         self.validate_lineage_binding()?;
+        ensure!(
+            self.splice_draft.is_some() == self.splice_admission.is_some(),
+            "prepared splice requires its explicit admission binding"
+        );
         match (&self.splice_draft, self.backend.splice_proposal()) {
             (Some(draft), Some(plan)) => draft.validate_plan(self.backend.current(), plan)?,
             (None, None) => {}
@@ -631,6 +676,7 @@ pub(crate) fn test_session(path: &Path, package: &Path, local_pubkey: &str) -> R
         backend: MultiAssetChannelBackend::new(package.recovery()?, decode_hex(local_pubkey, 33)?)?,
         cell_deps: package.cell_deps,
         splice_draft: None,
+        splice_admission: None,
         lineage: None,
     };
     save(path, &session)
@@ -671,9 +717,9 @@ fn run_loaded(
         SessionCommand::Inspect => session.summary(),
         SessionCommand::Propose { descriptor_hex } => {
             let descriptor = decode_hex(&descriptor_hex, MAX_DESCRIPTOR_BYTES)?;
-            let proposal = session
-                .backend
-                .propose(MultiAssetSettlement::decode(&descriptor)?)?;
+            let settlement = MultiAssetSettlement::decode(&descriptor)?;
+            session.verify_conditional_policy(&settlement)?;
+            let proposal = session.backend.propose(settlement)?;
             save(path, &session)?;
             Ok(serde_json::to_value(ProposalMessage::from_proposal(
                 &proposal,
@@ -681,9 +727,9 @@ fn run_loaded(
         }
         SessionCommand::Accept { proposal } => {
             let message: ProposalMessage = serde_json::from_slice(&read_limited(&proposal)?)?;
-            session
-                .backend
-                .accept_proposal(message.proposal(&session.backend)?)?;
+            let proposal = message.proposal(&session.backend)?;
+            session.verify_conditional_policy(&proposal.settlement)?;
+            session.backend.accept_proposal(proposal)?;
             save(path, &session)?;
             session.summary()
         }
@@ -691,6 +737,15 @@ fn run_loaded(
             target,
             private_key,
         } => {
+            if matches!(target, SigningTarget::Update) {
+                let proposal = session
+                    .backend
+                    .proposal()
+                    .ok_or_else(|| anyhow!("missing pending update"))?;
+                session.verify_conditional_policy(&proposal.settlement)?;
+            } else {
+                session.require_splice_admission()?;
+            }
             let key = channel_signing_key(&private_key, session.backend.local_pubkey())?;
             let pubkey = session.backend.local_pubkey().to_vec();
             let signing_digest = target.digest(&session.backend)?;
@@ -713,6 +768,15 @@ fn run_loaded(
             // a greater state number, even if no signature was returned yet.
             save(path, &session)?;
             verify(&session)?;
+            if matches!(target, SigningTarget::Update) {
+                let proposal = session
+                    .backend
+                    .proposal()
+                    .ok_or_else(|| anyhow!("missing reserved update"))?;
+                session.verify_conditional_policy(&proposal.settlement)?;
+            } else {
+                session.require_splice_admission()?;
+            }
             let signature: Signature = key
                 .sign_prehash(&reserved_digest)
                 .map_err(|_| anyhow!("channel signature generation failed"))?;
@@ -762,10 +826,25 @@ fn run_loaded(
             save(path, &session)?;
             session.summary()
         }
-        SessionCommand::PrepareSplice { draft } => {
+        SessionCommand::PrepareSplice {
+            draft,
+            admission_config,
+            contracts_dir,
+        } => {
             let draft: SpliceDraft = serde_json::from_slice(&read_limited(&draft)?)?;
             let proposal = draft.proposal(session.backend.current())?;
+            let future = proposal.initial_recovery_contents(session.backend.current())?;
+            let admission = crate::admission_channel::Binding::new(
+                &admission_config,
+                &contracts_dir,
+                &future,
+                &draft.transaction()?,
+            )?;
+            if let Some(existing) = &session.splice_admission {
+                ensure!(*existing == admission, "splice admission review changed");
+            }
             session.backend.prepare_splice(proposal)?;
+            session.splice_admission = Some(admission);
             if let Some(existing) = &session.splice_draft {
                 ensure!(
                     *existing == draft,
@@ -779,6 +858,7 @@ fn run_loaded(
         SessionCommand::CancelSplice => {
             session.backend.cancel_splice()?;
             session.splice_draft = None;
+            session.splice_admission = None;
             save(path, &session)?;
             session.summary()
         }
@@ -975,6 +1055,7 @@ pub(crate) fn confirm_initial_funding(
         backend: MultiAssetChannelBackend::new(package.recovery()?, local_pubkey)?,
         cell_deps: package.cell_deps,
         splice_draft: None,
+        splice_admission: None,
         lineage: None,
     };
     bind_root(
@@ -1048,6 +1129,7 @@ pub(crate) fn confirm_factory_child(
         backend: MultiAssetChannelBackend::new(initial, options.local_pubkey)?,
         cell_deps: package.cell_deps,
         splice_draft: None,
+        splice_admission: None,
         lineage: Some(SessionLineage {
             rpc_url: endpoint.to_string(),
             contracts_dir,
@@ -1162,6 +1244,7 @@ fn confirm_splice(
         backend: MultiAssetChannelBackend::new(recovery, local_pubkey)?,
         cell_deps: package.cell_deps,
         splice_draft: None,
+        splice_admission: None,
         lineage: Some(SessionLineage {
             rpc_url: endpoint.to_string(),
             contracts_dir,
@@ -1294,6 +1377,11 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
     fn fixture() -> (PathBuf, PathBuf, PathBuf, StoredMultiAssetPackage) {
+        fixture_with_admission(false)
+    }
+    fn fixture_with_admission(
+        admitted: bool,
+    ) -> (PathBuf, PathBuf, PathBuf, StoredMultiAssetPackage) {
         let dir = std::env::temp_dir().join(format!(
             "morph-session-{}-{}",
             std::process::id(),
@@ -1301,6 +1389,15 @@ mod tests {
         ));
         fs::create_dir_all(&dir).unwrap();
         let package = packages::fixture_package().unwrap();
+        let package = if admitted {
+            StoredMultiAssetPackage::from_recovery(
+                &crate::admission_channel::tests::recovery(package.recovery().unwrap()),
+                &package.decode().unwrap().cell_deps,
+            )
+            .unwrap()
+        } else {
+            package
+        };
         let package_path = dir.join("recovery.json");
         fs::write(&package_path, serde_json::to_vec(&package).unwrap()).unwrap();
         (dir.clone(), dir.join("alice.json"), package_path, package)
@@ -1440,7 +1537,7 @@ mod tests {
 
     #[test]
     fn withheld_bridge_receipt_does_not_block_offline_exit_or_public_receipt_reconciliation() {
-        let (dir, alice, original, package) = fixture();
+        let (dir, alice, original, package) = fixture_with_admission(true);
         let bob = dir.join("bob.json");
         init(&alice, &original, 1);
         init(&bob, &original, 2);
@@ -1448,10 +1545,23 @@ mod tests {
             crate::multi_asset_splice_transaction::fixture_draft(&package.recovery().unwrap());
         let draft_path = dir.join("draft.json");
         fs::write(&draft_path, serde_json::to_vec(&draft).unwrap()).unwrap();
+        let current = package.recovery().unwrap();
+        let future = draft
+            .proposal(&current)
+            .unwrap()
+            .initial_recovery_contents(&current)
+            .unwrap();
+        let (admission_config, contracts_dir) = crate::admission_channel::tests::configuration(
+            &dir,
+            &future,
+            &draft.transaction().unwrap(),
+        );
         for path in [&alice, &bob] {
             run(
                 path,
                 SessionCommand::PrepareSplice {
+                    admission_config: admission_config.clone(),
+                    contracts_dir: contracts_dir.clone(),
                     draft: draft_path.clone(),
                 },
             )
@@ -1553,7 +1663,7 @@ mod tests {
 
     #[test]
     fn splice_session_collects_three_signature_roles_and_exports_exact_body_and_exit() {
-        let (dir, alice, original, package) = fixture();
+        let (dir, alice, original, package) = fixture_with_admission(true);
         let bob = dir.join("bob.json");
         init(&alice, &original, 1);
         init(&bob, &original, 2);
@@ -1561,10 +1671,23 @@ mod tests {
             crate::multi_asset_splice_transaction::fixture_draft(&package.recovery().unwrap());
         let draft_path = dir.join("splice-draft.json");
         fs::write(&draft_path, serde_json::to_vec(&draft).unwrap()).unwrap();
+        let current = package.recovery().unwrap();
+        let future = draft
+            .proposal(&current)
+            .unwrap()
+            .initial_recovery_contents(&current)
+            .unwrap();
+        let (admission_config, contracts_dir) = crate::admission_channel::tests::configuration(
+            &dir,
+            &future,
+            &draft.transaction().unwrap(),
+        );
         for path in [&alice, &bob] {
             run(
                 path,
                 SessionCommand::PrepareSplice {
+                    admission_config: admission_config.clone(),
+                    contracts_dir: contracts_dir.clone(),
                     draft: draft_path.clone(),
                 },
             )
@@ -1694,11 +1817,12 @@ mod tests {
         );
         let mut stored: StoredSession = serde_json::from_slice(&fs::read(&alice).unwrap()).unwrap();
         stored.splice_draft = None;
+        stored.splice_admission = None;
         let encoded = serde_json::to_string(&stored).unwrap();
         // Keep u128 values in the typed serializer; Value would round them
         // and could produce an unrelated decoding failure before this check.
         assert!(serde_json::from_str::<StoredSession>(&encoded).is_ok());
-        for field in ["splice_draft", "lineage"] {
+        for field in ["splice_draft", "splice_admission", "lineage"] {
             let missing = encoded.replace(&format!(",\"{field}\":null"), "");
             assert_ne!(missing, encoded);
             let error = serde_json::from_str::<StoredSession>(&missing).unwrap_err();
@@ -1735,6 +1859,7 @@ mod tests {
             .unwrap(),
             cell_deps: exit.cell_deps.clone(),
             splice_draft: None,
+            splice_admission: None,
             lineage: Some(SessionLineage {
                 rpc_url: "http://127.0.0.1:1/".to_string(),
                 contracts_dir: dir.canonicalize().unwrap(),
@@ -1869,6 +1994,85 @@ mod tests {
             run(&path, SessionCommand::Inspect).unwrap()["signature_count"],
             0
         );
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn delayed_splice_signing_checks_fresh_horizon_for_every_participant_role() {
+        let (dir, alice, original, _) = fixture();
+        let mock = crate::admission_channel::tests::MockRpc::start([1; 32], 100);
+        let root = crate::admission_channel::tests::root_draft(Some(200), [1; 32]);
+        let (_, recovery) = root.evidence().unwrap();
+        let current = crate::admission_channel::tests::recovery(recovery);
+        let dependencies = root
+            .transaction()
+            .unwrap()
+            .raw()
+            .cell_deps()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let package = StoredMultiAssetPackage::from_recovery(&current, &dependencies).unwrap();
+        fs::write(&original, serde_json::to_vec(&package).unwrap()).unwrap();
+        init(&alice, &original, 1);
+        let draft = crate::multi_asset_splice_transaction::fixture_draft(&current);
+        let draft_path = dir.join("conditional-splice.json");
+        fs::write(&draft_path, serde_json::to_vec(&draft).unwrap()).unwrap();
+        let future = draft
+            .proposal(&current)
+            .unwrap()
+            .initial_recovery_contents(&current)
+            .unwrap();
+        let (admission_config, contracts_dir) = crate::admission_channel::tests::configuration(
+            &dir,
+            &future,
+            &draft.transaction().unwrap(),
+        );
+        crate::admission_channel::tests::set_rpc(&admission_config, &mock.url);
+        run(
+            &alice,
+            SessionCommand::PrepareSplice {
+                draft: draft_path,
+                admission_config,
+                contracts_dir,
+            },
+        )
+        .unwrap();
+        let before = fs::read(&alice).unwrap();
+        mock.set_tip(200);
+        for target in [
+            SigningTarget::SpliceCreation,
+            SigningTarget::SpliceRecovery,
+            SigningTarget::SpliceBridge,
+        ] {
+            let error = run(
+                &alice,
+                SessionCommand::Sign {
+                    target,
+                    private_key: hex::encode([1; 32]).into(),
+                },
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("refund horizon"));
+            assert_eq!(fs::read(&alice).unwrap(), before);
+        }
+        mock.set_tip(100);
+        run(
+            &alice,
+            SessionCommand::Sign {
+                target: SigningTarget::SpliceCreation,
+                private_key: hex::encode([1; 32]).into(),
+            },
+        )
+        .unwrap();
+        drop(mock);
+        // The complete previously saved unilateral exit has no admission/RPC
+        // dependency even after the conditional deadline and node loss.
+        packages::read_package(&original)
+            .unwrap()
+            .recovery()
+            .unwrap()
+            .validate()
+            .unwrap();
+        run(&alice, SessionCommand::Inspect).unwrap();
         fs::remove_dir_all(dir).unwrap();
     }
 }

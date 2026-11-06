@@ -74,14 +74,14 @@ export interface HubModel {
   factory_authority: 'factory_state_and_vault';
   channel_authority: 'state_and_vault';
   routing_role: 'external_optional_provider';
-  agent_role: 'application_sidecar';
+  payment_gateway_role: 'application_payment_and_access_gateway';
   factory_min_participants: number;
   factory_max_participants: number;
   chain_actions_enabled: boolean;
   factory_rights_exposed: boolean;
   provider_edges_exposed: boolean;
   rgbpp_evidence_exposed: boolean;
-  agent_receipts_exposed: boolean;
+  payment_gateway_receipts_exposed: boolean;
 }
 
 export interface PeerRecord {
@@ -295,14 +295,14 @@ export const emptyState: NodeState = {
     factory_authority: 'factory_state_and_vault',
     channel_authority: 'state_and_vault',
     routing_role: 'external_optional_provider',
-    agent_role: 'application_sidecar',
+    payment_gateway_role: 'application_payment_and_access_gateway',
     factory_min_participants: 2,
     factory_max_participants: 16,
     chain_actions_enabled: false,
     factory_rights_exposed: false,
     provider_edges_exposed: false,
     rgbpp_evidence_exposed: false,
-    agent_receipts_exposed: false,
+    payment_gateway_receipts_exposed: false,
   },
   provenance: {
     source: 'hub_state_file',

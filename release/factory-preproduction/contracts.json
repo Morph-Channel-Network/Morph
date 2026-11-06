@@ -18,35 +18,35 @@
       "file": "morph-state-type",
       "deployment_scope": "controlled_devnet",
       "size_bytes": 184144,
-      "ckb_data_hash": "0x5640afcbaf25760bab912f95339687e5ff26cd5619c0c5a7dd7cf75b9400c986"
+      "ckb_data_hash": "0x20525c1fbb3a7b56ac6e8e79ee2a6399f8b5c8b46badc7404a42327119065bbb"
     },
     {
       "name": "morph-factory-type",
       "file": "morph-factory-type",
       "deployment_scope": "controlled_devnet",
       "size_bytes": 224224,
-      "ckb_data_hash": "0xdd6593f7054c617d65b3535510564aa6a5ca927ba6902b1e3d08d6cd2c4a8953"
+      "ckb_data_hash": "0x73f77e4980a6127b03353eac1961c3aa5bdc35fc71d2faf6658fbf85cf9f8799"
     },
     {
       "name": "morph-factory-vault-lock",
       "file": "morph-factory-vault-lock",
       "deployment_scope": "controlled_devnet",
       "size_bytes": 94872,
-      "ckb_data_hash": "0x579ae0dce864d7a2f566b3154461822907c5b57664a344cd2643579f0f7c31ac"
+      "ckb_data_hash": "0x91e6104edf5b1474687acbe7ef1ec9f52e51e3bc10c9f51033e7dd182ad9dba4"
     },
     {
       "name": "morph-vault-lock",
       "file": "morph-vault-lock",
       "deployment_scope": "controlled_devnet",
       "size_bytes": 165272,
-      "ckb_data_hash": "0x9d295203471e40bc28c7d6c9ce1c3fd03e65438e55bd4a58ae458bc33d060711"
+      "ckb_data_hash": "0x793dcfd7b55ae4221837a7c2c25cdc29810b03bb83182545a3f07f34e984f6fa"
     },
     {
       "name": "morph-batch-lock",
       "file": "morph-batch-lock",
       "deployment_scope": "controlled_devnet",
       "size_bytes": 43808,
-      "ckb_data_hash": "0x52e44cf0bb13b21de91f1734d57c0027431c54f39b6671b9fb5f496f6bb1d36c"
+      "ckb_data_hash": "0xd1177661ccb04bd7483bda553051602d5971a783faf418590979c1e88c84da30"
     },
     {
       "name": "morph-sponsor-lock",

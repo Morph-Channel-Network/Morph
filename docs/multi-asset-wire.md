@@ -148,7 +148,9 @@ must use a greater number. A delayed complete peer update can be recovered
 without clearing a newer reservation. An unknown future local signature is
 rejected as inconsistent with this signer's journal.
 
-`multi-asset-funding-session` implements independent offline initial signing;
+`multi-asset-funding-session` implements independent initial signing with fresh
+pinned-RPC admission before every new participant signature; draft review,
+receipt import and saved recovery export remain offline-capable;
 [initial funding](runbooks/initial-funding.md) describes its exit-before-creation
 ordering and confirmed handoff. Operational `multi-asset-session` commands
 retain these persistence requirements and canonical lineage checks. Its current session

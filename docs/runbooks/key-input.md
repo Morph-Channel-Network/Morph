@@ -1,6 +1,7 @@
 # Protected private-key file input
 
-Morph CLI and Morph Agent accept private signing keys only through file paths.
+Morph CLI and Morph Payment Gateway accept private signing keys only through
+file paths.
 Use the appropriate `*-private-key-file PATH` option or `*_PRIVATE_KEY_FILE`
 environment variable. The environment value is a path, never key material. Raw
 private-key arguments and raw-key environment variables are unsupported; there
@@ -38,7 +39,8 @@ It must contain one UTF-8 key with optional surrounding ASCII whitespace and no
 embedded whitespace, NUL bytes or extra tokens. For secp256k1, use exactly 64 hex
 digits with an optional `0x` prefix; zero and out-of-range scalars are rejected.
 Biscuit roots use `ed25519-private/` or `secp256r1-private/` followed by 64 hex
-digits. Use the format emitted by Agent's explicit `generate-key` operation.
+digits. Use the format emitted by Morph Payment Gateway's explicit
+`generate-key` operation.
 
 Protected input is currently supported only on Linux filesystems enforcing the
 checked ownership and POSIX permissions. Other platforms, including macOS, fail
@@ -58,8 +60,8 @@ erasure of OS caches, swap or memory retained by upstream signing libraries.
 | Devnet participant fixtures | `--alice-private-key-file`, `--bob-private-key-file` | `MORPH_ALICE_PRIVATE_KEY_FILE`, `MORPH_BOB_PRIVATE_KEY_FILE` |
 | Hub signed invoices | `--invoice-private-key-file` | `MORPH_HUB_INVOICE_PRIVATE_KEY_FILE` |
 | Invoice creation | `--payee-private-key-file` | Explicit option |
-| Agent credential authority | `--biscuit-private-key-file` | `MORPH_AGENT_BISCUIT_PRIVATE_KEY_FILE` |
-| Agent receipts | `--receipt-private-key-file` | `MORPH_AGENT_RECEIPT_PRIVATE_KEY_FILE` |
+| Payment Gateway credential authority | `--biscuit-private-key-file` | `MORPH_PAYMENT_GATEWAY_BISCUIT_PRIVATE_KEY_FILE` |
+| Payment Gateway receipts | `--receipt-private-key-file` | `MORPH_PAYMENT_GATEWAY_RECEIPT_PRIVATE_KEY_FILE` |
 
 The command's `--help` identifies which role it needs. Supply only the key for
 that role; participants and wallet signers retain independent authority.
@@ -85,10 +87,11 @@ MORPH_DEVNET_PRIVATE_KEY_FILE="$key_dir/fixture.key" \
   morph-cli devnet --devnet-only derive-operator-pubkey --json
 ```
 
-The scalar above is public and must never receive real assets. Agent's
-`generate-key` and `generate-receipt-key` intentionally return newly generated
+The scalar above is public and must never receive real assets. Morph Payment
+Gateway's `generate-key` and `generate-receipt-key` intentionally return newly generated
 material on stdout; capture that output privately. Its Fiber test harness uses
 shell builtin `printf` to persist generated keys to 0600 files and passes only
 paths to child processes. The SDK Fiber test accepts
-`MORPH_AGENT_PAYER_PRIVATE_KEY_FILE`, applies the same safe-open, owner, permission,
-size and scalar checks, and rejects the former raw-key environment input.
+`MORPH_PAYMENT_GATEWAY_PAYER_PRIVATE_KEY_FILE`, applies the same safe-open,
+owner, permission, size and scalar checks, and rejects the former raw-key
+environment input.

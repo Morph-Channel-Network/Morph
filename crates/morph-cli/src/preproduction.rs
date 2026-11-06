@@ -18,12 +18,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::release::FACTORY_RELEASE_PROFILE;
 
-pub const PREPRODUCTION_ENVELOPE_SCHEMA: &str = "morph.preproduction_envelope.v2";
+pub const PREPRODUCTION_ENVELOPE_SCHEMA: &str = "morph.preproduction_envelope.v3";
 
 const MAX_ACTIVE_FACTORIES: u32 = 4;
 // Operator-maintained lifetime admission cap; no on-chain cumulative counter.
 const MAX_CHILDREN_PER_FACTORY: u32 = 10;
-const MAX_CHANNEL_CAPACITY_SHANNONS: u64 = 100_000_000_000;
+// Native eight-Vault geometry is 3,536 CKB including the 464 CKB State carrier.
+// A 4,000 CKB no-value experiment ceiling admits that measured shape.
+const MAX_CHANNEL_CAPACITY_SHANNONS: u64 = 400_000_000_000;
 const MAX_FACTORY_CAPACITY_SHANNONS: u64 = 1_000_000_000_000;
 const MAX_SPONSOR_CAPACITY_SHANNONS: u64 = 50_000_000_000;
 const MAX_FEE_PER_TRANSACTION_SHANNONS: u64 = 200_000_000;
@@ -240,17 +242,18 @@ impl PreproductionEnvelope {
             "protocol_limits must match the executable parser/consensus maxima; they are not experiment admission"
         );
         ensure!(
-            self.qualification.phase == "A_shape_rules"
+            self.qualification.phase == "B_controlled_devnet_local"
                 && !self.qualification.release_admitted
                 && !self.qualification.production_allowed
-                && self.qualification.pending_evidence_issues == [22, 28, 27, 44]
-                && self.qualification.exact_release_evidence_status == "pending"
+                && self.qualification.pending_evidence_issues.is_empty()
+                && self.qualification.exact_release_evidence_status
+                    == "exact_local_candidate_verification_required"
                 && !self.qualification.joint_protocol_maxima_native_qualified,
-            "phase A defines shape rules only; release admission awaits #22/#28/#27/#44 and the joint protocol maxima have VM fixture evidence only"
+            "local controlled-devnet qualification requires exact candidate verification and cannot authorize publication, production or joint protocol maxima"
         );
         ensure!(
-            self.qualification.request_shape_enforcement == "pending_exact_request_integration",
-            "phase A must not claim automatic prepare/sign/submit experiment-shape enforcement"
+            self.qualification.request_shape_enforcement == "exact_request_and_durable_admission",
+            "controlled-devnet operations require exact request and durable admission enforcement"
         );
         ensure!(
             self.qualification.contract_manifest == "release/factory-preproduction/contracts.json"
@@ -386,11 +389,39 @@ impl PreproductionEnvelope {
             "watchtower configuration must retain an explicit rescan floor"
         );
         ensure!(
-            self.watchtower.independent_operator_required,
-            "a separate watchtower operator is required by the pilot envelope"
+            !self.watchtower.independent_operator_required,
+            "independent-operator qualification is outside the local controlled-devnet envelope"
         );
         Ok(())
     }
+}
+
+/// Identify the exact local admission policy and verified eight-script build.
+/// This is an operator identity check, not release qualification: fresh source,
+/// CI, native reports and the local bundle are verified separately by the
+/// candidate workflow. In particular it cannot attest independent operation.
+pub(crate) fn verify_admission_identity(
+    envelope_path: &Path,
+    contracts_dir: &Path,
+) -> Result<morph_core::Bytes32> {
+    let envelope_bytes = fs::read(envelope_path).context("cannot read admission envelope")?;
+    ensure!(
+        envelope_bytes.len() <= 1024 * 1024,
+        "admission envelope is oversized"
+    );
+    let envelope: PreproductionEnvelope =
+        serde_json::from_slice(&envelope_bytes).context("invalid admission envelope")?;
+    envelope.validate()?;
+    let manifest_path = envelope_path.with_file_name("contracts.json");
+    crate::release::verify_contract_manifest(&manifest_path, contracts_dir)?;
+    let manifest_bytes =
+        fs::read(&manifest_path).context("cannot read admission contract manifest")?;
+    let mut bytes = b"MORPH_LOCAL_ADMISSION_POLICY_AND_ELFS_V1".to_vec();
+    bytes.extend_from_slice(&(envelope_bytes.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&envelope_bytes);
+    bytes.extend_from_slice(&(manifest_bytes.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&manifest_bytes);
+    Ok(morph_core::blake2b256(&bytes))
 }
 
 pub fn verify_preproduction_envelope(path: &Path) -> Result<PreproductionEnvelopeVerification> {
@@ -450,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_phase_a_rules_without_release_admission() {
+    fn accepts_local_devnet_rules_without_release_or_production_admission() {
         let envelope = fixture();
         envelope.validate_at(2).unwrap();
         assert_eq!(envelope.protocol_limits.factory_max_participant_count, 16);
@@ -549,12 +580,12 @@ mod tests {
                 json!(true),
             ),
         ] {
-            rejects_mutation(field, value, "phase A defines shape rules only");
+            rejects_mutation(field, value, "local controlled-devnet qualification");
         }
         rejects_mutation(
             "/qualification/request_shape_enforcement",
             json!("enforced"),
-            "must not claim automatic prepare/sign/submit",
+            "require exact request and durable admission",
         );
         for (field, value) in [
             (

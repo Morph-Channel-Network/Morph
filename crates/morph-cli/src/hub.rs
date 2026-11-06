@@ -469,14 +469,14 @@ struct HubModelView {
     factory_authority: &'static str,
     channel_authority: &'static str,
     routing_role: &'static str,
-    agent_role: &'static str,
+    payment_gateway_role: &'static str,
     factory_min_participants: usize,
     factory_max_participants: usize,
     chain_actions_enabled: bool,
     factory_rights_exposed: bool,
     provider_edges_exposed: bool,
     rgbpp_evidence_exposed: bool,
-    agent_receipts_exposed: bool,
+    payment_gateway_receipts_exposed: bool,
 }
 
 #[derive(Serialize)]
@@ -640,14 +640,14 @@ fn hub_model_view() -> HubModelView {
         factory_authority: "factory_state_and_vault",
         channel_authority: "state_and_vault",
         routing_role: "external_optional_provider",
-        agent_role: "application_sidecar",
+        payment_gateway_role: "application_payment_and_access_gateway",
         factory_min_participants: FACTORY_MIN_PARTICIPANTS,
         factory_max_participants: FACTORY_MAX_PARTICIPANTS,
         chain_actions_enabled: false,
         factory_rights_exposed: false,
         provider_edges_exposed: false,
         rgbpp_evidence_exposed: false,
-        agent_receipts_exposed: false,
+        payment_gateway_receipts_exposed: false,
     }
 }
 

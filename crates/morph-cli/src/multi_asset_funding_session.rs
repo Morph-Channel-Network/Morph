@@ -31,6 +31,8 @@ pub enum FundingSessionCommand {
     /// Review an immutable public draft and initialise this signer's stable path.
     Init {
         #[arg(long)]
+        admission_config: PathBuf,
+        #[arg(long)]
         draft: PathBuf,
         #[arg(long)]
         local_pubkey: String,
@@ -86,6 +88,7 @@ struct FundingJournal {
     draft: RootFundingDraft,
     local_pubkey: String,
     contracts_dir: PathBuf,
+    admission: crate::admission_channel::Binding,
     exit_reserved: bool,
     creation_reserved: bool,
     exit_signatures: Vec<ParticipantSignature>,
@@ -154,6 +157,15 @@ impl FundingJournal {
             }
         }
         Ok(())
+    }
+    fn verify_admission(&self) -> Result<()> {
+        let (_, exit) = self.draft.evidence()?;
+        self.admission.require(&exit, &self.draft.transaction()?)
+    }
+    fn verify_fresh_admission(&self) -> Result<()> {
+        let (_, exit) = self.draft.evidence()?;
+        self.admission
+            .require_fresh(&exit, &self.draft.transaction()?)
     }
     fn verify_artifacts(&self) -> Result<()> {
         let (creation, _) = self.draft.evidence()?;
@@ -312,25 +324,35 @@ pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {
         draft,
         local_pubkey,
         contracts_dir,
+        admission_config,
     } = command
     {
         ensure!(
             !path.exists(),
             "signing session already exists; never reset signing history"
         );
-        let draft = serde_json::from_slice(&read(&draft)?)?;
+        let draft: RootFundingDraft = serde_json::from_slice(&read(&draft)?)?;
+        let (_, exit) = draft.evidence()?;
+        let admission = crate::admission_channel::Binding::new(
+            &admission_config,
+            &contracts_dir,
+            &exit,
+            &draft.transaction()?,
+        )?;
         let local_pubkey = canonical_hex(&decode_hex(&local_pubkey, 33)?);
         let journal = FundingJournal {
             schema: SCHEMA.to_string(),
             draft,
             local_pubkey,
             contracts_dir: contracts_dir.canonicalize()?,
+            admission,
             exit_reserved: false,
             creation_reserved: false,
             exit_signatures: vec![],
             creation_signatures: vec![],
         };
         journal.verify_artifacts()?;
+        journal.verify_admission()?;
         save(path, &journal)?;
         return journal.summary();
     }
@@ -344,6 +366,7 @@ pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {
             private_key,
         } => {
             journal.verify_artifacts()?;
+            journal.verify_fresh_admission()?;
             let local = decode_hex(&journal.local_pubkey, 33)?;
             let key = channel_signing_key(&private_key, &local)?;
             journal.eligible(target)?;
@@ -361,6 +384,7 @@ pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {
             }
             save(path, &journal)?;
             journal.verify_artifacts()?;
+            journal.verify_fresh_admission()?;
             let signature: Signature = key
                 .sign_prehash(&digest)
                 .map_err(|_| anyhow!("root signing failed"))?;
@@ -371,6 +395,7 @@ pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {
             journal.record(target, signature.clone())?;
             save(path, &journal)?;
             journal.verify_artifacts()?;
+            journal.verify_fresh_admission()?;
             message(&digest, &signature)
         }
         FundingSessionCommand::AddSignature { target, signature } => {
@@ -484,18 +509,26 @@ mod tests {
         Ok(TempDir(path))
     }
     fn fixture() -> (TempDir, [PathBuf; 2], [String; 2], PathBuf) {
+        fixture_with_draft(
+            crate::multi_asset_funding::tests::admitted_draft_fixture(),
+            None,
+        )
+    }
+    fn fixture_with_draft(
+        draft: RootFundingDraft,
+        rpc_url: Option<&str>,
+    ) -> (TempDir, [PathBuf; 2], [String; 2], PathBuf) {
         let dir = tempdir().unwrap();
-        let draft = crate::multi_asset_funding::tests::draft_fixture();
         let file = dir.path().join("draft.json");
         std::fs::write(&file, serde_json::to_vec(&draft).unwrap()).unwrap();
-        let artifacts = dir.path().join("contracts");
-        std::fs::create_dir(&artifacts).unwrap();
-        for (name, data) in [
-            ("morph-state-type", b"root-test-state-type".as_slice()),
-            ("morph-state-lock", b"root-test-state-lock".as_slice()),
-            ("morph-vault-lock", b"root-test-vault-lock".as_slice()),
-        ] {
-            std::fs::write(artifacts.join(name), data).unwrap();
+        let (_, exit) = draft.evidence().unwrap();
+        let (admission_config, artifacts) = crate::admission_channel::tests::configuration(
+            dir.path(),
+            &exit,
+            &draft.transaction().unwrap(),
+        );
+        if let Some(rpc_url) = rpc_url {
+            crate::admission_channel::tests::set_rpc(&admission_config, rpc_url);
         }
         let paths = [dir.path().join("alice.json"), dir.path().join("bob.json")];
         let secrets = [hex::encode([1; 32]), hex::encode([2; 32])];
@@ -504,6 +537,7 @@ mod tests {
             run(
                 path,
                 FundingSessionCommand::Init {
+                    admission_config: admission_config.clone(),
                     draft: file.clone(),
                     local_pubkey: canonical_hex(key.verifying_key().to_sec1_point(true).as_bytes()),
                     contracts_dir: artifacts.clone(),
@@ -664,6 +698,7 @@ mod tests {
             run(
                 &paths[0],
                 FundingSessionCommand::Init {
+                    admission_config: dir.path().join("admission-config.json"),
                     draft: dir.path().join("draft.json"),
                     local_pubkey: original.local_pubkey.clone(),
                     contracts_dir: original.contracts_dir.clone()
@@ -877,7 +912,7 @@ mod tests {
     }
     #[test]
     fn root_draft_rejects_authority_membership_and_physical_replacement() {
-        let draft = crate::multi_asset_funding::tests::draft_fixture();
+        let draft = crate::multi_asset_funding::tests::admitted_draft_fixture();
         draft.evidence().unwrap();
         let mut duplicate = draft.clone();
         duplicate.participants[1] = duplicate.participants[0].clone();
@@ -900,5 +935,89 @@ mod tests {
         let mut changed = draft;
         changed.transaction_hex = canonical_hex(tx.as_slice());
         assert!(changed.evidence().is_err());
+    }
+    #[test]
+    fn changed_admission_stops_new_signatures_without_disabling_saved_exit_exports() {
+        let (dir, paths, keys, _) = fixture();
+        collect(&paths, &keys, dir.path(), FundingTarget::Exit);
+        let configuration = dir.path().join("admission-config.json");
+        let mut changed = std::fs::read(&configuration).unwrap();
+        changed.push(b'\n');
+        std::fs::write(&configuration, changed).unwrap();
+        let before = read(&paths[0]).unwrap();
+        let error = run(
+            &paths[0],
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Creation,
+                private_key: keys[0].clone().into(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("configuration changed"));
+        assert_eq!(read(&paths[0]).unwrap(), before);
+        std::fs::remove_file(configuration).unwrap();
+        let exported = run(
+            &paths[0],
+            FundingSessionCommand::ExportRecovery {
+                store_dir: dir.path().join("recovery"),
+            },
+        )
+        .unwrap();
+        crate::multi_asset_packages::read_package(Path::new(
+            exported["recovery_package"].as_str().unwrap(),
+        ))
+        .unwrap()
+        .recovery()
+        .unwrap()
+        .validate()
+        .unwrap();
+    }
+    #[test]
+    fn delayed_conditional_funding_sign_rejects_before_reserving_and_keeps_saved_exit_exportable() {
+        let mock = crate::admission_channel::tests::MockRpc::start([1; 32], 100);
+        let draft = crate::admission_channel::tests::root_draft(Some(200), [1; 32]);
+        let (dir, paths, keys, _) = fixture_with_draft(draft, Some(&mock.url));
+        mock.set_tip(200);
+        let before = read(&paths[0]).unwrap();
+        let error = run(
+            &paths[0],
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Exit,
+                private_key: keys[0].clone().into(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("refund horizon"));
+        assert_eq!(read(&paths[0]).unwrap(), before);
+        mock.set_tip(100);
+        collect(&paths, &keys, dir.path(), FundingTarget::Exit);
+        mock.set_tip(200);
+        let before = read(&paths[0]).unwrap();
+        let error = run(
+            &paths[0],
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Creation,
+                private_key: keys[0].clone().into(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("refund horizon"));
+        assert_eq!(read(&paths[0]).unwrap(), before);
+        drop(mock);
+        let exported = run(
+            &paths[0],
+            FundingSessionCommand::ExportRecovery {
+                store_dir: dir.path().join("offline-exit"),
+            },
+        )
+        .unwrap();
+        crate::multi_asset_packages::read_package(Path::new(
+            exported["recovery_package"].as_str().unwrap(),
+        ))
+        .unwrap()
+        .recovery()
+        .unwrap()
+        .validate()
+        .unwrap();
     }
 }

@@ -910,7 +910,7 @@ pub(crate) mod tests {
         (terms, cells)
     }
 
-    fn reduced_rights_fixture() -> (FactoryPreparationTerms, Vec<FundingCell>) {
+    pub(crate) fn reduced_rights_fixture() -> (FactoryPreparationTerms, Vec<FundingCell>) {
         let (mut terms, cells) = fixture();
         let (mut source, members, mut rights) = terms.context.decode().unwrap();
         let participant = members[0].participant;
@@ -951,7 +951,7 @@ pub(crate) mod tests {
         (terms, cells)
     }
 
-    fn reduce_value_rights(terms: &mut FactoryPreparationTerms, count: usize) {
+    pub(crate) fn reduce_value_rights(terms: &mut FactoryPreparationTerms, count: usize) {
         let participant = &terms.context.members[0].participant;
         let mut changed = 0;
         for right in &mut terms.target_rights {
@@ -1827,6 +1827,8 @@ pub(crate) struct PrepareOptions {
     #[arg(long)]
     pub max_fee: u64,
     #[arg(long)]
+    pub admission_config: std::path::PathBuf,
+    #[arg(long)]
     pub output: std::path::PathBuf,
 }
 #[cfg(feature = "devnet")]
@@ -1864,6 +1866,14 @@ pub(crate) fn prepare(
         rpc,
         &request,
         &options.contracts_dir,
+        options.max_fee,
+    )?;
+    crate::admission::reserve_native(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &request,
+        true,
         options.max_fee,
     )?;
     let packet = crate::factory_packets::StoredFactoryRequest::from_delivery_review(&request)?;

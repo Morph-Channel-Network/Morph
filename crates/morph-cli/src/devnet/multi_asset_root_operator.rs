@@ -15,12 +15,14 @@ use serde_json::{Value, json};
 use std::io::Read;
 
 pub struct PrepareOptions {
+    pub admission_config: PathBuf,
     pub terms: PathBuf,
     pub contracts_dir: PathBuf,
     pub max_fee: u64,
     pub output: PathBuf,
 }
 pub struct SignOptions {
+    pub admission_config: PathBuf,
     pub terms: PathBuf,
     pub transaction: PathBuf,
     pub package: PathBuf,
@@ -139,6 +141,15 @@ fn resolve(
 pub fn prepare(rpc: &CkbRpcClient, options: PrepareOptions) -> Result<Value> {
     let resolved = resolve(rpc, &options.terms, &options.contracts_dir, options.max_fee)?;
     let draft = &resolved.prepared.draft;
+    let (_, admission_exit) = draft.evidence()?;
+    crate::admission_channel::reserve(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &admission_exit,
+        &draft.transaction()?,
+        resolved.prepared.fee,
+    )?;
     let (creation, exit) = draft.evidence()?;
     let bytes = serde_json::to_vec_pretty(draft)?;
     let _lock = crate::persistence::try_lock_private_path(&options.output)?
@@ -186,6 +197,14 @@ pub fn sign_wallet(rpc: &CkbRpcClient, options: SignOptions) -> Result<Value> {
         )? == stored,
         "wallet exit dependencies differ from exact funding body"
     );
+    crate::admission_channel::reserve(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &recovery,
+        &transaction,
+        resolved.prepared.fee,
+    )?;
     let key =
         parse_privkey(&options.private_key).map_err(|_| anyhow!("invalid funding wallet key"))?;
     let public = canonical_hex(&compressed_pubkey(&key)?);

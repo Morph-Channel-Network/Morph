@@ -1,5 +1,5 @@
 {
-  "schema": "morph.preproduction_envelope.v2",
+  "schema": "morph.preproduction_envelope.v3",
   "release_profile": "morph-current-custody",
   "effective_date": "2026-11-05",
   "review_by": "2026-12-04",
@@ -22,18 +22,13 @@
     "max_siblings_per_compact_proof": 64
   },
   "qualification": {
-    "phase": "A_shape_rules",
+    "phase": "B_controlled_devnet_local",
     "release_admitted": false,
     "production_allowed": false,
-    "pending_evidence_issues": [
-      22,
-      28,
-      27,
-      44
-    ],
-    "exact_release_evidence_status": "pending",
+    "pending_evidence_issues": [],
+    "exact_release_evidence_status": "exact_local_candidate_verification_required",
     "joint_protocol_maxima_native_qualified": false,
-    "request_shape_enforcement": "pending_exact_request_integration",
+    "request_shape_enforcement": "exact_request_and_durable_admission",
     "contract_manifest": "release/factory-preproduction/contracts.json",
     "acceptance_budget_profile": "docs/devnet-smoke-budget.example.json"
   },
@@ -59,7 +54,7 @@
     ]
   },
   "channel": {
-    "max_capacity_shannons": 100000000000,
+    "max_capacity_shannons": 400000000000,
     "max_total_pilot_capacity_shannons": 4000000000000,
     "max_vaults_per_state": 8,
     "asset_scope": "ckb_and_manifest_pinned_devnet_xudt"
@@ -93,6 +88,6 @@
     "minimum_detection_depth": 3,
     "reorg_mode": "detect_reset_and_rescan",
     "restart_scan_floor_required": true,
-    "independent_operator_required": true
+    "independent_operator_required": false
   }
 }

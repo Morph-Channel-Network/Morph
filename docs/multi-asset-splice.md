@@ -139,7 +139,7 @@ resuming a signer. The session commands below perform that reconciliation;
 [signer supervision](runbooks/signer-supervision.md) continuously checks those
 journals and persists expiring health and transition alerts.
 
-The offline session accepts the current `morph.multi_asset_splice_draft.v1`
+Draft review and receipt import accept the current `morph.multi_asset_splice_draft.v1`
 shape: `base_state_digest`, lossless packed CKB `transaction_hex`, unsigned
 `new_witness_hex` and canonical `flows_hex`, all hexadecimal strings. The new
 State and old State OutPoint are derived from the transaction; duplicate JSON
@@ -184,7 +184,8 @@ stateless checks do not replace the session's durable reservations, freeze or
 canonical handoff; assembly neither spends inputs nor broadcasts.
 
 ```sh
-morph-cli multi-asset-session --session alice.json prepare-splice --draft splice.json
+morph-cli multi-asset-session --session alice.json prepare-splice --draft splice.json \
+  --admission-config /srv/morph/admission.json --contracts-dir /srv/morph/contracts
 morph-cli multi-asset-session --session alice.json sign --target splice-creation > alice-creation.json
 morph-cli multi-asset-session --session alice.json add-signature --target splice-creation --signature bob-creation.json
 morph-cli multi-asset-session --session alice.json sign --target splice-recovery > alice-recovery.json
@@ -195,6 +196,17 @@ morph-cli multi-asset-session --session alice.json export-splice --store-dir rec
 ```
 
 Both signers prepare the same exact draft and exchange each signature role.
+The public native preparation must first reserve that exact new custody body in
+the shared controlled-devnet admission ledger. Each journal persists its explicit
+admission binding alongside the draft. Before every local splice Creation,
+Recovery or Bridge signature, it connects to the pinned configuration's RPC,
+reconciles canonical Factory closures and the shared pilot budget under the
+stable ledger lock, and rechecks the current conditional refund horizon. Changed configuration, policy expiry, missing ledger, unadmitted
+Types (including zero quantities), non-reviewed issuer code and excess capacity
+or token quantities fail before key use. The ledger charges the channel's peak
+reserved custody across splice alternatives and never refunds a cancellation.
+Complete saved exit exports and ordinary recovery publication remain independent
+of admission policy availability.
 `MORPH_CHANNEL_PRIVATE_KEY_FILE` supplies the protected file path for the local signer key; see [key input](runbooks/key-input.md). The snapshot
 retains the exact transaction before any signature is produced. Export durably
 writes the full future unilateral recovery package before returning a binary
@@ -214,6 +226,7 @@ The withdrawal Script is `0x` only when no withdrawal allocation is present.
 
 ```sh
 morph-cli devnet --devnet-only --rpc-url "$CKB_RPC" multi-asset-splice-prepare \
+  --admission-config /srv/morph/admission.json \
   --old-package old-recovery.json --state-out-point "$OLD_STATE" \
   --terms splice-terms.json --external-input "$FEE_INPUT" \
   --external-input "$TOKEN_DEPOSIT_INPUT" --change-pubkey "$OWNER_PUBKEY" \
@@ -233,6 +246,7 @@ at its chosen path. Participants review it through the normal session flow.
 
 ```sh
 morph-cli devnet --devnet-only --rpc-url "$CKB_RPC" multi-asset-splice-submit \
+  --admission-config /srv/morph/admission.json \
   --transaction recovery/splice-TRANSACTION_HASH.tx \
   --old-package old-recovery.json --new-package new-recovery.json \
   --store-dir recovery --max-fee 100000000 --dry-run wallet

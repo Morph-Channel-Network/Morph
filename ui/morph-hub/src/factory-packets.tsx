@@ -5,7 +5,7 @@ import {
   type FactoryRequest,
   type FactoryRequestInspection,
   type FactorySignatureReceipt,
-} from '@morph-network/agent-sdk';
+} from '@morph-network/payment-gateway-sdk';
 
 /** A public, offline review. Private child exits stay with the child, and
  * signer reservations and native submission stay in the Factory operator. */

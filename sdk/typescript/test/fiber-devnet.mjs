@@ -1,29 +1,27 @@
 import assert from "node:assert/strict";
-import { closeSync, constants as fsConstants, fstatSync, openSync, readSync } from "node:fs";
 
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 
 import {
-  MorphAgentClient,
-  MorphAgentError,
+  MorphPaymentGatewayClient,
+  MorphPaymentGatewayError,
   createSignedPaymentPayload,
   decryptFairExchange,
   deriveMorphAccountId,
   verifySignedPaymentPayload,
 } from "../dist/index.js";
+import { protectedPayerKeyFromEnv } from "./protected-key-file.mjs";
 
-const payeeUrl = requiredEnv("MORPH_AGENT_PAYEE_URL");
-const payerUrl = requiredEnv("MORPH_AGENT_PAYER_URL");
-const ckbNetworkId = requiredByte32Env("MORPH_AGENT_CKB_NETWORK_ID");
-if (Object.hasOwn(process.env, "MORPH_AGENT_PAYER_PRIVATE_KEY")) {
-  throw new Error("raw payer key input is unsupported; use MORPH_AGENT_PAYER_PRIVATE_KEY_FILE");
-}
-const privateKey = protectedPayerKeyFile(requiredEnv("MORPH_AGENT_PAYER_PRIVATE_KEY_FILE"));
-const expectedPayee = requiredByte32Env("MORPH_AGENT_EXPECTED_PAYEE");
+// Validate local signing input before reading any RPC configuration.
+const privateKey = protectedPayerKeyFromEnv();
+const payeeUrl = requiredEnv("MORPH_PAYMENT_GATEWAY_PAYEE_URL");
+const payerUrl = requiredEnv("MORPH_PAYMENT_GATEWAY_PAYER_URL");
+const ckbNetworkId = requiredByte32Env("MORPH_PAYMENT_GATEWAY_CKB_NETWORK_ID");
+const expectedPayee = requiredByte32Env("MORPH_PAYMENT_GATEWAY_EXPECTED_PAYEE");
 const expectedFiberRoute = [
-  requiredPubkeyEnv("MORPH_AGENT_FIBER_NODE1_PUBKEY"),
-  requiredPubkeyEnv("MORPH_AGENT_FIBER_NODE2_PUBKEY"),
-  requiredPubkeyEnv("MORPH_AGENT_FIBER_NODE3_PUBKEY"),
+  requiredPubkeyEnv("MORPH_PAYMENT_GATEWAY_FIBER_NODE1_PUBKEY"),
+  requiredPubkeyEnv("MORPH_PAYMENT_GATEWAY_FIBER_NODE2_PUBKEY"),
+  requiredPubkeyEnv("MORPH_PAYMENT_GATEWAY_FIBER_NODE3_PUBKEY"),
 ];
 
 const payerPublicKey = secp256k1.getPublicKey(privateKey, true);
@@ -36,21 +34,21 @@ const asset = {
   symbol: "CKB",
   decimals: 8,
 };
-const payeeAgent = new MorphAgentClient(payeeUrl);
-const payerAgent = new MorphAgentClient(payerUrl);
+const payeeGateway = new MorphPaymentGatewayClient(payeeUrl);
+const payerGateway = new MorphPaymentGatewayClient(payerUrl);
 
-const supported = await payeeAgent.supported();
+const supported = await payeeGateway.supported();
 assert.equal(supported.payee, expectedPayee);
 assert.ok(Array.isArray(supported.capabilities));
 assert.ok(supported.capabilities.includes("x402_exact"));
 assert.ok(supported.capabilities.includes("biscuit_credentials"));
 assert.ok(supported.capabilities.includes("fair_exchange_aes_256_gcm"));
 
-const requirement = await payeeAgent.createX402Challenge({
+const requirement = await payeeGateway.createX402Challenge({
   asset,
   amount: "400",
   payer,
-  resource: "/devnet/agent-result",
+  resource: "/devnet/payment-gateway-result",
   operation: "GET",
   description: "Morph issue 1255 real Fiber devnet payment",
   expires_in_seconds: 300,
@@ -61,12 +59,12 @@ const payload = createSignedPaymentPayload(requirement, privateKey);
 assert.equal(verifySignedPaymentPayload(requirement, payload), true);
 
 await assert.rejects(
-  payeeAgent.settle({ requirements: requirement, payload }),
-  error => error instanceof MorphAgentError && error.status === 402,
+  payeeGateway.settle({ requirements: requirement, payload }),
+  error => error instanceof MorphPaymentGatewayError && error.status === 402,
   "settlement must fail before Fiber reports the invoice paid",
 );
 
-const outgoing = await payerAgent.pay({
+const outgoing = await payerGateway.pay({
   requirements: requirement,
   payload,
   timeout_seconds: 60,
@@ -77,7 +75,7 @@ assert.equal(outgoing.completed, true);
 const x402Route = requireThreeNodeFiberRoute(outgoing.fiber_result, expectedFiberRoute);
 
 const settlement = await retryPaymentRequired(() =>
-  payeeAgent.settle({ requirements: requirement, payload }),
+  payeeGateway.settle({ requirements: requirement, payload }),
 );
 assert.equal(settlement.receipt.requirement_id, requirement.requirement_id);
 assert.equal(settlement.receipt.payment_hash, requirement.payment_hash);
@@ -86,15 +84,15 @@ assert.equal(settlement.receipt.fiber_status, "Paid");
 assert.equal(settlement.receipt.terminal_receipt.status, "Settled");
 assert.equal(settlement.payment_preimage.length, 66);
 
-const authorization = await payeeAgent.verifyCredential(
+const authorization = await payeeGateway.verifyCredential(
   settlement.receipt.credential,
   settlement.receipt,
   requirement.resource,
 );
 assert.equal(authorization.authorized, true);
 
-const plaintext = new TextEncoder().encode("RGB++ Agent fair-exchange result over real Fiber");
-const offer = await payeeAgent.createFairOffer({
+const plaintext = new TextEncoder().encode("RGB++ Morph Payment Gateway fair-exchange result over real Fiber");
+const offer = await payeeGateway.createFairOffer({
   asset,
   amount: "401",
   payer,
@@ -105,7 +103,7 @@ const offer = await payeeAgent.createFairOffer({
   expires_in_seconds: 300,
 });
 const fairPayload = createSignedPaymentPayload(offer.requirement, privateKey);
-const fairOutgoing = await payerAgent.pay({
+const fairOutgoing = await payerGateway.pay({
   requirements: offer.requirement,
   payload: fairPayload,
   timeout_seconds: 60,
@@ -117,13 +115,13 @@ const fairExchangeRoute = requireThreeNodeFiberRoute(
   expectedFiberRoute,
 );
 const claim = await retryPaymentRequired(() =>
-  payeeAgent.claimFairOffer(offer.offer_id, fairPayload),
+  payeeGateway.claimFairOffer(offer.offer_id, fairPayload),
 );
 assert.deepEqual(await decryptFairExchange(offer, claim), plaintext);
 
 const [incomingIndex, outgoingIndex] = await Promise.all([
-  payeeAgent.payments(20),
-  payerAgent.payments(20),
+  payeeGateway.payments(20),
+  payerGateway.payments(20),
 ]);
 assert.ok(incomingIndex.payments.some(payment =>
   payment.payment_hash === requirement.payment_hash && payment.status === "Paid"
@@ -135,7 +133,7 @@ assert.ok(outgoingIndex.payments.some(payment =>
 privateKey.fill(0);
 
 console.log(JSON.stringify({
-  schema: "morph.agent_fiber_devnet_e2e",
+  schema: "morph.payment_gateway_fiber_devnet_e2e",
   status: "passed",
   route: "fiber-node1 -> fiber-node2 -> fiber-node3",
   payer,
@@ -166,45 +164,11 @@ async function retryPaymentRequired(operation) {
       return await operation();
     } catch (error) {
       lastError = error;
-      if (!(error instanceof MorphAgentError) || error.status !== 402) throw error;
+      if (!(error instanceof MorphPaymentGatewayError) || error.status !== 402) throw error;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
   }
   throw lastError;
-}
-
-// This is an isolated development test input, with the same file boundary as
-// the Rust binaries. Paths are the only secret-related environment values.
-function protectedPayerKeyFile(path) {
-  if (process.platform !== "linux" || typeof process.geteuid !== "function" || typeof fsConstants.O_NOFOLLOW !== "number"
-      || typeof fsConstants.O_NONBLOCK !== "number") {
-    throw new Error("protected payer key files are unsupported on this platform");
-  }
-  let fd;
-  const buffer = Buffer.alloc(257);
-  try {
-    fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
-    const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.uid !== process.geteuid() || (stat.mode & 0o077) !== 0
-        || stat.size > 256) throw new Error("invalid protected file");
-    const count = readSync(fd, buffer, 0, buffer.length, 0);
-    if (count > 256) throw new Error("oversized protected file");
-    const text = buffer.subarray(0, count).toString("utf8").replace(/^[\t-\r ]+|[\t-\r ]+$/g, "");
-    const key = decodeHex(text, 32);
-    // Validate the scalar before any RPC operation and keep failures secret-safe.
-    try {
-      secp256k1.getPublicKey(key, true);
-    } catch {
-      key.fill(0);
-      throw new Error("invalid scalar");
-    }
-    return key;
-  } catch {
-    throw new Error("protected payer key file is invalid or inaccessible");
-  } finally {
-    buffer.fill(0);
-    if (fd !== undefined) closeSync(fd);
-  }
 }
 
 function requiredEnv(name) {

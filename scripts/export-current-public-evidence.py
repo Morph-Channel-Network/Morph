@@ -62,7 +62,9 @@ previous_approval_not_revoked withheld_full_consent_escaped stale_context_preser
 target_rights operator_checks service published_count watch_passes reorg_recovery reason
 asset_count rights_updates full_consent_metadata changed_right_count funding_replay
 orphaned exact_body_and_witnesses unchanged_signer_journals peer_creation_receipt_withheld
-canonical_reorg_replay authentic_source_live no_new_participant_signatures""".split())
+canonical_reorg_replay authentic_source_live no_new_participant_signatures
+admission same_request_reservation_idempotent complete_history_revalidated_after_reload
+lifetime_child_reservations active_factories orphaned replayed lifetime_children_preserved parent""".split())
 VALUE_FIELDS = {
     "type_hash", "reserve", "business_ckb", "amount", "state_number", "phase",
     "asset_type", "kind", "participant", "quantity", "subchannel",
