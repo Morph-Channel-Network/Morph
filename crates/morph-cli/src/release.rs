@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub const CONTRACT_MANIFEST_SCHEMA: &str = "morph.contract_release_manifest";
 pub const FACTORY_RELEASE_PROFILE: &str = "morph-current-custody";
-pub const CONTRACT_RUST_TOOLCHAIN: &str = "1.92.0";
+pub const CONTRACT_RUST_TOOLCHAIN: &str = "1.95.0";
 pub const CONTRACT_BUILD_TARGET: &str = "riscv64imac-unknown-none-elf";
 pub const CONTRACT_BUILD_PROFILE: &str = "release";
 

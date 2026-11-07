@@ -95,9 +95,9 @@ Implemented locally:
   conservation, so fee-payer signatures do not become Factory authority;
 - devnet smoke and stateful acceptance reports that bind scenarios to real
   transactions, cycle estimates, and expected negative-path failures;
-- Morph-owned RGB++/x402 Agent, native bilateral
+- Morph Payment Gateway for RGB++/x402, native bilateral
   `ChannelBackend`, Factory-right edge registry, and isolated Fiber-hook
-  adapter. The Agent x402/credential/fair-exchange flow is exercised over a
+  adapter. The gateway x402/credential/fair-exchange flow is exercised over a
   real three-node Fiber devnet route; a real Fiber external-edge hook routing
   a Morph-backed channel is not yet implemented.
 
@@ -277,13 +277,23 @@ events; token-protected sessions use authenticated short polling so the bearer
 token is never placed in an event-stream URL. When the API requires a token, the
 UI accepts it at runtime and stores it only in the browser session.
 
-The `morph-agent` also defaults to a local-only trust boundary.
-Plain HTTP is accepted only for loopback Agent, Fiber RPC, callback, and fixed
-Gateway endpoints; remote endpoints must use HTTPS. A non-loopback Agent
+**Morph Payment Gateway** (`morph-payment-gateway`) is the application-layer
+payment and access gateway. It processes payments, issues signed receipts and
+Biscuit credentials, and controls paid API access. The Rust crate, directory,
+and binary all use `morph-payment-gateway`; the TypeScript package is
+`@morph-network/payment-gateway-sdk` with `MorphPaymentGatewayClient`.
+
+```sh
+cargo run -p morph-payment-gateway -- --help
+```
+
+The gateway defaults to a local-only trust boundary.
+Plain HTTP is accepted only for loopback payment gateway, Fiber RPC, callback,
+and fixed x402 endpoints; remote endpoints must use HTTPS. A non-loopback gateway
 listener additionally requires `--api-bearer-token` or
-`MORPH_AGENT_API_BEARER_TOKEN` with at least 32 bytes. That token protects
+`MORPH_PAYMENT_GATEWAY_API_BEARER_TOKEN` with at least 32 bytes. That token protects
 durable challenge/offer creation and the redacted payment index, and is
-supported by both native SDKs. Keep Fiber and Agent bearer tokens out of URLs,
+supported by both native SDKs. Keep Fiber and payment gateway bearer tokens out of URLs,
 logs, and shell history.
 
 With a local CKB devnet node running through `scripts/devnet-node.sh`:
@@ -388,7 +398,7 @@ cargo run -p morph-cli -- devnet-smoke-compare \
 - [Publication reliability hardening](docs/hardening/production-publication-reliability/hardening.md):
   fee pressure, CKB/Fiber comparison, RBF, challenge-window measurement, reorg,
   and dual-operator design and gates.
-- [RGB++ / Agent / Fiber integration plan](docs/rgbpp-agent-fiber-integration-plan.md):
+- [RGB++ / Payment Gateway / Fiber integration plan](docs/rgbpp-payment-gateway-fiber-integration-plan.md):
   the sovereign Factory-to-channel-to-provider-edge design and its release
   gate.
 - [2026-08-15 swarm audit](docs/swarm-audit-glm-2026-08-15.md): latest audit

@@ -1,0 +1,13 @@
+--- ckb-fixed-hash-core-1.1.2/Cargo.toml.orig-registry
++++ ckb-fixed-hash-core-1.1.2/Cargo.toml
+@@ -32,7 +32,9 @@
+ path = "src/lib.rs"
+ 
+ [dependencies.faster-hex]
+-version = "0.6"
++version = "=0.10.1"
++default-features = false
++features = ["std"]
+ 
+ [dependencies.schemars]
+ version = "1"

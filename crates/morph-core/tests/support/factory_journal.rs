@@ -217,7 +217,7 @@ pub fn reduced_child_request() -> (
                         ParticipantSignature {
                             pubkey_sec1: key
                                 .verifying_key()
-                                .to_encoded_point(true)
+                                .to_sec1_point(true)
                                 .as_bytes()
                                 .to_vec(),
                             signature: signature.to_bytes().to_vec(),

@@ -67,10 +67,13 @@ change that chain, so reserve it for one acceptance run.
 The runner reads disposable development keys from
 `../fiber/tests/nodes/{deployer,1,2}/ckb/plain_key`. Override their paths with
 `MORPH_E2E_DEPLOYER_KEY_FILE`, `MORPH_E2E_ALICE_KEY_FILE` and
-`MORPH_E2E_BOB_KEY_FILE`, or supply the corresponding
-`MORPH_DEVNET_PRIVATE_KEY`, `MORPH_ALICE_PRIVATE_KEY` and
-`MORPH_BOB_PRIVATE_KEY` environment values. The runner validates their shape
-and does not print key material. The isolated node stops when the runner exits.
+`MORPH_E2E_BOB_KEY_FILE`. These fixture files are copied to a temporary private
+0700 directory with 0600 key files outside the public evidence tree, and removed
+on exit. For independently provisioned keys, use `MORPH_DEVNET_PRIVATE_KEY_FILE`,
+`MORPH_ALICE_PRIVATE_KEY_FILE` and `MORPH_BOB_PRIVATE_KEY_FILE`; these paths are
+passed unchanged to the [protected file loader](runbooks/key-input.md), which
+rejects unsafe permissions. Old raw-key environment inputs are rejected. The
+runner does not print key material, and its isolated node stops on exit.
 
 The report directory for the command above is:
 

@@ -498,15 +498,10 @@ pub fn fixture_package() -> Result<StoredMultiAssetPackage> {
         SigningKey::from_slice(&[1; 32]).map_err(|_| anyhow!("invalid fixture signing key"))?,
         SigningKey::from_slice(&[2; 32]).map_err(|_| anyhow!("invalid fixture signing key"))?,
     ];
-    keys.sort_by_key(|key| {
-        key.verifying_key()
-            .to_encoded_point(true)
-            .as_bytes()
-            .to_vec()
-    });
+    keys.sort_by_key(|key| key.verifying_key().to_sec1_point(true).as_bytes().to_vec());
     let public = keys
         .each_ref()
-        .map(|key| key.verifying_key().to_encoded_point(true));
+        .map(|key| key.verifying_key().to_sec1_point(true));
     let state = MultiAssetState {
         header: MultiAssetHeader {
             protocol_version: 1,
@@ -542,11 +537,7 @@ pub fn fixture_package() -> Result<StoredMultiAssetPackage> {
                     .sign_prehash(&digest)
                     .map_err(|_| anyhow!("fixture state signing failed"))?;
                 Ok(ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 })
             })
@@ -607,11 +598,7 @@ mod tests {
                     let key = SigningKey::from_slice(&[seed; 32]).unwrap();
                     let signature: Signature = key.sign_prehash(&digest).unwrap();
                     ParticipantSignature {
-                        pubkey_sec1: key
-                            .verifying_key()
-                            .to_encoded_point(true)
-                            .as_bytes()
-                            .to_vec(),
+                        pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                         signature: signature.to_bytes().to_vec(),
                     }
                 })

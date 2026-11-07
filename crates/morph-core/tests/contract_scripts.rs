@@ -97,7 +97,7 @@ fn signing_key(byte: u8) -> SigningKey {
 }
 
 fn pubkey(key: &SigningKey) -> [u8; COMPRESSED_SECP256K1_PUBKEY_LEN] {
-    let encoded = key.verifying_key().to_encoded_point(true);
+    let encoded = key.verifying_key().to_sec1_point(true);
     let mut out = [0u8; COMPRESSED_SECP256K1_PUBKEY_LEN];
     out.copy_from_slice(encoded.as_bytes());
     out

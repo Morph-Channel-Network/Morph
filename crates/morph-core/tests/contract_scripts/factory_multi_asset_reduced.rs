@@ -4,6 +4,9 @@ use morph_core::{
     FactoryMultiAssetReducedRelease, FactoryReducedReleasePayout, FactoryReducedReleaseRight,
 };
 
+#[path = "factory_multi_asset_delegation.rs"]
+mod delegation;
+
 #[derive(Clone, Copy)]
 enum ExitShape {
     Standard,

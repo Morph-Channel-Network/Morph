@@ -5,7 +5,8 @@ Guidance for LLM/AI agents working in this repository. Focus on non-obvious know
 ## Project Snapshot
 
 - Morph Channel is a CKB-native off-chain channel + factory implementation being developed for production deployment. Host-side protocol semantics live in `morph-core`; the on-chain boundary is a set of `no_std` CKB scripts built for `riscv64imac-unknown-none-elf`.
-- Workspace members: four Rust crates (`crates/morph-core`, `crates/morph-cli`, `crates/morph-agent`, `crates/morph-fiber-adapter`) and nine contract crates under `contracts/` (including the shared script crate). Plus a TypeScript SDK (`sdk/typescript`), a React UI (`ui/morph-hub`).
+- Workspace members: five host Rust crates (`crates/morph-core`, `crates/morph-key-input`, `crates/morph-cli`, `crates/morph-payment-gateway`, `crates/morph-fiber-adapter`) and nine contract crates under `contracts/` (including the shared script crate). Plus a TypeScript SDK (`sdk/typescript`), a React UI (`ui/morph-hub`).
+- Morph Payment Gateway (`morph-payment-gateway`) is the application-layer payment and access gateway: payment processing, signed receipts, Biscuit authorization, and paid API access. Its current name is the sole supported crate, binary, SDK, and environment namespace.
 - Production implementation is the development focus; current deployment evidence is from controlled devnet. Mainnet and real-asset releases require the gates in `docs/mainnet-readiness.md`. The bilateral multi-asset wire profile is implemented; remaining integrations are tracked in `docs/multi-asset-channels.md`.
 
 ## Build, Test, Lint
@@ -22,6 +23,7 @@ Use `make` targets — they orchestrate the right flags.
 | `make build-contracts` | Build all RISC-V scripts to `target/riscv64imac-unknown-none-elf/release/`. Required before `make contract-tests`. |
 | `make contract-tests` | Runs `crates/morph-core/tests/contract_scripts.rs` against the built ELFs (uses `--ignored --test-threads=1`). Fails if ELFs are missing. |
 | `make release-readiness` | Verifies all eight built ELF CKB data hashes, the current-custody no-real-assets envelope, and required operator runbooks. Run after `make build-contracts`. |
+| `make qualify-local-candidate` | Runs full CI, clean-source native acceptance, local packaging and exact source/artifact qualification without publishing. |
 | `make package-contract-release` | Stages a deterministic bundle under `target/contract-release.*` and writes `target/morph-current-custody.tar.gz` after readiness checks pass. |
 | `make supply-chain` | `cargo audit` then `cargo deny check`. See `Makefile` for ignored advisory IDs. |
 | `make fixture-checks` | Generates and validates every protocol fixture (bilateral, factory, splice, watch). Writes to `target/fixture-checks/`. |
@@ -49,14 +51,15 @@ UI (`ui/morph-hub`):
 
 Notes:
 
-- The `audit` step carries explicit upstream waivers in `AUDIT_IGNORE` (top of `Makefile`); each has a rationale and removal condition in the comment block above it. Don't add new ignore flags without the same justification. Removing the crypto-bigint/k256 waiver (`RUSTSEC-2026-0387`) is a mainnet-readiness precondition because the fix relinks every contract ELF.
-- The CI workflow (`.github/workflows/ci.yml`) mirrors `make ci` and pins Rust 1.92.0 plus the RISC-V target.
+- The `audit` step carries explicit upstream waivers in `AUDIT_IGNORE` (top of `Makefile`); each has a rationale and removal condition in the comment block above it. Don't add new ignore flags without the same justification. The RustCrypto/Biscuit migration removes `RUSTSEC-2026-0387` and `RUSTSEC-2026-0173`; never restore those waivers. Current CKB patches are verified by `vendor/check.py`; only the explicit rand 0.7 upstream waiver remains, with its removal condition in `docs/ckb-toolchain-upgrade.md`. Relinked ELFs require fresh manifest and resource evidence even when wire encoding is unchanged.
+- The CI workflow (`.github/workflows/ci.yml`) mirrors `make ci` and pins Rust 1.95.0 plus the RISC-V target.
 - `cargo audit` historically failed with IO errors when fetching the RustSec DB; see `SECURITY-FIXES.md` "Evidence run" for context.
 
 ## Repository Layout
 
 ```
 crates/morph-core          Host-side protocol objects, signing digests, validation. No CKB runtime deps.
+crates/morph-key-input     Shared host-only protected key-file loader and zeroizing/redacted key material.
 crates/morph-cli           CLI entry point. Subcommands: print/validate fixtures, devnet ops (devnet feature),
                            Morph Hub server, splice/factory/watchtower packages, smoke reports.
 contracts/morph-script-common    Shared no_std parsers, lengths, domains and typed capability frames.
@@ -79,9 +82,10 @@ ui/morph-hub                   React + Vite + TypeScript operator console.
 ### Crate boundaries
 
 - `morph-core` is plain Rust (no CKB RPC or VM runtime). It uses `ckb-types` for canonical host-side packed transaction/Script serialization, shared by the Factory journal and CLI instead of duplicating physical-body parsing. It defines types, signing digests, and host-side validation. It is used by both `morph-cli` and the contract tests.
-- `morph-script-common` is `no_std` and shared by every contract crate. All current length constants, role-separated domains (e.g. `MULTI_ASSET_STATE_DOMAIN`, `MULTI_ASSET_FUNDING_CONTEXT_DOMAIN`), bounded capability frames, and helper parsers live here. Any change here is a wire-format change.
+- `morph-script-common` is `no_std` and shared by every contract crate. All current length constants, role-separated domains (e.g. `MULTI_ASSET_STATE_DOMAIN`, `MULTI_ASSET_FUNDING_CONTEXT_DOMAIN`), bounded capability frames, and helper parsers live here. Changes to encodings, domains or field layouts are wire-format changes; verifier-only changes still alter ELF identity and require rebuilt evidence.
 - CKB scripts use `#![cfg_attr(target_arch = "riscv64", no_std)]` plus `#![cfg_attr(target_arch = "riscv64", no_main)]` and provide a stub `fn main() {}` for host builds so `cargo check` works. `entry!(program_entry)` and `default_alloc!()` are gated the same way.
 - Contract crates depend only on `ckb-std` + `morph-script-common`. Do not pull in `morph-core` from a contract — it would pull non-`no_std` code.
+- Rust 1.95 contract builds use `-C passes=lower-atomic` in both `.cargo/config.toml` and `scripts/build-contracts.sh`. Keep these aligned and leave `ckb-std`'s `dummy-atomic` feature disabled; the former `target-feature=-a` combination is unsupported by this toolchain. CKB-VM does not support RISC-V atomic instructions.
 
 ### Hashing and domain separation
 
@@ -161,8 +165,8 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 
 - `multi-asset-smoke --sponsor-publication` funds a separate target-state policy for each publication; combine with `--watch-publication --watch-reorg` for sponsor rollback acceptance. Operator/watch `sponsor --change-pubkey` takes no fee private key. Funding, activation and finalisation still use wallet fees.
 
-- `cargo run -p morph-cli --features devnet -- devnet ...` is required for any `--devnet-only` subcommand (multi-asset-smoke, factory smoke, multi-asset-transact, watch-config-once). RPC-enabled commands require the `devnet` feature; offline package, watch-policy/config and alert helpers remain usable in the default build.
-- Private-key env vars (`MORPH_DEVNET_PRIVATE_KEY`, `MORPH_ALICE_PRIVATE_KEY`, `MORPH_BOB_PRIVATE_KEY`, `MORPH_HUB_INVOICE_PRIVATE_KEY`, `MORPH_HUB_AUTH_TOKEN`, `MORPH_CHANNEL_PRIVATE_KEY`) are declared with clap's `hide_env_values = true` so they don't leak in `--help`. Don't print them anywhere.
+- `cargo run -p morph-cli --features devnet -- devnet ...` is required for any `--devnet-only` subcommand (multi-asset-smoke, factory smoke, multi-asset-transact, watch-config-once). The `devnet` namespace requires the feature. Initial-funding participant signing also refreshes its pinned admission RPC in the default build; inspection and saved recovery exports remain offline. Package, watch-policy/config and alert helpers remain usable without the feature.
+- Private keys enter through `--*-private-key-file` or `*_PRIVATE_KEY_FILE` paths only. Shared Linux-only `morph-key-input` validates the opened regular file, current owner, owner-only permissions, bounded single-key encoding and scalar; symlinks/FIFOs and unsupported platforms fail closed. Raw-key argv/env aliases are removed. Keep `SecretString` Debug redacted and buffers zeroizing. Never pass secret bytes to child-process argv/env. See `docs/runbooks/key-input.md`. Hub auth tokens have their separate scoped input policy.
 - `MORPH_CKB_RPC` defaults to `http://127.0.0.1:18114` and is set up by `scripts/devnet-node.sh`.
 
 ### Wire format and fixtures
@@ -180,7 +184,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 
 ## Style
 
-- Edition `2024`, Rust `1.92.0`. Pinned by `rust-toolchain.toml`; CI installs the same toolchain.
+- Edition `2024`, Rust `1.95.0`. Pinned by `rust-toolchain.toml`; CI installs the same toolchain.
 - `morph-cli` uses `clap` with the `derive` and `env` features; subcommands are an explicit `enum Command` with `#[command(subcommand)]`. New subcommands should follow the same shape and carry `#[arg(long)]` for any boolean toggle.
 - Two crates use a `devnet` Cargo feature to gate devnet-only modules behind `#[cfg(feature = "devnet")]`. Don't put devnet code paths behind `#[cfg(devnet_only)]` ad hoc.
 - JSON in/out is via `serde` + `serde_json`; many types re-export through `morph-core::*`. The codebase avoids `unwrap` in non-test code and prefers `anyhow::Result`/`ensure!` in CLI code and `Result<_, ScriptError>` in scripts.
@@ -193,7 +197,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - **Boundary versions are not free.** Changes to `MULTI_ASSET_STATE_HEADER_LEN`, `FACTORY_MULTI_ASSET_STATE_HEADER_LEN`, `MULTI_ASSET_DESCRIPTOR_VERSION`, `FACTORY_MULTI_ASSET_STATE_WITNESS_FORMAT`, `MULTI_ASSET_SPLICE_FORMAT` or other current length/format constants affect the wire boundary and its parsers, fixtures, contract tests and native evidence. Check those dependencies before changing them.
 - **Reduced factories accept only current documented proofs.** Signer membership is 2–16; rights and physical custody share current per-asset compact proofs and resource limits. Unknown shapes remain rejected.
 - **Devnet-only `morph-devnet-xudt`.** It is not safe for non-devnet use. The contract name and the README both call this out.
-- **`devnet` feature on `morph-cli`.** The `devnet` feature gates RPC client, fixture-server utilities, `watch_*`, and the entire `devnet` subcommand. A default build will silently lack these.
+- **`devnet` feature on `morph-cli`.** The `devnet` feature gates native operators, fixture-server utilities, watcher services and the entire `devnet` subcommand. Shared bounded RPC primitives also support fresh admission before initial-funding signatures in the default build; offline recovery exports do not depend on them.
 - **Hub auth tokens are scoped.** `read,write,restore,sign:<secret>` is the documented scope syntax; an unprefixed token is all-scope. Don't log the secret.
 - **Mutation rate limit is per-instance.** `MAX_MUTATIONS_PER_WINDOW = 120` over `MUTATION_RATE_LIMIT_WINDOW = 60s` applies per hub process. Be aware when load-testing.
 - **Invoices are Morph-native, not Fiber or Lightning.** Encoding/decoding/settle live in `crates/morph-cli` (`new-invoice`, `decode-invoice`, `settle-invoice`) and `crates/morph-core/src/node.rs`. The sole encoding is Bech32m with HRP `morph`.

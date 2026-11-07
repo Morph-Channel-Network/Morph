@@ -49,6 +49,7 @@ pub fn run(
     use super::multi_asset_operator as operator;
     use super::multi_asset_splice_operator as splice_operator;
     let options = context.options;
+    let admission_config = options.store_dir.join("bilateral-admission-config.json");
     ensure!(
         current.manifest.vaults.len() == 2,
         "trace requires two initial Vaults"
@@ -129,6 +130,7 @@ pub fn run(
         splice_operator::prepare(
             rpc,
             splice_operator::PrepareOptions {
+                admission_config: admission_config.clone(),
                 old_package: before_path.clone(),
                 state_out_point: format_out_point(&state_point),
                 terms: terms_path,
@@ -143,6 +145,8 @@ pub fn run(
             session_run(
                 session,
                 SessionCommand::PrepareSplice {
+                    admission_config: admission_config.clone(),
+                    contracts_dir: options.contracts_dir.clone(),
                     draft: draft_path.clone(),
                 },
             )?;
@@ -223,6 +227,7 @@ pub fn run(
         let submitted = splice_operator::submit(
             rpc,
             splice_operator::Options {
+                admission_config: admission_config.clone(),
                 transaction: path_field(&peer, "transaction")?,
                 old_package: before_path,
                 new_package: future_path.clone(),

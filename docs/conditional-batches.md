@@ -44,7 +44,9 @@ Disputed execution has two stages:
 2. The Batch Cell is consumed with one fixed complete resolution witness.
    Each transfer either supplies the exact 32-byte preimage or refunds to its
    payer with a mature absolute-block `since`. Two plain participant outputs
-   receive the complete script-computed value; no partial claim remains.
+   receive the complete script-computed value; no partial claim remains. The
+   sole Batch input must occupy transaction input 0; independent fee inputs
+   follow it, and a second Batch group in the same transaction is rejected.
 
 Keeping pending CKB in one bounded executor avoids one output per transfer.
 Atomic Vault-set finalisation still depends on the admitted asset scripts;
@@ -80,6 +82,9 @@ balance record substitutes for that evidence.
 - Amounts are positive and additions are checked.
 - Relative, timestamp and epoch encodings cannot authorise refunds.
 - Pending value cannot borrow reserve, carrier, another asset or fee change.
+- One Batch resolution per transaction: the Batch Lock occupies transaction
+  input 0, so a second Batch group — even with different args, code hash or
+  hash type — cannot reuse either participant payout.
 - The Batch identifier is signed application data. The lock's channel/state/
   terms commitment supplies execution binding; an identifier alone is not
   authority for a Batch Cell.

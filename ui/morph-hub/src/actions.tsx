@@ -314,7 +314,7 @@ export function InvoiceActions({ state, runAction, busy }: { state: NodeState; r
           <small className="inline-error">
             {!canSign
               ? 'The current API token needs the sign scope.'
-              : 'Restart Hub with MORPH_HUB_INVOICE_PRIVATE_KEY or --invoice-private-key to create signed invoices.'}
+              : 'Restart Hub with MORPH_HUB_INVOICE_PRIVATE_KEY_FILE or --invoice-private-key-file to create signed invoices.'}
           </small>
         )}
       </form>

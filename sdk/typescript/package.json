@@ -1,5 +1,5 @@
 {
-  "name": "@morph-network/agent-sdk",
+  "name": "@morph-network/payment-gateway-sdk",
   "version": "4.0.0-alpha.1",
   "private": true,
   "type": "module",

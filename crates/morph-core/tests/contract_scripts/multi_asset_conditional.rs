@@ -148,6 +148,42 @@ fn resolve(
     fixture.base.context.complete_tx(tx.build())
 }
 
+fn add_distinct_batch_input(
+    fixture: &mut ConditionalFixture,
+    transaction: &TransactionView,
+) -> (TransactionView, u64) {
+    let first_input = transaction.inputs().get(0).unwrap();
+    let (batch_cell, data) = fixture
+        .base
+        .context
+        .get_cell(&first_input.previous_output())
+        .unwrap();
+    let batch_capacity = u64::from(batch_cell.capacity());
+    let mut args = fixture.batch_lock.args().raw_data().to_vec();
+    args[0] ^= 1;
+    let distinct_batch_lock = fixture
+        .batch_lock
+        .clone()
+        .as_builder()
+        .args(Bytes::from(args).pack())
+        .build();
+    assert_ne!(distinct_batch_lock, fixture.batch_lock);
+    let second_batch = fixture.base.context.create_cell(
+        batch_cell.as_builder().lock(distinct_batch_lock).build(),
+        data,
+    );
+    let witness = transaction.witnesses().get(0).unwrap();
+    let transaction = fixture.base.context.complete_tx(
+        transaction
+            .clone()
+            .as_advanced_builder()
+            .input(CellInput::new(second_batch, 0))
+            .witness(witness)
+            .build(),
+    );
+    (transaction, batch_capacity)
+}
+
 #[test]
 #[ignore = "requires `make build-contracts`"]
 fn current_conditional_lane_finalises_and_fulfills_with_independent_token_and_carrier() {
@@ -463,6 +499,100 @@ fn current_conditional_batch_spend_requires_exact_plain_unique_payouts() {
             "{name}: {error:?}"
         );
     }
+}
+
+#[test]
+#[ignore = "requires `make build-contracts`"]
+fn current_conditional_batch_rejects_cross_group_payout_reuse() {
+    let mut fixture = conditional_fixture();
+    let resolution = resolve(
+        &mut fixture,
+        ConditionalResolution::Fulfill { preimage: [34; 32] },
+        0,
+    );
+    let (shared_payouts, batch_capacity) = add_distinct_batch_input(&mut fixture, &resolution);
+
+    let error = fixture
+        .base
+        .context
+        .verify_tx(&shared_payouts, MAX_CYCLES)
+        .expect_err("a second Batch group must not reuse the first Batch's payouts as fee");
+    assert!(error.to_string().contains("error code 8 "), "{error:?}");
+
+    let thief_lock =
+        deploy_always_success_with_args(&mut fixture.base.context, Bytes::from(vec![43]));
+    let stolen_surplus = shared_payouts
+        .as_advanced_builder()
+        .output(
+            CellOutput::new_builder()
+                .capacity(batch_capacity)
+                .lock(thief_lock)
+                .build(),
+        )
+        .output_data(Bytes::new().pack())
+        .build();
+    let error = fixture
+        .base
+        .context
+        .verify_tx(&stolen_surplus, MAX_CYCLES)
+        .expect_err("a second Batch group must not redirect surplus beyond shared payouts");
+    assert!(error.to_string().contains("error code 8 "), "{error:?}");
+}
+
+#[test]
+#[ignore = "requires `make build-contracts`"]
+fn current_conditional_batch_requires_leading_input_and_allows_trailing_fee_input() {
+    let mut fixture = conditional_fixture();
+    let resolution = resolve(
+        &mut fixture,
+        ConditionalResolution::Fulfill { preimage: [34; 32] },
+        0,
+    );
+    let fee_lock =
+        deploy_always_success_with_args(&mut fixture.base.context, Bytes::from(vec![44]));
+    let fee_cell = CellOutput::new_builder()
+        .capacity(CELL_CAPACITY)
+        .lock(fee_lock)
+        .build();
+    let fee_input = fixture
+        .base
+        .context
+        .create_cell(fee_cell.clone(), Bytes::new());
+    let with_fee = fixture.base.context.complete_tx(
+        resolution
+            .as_advanced_builder()
+            .input(CellInput::new(fee_input, 0))
+            .witness(Bytes::new().pack())
+            .output(
+                fee_cell
+                    .as_builder()
+                    .capacity(CELL_CAPACITY - 10_000)
+                    .build(),
+            )
+            .output_data(Bytes::new().pack())
+            .build(),
+    );
+    fixture
+        .base
+        .context
+        .verify_tx(&with_fee, MAX_CYCLES)
+        .expect("a trailing independent fee input and change must remain valid");
+
+    let mut inputs = with_fee.inputs().into_iter().collect::<Vec<_>>();
+    inputs.reverse();
+    let mut witnesses = with_fee.witnesses().into_iter().collect::<Vec<_>>();
+    witnesses.reverse();
+    let nonleading_batch = with_fee
+        .as_advanced_builder()
+        .set_inputs(inputs)
+        .set_witnesses(witnesses)
+        .build();
+    let error = fixture
+        .base
+        .context
+        .verify_tx(&nonleading_batch, MAX_CYCLES)
+        .expect_err("the Batch must occupy transaction input zero");
+    assert!(error.to_string().contains("error code 8 "), "{error:?}");
 }
 
 #[test]

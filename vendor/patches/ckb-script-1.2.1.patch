@@ -1,0 +1,13 @@
+--- ckb-script-1.2.1/Cargo.toml.orig-registry
++++ ckb-script-1.2.1/Cargo.toml
+@@ -69,7 +69,9 @@
+ default-features = false
+ 
+ [dependencies.faster-hex]
+-version = "0.6"
++version = "=0.10.1"
++default-features = false
++features = ["std"]
+ 
+ [dependencies.serde]
+ version = "1.0"

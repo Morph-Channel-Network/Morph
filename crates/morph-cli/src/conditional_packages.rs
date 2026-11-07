@@ -212,12 +212,7 @@ pub(crate) fn fixture_source_package() -> Result<StoredMultiAssetPackage> {
         SigningKey::from_slice(&[1; 32]).map_err(|_| anyhow!("invalid fixture signer"))?,
         SigningKey::from_slice(&[2; 32]).map_err(|_| anyhow!("invalid fixture signer"))?,
     ];
-    keys.sort_by_key(|key| {
-        key.verifying_key()
-            .to_encoded_point(true)
-            .as_bytes()
-            .to_vec()
-    });
+    keys.sort_by_key(|key| key.verifying_key().to_sec1_point(true).as_bytes().to_vec());
     recovery.authorization = StateAuthorization {
         threshold: 2,
         signatures: keys
@@ -227,11 +222,7 @@ pub(crate) fn fixture_source_package() -> Result<StoredMultiAssetPackage> {
                     .sign_prehash(&digest)
                     .map_err(|_| anyhow!("fixture state signing failed"))?;
                 Ok(ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 })
             })

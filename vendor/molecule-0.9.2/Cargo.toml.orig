@@ -1,0 +1,25 @@
+[package]
+name = "molecule"
+version = "0.9.2"
+authors = ["Nervos Core Dev <dev@nervos.org>"]
+edition = "2021"
+description = "Rust bindings for molecule."
+homepage = "https://github.com/nervosnetwork/molecule"
+repository = "https://github.com/nervosnetwork/molecule"
+keywords = ["serialization"]
+categories = ["encoding", "data-structures"]
+license = "MIT"
+
+[dependencies]
+cfg-if = "1.0.0"
+bytes = { version = "1.5.0", default-features = false }
+faster-hex = { version = "^0.6", optional = true }
+
+[features]
+default = ["std"]
+std = ["bytes/std", "faster-hex"]
+# Provide impls for bytes in no_std environment without depending on atomic
+bytes_vec = []
+
+[badges]
+maintenance = { status = "experimental" }

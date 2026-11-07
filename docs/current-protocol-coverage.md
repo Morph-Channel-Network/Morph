@@ -60,9 +60,10 @@ it does not enable a removed State format.
 
 ## Safety boundaries and current evidence
 
-The current contract harness contains **84 registered CKB-VM tests**, including
+The current contract harness contains **89 registered CKB-VM tests**, including
 parameterized negative matrices: 77 at checkpoint `9202e341`, five earlier
-closeout regressions and two alpha Factory authority/overflow negatives.
+closeout regressions, two alpha Factory authority/overflow negatives and five
+Factory delegated-authority regressions.
 These are registered test functions; matrix branches are additional
 assertions, not a conversion from 67 functions into 77 cases. The removed harness encoded the retired physical model;
 its security properties are mapped below to current transactions. Historical
@@ -134,12 +135,17 @@ children and refunding its carrier.
 
 Local CKB-VM fixtures rebuilt after runtime retirement produced:
 
+The following measurements use the combined first-batch Factory/RustCrypto/CKB
+candidate, rebuilt with Rust 1.95.0. The published alpha.1 values remain
+historical; [the migration comparison](rustcrypto-upgrade.md#integrated-vm-and-elf-measurements)
+records both. These are VM fixtures, not joint-maximum native admission.
+
 | Current fixture | Cycles | Transaction bytes | Test ceiling |
 | --- | ---: | ---: | ---: |
-| Full-consent materialisation: 8 assets, 4 children, 16 members, maximum-length scripts | 64,410,680 | 75,098 | 70,000,000 |
-| Reduced child: same dimensions, 9 physical claims | 61,741,373 | 85,535 | 70,000,000 |
-| Reduced release: 8 assets, 16 members, 9 physical claims | 49,018,410 | 32,985 | 70,000,000 |
-| Reduced rights: 10 changed rights, 8 assets, 16 members, maximum-length scripts | 50,019,528 | 14,600 | 70,000,000 |
+| Full-consent materialisation: 8 assets, 4 children, 16 members, maximum-length scripts | 51,988,923 | 75,098 | 70,000,000 |
+| Reduced child: same dimensions, 9 physical claims | 61,243,393 | 85,535 | 70,000,000 |
+| Reduced release: 8 assets, 16 members, 9 physical claims | 48,121,086 | 32,985 | 70,000,000 |
+| Reduced rights: 10 changed rights, 8 assets, 16 members, maximum-length scripts | 48,698,490 | 14,600 | 70,000,000 |
 
 Each compact proof carries at most 64 strictly descending sibling pairs over
 a depth-256 tree. Reduced physical paths admit at most 9 changed claims;
@@ -186,7 +192,7 @@ completed on a development node; source freshness and budget qualification are
 recorded separately by the candidate runner. See the [migration record](unified-protocol-migration.md)
 for exact results and clean-candidate acceptance. Updated Fiber scripts require
 that same current matrix on the actual shared RPC and
-retain real Bruno/Agent receipts. A complete fresh Fiber run was not executed
+retain real Bruno/Payment Gateway receipts. A complete fresh Fiber run was not executed
 in this update. An external-party Factory child is valid custody; admission
 through a provider's parent-right reservation still has separate owner and
 liquidity requirements.

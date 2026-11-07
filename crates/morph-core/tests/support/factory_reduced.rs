@@ -39,7 +39,7 @@ pub fn fixture_with_unlisted_change(
         .enumerate()
         .map(|(i, k)| FactoryParticipantKey {
             participant: [i as u8 + 1; 32],
-            pubkey_sec1: k.verifying_key().to_encoded_point(true).as_bytes().to_vec(),
+            pubkey_sec1: k.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
         })
         .collect();
     let type_script = script(&[], 33);

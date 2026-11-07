@@ -28,7 +28,7 @@ tradeoffs are recorded in [the architecture analysis](architecture-profile-strat
 | Reduced Factory | Sole current rights/release/deposit/child frame; one touched member and localized compact proofs | Host/proof/VM negatives, native withheld-consent escape and public peer-proof refresh |
 | Initial recovery | Independent exact-transaction exits precede root/child approval; private child exits stay with their parties | Partial-delivery/export poisoning, restart, same-path handoff and unilateral child finalisation |
 | Splice recovery | One exact-body bridge; offline future-exit export and public reconciliation of withheld receipts | Real removal/admission, asymmetric receipt, canonical handoff and terminal settlement |
-| Agent/Fiber semantics | Current custody, selected asset, liquidity and context evidence | Workspace provider/bridge/adapter tests; cross-stack scripts use the same native matrix |
+| Payment Gateway/Fiber semantics | Current custody, selected asset, liquidity and context evidence | Workspace provider/bridge/adapter tests; cross-stack scripts use the same native matrix |
 | Public consumers | CLI, Hub, SDK, policy and continuous watch use current packages and wire helpers | Fixtures, SDK/UI, watch configuration/service and real reorg correction |
 | Retirement | Old State 346, Factory 302, physical Vault/splice and envelope-kind dispatch are not executable | Explicit old-format VM rejection and source/entrypoint inventory in the coverage ledger |
 | Release | Current eight-ELF manifest, one envelope, portable watch/profile samples and deterministic bundle | Full local CI, manifest/readiness checks and independent extracted-bundle verification |

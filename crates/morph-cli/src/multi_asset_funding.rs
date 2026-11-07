@@ -434,11 +434,7 @@ pub(crate) mod tests {
                 let key = SigningKey::from_slice(&[seed; 32]).unwrap();
                 let signature: Signature = key.sign_prehash(&digest).unwrap();
                 ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 }
             })
@@ -459,8 +455,14 @@ pub(crate) mod tests {
         authorize(package);
     }
     fn fixture() -> (MultiAssetRecoveryPackage, packed::Transaction) {
+        fixture_with_admission(false)
+    }
+    fn fixture_with_admission(admitted: bool) -> (MultiAssetRecoveryPackage, packed::Transaction) {
         let stored = crate::multi_asset_packages::fixture_package().unwrap();
         let mut current = stored.recovery().unwrap();
+        if admitted {
+            current = crate::admission_channel::tests::recovery(current);
+        }
         for (raw, binary) in [
             (
                 &mut current.scripts.state_type,
@@ -628,7 +630,13 @@ pub(crate) mod tests {
         (current, transaction)
     }
     pub(crate) fn draft_fixture() -> RootFundingDraft {
-        let (current, tx) = fixture();
+        draft_fixture_with_admission(false)
+    }
+    pub(crate) fn admitted_draft_fixture() -> RootFundingDraft {
+        draft_fixture_with_admission(true)
+    }
+    fn draft_fixture_with_admission(admitted: bool) -> RootFundingDraft {
+        let (current, tx) = fixture_with_admission(admitted);
         let raw = tx.witnesses().get(0).unwrap().raw_data();
         let witness = packed::WitnessArgs::from_slice(&raw)
             .unwrap()
@@ -675,11 +683,7 @@ pub(crate) mod tests {
                     let key = SigningKey::from_slice(&[seed; 32]).unwrap();
                     let signature: Signature = key.sign_prehash(&digest).unwrap();
                     ParticipantSignature {
-                        pubkey_sec1: key
-                            .verifying_key()
-                            .to_encoded_point(true)
-                            .as_bytes()
-                            .to_vec(),
+                        pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                         signature: signature.to_bytes().to_vec(),
                     }
                 })
@@ -1098,11 +1102,7 @@ pub(crate) mod root_collection_tests {
                 SignatureMessage::new(
                     digest,
                     &ParticipantSignature {
-                        pubkey_sec1: key
-                            .verifying_key()
-                            .to_encoded_point(true)
-                            .as_bytes()
-                            .to_vec(),
+                        pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                         signature: signature.to_bytes().to_vec(),
                     },
                 )

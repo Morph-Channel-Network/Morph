@@ -14,7 +14,7 @@ const MAX_PACKAGES: usize = 4096;
 /// Wallet authority is used only to create a separate bounded sponsor budget.
 /// Publishing from that budget uses the public sponsor change key.
 pub struct AutoSponsorFunding {
-    pub private_key: String,
+    pub private_key: morph_key_input::SecretString,
     pub capacity: u64,
     pub funding_fee: u64,
 }
@@ -809,7 +809,7 @@ mod tests {
         let mut options = Options {
             contracts_dir: PathBuf::from("contracts"),
             fee_authorization: super::super::multi_asset_operator::FeeAuthorization::Sponsor {
-                change_pubkey: hex::encode(key.verifying_key().to_encoded_point(true).as_bytes()),
+                change_pubkey: hex::encode(key.verifying_key().to_sec1_point(true).as_bytes()),
             },
             fee_out_point: String::new(),
             store_dir: PathBuf::from("packages"),
@@ -827,7 +827,7 @@ mod tests {
             watch_policy: Some(path.clone()),
             alert_webhook_url: None,
             auto_fund_sponsor: Some(AutoSponsorFunding {
-                private_key: hex::encode([1; 32]),
+                private_key: hex::encode([1; 32]).into(),
                 capacity: policy.max_auto_sponsor_capacity,
                 funding_fee: 1,
             }),
@@ -872,7 +872,7 @@ mod tests {
                 .into_iter()
                 .map(|v| SigningKey::from_slice(&[v; 32]).unwrap())
                 .find(|key| {
-                    key.verifying_key().to_encoded_point(true).as_bytes() == member.pubkey_sec1
+                    key.verifying_key().to_sec1_point(true).as_bytes() == member.pubkey_sec1
                 })
                 .unwrap();
             let signature: Signature = key.sign_prehash(&digest).unwrap();

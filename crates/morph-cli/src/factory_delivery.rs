@@ -28,8 +28,8 @@ pub(crate) enum DeliveryCommand {
         store_dir: PathBuf,
         #[arg(long)]
         receipt: PathBuf,
-        #[arg(long, env = "MORPH_CHANNEL_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     /// Add one verified public possession receipt to the exact parent request.
     Attach {
@@ -170,10 +170,10 @@ mod tests {
             request: request_path.clone(),
             child_index: 0,
             package: package.to_path_buf(),
-            local_pubkey: canonical_hex(key.verifying_key().to_encoded_point(true).as_bytes()),
+            local_pubkey: canonical_hex(key.verifying_key().to_sec1_point(true).as_bytes()),
             store_dir: store.to_path_buf(),
             receipt: receipt.to_path_buf(),
-            private_key: hex::encode([1; 32]),
+            private_key: hex::encode([1; 32]).into(),
         };
         // A complete but foreign exit is rejected before store creation.
         let foreign = dir.join("foreign.json");
@@ -259,10 +259,10 @@ mod tests {
                 request: current.clone(),
                 child_index: 0,
                 package: package_path.clone(),
-                local_pubkey: canonical_hex(key.verifying_key().to_encoded_point(true).as_bytes()),
+                local_pubkey: canonical_hex(key.verifying_key().to_sec1_point(true).as_bytes()),
                 store_dir: dir.join(format!("child-{seed}")),
                 receipt: receipt.clone(),
-                private_key: hex::encode([seed; 32]),
+                private_key: hex::encode([seed; 32]).into(),
             })
             .unwrap();
             let stored = PathBuf::from(received["private_recovery"].as_str().unwrap());

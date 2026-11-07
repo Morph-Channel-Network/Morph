@@ -16,7 +16,7 @@ The gate tests coexistence of two separate systems:
   RPC endpoint.
 - Fiber then runs channel and external-funding acceptance on the same running
   devnet.
-- A fresh Fiber `router-pay` topology carries Morph Agent x402, Biscuit, and
+- A fresh Fiber `router-pay` topology carries Morph Payment Gateway x402, Biscuit, and
   fair-exchange payments from node1 through node2 to node3.
 
 This is deliberately stricter than a static compatibility document. It binds
@@ -106,7 +106,7 @@ The production coexistence gate:
 6. runs Fiber's required external-funding restart regression;
 7. starts a fresh `e2e/router-pay` three-node topology and passes its Bruno
    suite;
-8. runs two real Morph Agent payments over that route, covering x402 terminal
+8. runs two real Morph Payment Gateway payments over that route, covering x402 terminal
    settlement/Biscuit issuance and hash-locked fair exchange.
 
 ### `fiber`
@@ -168,7 +168,7 @@ Key files:
 - `fiber-coexistence-genesis.json`: independent observation of the same Fiber genesis;
 - `morph-stateful/scenarios/`: strict current stateful ledger;
 - `morph-stateful/scenarios/smoke/`: five actual current reports, recovery artifacts, captured ELFs and manifest.
-- `morph-agent-fiber-e2e/`: Agent result, no-secret manifest, and encrypted
+- `morph-payment-gateway-fiber-e2e/`: Payment Gateway result, no-secret manifest, and encrypted
   payer/payee stores from the three-node route.
 
 ## Business-Flow And Security Audit
@@ -202,8 +202,8 @@ For Fiber, `coexistence` requires:
 
 - `e2e/external-funding-open`
 - `e2e/external-funding-open/restart`
-- `e2e/router-pay` as the real Morph Agent routing substrate
-- Morph Agent x402/credential and fair-exchange payments over node1 -> node2 ->
+- `e2e/router-pay` as the real Morph Payment Gateway routing substrate
+- Morph Payment Gateway x402/credential and fair-exchange payments over node1 -> node2 ->
   node3
 
 The `full` gate additionally requires:
@@ -308,8 +308,8 @@ default key exists for a production network.
 ## Current Boundary
 
 This gate proves same-devnet coexistence, strict scenario compatibility, and
-Morph Agent application flows over real Fiber multi-hop routing. The routed
-channels in that Agent test are Fiber-native. It does not claim that Morph
+Morph Payment Gateway application flows over real Fiber multi-hop routing. The routed
+channels in that Payment Gateway test are Fiber-native. It does not claim that Morph
 Factory rights or materialised bilateral channels are already Fiber public
 graph edges; that remains the external-edge hook in the integration plan.
 
@@ -325,7 +325,7 @@ confirmation, induced rollback/republication, measured challenge-window
 components and stopped-service health. It snapshots the CLI/ELFs used by the
 run. See [the reliability runbook](runbooks/current-publication-reliability.md).
 
-Fiber provider-route evidence is explicitly scoped: Agent manifests record
+Fiber provider-route evidence is explicitly scoped: Payment Gateway manifests record
 `proof_scope: "fiber_provider_route"` and `morph_custody_backing_proven: false`.
 Actual x402/credential/fair-exchange traffic remains required, but it does not
 prove a Morph-backed routed channel. Missing Fiber runtime/dependencies,

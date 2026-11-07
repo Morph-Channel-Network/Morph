@@ -456,8 +456,7 @@ pub(crate) fn sdk_packet_fixture() -> Value {
                     let key = (1u8..=2)
                         .map(|seed| SigningKey::from_slice(&[seed; 32]).unwrap())
                         .find(|key| {
-                            key.verifying_key().to_encoded_point(true).as_bytes()
-                                == member.pubkey_sec1
+                            key.verifying_key().to_sec1_point(true).as_bytes() == member.pubkey_sec1
                         })
                         .unwrap();
                     let signature: Signature = key
@@ -724,11 +723,7 @@ mod tests {
             .unwrap();
         let authorization = FactoryParticipantSignature {
             participant: [1; 32],
-            pubkey_sec1: key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .to_vec(),
+            pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
             signature: signature.to_bytes().to_vec(),
         };
         let receipt = FactorySignatureReceipt::new(&request, &authorization).unwrap();

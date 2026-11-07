@@ -25,6 +25,8 @@ pub(crate) struct PrepareOptions {
     #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
     pub contracts_dir: PathBuf,
     #[arg(long)]
+    pub admission_config: PathBuf,
+    #[arg(long)]
     pub policy: PathBuf,
     #[arg(long)]
     pub max_fee: u64,
@@ -42,13 +44,15 @@ pub(crate) struct WalletSignOptions {
     #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
     pub contracts_dir: PathBuf,
     #[arg(long)]
+    pub admission_config: PathBuf,
+    #[arg(long)]
     pub policy: PathBuf,
     #[arg(long)]
     pub max_fee: u64,
     #[arg(long)]
     pub store_dir: PathBuf,
-    #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-    pub private_key: String,
+    #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+    pub private_key: morph_key_input::SecretString,
 }
 #[derive(Debug, clap::Args)]
 pub(crate) struct SubmitOptions {
@@ -58,6 +62,8 @@ pub(crate) struct SubmitOptions {
     pub transaction: PathBuf,
     #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
     pub contracts_dir: PathBuf,
+    #[arg(long)]
+    pub admission_config: PathBuf,
     #[arg(long)]
     pub policy: PathBuf,
     #[arg(long)]
@@ -78,6 +84,8 @@ pub(crate) struct ActivateOptions {
     #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
     pub contracts_dir: PathBuf,
     #[arg(long)]
+    pub admission_config: PathBuf,
+    #[arg(long)]
     pub store_dir: PathBuf,
     #[arg(long)]
     pub fee: u64,
@@ -85,12 +93,14 @@ pub(crate) struct ActivateOptions {
     pub max_fee: u64,
     #[arg(long, default_value_t = 4)]
     pub mine_blocks: u64,
-    #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-    pub private_key: String,
+    #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+    pub private_key: morph_key_input::SecretString,
 }
 
 #[derive(Debug, clap::Subcommand)]
 pub(crate) enum FactoryCommand {
+    /// Pin a no-value experiment's exact policy/code and one shared lifetime ledger.
+    AdmissionConfig(crate::admission::ConfigOptions),
     /// Construct a typed metadata, rights or custody request from current evidence.
     Prepare(crate::factory_transaction::PrepareOptions),
     /// Run actual-node acceptance using independent Factory participant journals.
@@ -109,6 +119,7 @@ pub(crate) enum FactoryCommand {
 
 pub(crate) fn run(rpc: &CkbRpcClient, command: FactoryCommand) -> Result<Value> {
     match command {
+        FactoryCommand::AdmissionConfig(options) => crate::admission::create_config(rpc, options),
         FactoryCommand::Prepare(options) => crate::factory_transaction::prepare(rpc, options),
         FactoryCommand::Smoke(options) => super::factory_acceptance::run(rpc, options),
         FactoryCommand::RootPrepare(options) => prepare(rpc, options),
@@ -240,7 +251,21 @@ pub(crate) fn verify_request_for_review(
                 && !deps.iter().any(|dep| dep.out_point() == previous),
             "duplicate Factory input or consumed code dependency"
         );
+        let custody_input = request.source.as_ref().is_some_and(|source| {
+            previous == point(&source.state_out_point)
+                || source
+                    .vault_outpoints
+                    .iter()
+                    .any(|outpoint| previous == point(outpoint))
+        });
         let cell = load_canonical_live_cell(rpc, previous)?;
+        ensure!(
+            custody_input
+                || (crate::admission::is_standard_wallet(&cell.output.lock())?
+                    && cell.output.type_().to_opt().is_none()
+                    && cell.data.is_empty()),
+            "Factory experiment external inputs must be independent plain standard-wallet cells"
+        );
         check_code(&cell.output, &resolved.cells)?;
         live.push(cell);
     }
@@ -322,6 +347,14 @@ pub(crate) fn prepare(rpc: &CkbRpcClient, options: PrepareOptions) -> Result<Val
     crate::value_limit::read_value_limit_policy(&options.policy)?
         .enforce(&ValueSubject::from_factory_request(&request)?)?;
     let checkpoint = verify_request(rpc, &request, &options.contracts_dir, options.max_fee)?;
+    crate::admission::reserve_native(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &request,
+        false,
+        options.max_fee,
+    )?;
     let packet = StoredFactoryRequest::from_core(&request)?;
     verify_checkpoint(rpc, &checkpoint)?;
     write_private_immutable(&options.output, &serde_json::to_vec_pretty(&packet)?)?;
@@ -399,6 +432,14 @@ fn sign_exact_wallet(
     let transaction = read_transaction(&options.transaction)?;
     request.verify_authorized_transaction(&transaction)?;
     let checkpoint = verify_request(rpc, &request, &options.contracts_dir, options.max_fee)?;
+    crate::admission::reserve_native(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &request,
+        false,
+        options.max_fee,
+    )?;
     let key =
         parse_privkey(&options.private_key).map_err(|_| anyhow!("invalid Factory funding key"))?;
     let public = canonical_hex(&compressed_pubkey(&key)?);
@@ -431,6 +472,11 @@ pub(crate) fn submit(rpc: &CkbRpcClient, options: SubmitOptions) -> Result<Value
     request.verify_authorized_transaction(&tx)?;
     crate::value_limit::read_value_limit_policy(&options.policy)?
         .enforce(&ValueSubject::from_factory_request(&request)?)?;
+    crate::admission::require_reserved(
+        &options.admission_config,
+        &options.contracts_dir,
+        &request,
+    )?;
     if rpc
         .transaction(request.transaction_hash()?.into())?
         .tx_status
@@ -443,6 +489,14 @@ pub(crate) fn submit(rpc: &CkbRpcClient, options: SubmitOptions) -> Result<Value
             "canonical Factory witnesses differ from exact replay"
         );
         crate::factory_artifacts::validate_request_artifacts(&request, &options.contracts_dir)?;
+        if request.target.is_none() {
+            crate::admission::observe(
+                &options.admission_config,
+                &options.contracts_dir,
+                &request,
+                None,
+            )?;
+        }
         let path = options.store_dir.join(format!(
             "factory-{}.tx",
             hex::encode(tx.calc_tx_hash().as_slice())
@@ -454,6 +508,14 @@ pub(crate) fn submit(rpc: &CkbRpcClient, options: SubmitOptions) -> Result<Value
         );
     }
     let checkpoint = verify_request(rpc, &request, &options.contracts_dir, options.max_fee)?;
+    crate::admission::reserve_native(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &request,
+        false,
+        options.max_fee,
+    )?;
     // Only a complete transaction that passes the VM may occupy its immutable
     // submission path. A partial wallet packet cannot poison a later replay.
     let view = tx.clone().into_view();
@@ -470,6 +532,15 @@ pub(crate) fn submit(rpc: &CkbRpcClient, options: SubmitOptions) -> Result<Value
         );
     }
     let report = send_preflighted_and_mine(rpc, view, options.mine_blocks, metrics)?;
+    if report.status == "Committed" && request.target.is_none() {
+        confirm_request(rpc, &request, None, 1, &options.contracts_dir)?;
+        crate::admission::observe(
+            &options.admission_config,
+            &options.contracts_dir,
+            &request,
+            None,
+        )?;
+    }
     Ok(
         json!({"schema":"morph.factory_submission.v1","transaction":path,"broadcast":true,"report":report_json(&report)}),
     )
@@ -619,11 +690,21 @@ pub(crate) fn refresh_custody(
 }
 
 pub(crate) fn activate(rpc: &CkbRpcClient, options: ActivateOptions) -> Result<Value> {
+    crate::admission::validate_fee(
+        &options.admission_config,
+        &options.contracts_dir,
+        options.fee,
+    )?;
     ensure!(
         options.fee > 0 && options.fee <= options.max_fee,
         "invalid Factory activation fee"
     );
     let request = read_request(&options.request)?.decode()?;
+    crate::admission::require_reserved(
+        &options.admission_config,
+        &options.contracts_dir,
+        &request,
+    )?;
     ensure!(
         request.requires_activation()?,
         "Factory request does not require activation"
@@ -744,6 +825,15 @@ pub(crate) fn activate(rpc: &CkbRpcClient, options: ActivateOptions) -> Result<V
         tx_hash: signed.hash().unpack(),
         index: 0,
     };
+    if report.status == "Committed" {
+        validate_live_custody(rpc, &custody, &options.contracts_dir)?;
+        crate::admission::observe(
+            &options.admission_config,
+            &options.contracts_dir,
+            &request,
+            Some(&custody),
+        )?;
+    }
     let stored = StoredFactoryCustody::from_core(&custody)?;
     let custody_path = options.store_dir.join(format!(
         "factory-custody-{}.json",

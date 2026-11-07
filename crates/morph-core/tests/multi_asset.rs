@@ -17,15 +17,10 @@ fn script(code: u8, args: &[u8]) -> Vec<u8> {
 
 fn sign(package: &mut MultiAssetRecoveryPackage) {
     let mut keys = [1u8, 2].map(|value| SigningKey::from_slice(&[value; 32]).unwrap());
-    keys.sort_by_key(|key| {
-        key.verifying_key()
-            .to_encoded_point(true)
-            .as_bytes()
-            .to_vec()
-    });
+    keys.sort_by_key(|key| key.verifying_key().to_sec1_point(true).as_bytes().to_vec());
     let pubkeys = keys
         .each_ref()
-        .map(|key| key.verifying_key().to_encoded_point(true));
+        .map(|key| key.verifying_key().to_sec1_point(true));
     package.state.header.participants_commitment =
         participants_commitment(2, &[pubkeys[0].as_bytes(), pubkeys[1].as_bytes()]);
     let digest = package.state.signing_digest().unwrap();
@@ -36,11 +31,7 @@ fn sign(package: &mut MultiAssetRecoveryPackage) {
             .map(|key| {
                 let signature: Signature = key.sign_prehash(&digest).unwrap();
                 ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 }
             })
@@ -466,7 +457,7 @@ fn participant_key(value: u8) -> SigningKey {
 fn participant_pubkey(value: u8) -> Vec<u8> {
     participant_key(value)
         .verifying_key()
-        .to_encoded_point(true)
+        .to_sec1_point(true)
         .as_bytes()
         .to_vec()
 }

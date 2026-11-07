@@ -52,7 +52,7 @@ pub struct HubServeOptions {
     pub state_path: PathBuf,
     pub pubkey: String,
     pub network: MorphNetwork,
-    pub invoice_private_key: Option<String>,
+    pub invoice_private_key: Option<morph_key_input::SecretString>,
     pub ckb_rpc_url: Option<String>,
     pub watch_alert_file: Option<PathBuf>,
     pub ui_dir: PathBuf,
@@ -469,14 +469,14 @@ struct HubModelView {
     factory_authority: &'static str,
     channel_authority: &'static str,
     routing_role: &'static str,
-    agent_role: &'static str,
+    payment_gateway_role: &'static str,
     factory_min_participants: usize,
     factory_max_participants: usize,
     chain_actions_enabled: bool,
     factory_rights_exposed: bool,
     provider_edges_exposed: bool,
     rgbpp_evidence_exposed: bool,
-    agent_receipts_exposed: bool,
+    payment_gateway_receipts_exposed: bool,
 }
 
 #[derive(Serialize)]
@@ -640,14 +640,14 @@ fn hub_model_view() -> HubModelView {
         factory_authority: "factory_state_and_vault",
         channel_authority: "state_and_vault",
         routing_role: "external_optional_provider",
-        agent_role: "application_sidecar",
+        payment_gateway_role: "application_payment_and_access_gateway",
         factory_min_participants: FACTORY_MIN_PARTICIPANTS,
         factory_max_participants: FACTORY_MAX_PARTICIPANTS,
         chain_actions_enabled: false,
         factory_rights_exposed: false,
         provider_edges_exposed: false,
         rgbpp_evidence_exposed: false,
-        agent_receipts_exposed: false,
+        payment_gateway_receipts_exposed: false,
     }
 }
 
@@ -776,20 +776,20 @@ fn listen_host(listen: &str) -> Option<String> {
     Some(host.to_string())
 }
 
-pub fn serve(options: HubServeOptions) -> Result<()> {
+pub fn serve(mut options: HubServeOptions) -> Result<()> {
     let auth_token = parse_hub_auth_token(options.auth_token)?;
     let cors_origin = normalise_cors_origin(options.cors_origin)?;
     let invoice_signing_key = options
         .invoice_private_key
-        .as_deref()
-        .map(|value| parse_signing_key(value, "--invoice-private-key"))
+        .take()
+        .map(|value| parse_signing_key(&value, "--invoice-private-key-file"))
         .transpose()?;
     if let Some(signing_key) = &invoice_signing_key {
         let signing_pubkey = hex::encode(signing_key_pubkey_sec1(signing_key));
         let configured_pubkey = canonical_pubkey(&options.pubkey)?;
         ensure!(
             signing_pubkey == configured_pubkey,
-            "--invoice-private-key must derive the same compressed public key as --pubkey"
+            "--invoice-private-key-file must derive the same compressed public key as --pubkey"
         );
     }
     ensure!(
@@ -1640,7 +1640,7 @@ impl HubServer {
             ("POST", "/api/invoices") => self.mutate(request_id, |store| {
                 let payee_signing_key = self.invoice_signing_key.as_ref().ok_or_else(|| {
                     anyhow!(
-                        "invoice signing is disabled; restart Morph Hub with --invoice-private-key to create signed invoices"
+                        "invoice signing is disabled; restart Morph Hub with --invoice-private-key-file to create signed invoices"
                     )
                 })?;
                 let body: CreateInvoiceRequest = parse_body(&request.body)?;
@@ -2771,15 +2771,17 @@ fn parse_pubkey_bytes(value: &str) -> Result<[u8; 33]> {
 fn parse_signing_key(value: &str, label: &str) -> Result<SigningKey> {
     let value = value.trim();
     ensure!(!value.is_empty(), "{label} must not be empty");
-    let raw = hex::decode(value.strip_prefix("0x").unwrap_or(value))
-        .with_context(|| format!("{label} must be hex encoded"))?;
+    let raw = zeroize::Zeroizing::new(
+        hex::decode(value.strip_prefix("0x").unwrap_or(value))
+            .with_context(|| format!("{label} must be hex encoded"))?,
+    );
     ensure!(raw.len() == 32, "{label} must be 32 bytes");
     SigningKey::from_slice(&raw)
         .map_err(|err| anyhow!("{label} is not a valid secp256k1 private key: {err:?}"))
 }
 
 fn signing_key_pubkey_sec1(signing_key: &SigningKey) -> [u8; 33] {
-    let encoded = signing_key.verifying_key().to_encoded_point(true);
+    let encoded = signing_key.verifying_key().to_sec1_point(true);
     let mut out = [0u8; 33];
     out.copy_from_slice(encoded.as_bytes());
     out
@@ -3762,11 +3764,7 @@ mod tests {
                 let key = SigningKey::from_slice(&[seed; 32]).unwrap();
                 let signature: k256::ecdsa::Signature = key.sign_prehash(&digest).unwrap();
                 morph_core::ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 }
             })
@@ -4986,9 +4984,7 @@ mod tests {
         let invoice = MorphInvoice::new_signed(
             NewMorphInvoice {
                 network: MorphNetwork::Devnet,
-                payee_node_id: blake2b256(
-                    payee_key.verifying_key().to_encoded_point(true).as_bytes(),
-                ),
+                payee_node_id: blake2b256(payee_key.verifying_key().to_sec1_point(true).as_bytes()),
                 channel_id: None,
                 asset: MorphAsset::Ckb,
                 amount: 100_000_000,
@@ -5579,12 +5575,7 @@ mod tests {
         let mut bytes = [0u8; 32];
         bytes[31] = value;
         let signing_key = k256::ecdsa::SigningKey::from_bytes((&bytes).into()).unwrap();
-        hex::encode(
-            signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes(),
-        )
+        hex::encode(signing_key.verifying_key().to_sec1_point(true).as_bytes())
     }
 
     fn signing_key_from_scalar(value: u8) -> k256::ecdsa::SigningKey {

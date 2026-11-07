@@ -29,10 +29,10 @@ export function ModelBoundaryPanel({ model }: ModelBoundaryPanelProps) {
       Icon: Boxes,
     },
     {
-      key: 'agent-receipts',
-      label: 'Agent receipts',
-      detail: model.agent_receipts_exposed ? 'Terminal receipt evidence available' : 'Agent remains a separate application sidecar',
-      exposed: model.agent_receipts_exposed,
+      key: 'payment-gateway-receipts',
+      label: 'Payment Gateway receipts',
+      detail: model.payment_gateway_receipts_exposed ? 'Terminal receipt evidence available' : 'Payment Gateway handles application payments and access',
+      exposed: model.payment_gateway_receipts_exposed,
       Icon: ReceiptText,
     },
   ];

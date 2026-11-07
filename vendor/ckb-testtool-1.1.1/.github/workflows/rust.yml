@@ -1,0 +1,29 @@
+name: Rust
+
+on: [push, pull_request]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Deps
+      run: |
+        wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 19 && rm llvm.sh
+        rustup target add riscv64imac-unknown-none-elf
+    - name: Install Rust components
+      run: rustup component add rustfmt clippy
+    - name: Check format
+      run: cargo fmt --all -- --check
+    - name: Run cargo clippy
+      run: cargo clippy --all
+    - name: Build
+      run: cargo build
+    - name: Run cargo test
+      run: cargo test --all
+    - name: Build native-simulator test contracts
+      run: cd tests/test-contracts && make build
+    - name: Run cargo test (with native-simulator)
+      run: cargo test --features="native-simulator" --all

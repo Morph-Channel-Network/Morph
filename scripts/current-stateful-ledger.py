@@ -17,7 +17,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 IMPLEMENTATION_PATHS = [
-    "crates", "contracts", "scripts", "sdk", "ui", ".github", "Cargo.toml",
+    "crates", "contracts", "scripts", "sdk", "ui", "vendor", ".github", "Cargo.toml",
     "Cargo.lock", "Makefile", "rust-toolchain.toml", "AGENTS.md",
 ]
 
@@ -239,8 +239,8 @@ def generate(run, cli):
 
     factory_transitions = factory["transitions"]
     for name, identifier, reserve, business, quantities in [
-        ("escape", "factory_reduced_escape", 239, 61, ["3000000000", "13000000000"]),
-        ("deposit", "factory_deposit", 639, 61, ["43000000000", "13000000000"]),
+        ("escape", "factory_reduced_escape", 239, 92, ["6100000000", "13000000000"]),
+        ("deposit", "factory_deposit", 639, 92, ["46100000000", "13000000000"]),
     ]:
         entry = factory_transitions[name]
         review_path, review = evidence.inspect(f"factory-{name}", "inspect-factory-request", entry["request"])
@@ -283,7 +283,7 @@ def generate(run, cli):
     for kind, identifier, reserve, business in [
         ("reduced", "factory_children", 180, 20),
         ("retained", "factory_retained_materialisation", 180, 20),
-        ("terminal", "factory_terminal_materialisation", 279, 21),
+        ("terminal", "factory_terminal_materialisation", 279, 52),
     ]:
         child = factory_transitions["child"][kind]
         base = f"/transitions/child/{kind}"
@@ -299,6 +299,11 @@ def generate(run, cli):
         evidence.add(scenario, "state", factory_path, base + "/finalise/status", "Committed")
         evidence.add(scenario, "authority", factory_path, base + "/initial_exit_required_before_parent_vote", True)
         evidence.add(scenario, "authority", factory_path, base + "/private_exit_signatures_absent_from_parent", True)
+        for field in ("same_request_reservation_idempotent", "complete_history_revalidated_after_reload"):
+            evidence.add(scenario, "persistence", factory_path, base + "/admission/" + field, True)
+        expected_lifetime = {"reduced": 1, "retained": 2, "terminal": 3}[kind]
+        evidence.add(scenario, "authority", factory_path, base + "/admission/lifetime_child_reservations", expected_lifetime)
+        evidence.add(scenario, "authority", factory_path, base + "/admission/active_factories", 0 if kind == "terminal" else 1)
         evidence.add(scenario, "state", factory_path, base + "/latest_package_watch/publication/canonical_confirmed", True)
         for index in range(2):
             saved_path, saved = evidence.inspect(f"child-{kind}-exit-{index}", "validate-multi-asset-package", child["private_exits"][index])
@@ -313,11 +318,20 @@ def generate(run, cli):
         evidence.add(scenario, "assets", factory_path, base + "/external_child_carrier", "49600000000")
         evidence.add(scenario, "authority", review_path, "/delivery_count", 2)
         if kind == "terminal":
+            replay = base + "/parent/canonical_reorg_replay/admission/"
+            evidence.add(scenario, "reorg", factory_path, replay + "orphaned/active_factories", 1)
+            evidence.add(scenario, "reorg", factory_path, replay + "replayed/active_factories", 0)
+            for observation in ("orphaned", "replayed"):
+                evidence.add(scenario, "reorg", factory_path,
+                             replay + observation + "/lifetime_child_reservations", 3)
+            evidence.add(scenario, "reorg", factory_path, replay + "lifetime_children_preserved", True)
+            evidence.add(scenario, "authority", factory_path, "/operator_checks/admission/lifetime_child_reservations", 3)
+            evidence.add(scenario, "authority", factory_path, "/operator_checks/admission/active_factories", 0)
             evidence.add(scenario, "state", factory_path, base + "/retained_factory/retired", True)
             evidence.add(scenario, "assets", factory_path, base + "/retained_factory/carrier_refund/capacity", "50000000000")
             evidence.add(scenario, "state", review_path, "/target", None)
         else:
-            retained_assets = ckb_assets(459, 41) if kind == "reduced" else ckb_assets(279, 21)
+            retained_assets = ckb_assets(459, 72) if kind == "reduced" else ckb_assets(279, 52)
             evidence.add(scenario, "assets", review_path, "/target/assets", retained_assets)
         evidence.keep(scenario, child["parent"]["request"], child["parent"]["transaction"])
         scenarios.append(scenario)

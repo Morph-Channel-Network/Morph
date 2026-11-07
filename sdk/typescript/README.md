@@ -1,13 +1,18 @@
-# Morph TypeScript SDK
+# Morph Payment Gateway TypeScript SDK
 
 Build and test with `npm ci && npm test`. The public JSON codecs accept only
 current unpublished formats, with canonical hex and decimal strings for
 u64/u128 quantities.
 
+`@morph-network/payment-gateway-sdk` exports `MorphPaymentGatewayClient` for the
+standalone Morph Payment Gateway HTTP API. HTTP failures expose
+`MorphPaymentGatewayError` with the response status in its `status` property.
+`MorphHubClient` supports the Morph Hub API and public protocol inspectors.
+
 ## Current Factory public packets
 
 ```ts
-import {inspectFactoryRequest, inspectFactorySignature} from '@morph-network/agent-sdk';
+import {inspectFactoryRequest, inspectFactorySignature} from '@morph-network/payment-gateway-sdk';
 
 const review = inspectFactoryRequest(publicRequest);
 console.log(review.request_id, review.signing_digest, review.missing_deliveries);

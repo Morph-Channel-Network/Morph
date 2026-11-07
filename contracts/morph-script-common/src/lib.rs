@@ -6,6 +6,9 @@ use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
 
+#[cfg(test)]
+mod crypto_compatibility;
+
 pub mod factory_multi_asset;
 pub mod multi_asset;
 pub mod multi_asset_conditional;

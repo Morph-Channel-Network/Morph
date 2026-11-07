@@ -31,6 +31,8 @@ pub(crate) enum FactorySessionCommand {
         policy: PathBuf,
         #[arg(long)]
         max_fee: u64,
+        #[arg(long)]
+        admission_config: PathBuf,
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
         contracts_dir: PathBuf,
     },
@@ -61,8 +63,8 @@ pub(crate) enum FactorySessionCommand {
         rpc_url: String,
         #[arg(long)]
         request_id: String,
-        #[arg(long, env = "MORPH_CHANNEL_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     AddSignature {
         #[arg(long)]
@@ -122,6 +124,8 @@ struct FactorySession {
     contracts_dir: PathBuf,
     policy: PathBuf,
     max_fee: u64,
+    admission_config: PathBuf,
+    admission_config_hash: Bytes32,
 }
 impl FactorySession {
     fn validate(&self) -> Result<()> {
@@ -130,7 +134,9 @@ impl FactorySession {
             "unsupported Factory signer journal schema"
         );
         ensure!(
-            self.contracts_dir.is_absolute() && self.policy.is_absolute(),
+            self.contracts_dir.is_absolute()
+                && self.policy.is_absolute()
+                && self.admission_config.is_absolute(),
             "Factory authority configuration must use absolute paths"
         );
         ensure!(self.max_fee > 0, "Factory maximum fee must be positive");
@@ -146,10 +152,19 @@ impl FactorySession {
         );
         write_private_atomic(path, &bytes)
     }
+    fn verify_admission_binding(&self) -> Result<()> {
+        ensure!(
+            blake2b256(&std::fs::read(&self.admission_config)?) == self.admission_config_hash,
+            "Factory admission configuration changed; retain the original shared pilot authority"
+        );
+        Ok(())
+    }
     fn admit(&self, request: &FactorySigningRequest) -> Result<()> {
+        self.verify_admission_binding()?;
         crate::value_limit::read_value_limit_policy(&self.policy)?
             .enforce(&ValueSubject::from_factory_request(request)?)?;
-        crate::factory_artifacts::validate_request_artifacts(request, &self.contracts_dir)
+        crate::factory_artifacts::validate_request_artifacts(request, &self.contracts_dir)?;
+        crate::admission::require_reserved(&self.admission_config, &self.contracts_dir, request)
     }
     fn inspect(&self) -> Result<Value> {
         self.validate()?;
@@ -221,6 +236,7 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
         local_participant,
         policy,
         max_fee,
+        admission_config,
         contracts_dir,
     } = command
     {
@@ -231,12 +247,16 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
             request.members()?,
             hash(&local_participant)?,
         )?;
+        let admission_config = std::fs::canonicalize(admission_config)?;
+        let admission_config_hash = blake2b256(&std::fs::read(&admission_config)?);
         let session = FactorySession {
             schema: SCHEMA.to_string(),
             journal,
             contracts_dir: std::fs::canonicalize(contracts_dir)?,
             policy: std::fs::canonicalize(policy)?,
             max_fee,
+            admission_config,
+            admission_config_hash,
         };
         session.admit(&request)?;
         session.save(path)?;
@@ -309,6 +329,14 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
                 &session.contracts_dir,
                 session.max_fee,
             )?;
+            crate::admission::reserve_native(
+                &rpc,
+                &session.admission_config,
+                &session.contracts_dir,
+                &request,
+                false,
+                session.max_fee,
+            )?;
             let participant = session.journal.local_participant();
             let receipt = sign_reserved(&mut session, path, &id, |reservation| {
                 crate::devnet::factory_operator::verify_checkpoint(&rpc, &guard)?;
@@ -359,6 +387,7 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
             state_out_point,
             min_confirmations,
         } => {
+            session.verify_admission_binding()?;
             let id = hash(&request_id)?;
             let request = session.journal.request(&id)?.clone();
             let endpoint = crate::multi_asset_session_chain::rpc_endpoint(&rpc_url)?;
@@ -369,6 +398,12 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
                 state_out_point.as_deref(),
                 min_confirmations,
                 &session.contracts_dir,
+            )?;
+            crate::admission::observe(
+                &session.admission_config,
+                &session.contracts_dir,
+                &request,
+                observed.as_ref(),
             )?;
             for signature in signatures {
                 session.journal.record_signature(&id, signature)?;
@@ -385,6 +420,7 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
             min_confirmations,
             full_request,
         } => {
+            session.verify_admission_binding()?;
             let request = full_request
                 .as_deref()
                 .map(read_request)
@@ -411,6 +447,11 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
                     full_request: request.as_ref(),
                 },
             )?;
+            crate::admission::observe_custody(
+                &session.admission_config,
+                &session.contracts_dir,
+                &custody,
+            )?;
             session.journal.observe_canonical(custody, rights)?;
             session.save(path)?;
             session.inspect()
@@ -421,6 +462,7 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
             context,
             min_confirmations,
         } => {
+            session.verify_admission_binding()?;
             let context: crate::factory_context::FactoryPreparationContext =
                 read_bounded_json(&context, 4 * 1024 * 1024)?;
             let (custody, members, rights) = context.decode()?;
@@ -444,6 +486,11 @@ pub(crate) fn run(path: &Path, command: FactorySessionCommand) -> Result<Value> 
             crate::devnet::factory_operator::verify_checkpoint(&rpc, &checkpoint)?;
             // This changes observed chain facts and keeps all earlier votes,
             // reservations and alternative approvals in the same journal.
+            crate::admission::observe_custody(
+                &session.admission_config,
+                &session.contracts_dir,
+                &custody,
+            )?;
             session.journal.observe_canonical(custody, rights)?;
             session.save(path)?;
             session.inspect()
@@ -488,7 +535,7 @@ mod tests {
                     SigningKey::from_slice(&[seed; 32])
                         .unwrap()
                         .verifying_key()
-                        .to_encoded_point(true)
+                        .to_sec1_point(true)
                         .as_bytes(),
                 ),
             })
@@ -536,17 +583,23 @@ mod tests {
         )
         .unwrap();
         for seed in 1..=count {
-            run(
-                &directory.0.join("authority").join(format!("{seed}.json")),
-                FactorySessionCommand::Init {
-                    request: request_path.clone(),
-                    local_participant: canonical_hex(&[seed; 32]),
-                    policy: policy.clone(),
-                    max_fee: 100_000_000,
-                    contracts_dir: contracts.clone(),
-                },
-            )
-            .unwrap();
+            let session = FactorySession {
+                schema: SCHEMA.to_string(),
+                journal: FactorySignerJournal::new_root(
+                    request.clone(),
+                    request.members().unwrap(),
+                    [seed; 32],
+                )
+                .unwrap(),
+                contracts_dir: contracts.clone(),
+                policy: policy.clone(),
+                max_fee: 100_000_000,
+                admission_config: directory.0.join("unused-core-test-admission.json"),
+                admission_config_hash: [1; 32],
+            };
+            session
+                .save(&directory.0.join("authority").join(format!("{seed}.json")))
+                .unwrap();
         }
         (directory, request)
     }
@@ -555,11 +608,7 @@ mod tests {
         let signature: Signature = key.sign_prehash(&reservation.signing_digest).unwrap();
         FactoryParticipantSignature {
             participant: [seed; 32],
-            pubkey_sec1: key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes()
-                .to_vec(),
+            pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
             signature: signature.to_bytes().to_vec(),
         }
     }

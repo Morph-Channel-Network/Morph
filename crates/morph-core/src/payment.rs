@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    AgentAsset, AgentError, BackendSettlementEvidence, Bytes32, ChannelParticipant,
+    BackendSettlementEvidence, Bytes32, ChannelParticipant, GatewayAsset, GatewayError,
     MorphStateSettlementEvidence, MultiAssetBackendError, MultiAssetChannelBackend,
     MultiAssetError, MultiAssetProposal, MultiAssetSettlement, MultiAssetSettlementCapability,
     MultiAssetSigningReservation, ParticipantSignature, PaymentIntent, VaultAsset, blake2b256,
@@ -262,12 +262,12 @@ impl ChannelPayments {
         }
         let chain_id = backend.current().state.header.chain_id;
         let asset = match &intent.asset {
-            AgentAsset::Ckb { ckb_genesis_hash } if *ckb_genesis_hash == chain_id => None,
-            AgentAsset::Xudt {
+            GatewayAsset::Ckb { ckb_genesis_hash } if *ckb_genesis_hash == chain_id => None,
+            GatewayAsset::Xudt {
                 ckb_genesis_hash,
                 type_script_hash,
             } if *ckb_genesis_hash == chain_id => Some(*type_script_hash),
-            AgentAsset::Rgbpp(asset) if asset.ckb_genesis_hash == chain_id => {
+            GatewayAsset::Rgbpp(asset) if asset.ckb_genesis_hash == chain_id => {
                 if !intent
                     .required_rgbpp_proof_commitment
                     .is_some_and(|commitment| {
@@ -584,7 +584,7 @@ pub enum PaymentError {
     #[error("conditional settlement requires its explicit batch lifecycle")]
     ConditionalLifecycleRequired,
     #[error(transparent)]
-    Agent(#[from] AgentError),
+    Gateway(#[from] GatewayError),
     #[error(transparent)]
     Agreement(#[from] MultiAssetBackendError),
     #[error(transparent)]
