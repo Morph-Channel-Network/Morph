@@ -773,3 +773,28 @@ startup and rejected files. The SDK's
 as its Fiber harness and runs that harness as a subprocess against exposed
 permissions, symlinks, directories, FIFOs, oversized/malformed files, invalid
 scalars and retired raw-key input; these cases fail before RPC configuration.
+
+## Cross-Batch payout reuse (current custody fix, 2026-11-07)
+
+- Issue: distinct Batch lock groups each verified their own input capacity but
+  matched their payouts against every transaction output. Two groups could
+  accept the same pair of participant outputs, burning a full Batch as fees or
+  redirecting its value to an unrelated output. CKB-VM tests reproduce both
+  attacks with distinct Batch args (different channels) referencing the same
+  executable.
+- Fix: the Batch Lock requires its sole group input to be transaction input 0
+  and returns `WrongGroupShape` (error code 8) otherwise. No second Batch group
+  can occupy that position, independently of its code hash or hash type. The
+  existing group-cardinality check still rejects two inputs with the same lock.
+- Compatibility: the host builders already place the Batch at input 0 with
+  independent fee inputs after it. Descriptor, witness and package bytes are
+  unchanged; only the Batch ELF identity changes, so the release manifest was
+  regenerated. Custom builders must use that input order and resolve separate
+  Batches in separate transactions.
+- Negative tests: `current_conditional_batch_rejects_cross_group_payout_reuse`
+  (shared payouts as fee and stolen-surplus redirect) and
+  `current_conditional_batch_requires_leading_input_and_allows_trailing_fee_input`
+  (non-leading Batch input).
+- Legitimate control: the same leading-input test proves a trailing independent
+  fee input and its change remain valid. This boundary prevents Batch-to-Batch
+  reuse; it does not establish arbitrary cross-contract settlement composition.

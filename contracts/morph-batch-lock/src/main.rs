@@ -55,7 +55,7 @@ fn main() -> Result<()> {
     if u64::from_le_bytes(state_number_bytes) == 0 {
         return Err(ScriptError::ConditionalBatchLockMismatch);
     }
-    require_single_plain_group_input()?;
+    require_single_plain_leading_group_input()?;
 
     let witness_args = load_witness_args(0, Source::GroupInput)
         .map_err(|_| ScriptError::ConditionalResolutionEncoding)?;
@@ -83,7 +83,15 @@ fn main() -> Result<()> {
 }
 
 #[cfg(target_arch = "riscv64")]
-fn require_single_plain_group_input() -> Result<()> {
+fn require_single_plain_leading_group_input() -> Result<()> {
+    // Payouts are matched transaction-wide. Reserve input zero for this Batch so
+    // another Batch group cannot reuse them, even through a different code hash
+    // or hash type. Independent fee inputs may follow the Batch input.
+    let group_input = load_input(0, Source::GroupInput).map_err(|_| ScriptError::Encoding)?;
+    let first_input = load_input(0, Source::Input).map_err(|_| ScriptError::Encoding)?;
+    if group_input != first_input {
+        return Err(ScriptError::WrongGroupShape);
+    }
     match load_cell_capacity(1, Source::GroupInput) {
         Err(SysError::IndexOutOfBound) | Err(SysError::ItemMissing) => {}
         Err(_) => return Err(ScriptError::Encoding),

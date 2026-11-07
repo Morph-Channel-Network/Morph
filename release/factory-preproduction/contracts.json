@@ -45,8 +45,8 @@
       "name": "morph-batch-lock",
       "file": "morph-batch-lock",
       "deployment_scope": "controlled_devnet",
-      "size_bytes": 43808,
-      "ckb_data_hash": "0xd1177661ccb04bd7483bda553051602d5971a783faf418590979c1e88c84da30"
+      "size_bytes": 44160,
+      "ckb_data_hash": "0xb565ee1f9518a90aa2908e99418dbe9b8d563701349dd20bce33558a85145bf5"
     },
     {
       "name": "morph-sponsor-lock",

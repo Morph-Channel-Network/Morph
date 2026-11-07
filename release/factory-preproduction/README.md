@@ -13,7 +13,7 @@ bounded asset, Vault-set, persistence, signing and recovery foundation:
 | Factory State | 306 bytes; two to sixteen committed members |
 | Full Factory authorization | Exact-transaction N-of-N root, update, custody and materialisation |
 | Reduced Factory authorization | One touched member; localized compact proofs; independent asset conservation |
-| CKB conditions | At most eight preimage/refund transfers; separate Batch executor |
+| CKB conditions | At most eight preimage/refund transfers; separate Batch executor at transaction input 0 |
 | Batch identity | 104 bytes, including the exact funding context |
 | Child recovery | Independent initial-exit journals and public possession receipts; private exits stay with child parties |
 | Operational recovery | Stable journals, canonical reconciliation, same-path handoff, reorg-aware watch service |
