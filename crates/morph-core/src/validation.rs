@@ -390,7 +390,7 @@ fn factory_sparse_entries(
             )
         })
         .collect::<Vec<_>>();
-    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    entries.sort_by_key(|entry| entry.0);
     if entries.windows(2).any(|window| window[0].0 == window[1].0) {
         return Err(MorphError::FactoryDuplicateRight);
     }

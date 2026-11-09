@@ -163,7 +163,7 @@ fn evidence_from_recovery(
             node_id: blake2b256(&participant_pubkey(key)),
             settlement_lock_hash: recovery.settlement.participant_lock_hashes[usize::from(key - 1)],
         }),
-        asset: AgentAsset::Ckb {
+        asset: GatewayAsset::Ckb {
             ckb_genesis_hash: [1; 32],
         },
         recovery,
@@ -178,11 +178,11 @@ fn evidence_from_recovery(
 
 fn reservation(materialized: &MaterializedChannelEvidence, now: u64) -> FactoryRightReservation {
     let asset_type = match &materialized.asset {
-        AgentAsset::Ckb { .. } => None,
-        AgentAsset::Xudt {
+        GatewayAsset::Ckb { .. } => None,
+        GatewayAsset::Xudt {
             type_script_hash, ..
         } => Some(*type_script_hash),
-        AgentAsset::Rgbpp(asset) => Some(asset.xudt_type_script_hash),
+        GatewayAsset::Rgbpp(asset) => Some(asset.xudt_type_script_hash),
     };
     let right = FactoryRightId {
         participant: materialized.participants[0].node_id,
@@ -240,7 +240,7 @@ fn select_token(materialized: &mut MaterializedChannelEvidence, index: usize) {
     let VaultAsset::Xudt(hash) = materialized.recovery.manifest.vaults[index].asset else {
         panic!("typed fixture")
     };
-    materialized.asset = AgentAsset::Xudt {
+    materialized.asset = GatewayAsset::Xudt {
         ckb_genesis_hash: [1; 32],
         type_script_hash: hash,
     };
@@ -683,14 +683,14 @@ fn native_and_rgbpp_aliases_cannot_double_advertise_the_same_type_balance() {
     let edge = registry
         .activate(native.clone(), &deployment(), 6, 101)
         .unwrap();
-    let AgentAsset::Xudt {
+    let GatewayAsset::Xudt {
         type_script_hash, ..
     } = native.asset
     else {
         unreachable!()
     };
     let mut rgbpp = native;
-    rgbpp.asset = AgentAsset::Rgbpp(RgbppAssetId {
+    rgbpp.asset = GatewayAsset::Rgbpp(RgbppAssetId {
         ckb_genesis_hash: [1; 32],
         xudt_type_script_hash: type_script_hash,
         bitcoin_network: BitcoinNetwork::Regtest,

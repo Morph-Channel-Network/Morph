@@ -28,57 +28,10 @@ pub(crate) fn conditional_package() -> multi_asset_packages::StoredMultiAssetPac
     crate::conditional_packages::fixture_source_package().unwrap()
 }
 
-fn conditional_root_fixture() -> serde_json::Value {
-    let (mut terms, authority, cells, chain) =
-        crate::multi_asset_root_transaction::tests::fixture(0, true);
-    let mut settlement = morph_core::MultiAssetSettlement::decode(
-        &multi_asset_packages::decode_hex(&terms.descriptor_hex, 4096).unwrap(),
-    )
-    .unwrap();
-    settlement.payouts[0].values[0].business_ckb -= 2_000_000_000;
-    let conditional = conditional_package()
-        .recovery()
-        .unwrap()
-        .settlement
-        .capability;
-    let morph_core::MultiAssetSettlementCapability::CkbConditional {
-        batch_code_hash,
-        batch_hash_type,
-        mut batch,
-    } = conditional
-    else {
-        panic!("conditional fixture");
-    };
-    for party in 0..2 {
-        batch.participants[party].settlement_lock_hash = settlement.participant_lock_hashes[party];
-        batch.participants[party].settled_capacity =
-            settlement.payouts[0].values[party].capacity().unwrap();
-    }
-    batch.transfers[0].payer_lock_hash = settlement.participant_lock_hashes[0];
-    settlement.capability = morph_core::MultiAssetSettlementCapability::CkbConditional {
-        batch_code_hash,
-        batch_hash_type,
-        batch,
-    };
-    terms.descriptor_hex = multi_asset_packages::canonical_hex(&settlement.encode().unwrap());
-    let prepared = terms.build(chain, authority, &cells, 100_000_000).unwrap();
-    let document =
-        crate::multi_asset_funding::root_collection_tests::fixture_from_draft(prepared.draft);
-    let source: multi_asset_packages::StoredMultiAssetPackage =
-        serde_json::from_value(document["funding"]["recovery_package"].clone()).unwrap();
-    assert_eq!(
-        document["inspection"]["capability"],
-        source.validate().unwrap().capability
-    );
-    document
-}
-
 #[test]
-fn sdk_fixture_corpus_matches_current_protocol() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/typescript/test/fixtures");
+fn protocol_fixture_corpus_matches_current_protocol() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/protocol");
     let ordinary = multi_asset_packages::fixture_package().unwrap();
-    let conditional = conditional_package();
-    let resolution = crate::conditional_packages::fixture_package().unwrap();
     let fixtures = [
         ("multi-asset.json", serde_json::to_value(&ordinary).unwrap()),
         (
@@ -87,7 +40,7 @@ fn sdk_fixture_corpus_matches_current_protocol() {
         ),
         (
             "multi-asset-update.json",
-            multi_asset_session::sdk_update_fixture(),
+            multi_asset_session::proposal_fixture(),
         ),
         (
             "multi-asset-root.json",
@@ -95,23 +48,11 @@ fn sdk_fixture_corpus_matches_current_protocol() {
         ),
         (
             "multi-asset-splice.json",
-            multi_asset_splice_transaction::tests::sdk_splice_fixture(),
-        ),
-        (
-            "multi-asset-conditional.json",
-            serde_json::json!({"package":conditional,"summary":conditional.validate().unwrap()}),
-        ),
-        (
-            "conditional-batch.json",
-            serde_json::json!({"package":resolution,"summary":resolution.validate().unwrap()}),
-        ),
-        (
-            "multi-asset-conditional-root.json",
-            conditional_root_fixture(),
+            multi_asset_splice_transaction::tests::splice_fixture(),
         ),
         (
             "factory-packets.json",
-            crate::factory_packets::sdk_packet_fixture(),
+            crate::factory_packets::packet_fixture(),
         ),
     ];
     for (name, value) in fixtures {
@@ -125,7 +66,7 @@ fn sdk_fixture_corpus_matches_current_protocol() {
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         assert_eq!(
             recorded, value,
-            "regenerate current synthetic fixtures with MORPH_UPDATE_FIXTURES=1 cargo test -p morph-cli fixture_exports::sdk_fixture_corpus_matches_current_protocol"
+            "regenerate current synthetic fixtures with MORPH_UPDATE_FIXTURES=1 cargo test -p morph-cli fixture_exports::protocol_fixture_corpus_matches_current_protocol"
         );
     }
 }

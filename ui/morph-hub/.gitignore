@@ -1,6 +1,0 @@
-node_modules/
-dist/
-*.tsbuildinfo
-src/*.js
-src/*.d.ts
-!src/vite-env.d.ts

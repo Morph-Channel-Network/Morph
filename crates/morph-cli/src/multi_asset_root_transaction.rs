@@ -276,7 +276,7 @@ pub(crate) mod tests {
         for i in 0..2 {
             let key = k256::ecdsa::SigningKey::from_slice(&[i as u8 + 11; 32]).unwrap();
             terms.funders.push(FundingWallet {
-                pubkey: canonical_hex(key.verifying_key().to_encoded_point(true).as_bytes()),
+                pubkey: canonical_hex(key.verifying_key().to_sec1_point(true).as_bytes()),
                 inputs: (0..count.max(1))
                     .map(|j| FundingInput {
                         tx_hash: canonical_hex(&[40 + i as u8 * 10 + j as u8; 32]),

@@ -117,7 +117,7 @@ pub struct WatchtowerChannelConfig {
 #[derive(Debug, Clone)]
 pub struct WatchtowerRuntimeOptions {
     pub contracts_dir: PathBuf,
-    pub private_key: String,
+    pub private_key: morph_key_input::SecretString,
 }
 
 #[derive(Debug, Clone)]
@@ -1239,7 +1239,7 @@ mod tests {
     fn test_runtime() -> WatchtowerRuntimeOptions {
         WatchtowerRuntimeOptions {
             contracts_dir: PathBuf::from("contracts"),
-            private_key: private_key_hex(1),
+            private_key: private_key_hex(1).into(),
         }
     }
 

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/private-key-files.sh"
 PARENT_DIR="$(cd "$ROOT_DIR/.." && pwd)"
 
 FIBER_DIR="${FIBER_DIR:-$PARENT_DIR/fiber}"
@@ -19,19 +20,19 @@ FIBER_NODE1_RPC_URL="${FIBER_NODE1_RPC_URL:-http://127.0.0.1:21714}"
 FIBER_NODE2_RPC_URL="${FIBER_NODE2_RPC_URL:-http://127.0.0.1:21715}"
 FIBER_NODE3_RPC_URL="${FIBER_NODE3_RPC_URL:-http://127.0.0.1:21716}"
 FIBER_COEXISTENCE_SUITE="${FIBER_COEXISTENCE_SUITE:-e2e/external-funding-open}"
-FIBER_AGENT_ROUTER_SUITE="e2e/router-pay"
+FIBER_PAYMENT_GATEWAY_ROUTER_SUITE="e2e/router-pay"
 FIBER_PERIOD_CHECK_EXPIRY_SUITE="${FIBER_PERIOD_CHECK_EXPIRY_SUITE:-e2e/period-check/force-close-expiry}"
-DEFAULT_FIBER_BRUNO_SUITES="e2e/open-use-close-a-channel e2e/3-nodes-transfer e2e/router-pay e2e/reestablish e2e/shutdown-force e2e/hold-invoice-cancel-failure $FIBER_PERIOD_CHECK_EXPIRY_SUITE e2e/udt e2e/udt-router-pay e2e/watchtower/force-close-after-open-channel e2e/watchtower/force-close-with-pending-tlcs e2e/watchtower/force-close-after-multiple-payments e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower"
-FIBER_BRUNO_SUITES="${FIBER_BRUNO_SUITES:-$DEFAULT_FIBER_BRUNO_SUITES}"
+DEFAULT_FIBER_RUST_SUITES="e2e/open-use-close-a-channel e2e/3-nodes-transfer e2e/router-pay e2e/reestablish e2e/shutdown-force e2e/hold-invoice-cancel-failure $FIBER_PERIOD_CHECK_EXPIRY_SUITE e2e/udt e2e/udt-router-pay e2e/watchtower/force-close-after-open-channel e2e/watchtower/force-close-with-pending-tlcs e2e/watchtower/force-close-after-multiple-payments e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower"
+FIBER_RUST_SUITES="${FIBER_RUST_SUITES:-$DEFAULT_FIBER_RUST_SUITES}"
 FIBER_FUNDING_TX_VERIFICATION_CASES="${FIBER_FUNDING_TX_VERIFICATION_CASES:-remove_change modify_change fund_from_peer missing_inputs}"
 FIBER_ACCEPTANCE_TCP_PORTS="${FIBER_ACCEPTANCE_TCP_PORTS:-8114 8115 21714 21715 21716 8343 8344 8345 8346}"
-BRUNO_CLI_SPEC="${BRUNO_CLI_SPEC:-@usebruno/cli@1.20.0}"
+RUST_RUNNER="$OUT_DIR/bin/morph-xtask"
 RUN_FIBER_RESTART_REGRESSION="1"
 FIBER_STACK_START_ATTEMPTS="${FIBER_STACK_START_ATTEMPTS:-3}"
 # ckb-librocksdb-sys 8.5.4 relies on transitive fixed-width integer includes;
 # modern GCC/Clang require the standard header to be explicit.
 FIBER_CXXFLAGS="${FIBER_CXXFLAGS:--include cstdint}"
-FIBER_STACK_EXTRA_BRU_ARGS=""
+FIBER_STACK_BUILDER_ARGS=""
 MORPH_FIBER_DEPLOYER_KEY_FILE="${MORPH_FIBER_DEPLOYER_KEY_FILE:-$FIBER_DIR/tests/nodes/deployer/ckb/plain_key}"
 MORPH_FIBER_ALICE_KEY_FILE="${MORPH_FIBER_ALICE_KEY_FILE:-$FIBER_DIR/tests/nodes/1/ckb/plain_key}"
 MORPH_FIBER_BOB_KEY_FILE="${MORPH_FIBER_BOB_KEY_FILE:-$FIBER_DIR/tests/nodes/2/ckb/plain_key}"
@@ -58,6 +59,8 @@ fail() {
   printf '[fiber-morph-acceptance] error: %s\n' "$*" >&2
   exit 1
 }
+
+morph_reject_raw_private_keys || fail "use protected private-key file paths"
 
 require_tool() {
   local name="$1"
@@ -223,8 +226,8 @@ fiber_node2_rpc_url=$FIBER_NODE2_RPC_URL
 fiber_node3_rpc_url=$FIBER_NODE3_RPC_URL
 fiber_test_env=$FIBER_TEST_ENV
 fiber_coexistence_suite=$FIBER_COEXISTENCE_SUITE
-fiber_agent_router_suite=$FIBER_AGENT_ROUTER_SUITE
-fiber_bruno_suites=$FIBER_BRUNO_SUITES
+fiber_payment_gateway_router_suite=$FIBER_PAYMENT_GATEWAY_ROUTER_SUITE
+fiber_rust_suites=$FIBER_RUST_SUITES
 fiber_funding_tx_verification_cases=$FIBER_FUNDING_TX_VERIFICATION_CASES
 fiber_acceptance_tcp_ports=$FIBER_ACCEPTANCE_TCP_PORTS
 run_fiber_restart_regression=$RUN_FIBER_RESTART_REGRESSION
@@ -244,10 +247,6 @@ require_devnet_fixture_key_file() {
     fail "$label devnet fixture key file must contain exactly one secp256k1 key: $path"
 }
 
-read_devnet_fixture_key() {
-  tr -d '\r\n' <"$1"
-}
-
 rpc_ready() {
   local url="$1"
   local method="$2"
@@ -255,7 +254,7 @@ rpc_ready() {
   local payload
   payload="$(jq -cn --arg method "$method" --argjson params "$params" \
     '{id:1,jsonrpc:"2.0",method:$method,params:$params}')"
-  curl -fsS -H 'content-type: application/json' -d "$payload" "$url" |
+  curl -fsS -H 'content-type: application/json' -d "$payload" "$url" 2>/dev/null |
     jq -e '.result != null' >/dev/null
 }
 
@@ -408,7 +407,7 @@ stop_fiber_stack() {
   fi
 }
 
-trap stop_fiber_stack EXIT
+trap 'stop_fiber_stack; morph_fixture_keys_cleanup' EXIT
 
 start_fiber_stack_once() {
   local testcase="$1"
@@ -424,7 +423,7 @@ start_fiber_stack_once() {
     CXXFLAGS="$FIBER_CXXFLAGS" \
       REMOVE_OLD_STATE=y \
     TEST_ENV="$FIBER_TEST_ENV" \
-    EXTRA_BRU_ARGS="$FIBER_STACK_EXTRA_BRU_ARGS" \
+    EXTRA_BRU_ARGS="$FIBER_STACK_BUILDER_ARGS" \
     PATH="$TOOL_BIN_DIR:$PATH" \
       ./tests/nodes/start.sh "$testcase"
   ) >>"$log_file" 2>&1 &
@@ -462,192 +461,37 @@ start_fiber_stack() {
   fail "Fiber stack failed to become ready for $testcase after $FIBER_STACK_START_ATTEMPTS attempts; see $log_file"
 }
 
-run_bruno_suite() {
-  local suite="$1"
-  local suite_id="${2:-$suite}"
-  local label="${suite_id//\//_}"
-  local log_file="$LOG_DIR/fiber-bruno-$label.log"
-  log "running Fiber Bruno suite $suite_id"
-  run_bruno_suite_command "$suite" "$log_file"
-  write_fiber_bruno_result "$suite_id" "$log_file" "$OUT_DIR/fiber-bruno-$label.json"
+run_rust_suite() {
+  local suite="$1" suite_id="${2:-$1}"
+  local label="${suite_id//\//_}" fixture="${suite#e2e/}"
+  local log_file="$LOG_DIR/fiber-rust-$label.log"
+  fixture="${fixture//\//_}"
+  local evidence="$OUT_DIR/fiber-rust-$label.evidence.json"
+  log "running native Rust Fiber suite $suite_id"
+  FIBER_CKB_RPC_URL="$FIBER_CKB_RPC_URL" \
+  FIBER_NODE1_RPC_URL="$FIBER_NODE1_RPC_URL" \
+  FIBER_NODE2_RPC_URL="$FIBER_NODE2_RPC_URL" \
+  FIBER_NODE3_RPC_URL="$FIBER_NODE3_RPC_URL" \
+  MORPH_FIBER_EXTERNAL_PRIVATE_KEY_FILE="$MORPH_FIBER_EXTERNAL_PRIVATE_KEY_FILE" \
+    "$RUST_RUNNER" fiber-scenario "$ROOT_DIR/fixtures/fiber/$fixture.json" --output "$evidence" >"$log_file" 2>&1
+  "$RUST_RUNNER" verify-fiber-evidence "$ROOT_DIR/fixtures/fiber/$fixture.json" "$evidence"
+  jq -e '.schema == "morph.rust_fiber_result.v1" and .runner == "rust" and .status == "passed" and all(.steps[]; .status == "passed" and .assertions > 0)' "$evidence" >/dev/null
+  jq -n --arg suite "$suite_id" --arg log "$log_file" --arg evidence "$evidence" \
+    --arg runner_sha256 "$(sha256sum "$RUST_RUNNER" | cut -d' ' -f1)" \
+    '{suite:$suite,status:"passed",runner:"rust",runner_sha256:$runner_sha256,log:$log,evidence:$evidence}' >"$OUT_DIR/fiber-rust-$label.json"
 }
 
-run_bruno_suite_command() {
-  local suite="$1"
-  local log_file="$2"
-  (
-    cd "$FIBER_DIR/tests/bruno"
-    npm exec --yes -- "$BRUNO_CLI_SPEC" run "$suite" -r --env test
-  ) >"$log_file" 2>&1
-}
-
-write_fiber_bruno_result() {
-  local suite_id="$1"
-  local log_file="$2"
-  local output_path="$3"
-  jq -n \
-    --arg suite "$suite_id" \
-    --arg status "passed" \
-    --arg log "$log_file" \
-    '{suite:$suite,status:$status,log:$log}' >"$output_path"
-}
-
-write_period_check_expiry_result() {
-  local suite_id="$1"
-  local bruno_log="$2"
-  local stack_log="$3"
-  local output_path="$4"
-  jq -n \
-    --arg suite "$suite_id" \
-    --arg status "passed" \
-    --arg log "$bruno_log" \
-    --arg stack_log "$stack_log" \
-    '{
-      suite: $suite,
-      status: $status,
-      log: $log,
-      stack_log: $stack_log,
-      acceptance_note: "Upstream Bruno channel-length assertions are stale for current Fiber; stack log proves periodic expiry removal with RemoveTlcFail.",
-      accepted_stale_assertions: [
-        "e2e/period-check/force-close-expiry/11-node2-list-channels",
-        "e2e/period-check/force-close-expiry/12-node1-list-channels"
-      ],
-      required_stack_evidence: [
-        "Removing expired tlc",
-        "RemoveTlcFail",
-        "tlcs count: 0"
-      ]
-    }' >"$output_path"
-}
-
-write_external_funding_open_result() {
-  local suite_id="$1"
-  local bruno_log="$2"
-  local output_path="$3"
-  jq -n \
-    --arg suite "$suite_id" \
-    --arg status "passed" \
-    --arg log "$bruno_log" \
-    '{
-      suite: $suite,
-      status: $status,
-      log: $log,
-      acceptance_note: "Current Fiber external-funding-open Bruno balance/readiness checks are stale for this devnet profile; the external-funding open, sign, submit, close, and shutdown-inspection requests succeeded.",
-      accepted_stale_assertions: [
-        "node balance checks immediately after open/close may observe stale CKB indexer state",
-        "node1 readiness may return a transient gateway failure before the critical external-funding requests"
-      ],
-      required_request_evidence: [
-        "e2e/external-funding-open/08-open-channel-with-external-funding",
-        "e2e/external-funding-open/09-sign-external-funding-tx",
-        "e2e/external-funding-open/10-submit-signed-funding-tx",
-        "e2e/external-funding-open/16-shutdown-channel-from-node1",
-        "e2e/external-funding-open/18-wait-channel-closed-and-capture-shutdown-tx",
-        "e2e/external-funding-open/19-inspect-shutdown-tx"
-      ]
-    }' >"$output_path"
-}
-
-validate_external_funding_open_evidence() {
-  local bruno_log="$1"
-  local marker
-
-  for marker in \
-    "e2e/external-funding-open/08-open-channel-with-external-funding (200 OK)" \
-    "e2e/external-funding-open/09-sign-external-funding-tx (200 OK)" \
-    "e2e/external-funding-open/10-submit-signed-funding-tx (200 OK)" \
-    "e2e/external-funding-open/16-shutdown-channel-from-node1 (200 OK)" \
-    "e2e/external-funding-open/18-wait-channel-closed-and-capture-shutdown-tx (200 OK)" \
-    "e2e/external-funding-open/19-inspect-shutdown-tx (200 OK)"
-  do
-    grep -Fq "$marker" "$bruno_log" ||
-      fail "external-funding-open Bruno log is missing required request evidence: $marker"
-  done
-
-  if grep -Eq '^Assertions:.*failed' "$bruno_log"; then
-    fail "external-funding-open Bruno assertion failure shape changed; inspect $bruno_log"
-  fi
-  grep -Eq '^Assertions:[[:space:]]+[0-9]+ passed, [0-9]+ total' "$bruno_log" ||
-    fail "external-funding-open Bruno log is missing all-assertions-passed summary"
-
-  grep -Eq \
-    'node[23] balance should decrease|Cannot convert undefined to a BigInt|node2 close delta should equal shutdown refund|Cannot read properties of undefined|502 Bad Gateway' \
-    "$bruno_log" ||
-    fail "external-funding-open Bruno did not fail with the known stale balance/readiness shape"
-}
-
-validate_period_check_expiry_evidence() {
-  local bruno_log="$1"
-  local stack_log="$2"
-  local expired_count
-  local zero_tlc_count
-  local remove_fail_count
-
-  grep -Fq "e2e/period-check/force-close-expiry/09-node1-add-tlc" "$bruno_log" ||
-    fail "period-check expiry Bruno log is missing node1 add_tlc evidence"
-  grep -Fq "e2e/period-check/force-close-expiry/10-node2-add-tlc" "$bruno_log" ||
-    fail "period-check expiry Bruno log is missing node2 add_tlc evidence"
-  grep -Fq "e2e/period-check/force-close-expiry/11-node2-list-channels" "$bruno_log" ||
-    fail "period-check expiry Bruno log is missing node2 list evidence"
-  grep -Fq "e2e/period-check/force-close-expiry/12-node1-list-channels" "$bruno_log" ||
-    fail "period-check expiry Bruno log is missing node1 list evidence"
-  grep -Fq "Assertions:  10 passed, 2 failed, 12 total" "$bruno_log" ||
-    fail "period-check expiry Bruno failure shape changed; inspect $bruno_log"
-  grep -Fq "expected 1 to equal +0" "$bruno_log" ||
-    fail "period-check expiry Bruno failure was not the known stale channel-length assertion"
-
-  expired_count="$(grep -Fc "Removing expired tlc 0 for channel Hash256(" "$stack_log" || true)"
-  [ "$expired_count" -ge 2 ] ||
-    fail "period-check expiry stack log did not show both expired TLC removals: $stack_log"
-  remove_fail_count="$(grep -Fc "RemoveTlcFail" "$stack_log" || true)"
-  [ "$remove_fail_count" -ge 4 ] ||
-    fail "period-check expiry stack log did not show sufficient RemoveTlcFail evidence: $stack_log"
-  zero_tlc_count="$(grep -Fc "tlcs count: 0" "$stack_log" || true)"
-  [ "$zero_tlc_count" -ge 4 ] ||
-    fail "period-check expiry stack log did not show both sides reaching zero active TLCs: $stack_log"
-}
-
-run_external_funding_open_suite() {
-  local suite="$FIBER_COEXISTENCE_SUITE"
-  local label="${suite//\//_}"
-  local bruno_log="$LOG_DIR/fiber-bruno-$label.log"
-  local result_path="$OUT_DIR/fiber-bruno-$label.json"
-
-  log "running Fiber Bruno suite $suite"
-  if run_bruno_suite_command "$suite" "$bruno_log"; then
-    write_fiber_bruno_result "$suite" "$bruno_log" "$result_path"
-  else
-    validate_external_funding_open_evidence "$bruno_log"
-    log "accepted $suite via request evidence after stale Bruno balance/readiness assertions"
-    write_external_funding_open_result "$suite" "$bruno_log" "$result_path"
-  fi
-}
+run_external_funding_open_suite() { run_rust_suite "$FIBER_COEXISTENCE_SUITE"; }
 
 run_period_check_expiry_suite() {
   local suite="$FIBER_PERIOD_CHECK_EXPIRY_SUITE"
-  local label="${suite//\//_}"
-  local stack_log="$LOG_DIR/fiber-stack-$label.log"
-  local bruno_log="$LOG_DIR/fiber-bruno-$label.log"
-  local result_path="$OUT_DIR/fiber-bruno-$label.json"
-
-  start_fiber_stack "$suite" "$stack_log"
-  log "running Fiber Bruno suite $suite"
-  if run_bruno_suite_command "$suite" "$bruno_log"; then
-    write_period_check_expiry_result "$suite" "$bruno_log" "$stack_log" "$result_path"
-  else
-    validate_period_check_expiry_evidence "$bruno_log" "$stack_log"
-    log "accepted $suite via stack-log expiry evidence after stale Bruno channel-length assertions"
-    write_period_check_expiry_result "$suite" "$bruno_log" "$stack_log" "$result_path"
-  fi
+  start_fiber_stack "$suite" "$LOG_DIR/fiber-stack-${suite//\//_}.log"
+  run_rust_suite "$suite"
   stop_fiber_stack
 }
 
 run_morph_stateful_on_fiber_ckb() {
   local current_dir="$OUT_DIR/morph-stateful"
-  local deployer_key alice_key bob_key
-  deployer_key="$(read_devnet_fixture_key "$MORPH_FIBER_DEPLOYER_KEY_FILE")"
-  alice_key="$(read_devnet_fixture_key "$MORPH_FIBER_ALICE_KEY_FILE")"
-  bob_key="$(read_devnet_fixture_key "$MORPH_FIBER_BOB_KEY_FILE")"
   # The runner owns its fresh output directory and never starts/stops the
   # external Fiber chain. Preserve an independent same-genesis observation.
   [ ! -e "$current_dir" ] || fail "current Morph evidence already exists: $current_dir"
@@ -661,9 +505,9 @@ run_morph_stateful_on_fiber_ckb() {
     cd "$ROOT_DIR"
     EXTERNAL_RPC_URL="$FIBER_CKB_RPC_URL" \
     CKB_BIN="$CKB_BIN" FIBER_DIR="$FIBER_DIR" \
-    MORPH_DEVNET_PRIVATE_KEY="$deployer_key" \
-    MORPH_ALICE_PRIVATE_KEY="$alice_key" \
-    MORPH_BOB_PRIVATE_KEY="$bob_key" \
+    MORPH_E2E_DEPLOYER_KEY_FILE="$MORPH_FIBER_DEPLOYER_KEY_FILE" \
+    MORPH_E2E_ALICE_KEY_FILE="$MORPH_FIBER_ALICE_KEY_FILE" \
+    MORPH_E2E_BOB_KEY_FILE="$MORPH_FIBER_BOB_KEY_FILE" \
     OUT_DIR="$current_dir" \
       scripts/devnet-current-e2e.sh
   ) >"$LOG_DIR/morph-stateful-on-fiber-ckb.log" 2>&1
@@ -675,22 +519,17 @@ run_morph_stateful_on_fiber_ckb() {
 }
 
 run_fiber_restart_regression() {
-  if [ "$RUN_FIBER_RESTART_REGRESSION" != "1" ]; then
-    log "Fiber external-funding restart regression skipped"
-    return
-  fi
   local log_file="$LOG_DIR/fiber-external-funding-restart.log"
-  log "running Fiber external-funding restart regression"
-  (
-    cd "$FIBER_DIR"
-    PATH="$TOOL_BIN_DIR:$PATH" \
-      tests/bruno/e2e/external-funding-open/run-restart-test.sh
-  ) >"$log_file" 2>&1
-  jq -n \
-    --arg suite "e2e/external-funding-open/restart" \
-    --arg status "passed" \
-    --arg log "$log_file" \
-    '{suite:$suite,status:$status,log:$log}' >"$OUT_DIR/fiber-external-funding-restart.json"
+  local evidence="$OUT_DIR/fiber-external-funding-restart.evidence.json"
+  log "running owned-node external-funding restart regression in Rust"
+  FIBER_CKB_RPC_URL="$FIBER_CKB_RPC_URL" FIBER_NODE1_RPC_URL="$FIBER_NODE1_RPC_URL" \
+  FIBER_NODE2_RPC_URL="$FIBER_NODE2_RPC_URL" FIBER_NODE3_RPC_URL="$FIBER_NODE3_RPC_URL" \
+  MORPH_FIBER_EXTERNAL_PRIVATE_KEY_FILE="$MORPH_FIBER_EXTERNAL_PRIVATE_KEY_FILE" \
+    "$RUST_RUNNER" fiber-restart --fiber-dir "$FIBER_DIR" --stack-pid "$FIBER_STACK_PID" \
+      --output "$evidence" --log "$LOG_DIR/fiber-node1-native-restart.log" >"$log_file" 2>&1
+  jq -n --arg log "$log_file" --arg evidence "$evidence" \
+    --arg runner_sha256 "$(sha256sum "$RUST_RUNNER" | cut -d' ' -f1)" \
+    '{suite:"e2e/external-funding-open/restart",status:"passed",runner:"rust",runner_sha256:$runner_sha256,log:$log,evidence:$evidence}' >"$OUT_DIR/fiber-external-funding-restart.json"
 }
 
 run_coexistence_gate() {
@@ -700,35 +539,35 @@ run_coexistence_gate() {
   if [ "$FIBER_COEXISTENCE_SUITE" = "e2e/external-funding-open" ]; then
     run_external_funding_open_suite
   else
-    run_bruno_suite "$FIBER_COEXISTENCE_SUITE"
+    run_rust_suite "$FIBER_COEXISTENCE_SUITE"
   fi
   run_fiber_restart_regression
   stop_fiber_stack
-  run_morph_agent_fiber_gate
+  run_morph_payment_gateway_fiber_gate
 }
 
-run_morph_agent_fiber_gate() {
-  local suite="$FIBER_AGENT_ROUTER_SUITE"
+run_morph_payment_gateway_fiber_gate() {
+  local suite="$FIBER_PAYMENT_GATEWAY_ROUTER_SUITE"
   local label="${suite//\//_}"
-  start_fiber_stack "$suite" "$LOG_DIR/fiber-stack-morph-agent-$label.log"
-  run_bruno_suite "$suite"
-  log "running Morph Agent x402 and fair-exchange flows over Fiber's three-node route"
+  start_fiber_stack "$suite" "$LOG_DIR/fiber-stack-morph-payment-gateway-$label.log"
+  run_rust_suite "$suite"
+  log "running Morph Payment Gateway x402 and fair-exchange flows over Fiber's three-node route"
   FIBER_CKB_RPC_URL="$FIBER_CKB_RPC_URL" \
   FIBER_NODE1_RPC_URL="$FIBER_NODE1_RPC_URL" \
   FIBER_NODE2_RPC_URL="$FIBER_NODE2_RPC_URL" \
   FIBER_NODE3_RPC_URL="$FIBER_NODE3_RPC_URL" \
-  OUT_DIR="$OUT_DIR/morph-agent-fiber-e2e" \
-    "$ROOT_DIR/scripts/morph-agent-fiber-devnet-e2e.sh" \
-    >"$LOG_DIR/morph-agent-fiber-e2e.log" 2>&1
+  OUT_DIR="$OUT_DIR/morph-payment-gateway-fiber-e2e" \
+    "$ROOT_DIR/scripts/morph-payment-gateway-fiber-devnet-e2e.sh" \
+    >"$LOG_DIR/morph-payment-gateway-fiber-e2e.log" 2>&1
   stop_fiber_stack
 }
 
 run_extended_fiber_suites() {
   local suite
-  for suite in $FIBER_BRUNO_SUITES; do
-    if [ "$suite" = "$FIBER_AGENT_ROUTER_SUITE" ] &&
-      [ -s "$OUT_DIR/fiber-bruno-${suite//\//_}.json" ]; then
-      log "Fiber Bruno suite $suite already passed as the Morph Agent routing substrate"
+  for suite in $FIBER_RUST_SUITES; do
+    if [ "$suite" = "$FIBER_PAYMENT_GATEWAY_ROUTER_SUITE" ] &&
+      [ -s "$OUT_DIR/fiber-rust-${suite//\//_}.json" ]; then
+      log "Fiber Rust suite $suite already passed as the Morph Payment Gateway routing substrate"
       continue
     fi
     if [ "$suite" = "$FIBER_PERIOD_CHECK_EXPIRY_SUITE" ]; then
@@ -736,7 +575,7 @@ run_extended_fiber_suites() {
       continue
     fi
     start_fiber_stack "$suite" "$LOG_DIR/fiber-stack-${suite//\//_}.log"
-    run_bruno_suite "$suite"
+    run_rust_suite "$suite"
     stop_fiber_stack
   done
   run_fiber_funding_tx_verification_cases
@@ -749,14 +588,14 @@ run_fiber_funding_tx_verification_cases() {
     return
   fi
 
-  previous_extra_args="$FIBER_STACK_EXTRA_BRU_ARGS"
+  previous_extra_args="$FIBER_STACK_BUILDER_ARGS"
   for case_name in $FIBER_FUNDING_TX_VERIFICATION_CASES; do
-    FIBER_STACK_EXTRA_BRU_ARGS="--env-var FUNDING_TX_VERIFICATION_CASE=$case_name"
+    FIBER_STACK_BUILDER_ARGS="FUNDING_TX_VERIFICATION_CASE=$case_name"
     start_fiber_stack "e2e/funding-tx-verification" "$LOG_DIR/fiber-stack-e2e_funding-tx-verification_$case_name.log"
-    run_bruno_suite "e2e/funding-tx-verification" "e2e/funding-tx-verification/$case_name"
+    run_rust_suite "e2e/funding-tx-verification" "e2e/funding-tx-verification/$case_name"
     stop_fiber_stack
   done
-  FIBER_STACK_EXTRA_BRU_ARGS="$previous_extra_args"
+  FIBER_STACK_BUILDER_ARGS="$previous_extra_args"
 }
 
 write_acceptance_matrix() {
@@ -764,10 +603,10 @@ write_acceptance_matrix() {
   jq -n \
     --arg mode "$MODE" \
     --arg morph_stateful "$OUT_DIR/morph-stateful/scenarios/summary-check.json" \
-    --arg fiber_external "$OUT_DIR/fiber-bruno-${FIBER_COEXISTENCE_SUITE//\//_}.json" \
-    --arg fiber_agent_router "$OUT_DIR/fiber-bruno-${FIBER_AGENT_ROUTER_SUITE//\//_}.json" \
-    --arg morph_agent_result "$OUT_DIR/morph-agent-fiber-e2e/result.json" \
-    --arg morph_agent_manifest "$OUT_DIR/morph-agent-fiber-e2e/manifest.json" \
+    --arg fiber_external "$OUT_DIR/fiber-rust-${FIBER_COEXISTENCE_SUITE//\//_}.json" \
+    --arg fiber_payment_gateway_router "$OUT_DIR/fiber-rust-${FIBER_PAYMENT_GATEWAY_ROUTER_SUITE//\//_}.json" \
+    --arg morph_payment_gateway_result "$OUT_DIR/morph-payment-gateway-fiber-e2e/result.json" \
+    --arg morph_payment_gateway_manifest "$OUT_DIR/morph-payment-gateway-fiber-e2e/manifest.json" \
     --arg business_flow_audit "$OUT_DIR/business-flow-audit.json" \
     '{
       schema: "morph.fiber_morph_devnet_acceptance_matrix",
@@ -800,17 +639,17 @@ write_acceptance_matrix() {
               id: "fiber_channel_external_funding",
               required: true,
               evidence: [
-                "Fiber Bruno external-funding-open",
+                "Rust external-funding-open",
                 "required restart regression before submit_signed_funding_tx"
               ]
             },
             {
-              id: "morph_agent_fiber_multihop",
+              id: "morph_payment_gateway_fiber_multihop",
               required: true,
               evidence: [
-                $fiber_agent_router,
-                $morph_agent_result,
-                $morph_agent_manifest,
+                $fiber_payment_gateway_router,
+                $morph_payment_gateway_result,
+                $morph_payment_gateway_manifest,
                 "x402 credential settlement and hash-locked fair exchange over Fiber node1 -> node2 -> node3"
               ]
             }
@@ -820,7 +659,7 @@ write_acceptance_matrix() {
               id: "fiber_security_and_recovery_matrix",
               required: true,
               evidence: [
-                "Fiber router-pay, reestablish, force-close, expiry, UDT, watchtower, hold-invoice, and funding-tx verification Bruno suites",
+                "Fiber router-pay, reestablish, force-close, expiry, UDT, watchtower, hold-invoice, and funding-tx verification Rust scenarios",
                 "Funding tx verification cases: remove_change, modify_change, fund_from_peer, missing_inputs"
               ]
             }
@@ -852,7 +691,7 @@ EOF
     --arg matrix "$OUT_DIR/acceptance-matrix.json" \
     --arg mode "$MODE" \
     --arg morph_stateful_summary_check "$OUT_DIR/morph-stateful/scenarios/summary-check.json" \
-    --arg morph_agent_fiber_result "$OUT_DIR/morph-agent-fiber-e2e/result.json" \
+    --arg morph_payment_gateway_fiber_result "$OUT_DIR/morph-payment-gateway-fiber-e2e/result.json" \
     --arg business_flow_audit "$OUT_DIR/business-flow-audit.json" \
     --arg status "passed" \
     '{
@@ -863,7 +702,7 @@ EOF
       repo_state:$repo_state,
       acceptance_matrix:$matrix,
       morph_stateful_summary_check:$morph_stateful_summary_check,
-      morph_agent_fiber_result:$morph_agent_fiber_result,
+      morph_payment_gateway_fiber_result:$morph_payment_gateway_fiber_result,
       business_flow_audit:$business_flow_audit
     }' \
     >"$OUT_DIR/summary.json"
@@ -877,8 +716,7 @@ preflight() {
   require_tool jq
   require_tool curl
   require_tool grep
-  require_tool node
-  require_tool npm
+  require_tool sha256sum
   if ! command -v lsof >/dev/null 2>&1 && ! command -v ss >/dev/null 2>&1; then
     fail "missing required TCP listener inspector: install lsof or iproute2/ss"
   fi
@@ -891,12 +729,41 @@ preflight() {
   require_devnet_fixture_key_file "$MORPH_FIBER_DEPLOYER_KEY_FILE" "deployer"
   require_devnet_fixture_key_file "$MORPH_FIBER_ALICE_KEY_FILE" "Alice"
   require_devnet_fixture_key_file "$MORPH_FIBER_BOB_KEY_FILE" "Bob"
+  morph_fixture_keys_init || fail "cannot prepare protected public fixture key"
+  morph_fixture_key_file MORPH_FIBER_EXTERNAL_PRIVATE_KEY_FILE "$FIBER_DIR/tests/nodes/2/ckb/plain_key" external-funder.key || fail "external key setup failed"
+  (cd "$ROOT_DIR" && cargo build --locked -p morph-xtask) >"$LOG_DIR/rust-runner-build.log" 2>&1
+  mkdir -p "$OUT_DIR/bin"
+  cp "$ROOT_DIR/target/debug/morph-xtask" "$RUST_RUNNER"
   prepare_tool_path
   write_manifest
   write_repo_state
 }
 
 case "$MODE" in
+  scenario)
+    # Iterative development evidence is deliberately not accepted by the clean
+    # full/coexistence auditor. It cannot stand in for final qualification.
+    preflight
+    suite="${FIBER_SCENARIO:-e2e/router-pay}"
+    suite_id="$suite"
+    if [ "$suite" = e2e/funding-tx-verification ]; then
+      case "${FIBER_FUNDING_CASE:-}" in
+        remove_change|modify_change|fund_from_peer|missing_inputs) ;;
+        *) fail "set FIBER_FUNDING_CASE to one of the four documented mutation cases" ;;
+      esac
+      FIBER_STACK_BUILDER_ARGS="FUNDING_TX_VERIFICATION_CASE=$FIBER_FUNDING_CASE"
+      suite_id="$suite/$FIBER_FUNDING_CASE"
+    fi
+    start_fiber_stack "$suite" "$LOG_DIR/fiber-stack-scenario.log"
+    run_rust_suite "$suite" "$suite_id"
+    if [ "${FIBER_SCENARIO_GATEWAY:-0}" = 1 ]; then
+      FIBER_CKB_RPC_URL="$FIBER_CKB_RPC_URL" FIBER_NODE1_RPC_URL="$FIBER_NODE1_RPC_URL" \
+      FIBER_NODE2_RPC_URL="$FIBER_NODE2_RPC_URL" FIBER_NODE3_RPC_URL="$FIBER_NODE3_RPC_URL" \
+      OUT_DIR="$OUT_DIR/morph-payment-gateway-fiber-e2e" "$ROOT_DIR/scripts/morph-payment-gateway-fiber-devnet-e2e.sh" >"$LOG_DIR/morph-payment-gateway-fiber-e2e.log" 2>&1
+    fi
+    if [ "${FIBER_SCENARIO_RESTART:-0}" = 1 ]; then run_fiber_restart_regression; fi
+    log "development scenario passed; dirty-tree evidence is not final qualification: $OUT_DIR"
+    ;;
   preflight)
     preflight
     cat >>"$OUT_DIR/manifest.txt" <<EOF
@@ -926,6 +793,6 @@ EOF
     log "full Fiber/Morph acceptance passed; artifacts are in $OUT_DIR"
     ;;
   *)
-    fail "unknown mode: $MODE (expected preflight, coexistence, fiber, full)"
+    fail "unknown mode: $MODE (expected preflight, scenario, coexistence, fiber, full)"
     ;;
 esac

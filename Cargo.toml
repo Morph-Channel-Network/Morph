@@ -2,9 +2,15 @@
 resolver = "2"
 members = [
   "crates/morph-core",
+  "crates/morph-key-input",
   "crates/morph-cli",
-  "crates/morph-agent",
+  "crates/morph-payment-gateway",
   "crates/morph-fiber-adapter",
+  "crates/morph-desktop",
+  "crates/morph-packages",
+  "crates/morph-hub-api",
+  "crates/morph-sdk",
+  "crates/morph-xtask",
   "contracts/morph-script-common",
   "contracts/morph-state-lock",
   "contracts/morph-state-type",
@@ -15,6 +21,7 @@ members = [
   "contracts/morph-sponsor-lock",
   "contracts/morph-devnet-xudt",
 ]
+exclude = ["vendor/*"]
 
 [workspace.package]
 version = "4.0.0-alpha.1"
@@ -22,38 +29,93 @@ edition = "2024"
 license = "MIT"
 authors = ["Arthur Zhang"]
 repository = "https://github.com/a19q3/Morph"
-rust-version = "1.92.0"
+rust-version = "1.95.0"
 description = "CKB-native off-chain channels, factories, and operator tooling"
 readme = "README.md"
 
 [workspace.dependencies]
 anyhow = "1.0"
+zeroize = "1.8"
 aes-gcm = "0.10"
 axum = "0.8"
 base64 = "0.22"
-biscuit-auth = "6.0.0"
+# The latest registry release retains vulnerable crypto-bigint 0.5 via p256.
+# Pin the upstream RustCrypto migration until a registry release includes it.
+biscuit-auth = { git = "https://github.com/biscuit-auth/biscuit-rust", rev = "21e650f31a8521af575f968925acbb56486172f9" }
 blake2b-rs = "0.2"
-ckb-crypto = "1.1.0"
-ckb-jsonrpc-types = "1.1.1"
-ckb-types = "1.1.1"
+ckb-crypto = "1.1.1"
+ckb-jsonrpc-types = "1.2.1"
+ckb-types = "1.1.4"
 clap = { version = "4.5", features = ["derive", "env"] }
 hex = "0.4"
 getrandom = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# State-file exports may contain private Rust u128 quantities. Dynamic JSON
+# must preserve them exactly while public protocol amounts remain strings.
+serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 thiserror = "2.0"
-ckb-std = { version = "1.1.0", default-features = false, features = ["allocator", "calc-hash", "ckb-types", "dummy-atomic"] }
+ckb-std = { version = "1.1.0", default-features = false, features = ["allocator", "calc-hash", "ckb-types"] }
 ckb-testtool = "1.1.1"
-ckb-hash = { version = "1.1.0", default-features = false, features = ["ckb-contract"] }
-k256 = { version = "0.13.4", default-features = false, features = ["ecdsa", "arithmetic"] }
+ckb-hash = { version = "1.1.1", default-features = false, features = ["ckb-contract"] }
+k256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "arithmetic"] }
 proptest = "1"
 rand = "0.8"
 sha2 = { version = "0.10", default-features = false }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time"] }
+
+# Exact published consumers with reviewed dependency-only security upgrades.
+# Their original archive checksums and complete deltas are under vendor/.
+[patch.crates-io]
+cacache = { path = "vendor/cacache-13.1.0" }
+ckb-crypto = { path = "vendor/ckb-crypto-1.1.1" }
+ckb-fixed-hash-core = { path = "vendor/ckb-fixed-hash-core-1.1.2" }
+ckb-jsonrpc-types = { path = "vendor/ckb-jsonrpc-types-1.2.1" }
+ckb-script = { path = "vendor/ckb-script-1.2.1" }
+ckb-system-scripts = { path = "vendor/ckb-system-scripts-0.5.4" }
+ckb-testtool = { path = "vendor/ckb-testtool-1.1.1" }
+ckb-types = { path = "vendor/ckb-types-1.1.4" }
+ckb-verification = { path = "vendor/ckb-verification-1.2.1" }
+ckb-vm-definitions = { path = "vendor/ckb-vm-definitions-0.24.15" }
+molecule = { path = "vendor/molecule-0.9.2" }
+
+gpui-base = { path = "vendor/gpui-base-0.9.0" }
+gpui-component = { path = "vendor/gpui-component-0.9.0" }
+
+gpui-pre = { path = "vendor/gpui-pre-0.3.11" }
+
+cosmic-text = { path = "vendor/cosmic-text-0.19.0" }
+
+gpui-pre-linux = { path = "vendor/gpui-pre-linux-0.3.11" }
+
+gpui-kit = { path = "vendor/gpui-kit-0.9.0" }
+
+gpui-kit-assets = { path = "vendor/gpui-kit-assets-0.9.0" }
+
+rav1e = { path = "vendor/rav1e-0.8.1" }
+
+accesskit_unix = { path = "vendor/accesskit_unix-0.22.1" }
+
+accesskit_atspi_common = { path = "vendor/accesskit_atspi_common-0.19.1" }
+
+atspi = { path = "vendor/atspi-0.29.0" }
+
+atspi-common = { path = "vendor/atspi-common-0.13.0" }
+
+atspi-proxies = { path = "vendor/atspi-proxies-0.13.0" }
+
+zbus-lockstep = { path = "vendor/zbus-lockstep-0.5.2" }
+
+zbus-lockstep-macros = { path = "vendor/zbus-lockstep-macros-0.5.2" }
 
 [profile.release]
 codegen-units = 1
 lto = true
 panic = "abort"
 strip = true
+
+# Host desktop packaging only; contract release flags remain unchanged.
+[profile.desktop]
+inherits = "release"
+codegen-units = 16
+lto = "thin"

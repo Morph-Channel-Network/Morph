@@ -18,8 +18,8 @@ pub enum Operation {
 #[derive(Clone, clap::Subcommand)]
 pub enum FeeAuthorization {
     Wallet {
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     Sponsor {
         #[arg(long)]
@@ -1142,7 +1142,7 @@ mod sponsor_tests {
         assert!(private.is_none());
         assert_eq!(change, secp256k1_lock(&key).unwrap());
         let wallet = FeeAuthorization::Wallet {
-            private_key: hex::encode([1u8; 32]),
+            private_key: hex::encode([1u8; 32]).into(),
         };
         assert_eq!(format!("{wallet:?}"), "Wallet");
     }
@@ -1162,7 +1162,7 @@ mod activation_tests {
     fn factory_child_activation_uses_public_parent_authority_and_original_child_terms() {
         let (request, _, _, children) = crate::factory_journal_fixture::reduced_child_request();
         let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../sdk/typescript/test/fixtures/factory-transitions.json"
+            "../../../../fixtures/protocol/factory-transitions.json"
         ))
         .unwrap();
         let case = corpus["cases"]
@@ -1222,11 +1222,7 @@ mod activation_tests {
                 let key = SigningKey::from_slice(&[seed; 32]).unwrap();
                 let signature: Signature = key.sign_prehash(digest).unwrap();
                 ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 }
             })

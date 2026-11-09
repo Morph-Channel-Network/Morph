@@ -122,8 +122,9 @@ fn no_vault_inputs(manifest: &MultiAssetVaultManifest) -> Result<()> {
     }
     Ok(())
 }
-pub fn validate_type() -> Result<()> {
-    let transaction = load_transaction().map_err(encoding)?;
+fn validate_transaction_bounds(
+    transaction: &ckb_std::ckb_types::packed::Transaction,
+) -> Result<()> {
     if u32::from(transaction.raw().version()) != 0
         || transaction.raw().inputs().is_empty()
         || transaction.raw().inputs().len() > 64
@@ -134,6 +135,11 @@ pub fn validate_type() -> Result<()> {
     {
         return bad();
     }
+    Ok(())
+}
+pub fn validate_type() -> Result<()> {
+    let transaction = load_transaction().map_err(encoding)?;
+    validate_transaction_bounds(&transaction)?;
     let script = load_script().map_err(encoding)?;
     let args = script.args().raw_data();
     let factory = parse_factory_multi_asset_type_args(&args)?;
@@ -510,17 +516,35 @@ fn verify_materialisation_cells(
     Ok(())
 }
 
-/// Fast reserve gate: the authentic Factory Type runs the complete verifier.
-/// Requiring the materialisation frame and exact source roots prevents an
-/// ordinary metadata update or activation from authorising reserve spending.
+/// Fast reserve gate: the exact Factory Type on input zero must execute the
+/// complete verifier. Both scripts consume the same global witness-zero frame;
+/// a group witness or another source cell cannot supply delegated authority.
+/// Bounds and the actual raw transaction hash are checked here as well, without
+/// repeating the Type's signatures, rights proofs or physical conservation.
 pub fn validate_vault_gate(raw: &[u8], factory: &[u8], type_hash: &[u8]) -> Result<()> {
+    let transaction = load_transaction().map_err(encoding)?;
+    validate_transaction_bounds(&transaction)?;
+    let witness = load_witness_args(0, Source::Input).map_err(encoding)?;
+    if witness.input_type().to_opt().is_some()
+        || witness
+            .output_type()
+            .to_opt()
+            .as_ref()
+            .map(|frame| frame.raw_data().as_ref() == raw)
+            != Some(true)
+    {
+        return bad();
+    }
+    let transaction_hash = load_tx_hash().map_err(encoding)?;
     if raw.starts_with(FACTORY_REDUCED_RELEASE_MAGIC) {
         if raw.len() >= 12
             && crate::read_u16(raw, 10) == FactoryTransitionOperation::ReducedChild as u16
         {
             let view = factory_reduced_child_view(raw)?;
             let source = view.source_context()?;
-            if source.factory_id() != factory
+            if transaction_hash.as_slice() != &raw[72..104]
+                || transaction_hash != view.transaction_hash()
+                || source.factory_id() != factory
                 || load_script_hash().map_err(encoding)? != source.source().entry(0)?.lock_hash
             {
                 return bad();
@@ -529,7 +553,8 @@ pub fn validate_vault_gate(raw: &[u8], factory: &[u8], type_hash: &[u8]) -> Resu
             return Ok(());
         }
         let proof = FactoryReducedReleaseWitness::parse(raw)?;
-        if proof.before().factory_id() != factory
+        if transaction_hash.as_slice() != proof.transaction_hash()
+            || proof.before().factory_id() != factory
             || load_script_hash().map_err(encoding)? != proof.source().entry(0)?.lock_hash
         {
             return bad();
@@ -539,7 +564,8 @@ pub fn validate_vault_gate(raw: &[u8], factory: &[u8], type_hash: &[u8]) -> Resu
     }
     let view = FactoryMaterialisationView::parse(raw)?;
     let source = view.source_context()?;
-    if source.factory_id() != factory
+    if transaction_hash != view.transaction_hash()
+        || source.factory_id() != factory
         || load_script_hash().map_err(encoding)? != source.source().entry(0)?.lock_hash
     {
         return bad();

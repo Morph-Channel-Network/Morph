@@ -75,7 +75,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
         "child acceptance requires preceding plain Factory deposit"
     );
     ensure!(
-        before.rights[0].quantity == "43000000000",
+        before.rights[0].quantity == "46100000000",
         "expected backed Alice claim after native deposit"
     );
     let keys = [
@@ -148,7 +148,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
         Some(blake2b256(&custody.state_type)),
     )?;
     let mut rights = before.rights.clone();
-    rights[0].quantity = "23000000000".to_string();
+    rights[0].quantity = "26100000000".to_string();
     let terms = FactoryPreparationTerms {
         schema: "morph.factory_preparation_terms.v1".to_string(),
         context: before.clone(),
@@ -157,7 +157,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
             retained: vec![FactoryReserveTerms {
                 type_hash: None,
                 reserve: "45900000000".to_string(),
-                business_ckb: "4100000000".to_string(),
+                business_ckb: "7200000000".to_string(),
                 amount: "0".to_string(),
             }],
             children: vec![FactoryChildTerms {
@@ -204,7 +204,10 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
         Some(blake2b256(&retained_source.state_type)),
     )?;
     let mut retained_rights = retained_context.rights.clone();
-    retained_rights[0].quantity = "3000000000".to_string();
+    // Keep both retained ReserveClaims independently payable after the
+    // second child debit; the shared retained floor remains collective.
+    retained_rights[0].quantity = "6100000000".to_string();
+    retained_rights[1].quantity = "13000000000".to_string();
     let retained_terms = FactoryPreparationTerms {
         schema: terms.schema.clone(),
         context: retained_context,
@@ -212,7 +215,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: &Context<'_>, directory: &Path) -
             retained: Some(vec![FactoryReserveTerms {
                 type_hash: None,
                 reserve: "27900000000".to_string(),
-                business_ckb: "2100000000".to_string(),
+                business_ckb: "5200000000".to_string(),
                 amount: "0".to_string(),
             }]),
             children: vec![retained_child],
@@ -682,7 +685,9 @@ fn run_case(
         );
         serde_json::to_value(remaining)?
     };
+    let admission =
+        crate::admission::facts(context.admission_config, &context.options.contracts_dir)?;
     Ok(
-        json!({"terminal_factory":terminal,"parent":executed,"activation":activated,"independent_initial_exit_sessions":child_sessions,"private_exits":private_packages,"same_path_handoffs":handoffs,"initial_exit_required_before_parent_vote":true,"private_exit_signatures_absent_from_parent":true,"independent_update":committed,"old_publication":stale,"latest_package_watch":watched,"finalise":finalised,"retained_factory":remaining,"external_child_carrier":private.state_carrier_capacity.to_string()}),
+        json!({"admission":admission,"terminal_factory":terminal,"parent":executed,"activation":activated,"independent_initial_exit_sessions":child_sessions,"private_exits":private_packages,"same_path_handoffs":handoffs,"initial_exit_required_before_parent_vote":true,"private_exit_signatures_absent_from_parent":true,"independent_update":committed,"old_publication":stale,"latest_package_watch":watched,"finalise":finalised,"retained_factory":remaining,"external_child_carrier":private.state_carrier_capacity.to_string()}),
     )
 }

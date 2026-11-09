@@ -1,0 +1,1209 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/open-use-close-a-channel",
+  "steps": [
+    {
+      "id": "e2e/open-use-close-a-channel/01-connect-peer",
+      "source_sha256": "087a89df9d6e5fb6bb04cddc734802edc51e2ceddce2d3240ff8d3bb1092be9c",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/02-open-channel",
+      "source_sha256": "8ce058746b2d205744df57f631a63ecf4622d89408b1954993bfb4f87bf0cca1",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 2,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "funding_amount": "0xba43b7400",
+            "commitment_delay_epoch": "0x20001000003"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/03-get-auto-accepted-channel",
+      "source_sha256": "aecd49f0c042b64e88103ac9aaaabf2ff4b56cb726f72d0f2ac6854728b5b1f1",
+      "source_script_sha256": "339b988e7547e186349b5019cae5cf95a4ab6514627007bf0172bfbcef428b6c",
+      "sequence": 3,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/channel_outpoint"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/06-generate-a-few-blocks",
+      "source_sha256": "e89739a93d46e1437c135953d8f8e202b25b82c1fd80211979ea8415ce383499",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 6,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/07-add-tlc-from-NODE3",
+      "source_sha256": "eab79554923b0151b7036174c5d5255323b07a81c1ee0eff6358f8372244ad63",
+      "source_script_sha256": "fc472099b0cae1217a6942b27d3e8576a6bb45251b463c870ca44e22e063e9ac",
+      "sequence": 7,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0x5f5e100",
+            "payment_hash": "0x266cec97cbede2cfbce73666f08deed9560bdf7841a7a5a51b3a3f09da249e21",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "TLC_ID1",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/08-add-tlc-from-NODE1-err",
+      "source_sha256": "99e321f5186d875eda08dbeb428e6e37d23c03734a45ac7b647a0740194e3126",
+      "source_script_sha256": "0f4599691ff8ab0afc472befecb42ac567acdb6de5407263d83856702bcc6356",
+      "sequence": 8,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0xbebc200",
+            "payment_hash": "0xcb7bce98a778f130d34da522623d7e56705bddfe0dc4781bd2331211134a19a8",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        },
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "TLC_ID2",
+          "value": {
+            "literal": "0x3200"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "TemporaryChannelFailure"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "TemporaryChannelFailure"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/09-add-tlc-from-NODE3",
+      "source_sha256": "a271089493e07dab7b012394843deb72f67c0fd339783fea8d5e829c063b6a2b",
+      "source_script_sha256": "efa417131d50ebe07aa4c1954c54c4b72348b460a0957370c7e80822118e25e4",
+      "sequence": 9,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0x11e1a300",
+            "payment_hash": "0x29449e2cc6f56a691253fe88e3a378171c81573b09247010b4f1cb8c806e1e09",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        },
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "TLC_ID3",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/10-add-tlc-from-NODE1-amount-err",
+      "source_sha256": "02eb6cbc0d0ffda12eaa4e454de15398680592aaf5d263745e61bad27f931e27",
+      "source_script_sha256": "84b961b5201ed827bb21c29fe447a517f05c6106c86a605059bdb0fc6f7b9fe8",
+      "sequence": 10,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0x0",
+            "payment_hash": "0xcb7bce98a778f130d34da522623d7e56705bddfe0dc4781bd2331211134a19a5",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        },
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "AmountBelowMinimum"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "AmountBelowMinimum"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/10-add-tlc-from-NODE1-balance-err",
+      "source_sha256": "72cd050acb56aca8750d8a89c564ecedabfafbdcb8354740a929296166b7af0e",
+      "source_script_sha256": "46548c59b37b54ea38d90fa9f1acce3f920f915d30ed79464752e64da7554489",
+      "sequence": 10,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0xbebc200",
+            "payment_hash": "0xcb7bce98a778f130d34da522623d7e56705bddfe0dc4781bd2331211134a19a6",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "TemporaryChannelFailure"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "TemporaryChannelFailure"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/11-add-tlc-from-NODE3",
+      "source_sha256": "ae32b4abb2488cd2546ea26e68ec806a661be57c7083255e2258c56b7309c419",
+      "source_script_sha256": "dbc2e530900e8f1c6a5bfb522b217962e57be73c6c809096399c431f92fee19e",
+      "sequence": 11,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0x11e1a300",
+            "payment_hash": "0x29449e2cc6f56a691253fe88e3a378171c81573b09247010b4f1cb8c806e1e38",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        },
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "TLC_ID5",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/12-add-tlc-from-NODE3",
+      "source_sha256": "f185f29c85decbf430c6ada48f839f5eda7115ce53249b707b3e2f19cdf99609",
+      "source_script_sha256": "9696134a2a9cc2a301374a957e907b2ebfc0048f20bb2b4b0a6ebe2decac559b",
+      "sequence": 12,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0x11e1a300",
+            "payment_hash": "0x29449e2cc6f56a691253fe88e3a378171c81573b09247010b4f1cb8c806e1e12",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        },
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "TLC_ID6",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/13-remove-tlc-from-NODE1",
+      "source_sha256": "c235462fa499a571be0a24ffe22ca980c352880f139b5a883eef9a33850f2b0b",
+      "source_script_sha256": "b118f45975c10b572a045daf01745ca34252b34138fc7cd76cbe1e905f759a21",
+      "sequence": 13,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "tlc_id": "{{TLC_ID1}}",
+            "reason": {
+              "payment_preimage": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/14-remove-tlc-from-NODE3",
+      "source_sha256": "c0c3587584745d4485b975ff5795aeb2e4aafe7da9ed4d02c29df06ebeda0c6a",
+      "source_script_sha256": "930ec9ef17fa8d07223a40834d1d1929a9f7b0856425ef93d7b3a0e067cf9460",
+      "sequence": 14,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "tlc_id": "{{TLC_ID2}}",
+            "reason": {
+              "error_code": "TemporaryNodeFailure"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "contains",
+          "right": {
+            "literal": "Trying to remove non-existing tlc with id"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/15-shutdown-from-NODE1",
+      "source_sha256": "ac653c046c2a71d0fa06c9e171fc0674d7d050ad311c700ad01399da675d51c0",
+      "source_script_sha256": "b118f45975c10b572a045daf01745ca34252b34138fc7cd76cbe1e905f759a21",
+      "sequence": 15,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "close_script": {
+              "code_hash": "0x2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+              "hash_type": "data",
+              "args": "0x0101010101010101010101010101010101010101"
+            },
+            "fee_rate": "0x3FC"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/16-remove-tlc-from-NODE1",
+      "source_sha256": "2656585563e779612f4ce6e2ef5d764be505b5113e85942be4b0d461e0ec6ca8",
+      "source_script_sha256": "b118f45975c10b572a045daf01745ca34252b34138fc7cd76cbe1e905f759a21",
+      "sequence": 16,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "tlc_id": "{{TLC_ID3}}",
+            "reason": {
+              "error_code": "TemporaryNodeFailure"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/17-remove-tlc-from-NODE3",
+      "source_sha256": "a5dfaa885d76160cce807dade7692afca60f5487cc0459333cbd4517a4849d50",
+      "source_script_sha256": "49994782d51c6c54b385083b5d786916a6b3e78ad8466922ef220670e0923051",
+      "sequence": 17,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "tlc_id": "{{TLC_ID3}}",
+            "reason": {
+              "error_code": "TemporaryNodeFailure"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/18-remove-tlc-from-NODE1",
+      "source_sha256": "529a8d6e93635781fe68ad0779757fc19880e76e2f7454970e39ae4ce5a88868",
+      "source_script_sha256": "b118f45975c10b572a045daf01745ca34252b34138fc7cd76cbe1e905f759a21",
+      "sequence": 18,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "tlc_id": "{{TLC_ID5}}",
+            "reason": {
+              "payment_preimage": "0x0000000000000000000000000000000000000000000000000000000000000002"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/19-remove-tlc-from-NODE1",
+      "source_sha256": "0ffd9c2b7637f23a60c5be07b3e92f123670168aa9832049799ab35bd5490349",
+      "source_script_sha256": "b118f45975c10b572a045daf01745ca34252b34138fc7cd76cbe1e905f759a21",
+      "sequence": 19,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "tlc_id": "{{TLC_ID6}}",
+            "reason": {
+              "error_code": "TemporaryNodeFailure"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/20-list-channel-from-NODE1",
+      "source_sha256": "317984e868725510d9486abe73c87b218c9c029dc3e9a3c5743804b51ac5f1a3",
+      "source_script_sha256": "87e8c9b9c436d420cbe6895e7801fc113ceaadcf9c42aeab40c5505348c8af4e",
+      "sequence": 20,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 0
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/21-list-channel-with-closed-status-NODE1",
+      "source_sha256": "ec4a52edafe9f752ebaba93b2b5efd596ae16cd04afc3fd1a54f58baca4679ff",
+      "source_script_sha256": "fdf44d065421b02d3b81d53f59ed954971f7fec925febb24eb20d9ac6272e73b",
+      "sequence": 21,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "include_closed": true
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/state/state_name"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "ShuttingDown"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/state/state_flags"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "WAITING_COMMITMENT_CONFIRMATION"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/channel_id"
+          },
+          "op": "eq",
+          "right": {
+            "variable": "CHANNEL_ID"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/22-generate-a-few-blocks",
+      "source_sha256": "fd60884d79320a4a4838632000fa70a72c9af95669b1f484ba5f8548e44be7f7",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 22,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/open-use-close-a-channel/23-list-channel-with-closed-status-NODE1",
+      "source_sha256": "eda467dedd81316af51102e7b30184c828339762f84b4429ff5f2277d5392c66",
+      "source_script_sha256": "8fc3729ffd4df57fbe87fd2aa5afdd58f3d5c97fe283a28fe385fbdd8048c1d8",
+      "sequence": 23,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "include_closed": true
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/state/state_name"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "Closed"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/state/state_flags"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "COOPERATIVE"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/channel_id"
+          },
+          "op": "eq",
+          "right": {
+            "variable": "CHANNEL_ID"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    }
+  ]
+}

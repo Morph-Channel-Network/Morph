@@ -62,7 +62,9 @@ previous_approval_not_revoked withheld_full_consent_escaped stale_context_preser
 target_rights operator_checks service published_count watch_passes reorg_recovery reason
 asset_count rights_updates full_consent_metadata changed_right_count funding_replay
 orphaned exact_body_and_witnesses unchanged_signer_journals peer_creation_receipt_withheld
-canonical_reorg_replay authentic_source_live no_new_participant_signatures""".split())
+canonical_reorg_replay authentic_source_live no_new_participant_signatures
+admission same_request_reservation_idempotent complete_history_revalidated_after_reload
+lifetime_child_reservations active_factories orphaned replayed lifetime_children_preserved parent""".split())
 VALUE_FIELDS = {
     "type_hash", "reserve", "business_ckb", "amount", "state_number", "phase",
     "asset_type", "kind", "participant", "quantity", "subchannel",
@@ -348,7 +350,7 @@ for arbitrary wallet/asset scripts or all proof topologies.
 Maximum-dimension VM fixture measurements are documented in
 [`current-protocol-coverage.md`](https://github.com/Morph-Channel-Network/Morph/blob/{origin['source_commit']}/docs/current-protocol-coverage.md#measured-dimensional-limits).
 Retained Factory floors, proof-data availability and signer rollback assumptions
-remain material. Full external Fiber/Bruno traffic was not executed in this
+remain material. Full external Fiber/Rust-scenario traffic was not executed in this
 migration checkpoint; no real-asset or mainnet admission is implied.
 
 ## Files and publication boundary
@@ -391,19 +393,26 @@ make ci
 
 Run an isolated node using the same public disposable fixture scalars 1, 2
 and 3 as the CI workflow. This example supplies them directly to the child
-process without printing key values or requiring a separate Fiber checkout:
+process through protected files, without private-key argv/environment values or a separate Fiber checkout:
 
 ```sh
 python3 - <<'FIXTURE'
 import os
+from pathlib import Path
 import subprocess
+import tempfile
 
 env = os.environ.copy()
-for scalar, name in enumerate(("MORPH_DEVNET_PRIVATE_KEY", "MORPH_ALICE_PRIVATE_KEY", "MORPH_BOB_PRIVATE_KEY"), 1):
-    env[name] = format(scalar, "064x")
-env["CKB_BIN"] = "/path/to/ckb"
-env["OUT_DIR"] = "target/current-protocol-e2e/reproduction"
-subprocess.run(["bash", "scripts/devnet-current-e2e.sh"], env=env, check=True)
+with tempfile.TemporaryDirectory(prefix="morph-public-fixtures-") as directory:
+    for scalar, name in enumerate(("MORPH_DEVNET_PRIVATE_KEY_FILE", "MORPH_ALICE_PRIVATE_KEY_FILE", "MORPH_BOB_PRIVATE_KEY_FILE"), 1):
+        path = Path(directory) / name
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as output:
+            output.write(format(scalar, "064x") + "\\n")
+        env[name] = str(path)
+    env["CKB_BIN"] = "/path/to/ckb"
+    env["OUT_DIR"] = "target/current-protocol-e2e/reproduction"
+    subprocess.run(["bash", "scripts/devnet-current-e2e.sh"], env=env, check=True)
 FIXTURE
 ```
 

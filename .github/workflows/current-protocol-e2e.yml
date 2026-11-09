@@ -21,12 +21,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      # Public stock dev-genesis funding fixture plus disposable participant scalars.
-      # The funding fixture is built into the pinned CKB dev chain, not a secret.
-      # They are not deployment credentials and must never fund real assets.
-      MORPH_DEVNET_PRIVATE_KEY: 'd00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc'
-      MORPH_ALICE_PRIVATE_KEY: '0000000000000000000000000000000000000000000000000000000000000002'
-      MORPH_BOB_PRIVATE_KEY: '0000000000000000000000000000000000000000000000000000000000000003'
       CKB_ARCHIVE: ckb_v0.210.0_x86_64-unknown-linux-gnu.tar.gz
       CKB_ARCHIVE_SHA256: 68a94c191109bae172f8dcb71828dbdf0383e2c314e0658743db217472b27bdf
     steps:
@@ -38,7 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@87eb139fed4b08a67bd1fa429a21d1f5d523e03e # 1.92.0
+        uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
         with:
           targets: riscv64imac-unknown-none-elf
 
@@ -59,6 +53,23 @@ jobs:
           tar --extract --gzip --file "target/ci-ckb/$CKB_ARCHIVE" \
             --directory target/ci-ckb --strip-components=1
           target/ci-ckb/ckb --version
+
+      - name: Prepare public no-value development key files
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          key_dir="$(mktemp -d "$RUNNER_TEMP/morph-ci-fixture-keys.XXXXXXXX")"
+          chmod 700 "$key_dir"
+          # These stock dev-genesis/disposable scalars are public fixtures.
+          # Never use them for deployment credentials or real assets.
+          printf '%s\n' 'd00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc' >"$key_dir/deployer.key"
+          printf '%064x\n' 2 >"$key_dir/alice.key"
+          printf '%064x\n' 3 >"$key_dir/bob.key"
+          printf 'MORPH_DEVNET_PRIVATE_KEY_FILE=%s/deployer.key\n' "$key_dir" >>"$GITHUB_ENV"
+          printf 'MORPH_ALICE_PRIVATE_KEY_FILE=%s/alice.key\n' "$key_dir" >>"$GITHUB_ENV"
+          printf 'MORPH_BOB_PRIVATE_KEY_FILE=%s/bob.key\n' "$key_dir" >>"$GITHUB_ENV"
+          printf 'MORPH_CI_FIXTURE_KEY_DIR=%s\n' "$key_dir" >>"$GITHUB_ENV"
 
       - name: Run the sole native acceptance pipeline
         shell: bash
@@ -83,3 +94,11 @@ jobs:
           path: ${{ runner.temp }}/morph-native-${{ github.run_id }}-${{ github.run_attempt }}/public-evidence/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Remove private fixture files
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${MORPH_CI_FIXTURE_KEY_DIR:-}" ]; then
+            rm -rf -- "$MORPH_CI_FIXTURE_KEY_DIR"
+          fi

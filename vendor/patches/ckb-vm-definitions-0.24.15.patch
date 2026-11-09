@@ -1,0 +1,9 @@
+--- ckb-vm-definitions-0.24.15/Cargo.toml.orig-registry
++++ ckb-vm-definitions-0.24.15/Cargo.toml
+@@ -39,4 +39,5 @@
+ path = "src/generate_asm_constants.rs"
+ 
+ [dependencies.paste]
+-version = "1.0"
++version = "=0.2.3"
++package = "pastey"

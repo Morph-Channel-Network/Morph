@@ -1,0 +1,773 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/udt-router-pay",
+  "steps": [
+    {
+      "id": "e2e/udt-router-pay/01-node1-connect-node2",
+      "source_sha256": "3881e634d04a4b03123e5ed58fb54f3b0d952078dab0ef2bc434f8fe811dbb79",
+      "source_script_sha256": "350e2960343f57e6f830fbb588ee9b55d53e14cf651a0762ef20bbf79d5f18da",
+      "sequence": 1,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/02-node2-connect-node3",
+      "source_sha256": "fcebbbd0fcd769c3a32164306a7f4dc5da47c0f3092a2eed25b2b9969e0bbcdd",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 2,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE2_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/03-node1-node2-open-channel",
+      "source_sha256": "d07f8191fa1aa92d178fb140ad7fad9175b7636935e72f576d2294e11ee57dac",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 3,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "funding_amount": "0x3B9ACA00",
+            "tlc_fee_proportional_millionths": "0x4B0",
+            "funding_udt_type_script": {
+              "code_hash": "{{UDT_CODE_HASH}}",
+              "hash_type": "data2",
+              "args": "0x32e555f3ff8e135cece1351a6a2971518392c1e30375c1e006ad0ce8eac07947"
+            }
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/04-node2-get-auto-accepted-channel",
+      "source_sha256": "2618f526ce8283e2462c078c10df3577d73572d55432bce734407d40d0873e8a",
+      "source_script_sha256": "18f3bbbf78bf9c26f7f4015fd409219ca23e7edda1e2601f69abfe791263fde6",
+      "sequence": 4,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/06-ckb-generate-blocks",
+      "source_sha256": "cf869fea0ef134558b36b7d0ddca6892eadb0bbfeaf0a97437f47393226c3f83",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 6,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/07-node2-node3-open-channel",
+      "source_sha256": "70a443eb17f8e82f0b8b928fcd6cc1672cafeb63f2005939381f0fd375b09629",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 7,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}",
+            "funding_amount": "0x3B9ACA00",
+            "funding_udt_type_script": {
+              "code_hash": "{{UDT_CODE_HASH}}",
+              "hash_type": "data2",
+              "args": "0x32e555f3ff8e135cece1351a6a2971518392c1e30375c1e006ad0ce8eac07947"
+            }
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/08-node3-get-auto-accepted-channel",
+      "source_sha256": "09e63d8b379df92e177e82579b90e05cb0e26eb48299527972811640d594b3d6",
+      "source_script_sha256": "a525a4c421b5a5798c591f665dd5b2dee3c268f8491a6e125306d42d115a4342",
+      "sequence": 8,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N2N3_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/10-ckb-generate-blocks",
+      "source_sha256": "74942c01dfb5af7021300c6aefe67056034dce51e28800fd333f01b4a2c43c0a",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 10,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/11-node2-list-channels",
+      "source_sha256": "2918eb0542ac1a200d269884fe20eed30085de90ccf4196fbd3b94fa4db43fc0",
+      "source_script_sha256": "9ffc3e95473433dd2b9cdf556f4b361029d78801e3f743691533e909d866b14a",
+      "sequence": 11,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/remote_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x0"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/local_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x3b9aca00"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/11-node3-gen-invoice",
+      "source_sha256": "0cf4f9c5bd544f829d999b9397c4fe820c872cddda6561079582d6e6e85f24d4",
+      "source_script_sha256": "3466ca264ff7ad4ef32d84828727c36b23cb479f22d3c86895afb31b52a2aa28",
+      "sequence": 11,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x5F5E100",
+            "currency": "Fibd",
+            "description": "test invoice generated by node3",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}",
+            "udt_type_script": {
+              "code_hash": "{{UDT_CODE_HASH}}",
+              "hash_type": "data2",
+              "args": "0x32e555f3ff8e135cece1351a6a2971518392c1e30375c1e006ad0ce8eac07947"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "payment_hash",
+          "value": {
+            "pointer": "/result/invoice/data/payment_hash"
+          }
+        },
+        {
+          "variable": "payment_amount",
+          "value": {
+            "pointer": "/result/invoice/amount"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/12-node1-send-payment",
+      "source_sha256": "3d746041a2923038a03003a6d5050043066513cbd443265de3adbe28f3bb882b",
+      "source_script_sha256": "9293b4b1432fb830e3c5780f63925c3d7974a641ff33c1a5e9a6b5465ffeabaa",
+      "sequence": 12,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "target_pubkey": "03032b99943822e721a651c5a5b9621043017daa9dc3ec81d83215fd2e25121187",
+            "amount": "0x5F5E100",
+            "payment_hash": "{{payment_hash}}",
+            "udt_type_script": {
+              "code_hash": "{{UDT_CODE_HASH}}",
+              "hash_type": "data2",
+              "args": "0x32e555f3ff8e135cece1351a6a2971518392c1e30375c1e006ad0ce8eac07947"
+            }
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/13-node3-gen-invoice-later",
+      "source_sha256": "0a84634569671dff9971b836386dc1216950517b9cb5861816567f4de4e76a9d",
+      "source_script_sha256": "a461169ec5b9dcf60d2ca9d853766bb034d03d2e019d4d0170f89f78ad3c72bb",
+      "sequence": 13,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x20",
+            "currency": "Fibd",
+            "description": "test invoice generated by node3",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}",
+            "udt_type_script": {
+              "code_hash": "{{UDT_CODE_HASH}}",
+              "hash_type": "data2",
+              "args": "0x32e555f3ff8e135cece1351a6a2971518392c1e30375c1e006ad0ce8eac07947"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "encoded_invoice",
+          "value": {
+            "pointer": "/result/invoice_address"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/14-node1-send-payment-with-invoice",
+      "source_sha256": "11d4c1a434e1a7ec7a9e7b7b6f9a8d51491abde4ab452b205f97328282b8e7c4",
+      "source_script_sha256": "4b4effd1e732508951d9232dee4c470e0dcfb406bb865d42f459d58545fac586",
+      "sequence": 14,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "invoice": "{{encoded_invoice}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/15-node1-send-payment-keysend",
+      "source_sha256": "e8420fa033fb2c636495ae32d34f151203116e2d9be5a9b779edd2a208a22888",
+      "source_script_sha256": "b57376a437f35f59fa2227c5c0a044464a4bddd67af5307331834b6ac0c62f9b",
+      "sequence": 15,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "target_pubkey": "03032b99943822e721a651c5a5b9621043017daa9dc3ec81d83215fd2e25121187",
+            "amount": "0x30",
+            "keysend": true,
+            "udt_type_script": {
+              "code_hash": "{{UDT_CODE_HASH}}",
+              "hash_type": "data2",
+              "args": "0x32e555f3ff8e135cece1351a6a2971518392c1e30375c1e006ad0ce8eac07947"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/16-node1-send-payment-keysend-large-amount",
+      "source_sha256": "1bb0adb75bbd98b6bd0ba42f08d8d183fe95242ade48fab0c1ee0b430cf10491",
+      "source_script_sha256": "b57376a437f35f59fa2227c5c0a044464a4bddd67af5307331834b6ac0c62f9b",
+      "sequence": 16,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "target_pubkey": "03032b99943822e721a651c5a5b9621043017daa9dc3ec81d83215fd2e25121187",
+            "amount": "0x3B9ACA02",
+            "keysend": true,
+            "udt_type_script": {
+              "code_hash": "{{UDT_CODE_HASH}}",
+              "hash_type": "data2",
+              "args": "0x32e555f3ff8e135cece1351a6a2971518392c1e30375c1e006ad0ce8eac07947"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/udt-router-pay/17-node2-list-channels",
+      "source_sha256": "e25f1c89e6fc3d6e48aa748017647d30a8cc9b2cf66eceabb27c40aafe3918ff",
+      "source_script_sha256": "53e5f4601eb3f8433bfe3062156c2b6bda70ff040bb9651fbe88ad22bed6dd04",
+      "sequence": 17,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 3000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/remote_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x5f5e150"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/local_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x35a4e8b0"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    }
+  ]
+}

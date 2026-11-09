@@ -1,0 +1,13 @@
+--- ckb-crypto-1.1.1/Cargo.toml.orig-registry
++++ ckb-crypto-1.1.1/Cargo.toml
+@@ -39,7 +39,9 @@
+ version = "1"
+ 
+ [dependencies.faster-hex]
+-version = "0.6"
++version = "=0.10.1"
++default-features = false
++features = ["std"]
+ 
+ [dependencies.rand]
+ version = "0.8.5"

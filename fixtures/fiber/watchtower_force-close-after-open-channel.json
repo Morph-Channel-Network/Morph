@@ -1,0 +1,757 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/watchtower/force-close-after-open-channel",
+  "steps": [
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/01-connect-peer",
+      "source_sha256": "95543e4b4a4da46bde2eedda9f63120b1706720104b3711005ab87cffe26ddb8",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/02-get-node1-funding-script",
+      "source_sha256": "2277d987a97412b70bab99cc79be8dfde16d3b9165bda057d9d967992a141bc4",
+      "source_script_sha256": "2f5a301842a3476437fdf39a53e8f56a3afb79511db8366d5c0fd4309b815943",
+      "sequence": 2,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE1_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/03-get-node2-funding-script",
+      "source_sha256": "83b3de4c6e9cbc5e66fbb9dbdd07bc8ae5dfe556aeb756548df41f2c512c13a1",
+      "source_script_sha256": "ec63d002dbfeda0a499bce933cecba62ace598184ff1bb0be80f632f352ae209",
+      "sequence": 3,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE2_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/04-get-node1-balance",
+      "source_sha256": "d6c665caff9d7ff27bb4329117a1361fac3f21d01ddd2418bd19d1f9b66d69d6",
+      "source_script_sha256": "730b645f049cd50800e3475e7bd43b283a6858207e33a9a48ec36c0b810a6ab4",
+      "sequence": 4,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE1_BALANCE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/05-get-node2-balance",
+      "source_sha256": "e822f017205b324dfa60d8eacf2d0d3e72edc6a437bb63fb3d1b3c9be90ad4a3",
+      "source_script_sha256": "02dd69b2890b773d3ee54f9e9c0c2e1ac7235fb320535a4d75d5094bb7004559",
+      "sequence": 5,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE2_BALANCE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/06-open-channel",
+      "source_sha256": "b4ea7da60c3eded7971151d3b233b952bd03a592f7cc95505018656b0d1e212b",
+      "source_script_sha256": "2f631affeed467ebda55336a85a2f4ebacc9d56d485ec29ac28a26b7014de383",
+      "sequence": 6,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "funding_amount": "0x2540be4000"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_TEMP_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/temporary_channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/07-node2-get-auto-accepted-channel",
+      "source_sha256": "c93a91c90b879fffcfbbd709fe8f8c3facbf62a5fee89564bf8a06d1cbfc3aa0",
+      "source_script_sha256": "a6c4a67cb18225ee64305461f8e898d4d5da8ce20c08a16f89c7afd30d24b1b1",
+      "sequence": 7,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/08-generate-a-few-blocks",
+      "source_sha256": "aa2494ac682e79f3c7275a24e9978ee69f133b9c609079bb1538c106aaaa8e43",
+      "source_script_sha256": "8528a64d81df974f25ac0114681b00da1198d43b70ea8408970da559b39d8c60",
+      "sequence": 8,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "both_ready",
+          "variable": "N1N2_CHANNEL_ID"
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/09-force-close",
+      "source_sha256": "ffc1c5d648577b76c418d71548c81be00a160d2a3d696135132a87adfa0f92a0",
+      "source_script_sha256": "e95aca9dc6e35cbc29c7b3ce4ea839da7db56385169a1d329f3dbe1074a12d9a",
+      "sequence": 9,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{N1N2_CHANNEL_ID}}",
+            "force": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/10-get-force-closed-commitment-tx-hash",
+      "source_sha256": "30d9b67b38883334fc4451786b1749bfd900118fe0cc5482bbb3aa8561d724ea",
+      "source_script_sha256": "9c9698fbd0fe726640f30be9305ecbd1ad04368f7deb09c0c0c88182f3e1c49c",
+      "sequence": 10,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "include_closed": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "TX_HASH",
+          "value": {
+            "pointer": "/result/channels/0/latest_commitment_transaction_hash"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/11-generate-a-few-blocks-for-commitment-tx",
+      "source_sha256": "906b5fcbcb73e7afe52b0391c0d9dc2d1dc36a0e8a2a1aa8edb812856607b275",
+      "source_script_sha256": "b8d7aaeadefc445dbf0bd3857e5943ef15f38404166550bfaf2173bf5260afe2",
+      "sequence": 11,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/12-generate-a-few-blocks-for-settlement-tx1-generated",
+      "source_sha256": "1f96d4c814a07a8c518f18ede3314c323f80402364674a503a3be7a21e55851f",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 12,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x7"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/13-generate-a-few-blocks-for-settlement-tx1-committed",
+      "source_sha256": "fd10eb63f78fae4fed68003df2271e3c60a09635520771d998ca9c79f5542ae9",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 13,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x7"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/14-generate-a-few-blocks-for-settlement-tx2-committed",
+      "source_sha256": "778e9c2eb59bd321b089c485f7c7bc37d9f0beedaae39c8b9a2250b4ced49d4f",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 14,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x7"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/15-check-commitment-tx",
+      "source_sha256": "5e3762478eadee9b33574f0d30cdb988ed9e550b570863eb5edfd8d579234ade",
+      "source_script_sha256": "a1fb8b47df4f9d1269cfc598802061dd799b6dc345c6e3b477cf31f38c1fe0f0",
+      "sequence": 15,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_live_cell",
+        "params": [
+          {
+            "index": "0x0",
+            "tx_hash": "{{TX_HASH}}"
+          },
+          false
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "unknown"
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/16-check-balance-node1",
+      "source_sha256": "fcae4337b0f87d35e6616e0db5322e1dbe4c4ed71a412c609d678882d2b6d255",
+      "source_script_sha256": "82a2611612a5b1415e16bd2bebb6fd99acf32db8fea1787acc865fbe1141517c",
+      "sequence": 16,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "variable": "NODE1_BALANCE"
+              },
+              {
+                "pointer": "/result/capacity"
+              }
+            ]
+          },
+          "op": "gt",
+          "right": {
+            "literal": 0
+          }
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "variable": "NODE1_BALANCE"
+              },
+              {
+                "pointer": "/result/capacity"
+              }
+            ]
+          },
+          "op": "lt",
+          "right": {
+            "literal": 2000
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/17-check-balance-node2",
+      "source_sha256": "ec3bf0328b196f84e9a6b3ce3e0df3ed403e50bf9d5ca7e5adc59edf97e3335a",
+      "source_script_sha256": "0b63d2fa5336f495dd6328e9ef4e6cb3339a2470a3d0cb8213c6f0e59eb56edc",
+      "sequence": 17,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "variable": "NODE2_BALANCE"
+              },
+              {
+                "pointer": "/result/capacity"
+              }
+            ]
+          },
+          "op": "gt",
+          "right": {
+            "literal": 0
+          }
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "variable": "NODE2_BALANCE"
+              },
+              {
+                "pointer": "/result/capacity"
+              }
+            ]
+          },
+          "op": "lt",
+          "right": {
+            "literal": 2000
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-open-channel/18-disconnect",
+      "source_sha256": "ce241627f8ac8ae59f8c096e3f67e731648663d4cd1e1b2a03d58f3ccd81e113",
+      "source_script_sha256": "a9b9304da1d8f4de2851d1e46dc7ad838ef50bc77960d1a7cb0a1288a0fdbd5a",
+      "sequence": 1918,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "disconnect_peer",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    }
+  ]
+}

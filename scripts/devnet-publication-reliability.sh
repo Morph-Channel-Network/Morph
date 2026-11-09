@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+source scripts/private-key-files.sh
+morph_reject_raw_private_keys || exit 1
 
 CKB_SOURCE_DIR="${CKB_SOURCE_DIR:-$ROOT_DIR/../ckb}"
 CKB_BIN="${CKB_BIN:-}"
@@ -24,11 +26,6 @@ FIBER_DIR="${FIBER_DIR:-$ROOT_DIR/../fiber}"
 DEPLOYER_KEY_FILE="${MORPH_E2E_DEPLOYER_KEY_FILE:-$FIBER_DIR/tests/nodes/deployer/ckb/plain_key}"
 ALICE_KEY_FILE="${MORPH_E2E_ALICE_KEY_FILE:-$FIBER_DIR/tests/nodes/1/ckb/plain_key}"
 BOB_KEY_FILE="${MORPH_E2E_BOB_KEY_FILE:-$FIBER_DIR/tests/nodes/2/ckb/plain_key}"
-DEVNET_KEY_OVERRIDE="${MORPH_DEVNET_PRIVATE_KEY:-}"
-ALICE_KEY_OVERRIDE="${MORPH_ALICE_PRIVATE_KEY:-}"
-BOB_KEY_OVERRIDE="${MORPH_BOB_PRIVATE_KEY:-}"
-OPERATOR_B_PRIVATE_KEY="${MORPH_OPERATOR_B_PRIVATE_KEY:-0x0404040404040404040404040404040404040404040404040404040404040404}"
-unset MORPH_DEVNET_PRIVATE_KEY MORPH_ALICE_PRIVATE_KEY MORPH_BOB_PRIVATE_KEY MORPH_OPERATOR_B_PRIVATE_KEY
 CKB_NODE_PID=""
 OPERATOR_A_KEY_TMP=""
 OPERATOR_B_KEY_TMP=""
@@ -47,26 +44,12 @@ require_tool() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required tool: $1"
 }
 
-load_key() {
-  local variable="$1"
-  local path="$2"
-  local label="$3"
-  local current="${4:-}"
-  if [ -z "$current" ]; then
-    [ -f "$path" ] || fail "missing $label fixture key: $path"
-    current="$(tr -d '\r\n' <"$path")"
-  fi
-  [[ "$current" =~ ^(0x)?[0-9a-fA-F]{64}$ ]] ||
-    fail "$label key must contain exactly one 32-byte secp256k1 key"
-  printf -v "$variable" '%s' "$current"
-}
-
 run_without_private_keys() {
-  env -u MORPH_DEVNET_PRIVATE_KEY \
-    -u MORPH_ALICE_PRIVATE_KEY \
-    -u MORPH_BOB_PRIVATE_KEY \
-    -u MORPH_CHANNEL_PRIVATE_KEY \
-    -u MORPH_OPERATOR_B_PRIVATE_KEY \
+  env -u MORPH_DEVNET_PRIVATE_KEY_FILE \
+    -u MORPH_ALICE_PRIVATE_KEY_FILE \
+    -u MORPH_BOB_PRIVATE_KEY_FILE \
+    -u MORPH_CHANNEL_PRIVATE_KEY_FILE \
+    -u MORPH_OPERATOR_B_PRIVATE_KEY_FILE \
     "$@"
 }
 
@@ -75,19 +58,19 @@ run_morph_no_keys() {
 }
 
 run_morph_deployer() {
-  env -u MORPH_ALICE_PRIVATE_KEY \
-    -u MORPH_BOB_PRIVATE_KEY \
-    -u MORPH_CHANNEL_PRIVATE_KEY \
-    -u MORPH_OPERATOR_B_PRIVATE_KEY \
-    MORPH_DEVNET_PRIVATE_KEY="$MORPH_DEVNET_PRIVATE_KEY" \
+  env -u MORPH_ALICE_PRIVATE_KEY_FILE \
+    -u MORPH_BOB_PRIVATE_KEY_FILE \
+    -u MORPH_CHANNEL_PRIVATE_KEY_FILE \
+    -u MORPH_OPERATOR_B_PRIVATE_KEY_FILE \
+    MORPH_DEVNET_PRIVATE_KEY_FILE="$MORPH_DEVNET_PRIVATE_KEY_FILE" \
     "$MORPH_BIN" "$@"
 }
 
 run_morph_channel_keys() {
-  env -u MORPH_OPERATOR_B_PRIVATE_KEY \
-    MORPH_DEVNET_PRIVATE_KEY="$MORPH_DEVNET_PRIVATE_KEY" \
-    MORPH_ALICE_PRIVATE_KEY="$MORPH_ALICE_PRIVATE_KEY" \
-    MORPH_BOB_PRIVATE_KEY="$MORPH_BOB_PRIVATE_KEY" \
+  env -u MORPH_OPERATOR_B_PRIVATE_KEY_FILE \
+    MORPH_DEVNET_PRIVATE_KEY_FILE="$MORPH_DEVNET_PRIVATE_KEY_FILE" \
+    MORPH_ALICE_PRIVATE_KEY_FILE="$MORPH_ALICE_PRIVATE_KEY_FILE" \
+    MORPH_BOB_PRIVATE_KEY_FILE="$MORPH_BOB_PRIVATE_KEY_FILE" \
     "$MORPH_BIN" "$@"
 }
 
@@ -195,8 +178,7 @@ stop_node() {
     kill "$CKB_NODE_PID" >/dev/null 2>&1 || true
     wait "$CKB_NODE_PID" >/dev/null 2>&1 || true
   fi
-  [ -z "$OPERATOR_A_KEY_TMP" ] || rm -f "$OPERATOR_A_KEY_TMP"
-  [ -z "$OPERATOR_B_KEY_TMP" ] || rm -f "$OPERATOR_B_KEY_TMP"
+  morph_fixture_keys_cleanup
 }
 
 trap stop_node EXIT
@@ -210,8 +192,6 @@ require_tool python3
 require_tool sha256sum
 resolve_ckb_bin
 
-[[ "$OPERATOR_B_PRIVATE_KEY" =~ ^(0x)?[0-9a-fA-F]{64}$ ]] ||
-  fail "MORPH_OPERATOR_B_PRIVATE_KEY must be a 32-byte secp256k1 key"
 [ ! -e "$EVIDENCE_DIR" ] || fail "evidence directory already exists: $EVIDENCE_DIR"
 mkdir -p "$OUT_DIR/operator-a/store" "$OUT_DIR/operator-b/store" "$LOG_DIR"
 EVIDENCE_DIR="$(cd "$EVIDENCE_DIR" && pwd)"
@@ -233,24 +213,25 @@ for contract in morph-state-lock morph-state-type morph-vault-lock morph-batch-l
   cp "$ROOT_DIR/target/riscv64imac-unknown-none-elf/release/$contract" "$CONTRACTS_DIR/$contract"
 done
 
-load_key MORPH_DEVNET_PRIVATE_KEY "$DEPLOYER_KEY_FILE" deployer "$DEVNET_KEY_OVERRIDE"
-load_key MORPH_ALICE_PRIVATE_KEY "$ALICE_KEY_FILE" Alice "$ALICE_KEY_OVERRIDE"
-load_key MORPH_BOB_PRIVATE_KEY "$BOB_KEY_FILE" Bob "$BOB_KEY_OVERRIDE"
-unset DEVNET_KEY_OVERRIDE ALICE_KEY_OVERRIDE BOB_KEY_OVERRIDE
-
-OPERATOR_A_KEY_TMP="$(mktemp "${TMPDIR:-/tmp}/morph-operator-a.XXXXXX")"
-OPERATOR_B_KEY_TMP="$(mktemp "${TMPDIR:-/tmp}/morph-operator-b.XXXXXX")"
-printf '%s\n' "$MORPH_DEVNET_PRIVATE_KEY" >"$OPERATOR_A_KEY_TMP"
-printf '%s\n' "$OPERATOR_B_PRIVATE_KEY" >"$OPERATOR_B_KEY_TMP"
-chmod 600 "$OPERATOR_A_KEY_TMP" "$OPERATOR_B_KEY_TMP" 2>/dev/null || true
+morph_fixture_keys_init || fail "cannot prepare private fixture key files"
+morph_fixture_key_file MORPH_DEVNET_PRIVATE_KEY_FILE "$DEPLOYER_KEY_FILE" deployer.key
+morph_fixture_key_file MORPH_ALICE_PRIVATE_KEY_FILE "$ALICE_KEY_FILE" alice.key
+morph_fixture_key_file MORPH_BOB_PRIVATE_KEY_FILE "$BOB_KEY_FILE" bob.key
+OPERATOR_A_KEY_TMP="$MORPH_DEVNET_PRIVATE_KEY_FILE"
+if [ -z "${MORPH_OPERATOR_B_PRIVATE_KEY_FILE:-}" ]; then
+  # Public scalar 4 is a no-value development identity, never a deployment key.
+  MORPH_OPERATOR_B_PRIVATE_KEY_FILE="$MORPH_FIXTURE_KEY_DIR/operator-b.key"
+  (umask 077; printf '04%.0s' {1..32} >"$MORPH_OPERATOR_B_PRIVATE_KEY_FILE")
+fi
+OPERATOR_B_KEY_TMP="$MORPH_OPERATOR_B_PRIVATE_KEY_FILE"
 # Exercise the exact key-scrubbing wrapper used by every watcher launch below.
 # This proves the launch boundary, not introspection inside the watcher binary.
 run_without_private_keys sh -c '
-  test -z "${MORPH_DEVNET_PRIVATE_KEY+x}" &&
-  test -z "${MORPH_ALICE_PRIVATE_KEY+x}" &&
-  test -z "${MORPH_BOB_PRIVATE_KEY+x}" &&
-  test -z "${MORPH_OPERATOR_B_PRIVATE_KEY+x}" &&
-  test -z "${MORPH_CHANNEL_PRIVATE_KEY+x}"
+  test -z "${MORPH_DEVNET_PRIVATE_KEY_FILE+x}" &&
+  test -z "${MORPH_ALICE_PRIVATE_KEY_FILE+x}" &&
+  test -z "${MORPH_BOB_PRIVATE_KEY_FILE+x}" &&
+  test -z "${MORPH_OPERATOR_B_PRIVATE_KEY_FILE+x}" &&
+  test -z "${MORPH_CHANNEL_PRIVATE_KEY_FILE+x}"
 ' || fail "watchtower child environment retained a private-key variable"
 WATCHER_ENV_PROBE_PASSED=true
 
@@ -311,8 +292,8 @@ PACKAGE_WITNESS_HEX="$(jq -er '.witness_hex' "$PACKAGE_PATH")"
 run_morph_no_keys store-multi-asset-package "$PACKAGE_PATH" --store-dir "$OUT_DIR/operator-a/store" >"$OUT_DIR/operator-a/stored-path.txt"
 run_morph_no_keys store-multi-asset-package "$PACKAGE_PATH" --store-dir "$OUT_DIR/operator-b/store" >"$OUT_DIR/operator-b/stored-path.txt"
 OPERATOR_A_PUBKEY="$(run_morph_deployer devnet --devnet-only --rpc-url "$RPC_URL" derive-operator-pubkey --json | jq -er '.pubkey_sec1')"
-OPERATOR_B_PUBKEY="$(env -u MORPH_ALICE_PRIVATE_KEY -u MORPH_BOB_PRIVATE_KEY -u MORPH_CHANNEL_PRIVATE_KEY \
-  MORPH_DEVNET_PRIVATE_KEY="$OPERATOR_B_PRIVATE_KEY" "$MORPH_BIN" devnet --devnet-only --rpc-url "$RPC_URL" derive-operator-pubkey --json | jq -er '.pubkey_sec1')"
+OPERATOR_B_PUBKEY="$(env -u MORPH_ALICE_PRIVATE_KEY_FILE -u MORPH_BOB_PRIVATE_KEY_FILE -u MORPH_CHANNEL_PRIVATE_KEY_FILE \
+  MORPH_DEVNET_PRIVATE_KEY_FILE="$OPERATOR_B_KEY_TMP" "$MORPH_BIN" devnet --devnet-only --rpc-url "$RPC_URL" derive-operator-pubkey --json | jq -er '.pubkey_sec1')"
 [ "$OPERATOR_A_PUBKEY" != "$OPERATOR_B_PUBKEY" ] || fail "operators share a sponsor-change identity"
 for operator in operator-a operator-b low-cap; do
   pubkey="$OPERATOR_A_PUBKEY"; cap=1000000000

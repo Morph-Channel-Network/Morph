@@ -18,6 +18,8 @@ use morph_core::*;
 #[cfg(feature = "devnet")]
 use rpc::{CkbRpcClient, HeaderView};
 
+mod admission;
+mod admission_channel;
 mod canonical_fields;
 #[cfg(any(feature = "devnet", test))]
 mod channel_creation;
@@ -190,8 +192,8 @@ enum Command {
         #[arg(long)]
         payee_node_id: String,
         /// Payee secp256k1 private key used to sign the invoice.
-        #[arg(long)]
-        payee_private_key: String,
+        #[arg(long = "payee-private-key-file", value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        payee_private_key: morph_key_input::SecretString,
         /// Amount in the asset's smallest unit. CKB amounts are shannons.
         #[arg(long)]
         amount: u128,
@@ -504,8 +506,8 @@ enum HubCommand {
         #[arg(long)]
         pubkey: String,
         /// Local node secp256k1 private key used only to sign newly created invoices.
-        #[arg(long, env = "MORPH_HUB_INVOICE_PRIVATE_KEY", hide_env_values = true)]
-        invoice_private_key: Option<String>,
+        #[arg(long = "invoice-private-key-file", env = "MORPH_HUB_INVOICE_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        invoice_private_key: Option<morph_key_input::SecretString>,
         /// Morph network.
         #[arg(long, value_enum, default_value = "devnet")]
         network: InvoiceNetworkArg,
@@ -533,12 +535,9 @@ enum HubCommand {
         /// Allow replacing the durable Hub state file through PUT /api/state-file.
         #[arg(long)]
         allow_state_restore: bool,
-        /// Explicit CORS origin for direct browser API access, for example http://127.0.0.1:5173.
+        /// Explicit CORS origin for direct browser API access, when an external browser client is explicitly admitted.
         #[arg(long, env = "MORPH_HUB_CORS_ORIGIN")]
         cors_origin: Option<String>,
-        /// Directory containing the built Morph Hub UI.
-        #[arg(long, default_value = "ui/morph-hub/dist")]
-        ui_dir: PathBuf,
     },
 }
 
@@ -615,6 +614,8 @@ enum DevnetCommand {
     /// Construct exact root funding with explicit per-wallet CKB/token/fee contributions.
     MultiAssetFundingPrepare {
         #[arg(long)]
+        admission_config: PathBuf,
+        #[arg(long)]
         terms: PathBuf,
         #[arg(long)]
         max_fee: u64,
@@ -625,6 +626,8 @@ enum DevnetCommand {
     },
     /// Sign only the declared wallet's group after reviewing exact funding terms and exit.
     MultiAssetFundingWalletSign {
+        #[arg(long)]
+        admission_config: PathBuf,
         #[arg(long)]
         terms: PathBuf,
         #[arg(long)]
@@ -637,11 +640,13 @@ enum DevnetCommand {
         contracts_dir: PathBuf,
         #[arg(long, default_value = "target/multi-asset/packages")]
         store_dir: PathBuf,
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     /// Submit a fully signed epoch-0 funding transaction or replay its exact bytes.
     MultiAssetFundingSubmit {
+        #[arg(long)]
+        admission_config: PathBuf,
         #[arg(long)]
         transaction: PathBuf,
         #[arg(long)]
@@ -659,6 +664,8 @@ enum DevnetCommand {
     },
     /// Construct an exact unsigned splice draft from explicit funding inputs and value terms.
     MultiAssetSplicePrepare {
+        #[arg(long)]
+        admission_config: PathBuf,
         #[arg(long)]
         old_package: PathBuf,
         #[arg(long)]
@@ -678,6 +685,8 @@ enum DevnetCommand {
     },
     /// Verify live complete sets and code, then submit an exact signed splice body.
     MultiAssetSpliceSubmit {
+        #[arg(long)]
+        admission_config: PathBuf,
         #[arg(long)]
         transaction: PathBuf,
         #[arg(long)]
@@ -701,12 +710,12 @@ enum DevnetCommand {
     MultiAssetSmoke {
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
         contracts_dir: PathBuf,
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
-        #[arg(long, env = "MORPH_ALICE_PRIVATE_KEY", hide_env_values = true)]
-        alice_private_key: String,
-        #[arg(long, env = "MORPH_BOB_PRIVATE_KEY", hide_env_values = true)]
-        bob_private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
+        #[arg(long = "alice-private-key-file", env = "MORPH_ALICE_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        alice_private_key: morph_key_input::SecretString,
+        #[arg(long = "bob-private-key-file", env = "MORPH_BOB_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        bob_private_key: morph_key_input::SecretString,
         #[arg(long, default_value_t = 2)]
         asset_count: usize,
         /// Fund assets from both participants and use a third fee/carrier wallet.
@@ -762,8 +771,8 @@ enum DevnetCommand {
     /// Derive the compressed public key used for an operator sponsor-change lock.
     DeriveOperatorPubkey {
         /// Operator secp256k1 private key. The command prints only its public key.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -837,8 +846,8 @@ enum DevnetCommand {
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
         contracts_dir: std::path::PathBuf,
         /// Secp256k1 private key that controls a funded local-devnet cell.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
         /// Absolute fee to reserve for the deployment transaction, in shannons.
         #[arg(long, default_value_t = 100_000_000)]
         fee: u64,
@@ -854,12 +863,9 @@ enum DevnetCommand {
         /// Directory containing the built RISC-V contract binaries.
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
         contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls sponsor funding and change.
-        #[arg(long, hide_env_values = true)]
-        private_key: Option<String>,
-        /// File containing the sponsor private key. Prefer this for watchtower processes.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true)]
-        private_key_file: Option<PathBuf>,
+        /// Protected file containing the sponsor-funding private key.
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", value_name = "PATH", value_parser = morph_key_input::secp256k1_file, hide_env_values = true)]
+        private_key: morph_key_input::SecretString,
         /// Watchtower config JSON path.
         #[arg(long)]
         config: std::path::PathBuf,
@@ -872,12 +878,9 @@ enum DevnetCommand {
         /// Directory containing the built RISC-V contract binaries.
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
         contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls sponsor funding and change.
-        #[arg(long, hide_env_values = true)]
-        private_key: Option<String>,
-        /// File containing the sponsor private key. Prefer this for watchtower processes.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true)]
-        private_key_file: Option<PathBuf>,
+        /// Protected file containing the sponsor-funding private key.
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", value_name = "PATH", value_parser = morph_key_input::secp256k1_file, hide_env_values = true)]
+        private_key: morph_key_input::SecretString,
         /// Watchtower config JSON path.
         #[arg(long)]
         config: std::path::PathBuf,
@@ -899,12 +902,9 @@ enum DevnetCommand {
         /// Directory containing the built RISC-V contract binaries.
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
         contracts_dir: std::path::PathBuf,
-        /// Secp256k1 private key that controls sponsor funding and change.
-        #[arg(long, hide_env_values = true)]
-        private_key: Option<String>,
-        /// File containing the sponsor private key. Prefer this for watchtower processes.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true)]
-        private_key_file: Option<PathBuf>,
+        /// Protected file containing the sponsor-funding private key.
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", value_name = "PATH", value_parser = morph_key_input::secp256k1_file, hide_env_values = true)]
+        private_key: morph_key_input::SecretString,
         /// Watchtower config JSON path.
         #[arg(long)]
         config: std::path::PathBuf,
@@ -939,8 +939,8 @@ enum DevnetCommand {
         #[arg(long, default_value = "target/riscv64imac-unknown-none-elf/release")]
         contracts_dir: std::path::PathBuf,
         /// Secp256k1 private key funding the SponsorCell and receiving change.
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
         /// Compressed secp256k1 pubkey whose lock receives later SponsorCell change.
         #[arg(long)]
         sponsor_change_pubkey: Option<String>,
@@ -1133,7 +1133,6 @@ fn main() -> Result<()> {
                 allow_unauthenticated_loopback,
                 allow_state_restore,
                 cors_origin,
-                ui_dir,
             } => hub::serve(hub::HubServeOptions {
                 listen,
                 state_path,
@@ -1142,7 +1141,6 @@ fn main() -> Result<()> {
                 network: morph_network(network),
                 ckb_rpc_url,
                 watch_alert_file,
-                ui_dir,
                 auth_token: resolve_hub_auth_token(
                     auth_token,
                     auth_token_file,
@@ -1183,9 +1181,11 @@ fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&verification)?);
             } else {
                 println!(
-                    "verified {} for {:?}; real_assets_allowed={}",
+                    "policy_verified={} for {} on {:?}; release_admitted={}; real_assets_allowed={}",
+                    verification.policy_verified,
                     verification.release_profile,
                     verification.approved_networks,
+                    verification.release_admitted,
                     verification.real_assets_allowed
                 );
             }
@@ -1592,27 +1592,6 @@ fn main() -> Result<()> {
     }
 }
 
-#[cfg(feature = "devnet")]
-fn resolve_watchtower_private_key(
-    _rpc_url: &str,
-    private_key: Option<String>,
-    private_key_file: Option<PathBuf>,
-) -> Result<String> {
-    ensure!(
-        private_key.is_none() || private_key_file.is_none(),
-        "pass either --private-key or --private-key-file, not both"
-    );
-    if let Some(private_key) = private_key {
-        return canonical_private_key(&private_key, "--private-key");
-    }
-    if let Some(path) = private_key_file {
-        let value = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read private key file {}", path.display()))?;
-        return canonical_private_key(&value, &format!("private key file {}", path.display()));
-    }
-    anyhow::bail!("--private-key or --private-key-file is required")
-}
-
 fn resolve_hub_auth_token(
     auth_token: Option<String>,
     auth_token_file: Option<PathBuf>,
@@ -1667,25 +1646,6 @@ fn non_empty_secret(value: String, source: &str) -> Result<String> {
 }
 
 #[cfg(feature = "devnet")]
-fn canonical_private_key(value: &str, source: &str) -> Result<String> {
-    let mut parts = value.split_whitespace();
-    let Some(first) = parts.next() else {
-        anyhow::bail!("{source} is empty");
-    };
-    ensure!(
-        parts.next().is_none(),
-        "{source} must contain exactly one hex private key"
-    );
-    let raw = first.strip_prefix("0x").unwrap_or(first);
-    ensure!(raw.len() == 64, "{source} must be 32 bytes");
-    let decoded = hex::decode(raw).with_context(|| format!("{source} must be hex encoded"))?;
-    ensure!(decoded.len() == 32, "{source} must be 32 bytes");
-    SigningKey::from_slice(&decoded)
-        .map_err(|err| anyhow::anyhow!("{source} is not a valid secp256k1 private key: {err:?}"))?;
-    Ok(format!("0x{}", raw.to_ascii_lowercase()))
-}
-
-#[cfg(feature = "devnet")]
 fn print_metrics(metrics: &devnet::TransactionMetrics) {
     println!("estimated_cycles={}", metrics.estimated_cycles);
     println!("tx_size_bytes={}", metrics.tx_size_bytes);
@@ -1729,7 +1689,7 @@ fn tip_json(tip: &HeaderView) -> Result<serde_json::Value> {
 
 struct NewInvoiceCommand {
     payee_node_id: String,
-    payee_private_key: String,
+    payee_private_key: morph_key_input::SecretString,
     amount: u128,
     description: String,
     network: InvoiceNetworkArg,
@@ -1755,7 +1715,9 @@ fn new_invoice_command(command: NewInvoiceCommand) -> Result<()> {
     );
 
     let payee_node_id = parse_cli_bytes32("payee_node_id", &command.payee_node_id)?;
-    let payee_signing_key = parse_cli_signing_key("payee_private_key", &command.payee_private_key)?;
+    let payee_signing_key =
+        parse_cli_signing_key("payee private-key file", &command.payee_private_key)?;
+    drop(command.payee_private_key);
     let channel_id = command
         .channel_id
         .as_deref()
@@ -1931,7 +1893,9 @@ fn parse_cli_signing_key(label: &str, value: &str) -> Result<SigningKey> {
     );
     let raw_hex = value.strip_prefix("0x").unwrap_or(value);
     ensure!(raw_hex.len() == 64, "{label} must be 32 bytes");
-    let raw = hex::decode(raw_hex).with_context(|| format!("{label} is not valid hex"))?;
+    let raw = zeroize::Zeroizing::new(
+        hex::decode(raw_hex).with_context(|| format!("{label} is not valid hex"))?,
+    );
     SigningKey::from_slice(&raw)
         .map_err(|err| anyhow::anyhow!("{label} is not a valid secp256k1 private key: {err:?}"))
 }
@@ -1988,6 +1952,63 @@ mod cli_secret_tests {
     use super::*;
     use clap::CommandFactory;
 
+    #[test]
+    fn every_private_key_argument_is_a_protected_file_without_raw_env_or_aliases() {
+        fn check(command: &clap::Command) {
+            for arg in command.get_arguments() {
+                if let Some(name) = arg.get_long()
+                    && name.contains("private-key")
+                {
+                    assert!(name.ends_with("-file"), "raw key argument: {name}");
+                    assert_eq!(
+                        arg.get_value_parser().type_id(),
+                        std::any::TypeId::of::<morph_key_input::SecretString>()
+                    );
+                    assert!(arg.get_all_aliases().unwrap_or_default().is_empty());
+                }
+                if let Some(env) = arg.get_env() {
+                    assert!(!env.to_string_lossy().ends_with("PRIVATE_KEY"));
+                }
+            }
+            for sub in command.get_subcommands() {
+                check(sub);
+            }
+        }
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| check(&Cli::command()))
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn retired_raw_key_argument_forms_reject_without_echoing_the_value() {
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                for args in [
+                    vec![
+                        "morph",
+                        "new-invoice",
+                        "--payee-private-key",
+                        "SECRET_MUST_NOT_APPEAR",
+                    ],
+                    vec![
+                        "morph",
+                        "new-invoice",
+                        "--payee-private-key=SECRET_MUST_NOT_APPEAR",
+                    ],
+                ] {
+                    let error = Cli::try_parse_from(args).unwrap_err().to_string();
+                    assert!(!error.contains("SECRET_MUST_NOT_APPEAR"), "{error}");
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[cfg(not(feature = "devnet"))]
     #[test]
     fn default_cli_hides_live_devnet_command() {
@@ -2020,91 +2041,6 @@ mod cli_secret_tests {
                     confirmation.is_required_set(),
                     "--devnet-only must be required for live devnet operators"
                 );
-            })
-            .expect("failed to spawn clap metadata test")
-            .join()
-            .expect("clap metadata test panicked");
-    }
-
-    #[cfg(feature = "devnet")]
-    #[test]
-    fn resolves_private_key_from_file() {
-        let private_key = private_key_from_scalar(1);
-        let path = std::env::temp_dir().join(format!(
-            "morph-private-key-{}-{}.txt",
-            std::process::id(),
-            "file"
-        ));
-        fs::write(&path, format!("{private_key}\n")).unwrap();
-        let resolved =
-            resolve_watchtower_private_key("http://127.0.0.1:18114", None, Some(path.clone()))
-                .unwrap();
-        fs::remove_file(path).unwrap();
-        assert_eq!(resolved, private_key);
-    }
-
-    #[cfg(feature = "devnet")]
-    #[test]
-    fn rejects_ambiguous_private_key_sources() {
-        let private_key = private_key_from_scalar(2);
-        let err = resolve_watchtower_private_key(
-            "http://127.0.0.1:18114",
-            Some(private_key),
-            Some(PathBuf::from("key.txt")),
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("either --private-key or --private-key-file")
-        );
-    }
-
-    #[cfg(feature = "devnet")]
-    #[test]
-    fn rejects_multi_token_private_key_file() {
-        let private_key = private_key_from_scalar(3);
-        let path = std::env::temp_dir().join(format!(
-            "morph-private-key-{}-{}.txt",
-            std::process::id(),
-            "multi"
-        ));
-        fs::write(&path, format!("{private_key} extra\n")).unwrap();
-        let err =
-            resolve_watchtower_private_key("http://127.0.0.1:18114", None, Some(path.clone()))
-                .unwrap_err();
-        fs::remove_file(path).unwrap();
-        assert!(err.to_string().contains("exactly one hex private key"));
-    }
-
-    #[cfg(feature = "devnet")]
-    #[test]
-    fn rejects_missing_watchtower_private_key() {
-        let err = resolve_watchtower_private_key("http://127.0.0.1:18114", None, None).unwrap_err();
-        assert!(err.to_string().contains("--private-key"), "got: {err}");
-    }
-
-    #[cfg(feature = "devnet")]
-    #[test]
-    fn watchtower_private_key_file_is_not_shadowed_by_devnet_key_env() {
-        std::thread::Builder::new()
-            .name("clap-metadata-watchtower-private-key".to_string())
-            .stack_size(16 * 1024 * 1024)
-            .spawn(|| {
-                for subcommand in [
-                    "watch-config-once",
-                    "watch-config-loop",
-                    "watch-config-service",
-                ] {
-                    let private_key = devnet_arg(subcommand, "private_key");
-                    assert_eq!(private_key.get_env(), None, "{subcommand} private-key");
-
-                    let private_key_file = devnet_arg(subcommand, "private_key_file");
-                    assert_eq!(
-                        private_key_file.get_env(),
-                        Some(std::ffi::OsStr::new("MORPH_DEVNET_PRIVATE_KEY_FILE")),
-                        "{subcommand} private-key-file"
-                    );
-                }
             })
             .expect("failed to spawn clap metadata test")
             .join()
@@ -2154,30 +2090,5 @@ mod cli_secret_tests {
         let token = generate_hub_auth_token().unwrap();
         assert_eq!(token.len(), 64);
         assert!(hex::decode(token).is_ok());
-    }
-
-    #[cfg(feature = "devnet")]
-    fn devnet_arg(subcommand: &str, arg_id: &str) -> clap::Arg {
-        let command = Cli::command();
-        let devnet = command
-            .get_subcommands()
-            .find(|command| command.get_name() == "devnet")
-            .unwrap_or_else(|| panic!("missing devnet command"));
-        let subcommand = devnet
-            .get_subcommands()
-            .find(|command| command.get_name() == subcommand)
-            .unwrap_or_else(|| panic!("missing devnet subcommand {subcommand}"));
-        subcommand
-            .get_arguments()
-            .find(|arg| arg.get_id() == arg_id)
-            .cloned()
-            .unwrap_or_else(|| panic!("missing argument {arg_id}"))
-    }
-
-    #[cfg(feature = "devnet")]
-    fn private_key_from_scalar(value: u8) -> String {
-        let mut bytes = [0u8; 32];
-        bytes[31] = value;
-        format!("0x{}", hex::encode(bytes))
     }
 }

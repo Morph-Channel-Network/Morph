@@ -1,0 +1,53 @@
+--- gpui-pre-0.3.11/Cargo.toml.orig-registry
++++ gpui-pre-0.3.11/Cargo.toml
+@@ -454,7 +454,7 @@
+ default-features = true
+ 
+ [dependencies.resvg]
+-version = "0.46.0"
++version = "=0.49.0"
+ features = [
+     "text",
+     "system-fonts",
+@@ -540,8 +540,8 @@
+ [dependencies.thiserror]
+ version = "2.0.12"
+ 
+-[dependencies.ttf-parser]
+-version = "0.25"
++[dependencies.skrifa]
++version = "=0.44.0"
+ 
+ [dependencies.unicode-segmentation]
+ version = "1.10"
+@@ -550,7 +550,7 @@
+ version = "2.2"
+ 
+ [dependencies.usvg]
+-version = "0.46.0"
++version = "=0.49.0"
+ default-features = false
+ 
+ [dependencies.uuid]
+--- gpui-pre-0.3.11/src/svg_renderer.rs.orig-registry
++++ gpui-pre-0.3.11/src/svg_renderer.rs
+@@ -4,6 +4,7 @@
+ };
+ use image::Frame;
+ use resvg::tiny_skia::Pixmap;
++use skrifa::MetadataProvider;
+ use smallvec::SmallVec;
+ use std::{
+     hash::Hash,
+@@ -41,9 +42,9 @@
+ 
+ fn font_has_char(db: &usvg::fontdb::Database, id: usvg::fontdb::ID, ch: char) -> bool {
+     db.with_face_data(id, |font_data, face_index| {
+-        ttf_parser::Face::parse(font_data, face_index)
++        skrifa::FontRef::from_index(font_data, face_index)
+             .ok()
+-            .and_then(|face| face.glyph_index(ch))
++            .and_then(|face| face.charmap().map(ch))
+             .is_some()
+     })
+     .unwrap_or(false)

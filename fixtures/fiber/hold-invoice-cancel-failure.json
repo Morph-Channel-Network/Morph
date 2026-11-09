@@ -1,0 +1,475 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/hold-invoice-cancel-failure",
+  "steps": [
+    {
+      "id": "e2e/hold-invoice-cancel-failure/01-connect-peer",
+      "source_sha256": "fc562ed8339d3d158e5f9f03e81a24e453dcf84b1f78b808062859ee7f01be4a",
+      "source_script_sha256": "214030f855b2197fc044132e9397f01c54872c488f1456d8d2218cf3cfbae61a",
+      "sequence": 1,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/02-open-channel",
+      "source_sha256": "708b7571eb01e6c612ccad05b6d2ead103f4716bc8e8d47e18b31b06a027ad70",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 2,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "funding_amount": "0x377aab54d000",
+            "tlc_fee_proportional_millionths": "0x4B0"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/03-capture-channel",
+      "source_sha256": "52b1b92d8c839621f0b4772aa959098cbd9711257fecb9981c0a1a25cdafc923",
+      "source_script_sha256": "47bbc4f0a0f85db784e61080a570caa76f120b1bfcb30e11be9c7098ee305561",
+      "sequence": 3,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/channel_outpoint"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/04-generate-epochs",
+      "source_sha256": "d030a43f67f6fb09e332e0baca6bc642a4f7074b952fe2a3c8176f17f798314d",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 4,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/05-wait-channel-ready",
+      "source_sha256": "6f3ab6b59ed93f9a856a624fb99818c38fc43765ee99f07a91d9c8d5a428abc8",
+      "source_script_sha256": "ea1d61fb73e9189fe0194bb54fcd3890903408001f219ebff218fc8fc3ad8e9e",
+      "sequence": 5,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [],
+      "poll": {
+        "kind": "channel_ready",
+        "variable": "CHANNEL_ID",
+        "attempts": 10,
+        "mine": true
+      }
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/06-new-hold-invoice",
+      "source_sha256": "f7d36e7649e70e00f5a30b5acf394786f4e4032e52bb7f2066ce0a0e7bbba9fc",
+      "source_script_sha256": "4ea9c48f4dd0ff918f5728710672b2dc11c01f26afd78e8ab8771c95d75d0de0",
+      "sequence": 6,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x3e8",
+            "currency": "Fibd",
+            "description": "hold invoice canceled after received",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_hash": "{{HOLD_PAYMENT_HASH}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "HOLD_PAYMENT_HASH"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "HOLD_INVOICE",
+          "value": {
+            "pointer": "/result/invoice_address"
+          }
+        },
+        {
+          "variable": "HOLD_PAYMENT_HASH",
+          "value": {
+            "pointer": "/result/invoice/data/payment_hash"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/07-send-payment",
+      "source_sha256": "bf4b2b1bc8b398124453eb76f1bf94d28f016c6d7091b65921ceb12a3f9b0ccf",
+      "source_script_sha256": "3872b0d77faa13016076212540b367c8ce2a7d1b1fbbe5f2bafff36ee6f6cf5d",
+      "sequence": 7,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "invoice": "{{HOLD_INVOICE}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/payment_hash"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "{{HOLD_PAYMENT_HASH}}"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/08-wait-invoice-received",
+      "source_sha256": "b5899241cc414204981032c00fc7dca87727e5fb25efe7ad92d3767c74639f22",
+      "source_script_sha256": "bf7dd8b1d2bc20b970382db454d47f9e99825d0b2a5eb04865fd56424e7380b1",
+      "sequence": 8,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "get_invoice",
+        "params": [
+          {
+            "payment_hash": "{{HOLD_PAYMENT_HASH}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "poll": {
+        "kind": "status",
+        "expected": "Received",
+        "attempts": 20,
+        "mine": false
+      }
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/09-cancel-invoice",
+      "source_sha256": "103839e87a638a40ae68e235b8366bb41654adc3039179b9e7024a0893a6c3d3",
+      "source_script_sha256": "caa75664e0eb0630fee5c5bb1b9ba393d9bae08971cdf4ac9ad3f63c6f585541",
+      "sequence": 9,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "cancel_invoice",
+        "params": [
+          {
+            "payment_hash": "{{HOLD_PAYMENT_HASH}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "Cancelled"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/hold-invoice-cancel-failure/10-get-payment-decoded-final-error",
+      "source_sha256": "27b3aff77dcfcba066d8eac1d61c858b57be83839374d95f290764170958298f",
+      "source_script_sha256": "139cde0b724e5ec8db109cf01abe9573fcd9db1153d543e713861a55e6f80d0b",
+      "sequence": 10,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "get_payment",
+        "params": [
+          {
+            "payment_hash": "{{HOLD_PAYMENT_HASH}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/failed_error"
+          },
+          "op": "not_contains",
+          "right": {
+            "literal": "InvalidOnionError"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/failed_error"
+          },
+          "op": "any_contains",
+          "right": {
+            "literal": [
+              "InvoiceCancelled",
+              "HoldTlcTimeout"
+            ]
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "poll": {
+        "kind": "status",
+        "expected": "Failed",
+        "attempts": 20,
+        "mine": false
+      }
+    }
+  ]
+}

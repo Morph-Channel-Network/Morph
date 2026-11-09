@@ -1,0 +1,22 @@
+--- ckb-verification-1.2.1/Cargo.toml.orig-registry
++++ ckb-verification-1.2.1/Cargo.toml
+@@ -70,7 +70,7 @@
+ default-features = false
+ 
+ [dependencies.lru]
+-version = "0.7.1"
++version = "=0.18.2"
+ 
+ [dependencies.tokio]
+ version = "1.35.0"
+--- ckb-verification-1.2.1/src/cache.rs.orig-registry
++++ ckb-verification-1.2.1/src/cache.rs
+@@ -49,7 +49,7 @@
+ 
+ /// Initialize cache
+ pub fn init_cache() -> TxVerificationCache {
+-    lru::LruCache::new(CACHE_SIZE)
++    lru::LruCache::new(std::num::NonZeroUsize::new(CACHE_SIZE).expect("positive cache capacity"))
+ }
+ 
+ /// Cached result of successful transaction script verification.

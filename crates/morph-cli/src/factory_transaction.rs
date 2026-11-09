@@ -851,7 +851,7 @@ pub(crate) mod tests {
         journal.reserve_signature(&id).unwrap();
         for seed in [1u8, 2] {
             let key = SigningKey::from_slice(&[seed; 32]).unwrap();
-            let public = key.verifying_key().to_encoded_point(true);
+            let public = key.verifying_key().to_sec1_point(true);
             let member = members
                 .iter()
                 .find(|m| m.pubkey_sec1 == public.as_bytes())
@@ -910,7 +910,7 @@ pub(crate) mod tests {
         (terms, cells)
     }
 
-    fn reduced_rights_fixture() -> (FactoryPreparationTerms, Vec<FundingCell>) {
+    pub(crate) fn reduced_rights_fixture() -> (FactoryPreparationTerms, Vec<FundingCell>) {
         let (mut terms, cells) = fixture();
         let (mut source, members, mut rights) = terms.context.decode().unwrap();
         let participant = members[0].participant;
@@ -951,7 +951,7 @@ pub(crate) mod tests {
         (terms, cells)
     }
 
-    fn reduce_value_rights(terms: &mut FactoryPreparationTerms, count: usize) {
+    pub(crate) fn reduce_value_rights(terms: &mut FactoryPreparationTerms, count: usize) {
         let participant = &terms.context.members[0].participant;
         let mut changed = 0;
         for right in &mut terms.target_rights {
@@ -1011,7 +1011,7 @@ pub(crate) mod tests {
                 let key = (1u8..=2)
                     .map(|seed| SigningKey::from_slice(&[seed; 32]).unwrap())
                     .find(|key| {
-                        key.verifying_key().to_encoded_point(true).as_bytes() == member.pubkey_sec1
+                        key.verifying_key().to_sec1_point(true).as_bytes() == member.pubkey_sec1
                     })
                     .unwrap();
                 let sig: Signature = key
@@ -1193,11 +1193,7 @@ pub(crate) mod tests {
                     .sign_prehash(&private.state.signing_digest().unwrap())
                     .unwrap();
                 ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: sig.to_bytes().to_vec(),
                 }
             })
@@ -1277,11 +1273,7 @@ pub(crate) mod tests {
                     .sign_prehash(&exit.state.signing_digest().unwrap())
                     .unwrap();
                 ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 }
             })
@@ -1543,7 +1535,7 @@ pub(crate) mod tests {
                 SigningKey::from_slice(&[seed; 32])
                     .unwrap()
                     .verifying_key()
-                    .to_encoded_point(true)
+                    .to_sec1_point(true)
                     .as_bytes()
                     .to_vec()
             })
@@ -1600,11 +1592,7 @@ pub(crate) mod tests {
                         .sign_prehash(&exit.state.signing_digest().unwrap())
                         .unwrap();
                     ParticipantSignature {
-                        pubkey_sec1: key
-                            .verifying_key()
-                            .to_encoded_point(true)
-                            .as_bytes()
-                            .to_vec(),
+                        pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                         signature: sig.to_bytes().to_vec(),
                     }
                 })
@@ -1641,11 +1629,7 @@ pub(crate) mod tests {
                 .unwrap();
             let outsider = FactoryParticipantSignature {
                 participant: members[0].participant,
-                pubkey_sec1: key
-                    .verifying_key()
-                    .to_encoded_point(true)
-                    .as_bytes()
-                    .to_vec(),
+                pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                 signature: signature.to_bytes().to_vec(),
             };
             assert!(parent.record_signature(&id, outsider).is_err());
@@ -1843,6 +1827,8 @@ pub(crate) struct PrepareOptions {
     #[arg(long)]
     pub max_fee: u64,
     #[arg(long)]
+    pub admission_config: std::path::PathBuf,
+    #[arg(long)]
     pub output: std::path::PathBuf,
 }
 #[cfg(feature = "devnet")]
@@ -1880,6 +1866,14 @@ pub(crate) fn prepare(
         rpc,
         &request,
         &options.contracts_dir,
+        options.max_fee,
+    )?;
+    crate::admission::reserve_native(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &request,
+        true,
         options.max_fee,
     )?;
     let packet = crate::factory_packets::StoredFactoryRequest::from_delivery_review(&request)?;

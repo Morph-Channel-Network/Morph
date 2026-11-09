@@ -17,6 +17,7 @@ pub(crate) struct Context<'a> {
     pub sessions: &'a [PathBuf],
     pub cell_deps: &'a [StoredMultiAssetCellDep],
     pub policy: &'a Path,
+    pub admission_config: &'a Path,
 }
 
 pub(crate) fn save_json(path: &Path, value: &impl serde::Serialize) -> Result<()> {
@@ -71,6 +72,7 @@ pub(crate) fn prepare(
         crate::factory_transaction::PrepareOptions {
             terms: path,
             contracts_dir: context.options.contracts_dir.clone(),
+            admission_config: context.admission_config.to_path_buf(),
             policy: context.policy.to_path_buf(),
             max_fee: context.options.fee,
             output: packet.clone(),
@@ -125,7 +127,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
     // Bob disappears before returning the final full-consent signature.
     // Alice explicitly authorizes a reduced alternative without revocation.
     let mut rights = before.rights.clone();
-    rights[0].quantity = "3000000000".to_string();
+    rights[0].quantity = "6100000000".to_string();
     let alice = parse_privkey(&options.alice_private_key)
         .map_err(|_| anyhow!("invalid acceptance Alice key"))?;
     let escape = FactoryPreparationTerms {
@@ -136,13 +138,13 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
             retained: vec![FactoryReserveTerms {
                 type_hash: None,
                 reserve: "23900000000".to_string(),
-                business_ckb: "6100000000".to_string(),
+                business_ckb: "9200000000".to_string(),
                 amount: "0".to_string(),
             }],
             payouts: vec![FactoryPayoutTerms {
                 type_hash: None,
                 reserve: "6100000000".to_string(),
-                business_ckb: "3900000000".to_string(),
+                business_ckb: "800000000".to_string(),
                 amount: "0".to_string(),
                 lock_script_hex: canonical_hex(secp256k1_lock(&alice)?.as_slice()),
             }],
@@ -191,7 +193,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
         "rejected stale context changed member authority"
     );
     let mut deposit_rights = alice_context.rights.clone();
-    deposit_rights[0].quantity = "43000000000".to_string();
+    deposit_rights[0].quantity = "46100000000".to_string();
     let deposit = FactoryPreparationTerms {
         schema: metadata.schema,
         context: alice_context,
@@ -200,7 +202,7 @@ pub(crate) fn run(rpc: &CkbRpcClient, context: Context<'_>) -> Result<Value> {
             retained: vec![FactoryReserveTerms {
                 type_hash: None,
                 reserve: "63900000000".to_string(),
-                business_ckb: "6100000000".to_string(),
+                business_ckb: "9200000000".to_string(),
                 amount: "0".to_string(),
             }],
             type_scripts_hex: vec![],
@@ -352,7 +354,15 @@ pub(crate) fn execute(
     packet: &Path,
     replacement: Option<&str>,
 ) -> Result<Value> {
-    execute_inner(rpc, context, directory, packet, replacement, false)
+    let terminal = read_request(packet)?.decode()?.target.is_none();
+    execute_inner(
+        rpc,
+        context,
+        directory,
+        packet,
+        replacement,
+        terminal && context.options.reorg,
+    )
 }
 
 fn execute_inner(
@@ -437,6 +447,7 @@ fn execute_inner(
                     .ok_or_else(|| anyhow!("missing protocol transaction"))?,
             ),
             contracts_dir: context.options.contracts_dir.clone(),
+            admission_config: context.admission_config.to_path_buf(),
             policy: context.policy.to_path_buf(),
             max_fee: context.options.fee,
             store_dir: directory.join("wallets"),
@@ -467,6 +478,7 @@ fn execute_inner(
             request: packet.to_path_buf(),
             transaction: tx.clone(),
             contracts_dir: context.options.contracts_dir.clone(),
+            admission_config: context.admission_config.to_path_buf(),
             policy: context.policy.to_path_buf(),
             max_fee: context.options.fee,
             mine_blocks: context.options.mine_blocks,
@@ -497,6 +509,17 @@ fn execute_inner(
             .as_ref()
             .ok_or_else(|| anyhow!("Factory orphan replay requires an existing source"))?;
         operator::validate_live_custody(rpc, source, &context.options.contracts_dir)?;
+        crate::admission::reconcile_native(
+            rpc,
+            context.admission_config,
+            &context.options.contracts_dir,
+        )?;
+        let orphan_admission =
+            crate::admission::facts(context.admission_config, &context.options.contracts_dir)?;
+        ensure!(
+            orphan_admission["active_factories"] == 1,
+            "orphaned terminal closure did not restore the active Factory admission slot"
+        );
         // Reuse the complete immutable wallet/protocol transaction. No sign,
         // add-signature or participant journal command occurs after rollback.
         submitted = operator::submit(
@@ -505,6 +528,7 @@ fn execute_inner(
                 request: packet.to_path_buf(),
                 transaction: tx.clone(),
                 contracts_dir: context.options.contracts_dir.clone(),
+                admission_config: context.admission_config.to_path_buf(),
                 policy: context.policy.to_path_buf(),
                 max_fee: context.options.fee,
                 mine_blocks: context.options.mine_blocks,
@@ -524,7 +548,15 @@ fn execute_inner(
                     == journals,
             "Factory orphan replay changed the signed transaction or participant authority"
         );
+        let replay_admission =
+            crate::admission::facts(context.admission_config, &context.options.contracts_dir)?;
+        ensure!(
+            orphan_admission["lifetime_child_reservations"]
+                == replay_admission["lifetime_child_reservations"],
+            "canonical reorg replay changed lifetime child reservations"
+        );
         json!({"orphaned":true,"authentic_source_live":true,"exact_body_and_witnesses":true,
+            "admission":{"orphaned":orphan_admission,"replayed":replay_admission,"lifetime_children_preserved":true},
             "unchanged_signer_journals":true,"no_new_participant_signatures":true,
             "original":original,"replayed":submitted})
     } else {
@@ -544,6 +576,7 @@ fn execute_inner(
                 request: packet.to_path_buf(),
                 fee_out_point: format_out_point(&funding.out_point),
                 contracts_dir: context.options.contracts_dir.clone(),
+                admission_config: context.admission_config.to_path_buf(),
                 store_dir: directory.join("activated"),
                 fee: context.options.fee,
                 max_fee: context.options.fee,

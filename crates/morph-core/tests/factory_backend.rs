@@ -19,11 +19,7 @@ fn key(seed: u8) -> SigningKey {
 }
 fn signature(request: &FactorySigningRequest, seed: u8) -> FactoryParticipantSignature {
     let key = key(seed);
-    let public = key
-        .verifying_key()
-        .to_encoded_point(true)
-        .as_bytes()
-        .to_vec();
+    let public = key.verifying_key().to_sec1_point(true).as_bytes().to_vec();
     let member = request
         .members()
         .unwrap()
@@ -479,7 +475,7 @@ fn source_reorg_changes_context_but_reappearance_keeps_all_old_votes() {
 #[test]
 fn current_factory_view_checks_all_five_vm_exported_classes() {
     let cases: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../sdk/typescript/test/fixtures/factory-transitions.json"
+        "../../../fixtures/protocol/factory-transitions.json"
     ))
     .unwrap();
     for case in cases["cases"].as_array().unwrap() {
@@ -709,7 +705,7 @@ fn child_possession_receipts_cannot_replace_parent_votes_or_cross_child_identity
     let mut wrong_recipient = receipt;
     wrong_recipient.pubkey_sec1 = key(2)
         .verifying_key()
-        .to_encoded_point(true)
+        .to_sec1_point(true)
         .as_bytes()
         .to_vec();
     assert_eq!(
@@ -736,7 +732,7 @@ fn factory_child_public_fixture_matches_current_rust_vm_terms() {
         "since": morph_script_common::multi_asset::MultiAssetVaultArgs::parse(&expected.scripts.vault_lock[53..]).unwrap().finalise_since().to_string(),
     });
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../sdk/typescript/test/fixtures/factory-child-public-exit.json");
+        .join("../../fixtures/protocol/factory-child-public-exit.json");
     if std::env::var("MORPH_UPDATE_FIXTURES").as_deref() == Ok("1") {
         std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
     }

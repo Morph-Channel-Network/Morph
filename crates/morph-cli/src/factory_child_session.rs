@@ -33,8 +33,8 @@ pub(crate) enum FactoryChildSessionCommand {
     },
     Inspect,
     Sign {
-        #[arg(long, env = "MORPH_CHANNEL_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
     AddSignature {
         #[arg(long)]
@@ -400,7 +400,7 @@ mod tests {
         let mut receipts = vec![];
         for seed in [1u8, 2] {
             let key = SigningKey::from_slice(&[seed; 32]).unwrap();
-            let local_pubkey = canonical_hex(key.verifying_key().to_encoded_point(true).as_bytes());
+            let local_pubkey = canonical_hex(key.verifying_key().to_sec1_point(true).as_bytes());
             let path = directory.0.join(format!("party-{seed}.json"));
             run(
                 &path,
@@ -418,7 +418,7 @@ mod tests {
                 run(
                     &path,
                     FactoryChildSessionCommand::Sign {
-                        private_key: hex::encode([3; 32])
+                        private_key: hex::encode([3; 32]).into()
                     }
                 )
                 .is_err()
@@ -427,7 +427,7 @@ mod tests {
             let signed = run(
                 &path,
                 FactoryChildSessionCommand::Sign {
-                    private_key: hex::encode([seed; 32]),
+                    private_key: hex::encode([seed; 32]).into(),
                 },
             )
             .unwrap();
@@ -440,7 +440,7 @@ mod tests {
                 run(
                     &path,
                     FactoryChildSessionCommand::Sign {
-                        private_key: hex::encode([seed; 32])
+                        private_key: hex::encode([seed; 32]).into()
                     }
                 )
                 .unwrap(),
@@ -516,7 +516,7 @@ mod tests {
             run(
                 &paths[0],
                 FactoryChildSessionCommand::Sign {
-                    private_key: hex::encode([1; 32])
+                    private_key: hex::encode([1; 32]).into()
                 }
             )
             .is_err()

@@ -24,7 +24,7 @@ use crate::multi_asset_funding::{
 use crate::multi_asset_packages::{MultiAssetPackageSummary, StoredMultiAssetPackage};
 use crate::multi_asset_signatures::SignatureMessage;
 use crate::rpc::CkbRpcClient;
-use crate::watch_alert::{WatchAlertEvent, WatchAlertSeverity, WatchtowerAlert};
+use crate::watch_alert::WatchtowerAlert;
 
 const MAX_REQUEST_BODY_BYTES: usize = 1_048_576;
 const MAX_REQUEST_LINE_BYTES: usize = 8 * 1024;
@@ -52,10 +52,9 @@ pub struct HubServeOptions {
     pub state_path: PathBuf,
     pub pubkey: String,
     pub network: MorphNetwork,
-    pub invoice_private_key: Option<String>,
+    pub invoice_private_key: Option<morph_key_input::SecretString>,
     pub ckb_rpc_url: Option<String>,
     pub watch_alert_file: Option<PathBuf>,
-    pub ui_dir: PathBuf,
     pub auth_token: Option<String>,
     pub allow_unauthenticated_loopback: bool,
     pub allow_state_restore: bool,
@@ -71,7 +70,6 @@ struct HubServer {
     active_sse_streams: Arc<AtomicUsize>,
     request_counter: Arc<AtomicU64>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
-    ui_dir: PathBuf,
     ckb_rpc_url: Option<String>,
     watch_alert_file: Option<PathBuf>,
     invoice_signing_key: Option<SigningKey>,
@@ -180,15 +178,6 @@ struct HubAuthToken {
     scopes: BTreeSet<AuthScope>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum AuthScope {
-    Read,
-    Write,
-    Restore,
-    Sign,
-}
-
 struct CounterPermit {
     counter: Arc<AtomicUsize>,
 }
@@ -261,14 +250,6 @@ struct HubEvent {
     created_at_unix: u64,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum EventSeverity {
-    Info,
-    Warning,
-    Critical,
-}
-
 #[derive(Debug)]
 struct HttpRequest {
     method: String,
@@ -285,56 +266,23 @@ struct HttpResponse {
     body: Vec<u8>,
 }
 
-#[derive(Debug, Serialize)]
-struct ApiErrorBody {
-    error: String,
-    code: String,
-    request_id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct RestorePreview {
-    confirmation_hash: String,
-    allowed: bool,
-    current: RestoreStateSummary,
-    candidate: RestoreStateSummary,
-    ignored_completed_flows: Vec<&'static str>,
-    warnings: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct RestoreStateSummary {
-    peers: usize,
-    channels: usize,
-    factories: usize,
-    conditional_batches: usize,
-    multi_asset_packages: usize,
-    root_fundings: usize,
-    invoices: usize,
-    completed_flows: usize,
-    events: usize,
-    settling_channels: usize,
-}
-
-impl RestoreStateSummary {
-    fn from_runtime(state: &HubRuntimeState) -> Self {
-        Self {
-            peers: state.node.peers.len(),
-            channels: state.node.channels.len(),
-            factories: state.node.factories.len(),
-            conditional_batches: state.conditional_batches.len(),
-            multi_asset_packages: state.multi_asset_packages.len(),
-            root_fundings: state.root_fundings.len(),
-            invoices: state.node.invoices.records().count(),
-            completed_flows: state.node.completed_flows.len(),
-            events: state.events.len(),
-            settling_channels: state
-                .node
-                .channels
-                .values()
-                .filter(|channel| channel.phase == Phase::Settling)
-                .count(),
-        }
+fn restore_state_summary(state: &HubRuntimeState) -> RestoreStateSummary {
+    RestoreStateSummary {
+        peers: state.node.peers.len(),
+        channels: state.node.channels.len(),
+        factories: state.node.factories.len(),
+        conditional_batches: state.conditional_batches.len(),
+        multi_asset_packages: state.multi_asset_packages.len(),
+        root_fundings: state.root_fundings.len(),
+        invoices: state.node.invoices.records().count(),
+        completed_flows: state.node.completed_flows.len(),
+        events: state.events.len(),
+        settling_channels: state
+            .node
+            .channels
+            .values()
+            .filter(|channel| channel.phase == Phase::Settling)
+            .count(),
     }
 }
 
@@ -352,311 +300,44 @@ impl HttpRequest {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct CreateInvoiceRequest {
-    amount: String,
-    description: String,
-    payment_preimage: Option<String>,
-    payment_hash: Option<String>,
-    expiry_secs: u64,
-    channel_id: Option<String>,
-    asset: Option<AssetRequest>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DecodeInvoiceRequest {
-    encoded_invoice: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct SettleInvoiceRequest {
-    payment_preimage: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ConnectPeerRequest {
-    pubkey: String,
-    alias: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenChannelRequest {
-    channel_id: String,
-    counterparty_pubkey: String,
-    counterparty_alias: Option<String>,
-    funding_context_id: String,
-    local: String,
-    remote: String,
-    pending: Option<String>,
-    sponsor_budget: u64,
-    asset: Option<AssetRequest>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SpliceChannelRequest {
-    new_funding_epoch: u64,
-    new_funding_context_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct PublishStateRequest {
-    funding_context_id: String,
-    state_number: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenFactoryRequest {
-    factory_id: String,
-    participant_pubkeys: Vec<String>,
-    reserve: String,
-    asset: Option<AssetRequest>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AdvanceFactoryRequest {
-    new_update_number: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct MaterialiseChildRequest {
-    child_channel_id: String,
-    counterparty_pubkey: String,
-    counterparty_alias: Option<String>,
-    funding_context_id: String,
-    local: String,
-    remote: String,
-    pending: Option<String>,
-    sponsor_budget: u64,
-    asset: Option<AssetRequest>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-enum AssetRequest {
-    Ckb,
-    Xudt { type_hash: String },
-}
-
-#[derive(Serialize)]
-struct HubView {
-    pubkey: String,
-    node_id: String,
-    network: &'static str,
-    state_path: String,
-    rpc: RpcView,
-    security: HubSecurityView,
-    model: HubModelView,
-    provenance: RecordProvenanceView,
-    watchtower: WatchtowerView,
-    peers: Vec<PeerView>,
-    channels: Vec<ChannelView>,
-    invoices: Vec<InvoiceView>,
-    factories: Vec<FactoryView>,
-    conditional_batches: Vec<StoredConditionalBatchPackage>,
-    multi_asset_packages: Vec<MultiAssetPackageSummary>,
-    multi_asset_package_count: usize,
-    root_fundings: Vec<RootCollectionSummary>,
-    events: Vec<EventView>,
-    required_flows: Vec<&'static str>,
-    completed_flows: Vec<&'static str>,
-    missing_flows: Vec<&'static str>,
-}
-
-#[derive(Serialize)]
-struct HubModelView {
-    profile: &'static str,
-    hub_role: &'static str,
-    factory_authority: &'static str,
-    channel_authority: &'static str,
-    routing_role: &'static str,
-    agent_role: &'static str,
-    factory_min_participants: usize,
-    factory_max_participants: usize,
-    chain_actions_enabled: bool,
-    factory_rights_exposed: bool,
-    provider_edges_exposed: bool,
-    rgbpp_evidence_exposed: bool,
-    agent_receipts_exposed: bool,
-}
-
-#[derive(Serialize)]
-struct HubSecurityView {
-    auth_required: bool,
-    auth_mode: &'static str,
-    auth_scopes: Vec<AuthScope>,
-    single_operator: bool,
-    state_restore_enabled: bool,
-    invoice_signing_enabled: bool,
-    cors_origin: Option<String>,
-    max_concurrent_connections: usize,
-    max_concurrent_mutations: usize,
-    max_concurrent_event_streams: usize,
-    mutation_rate_limit_per_minute: u32,
-    max_invoice_expiry_secs: u64,
-}
-
-#[derive(Serialize, Clone, Copy)]
-struct RecordProvenanceView {
-    source: &'static str,
-    chain_status: &'static str,
-    label: &'static str,
-    message: &'static str,
-}
-
-#[derive(Serialize)]
-struct WatchtowerView {
-    configured: bool,
-    alert_file: Option<String>,
-    file_exists: bool,
-    alerts: Vec<WatchtowerAlertView>,
-    last_error: Option<String>,
-    provenance: RecordProvenanceView,
-}
-
-#[derive(Serialize, Clone)]
-struct WatchtowerAlertView {
-    schema: String,
-    created_unix_ms: u64,
-    channel_id: String,
-    severity: WatchAlertSeverity,
-    event: WatchAlertEvent,
-    message: String,
-    selected_state_number: u64,
-    observed_state_number: Option<u64>,
-    observed_out_point: Option<String>,
-    publication_tx_hash: Option<String>,
-    selected_funding_anchor: Option<String>,
-    observed_funding_anchor: Option<String>,
-    selected_funding_context_id: Option<String>,
-    observed_funding_context_id: Option<String>,
-    scanned_to_block: u64,
-    next_from_block: u64,
-    provenance: RecordProvenanceView,
-}
-
-#[derive(Clone, Serialize)]
-struct RpcView {
-    status: &'static str,
-    url: Option<String>,
-    tip_height: Option<u64>,
-    chain: Option<String>,
-    message: Option<String>,
-}
-
-#[derive(Serialize)]
-struct PeerView {
-    pubkey: String,
-    node_id: String,
-    alias: String,
-    provenance: RecordProvenanceView,
-}
-
-#[derive(Serialize)]
-struct ChannelView {
-    channel_id: String,
-    factory_id: Option<String>,
-    counterparty_pubkey: String,
-    counterparty_node_id: String,
-    funding_epoch: u64,
-    funding_context_id: String,
-    state_number: u64,
-    phase: &'static str,
-    balances: Vec<BalanceView>,
-    sponsor_budget: u64,
-    provenance: RecordProvenanceView,
-}
-
-#[derive(Serialize)]
-struct BalanceView {
-    asset: AssetView,
-    local: String,
-    remote: String,
-    pending: String,
-}
-
-#[derive(Serialize)]
-struct InvoiceView {
-    invoice_id: String,
-    encoded_invoice: String,
-    status: &'static str,
-    network: &'static str,
-    payee_pubkey: Option<String>,
-    payee_node_id: String,
-    channel_id: Option<String>,
-    asset: AssetView,
-    amount: String,
-    created_at_unix: u64,
-    expires_at_unix: u64,
-    payment_hash: String,
-    description: String,
-    received_at_unix: Option<u64>,
-    paid_at_unix: Option<u64>,
-    cancelled_at_unix: Option<u64>,
-    provenance: RecordProvenanceView,
-}
-
-#[derive(Serialize)]
-struct FactoryView {
-    factory_id: String,
-    participant_pubkeys: Vec<String>,
-    participant_node_ids: Vec<String>,
-    update_number: u64,
-    reserve_balances: Vec<BalanceView>,
-    materialised_child_channels: Vec<String>,
-    provenance: RecordProvenanceView,
-}
-
-#[derive(Serialize)]
-struct EventView {
-    id: u64,
-    severity: EventSeverity,
-    event: String,
-    subject_id: Option<String>,
-    message: String,
-    created_at_unix: u64,
-    provenance: RecordProvenanceView,
-}
-
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-enum AssetView {
-    Ckb,
-    Xudt { type_hash: String },
-}
+use morph_hub_api::*;
 
 fn local_state_provenance() -> RecordProvenanceView {
     RecordProvenanceView {
-        source: "hub_state_file",
-        chain_status: "not_chain_verified",
-        label: "Local only",
-        message: "Recorded in the Morph Hub state file only; this is not CKB devnet confirmation.",
+        source: "hub_state_file".to_string(),
+        chain_status: "not_chain_verified".to_string(),
+        label: "Local only".to_string(),
+        message: "Recorded in the Morph Hub state file only; this is not CKB devnet confirmation."
+            .to_string(),
     }
 }
 
 fn hub_model_view() -> HubModelView {
     HubModelView {
-        profile: crate::release::FACTORY_RELEASE_PROFILE,
-        hub_role: "local_operator_projection",
-        factory_authority: "factory_state_and_vault",
-        channel_authority: "state_and_vault",
-        routing_role: "external_optional_provider",
-        agent_role: "application_sidecar",
+        profile: crate::release::FACTORY_RELEASE_PROFILE.to_string(),
+        hub_role: "local_operator_projection".to_string(),
+        factory_authority: "factory_state_and_vault".to_string(),
+        channel_authority: "state_and_vault".to_string(),
+        routing_role: "external_optional_provider".to_string(),
+        payment_gateway_role: "application_payment_and_access_gateway".to_string(),
         factory_min_participants: FACTORY_MIN_PARTICIPANTS,
         factory_max_participants: FACTORY_MAX_PARTICIPANTS,
         chain_actions_enabled: false,
         factory_rights_exposed: false,
         provider_edges_exposed: false,
         rgbpp_evidence_exposed: false,
-        agent_receipts_exposed: false,
+        payment_gateway_receipts_exposed: false,
     }
 }
 
 fn watchtower_alert_provenance() -> RecordProvenanceView {
     RecordProvenanceView {
-        source: "watchtower_alert_file",
-        chain_status: "watchtower_alert",
-        label: "Watchtower alert",
-        message: "Parsed from the Morph watchtower alert JSONL file emitted by the watchtower service.",
+        source: "watchtower_alert_file".to_string(),
+        chain_status: "watchtower_alert".to_string(),
+        label: "Watchtower alert".to_string(),
+        message:
+            "Parsed from the Morph watchtower alert JSONL file emitted by the watchtower service."
+                .to_string(),
     }
 }
 
@@ -776,20 +457,20 @@ fn listen_host(listen: &str) -> Option<String> {
     Some(host.to_string())
 }
 
-pub fn serve(options: HubServeOptions) -> Result<()> {
+pub fn serve(mut options: HubServeOptions) -> Result<()> {
     let auth_token = parse_hub_auth_token(options.auth_token)?;
     let cors_origin = normalise_cors_origin(options.cors_origin)?;
     let invoice_signing_key = options
         .invoice_private_key
-        .as_deref()
-        .map(|value| parse_signing_key(value, "--invoice-private-key"))
+        .take()
+        .map(|value| parse_signing_key(&value, "--invoice-private-key-file"))
         .transpose()?;
     if let Some(signing_key) = &invoice_signing_key {
         let signing_pubkey = hex::encode(signing_key_pubkey_sec1(signing_key));
         let configured_pubkey = canonical_pubkey(&options.pubkey)?;
         ensure!(
             signing_pubkey == configured_pubkey,
-            "--invoice-private-key must derive the same compressed public key as --pubkey"
+            "--invoice-private-key-file must derive the same compressed public key as --pubkey"
         );
     }
     ensure!(
@@ -809,7 +490,6 @@ pub fn serve(options: HubServeOptions) -> Result<()> {
         active_sse_streams: Arc::new(AtomicUsize::new(0)),
         request_counter: Arc::new(AtomicU64::new(1)),
         rate_limiter: Arc::new(Mutex::new(RateLimiter::default())),
-        ui_dir: options.ui_dir,
         ckb_rpc_url: options.ckb_rpc_url,
         watch_alert_file: options.watch_alert_file,
         invoice_signing_key,
@@ -821,7 +501,6 @@ pub fn serve(options: HubServeOptions) -> Result<()> {
 
     println!("morph_hub_listen=http://{}", options.listen);
     println!("morph_hub_state={}", server.store_lock()?.path.display());
-    println!("morph_hub_ui={}", server.ui_dir.display());
     if let Some(path) = &server.watch_alert_file {
         println!("morph_hub_watch_alert_file={}", path.display());
     }
@@ -973,8 +652,8 @@ impl HubStore {
         let (candidate_state, ignored_completed_flows, allowed, warnings) =
             self.restore_candidate_state(persisted)?;
         let candidate_store = self.with_state(candidate_state);
-        let current = RestoreStateSummary::from_runtime(&self.state);
-        let candidate = RestoreStateSummary::from_runtime(&candidate_store.state);
+        let current = restore_state_summary(&self.state);
+        let candidate = restore_state_summary(&candidate_store.state);
         let confirmation_hash = restore_confirmation_hash(
             &self.persisted()?,
             &candidate_store.persisted()?,
@@ -1030,7 +709,7 @@ impl HubStore {
     fn restore_candidate_state(
         &self,
         persisted: PersistedHubState,
-    ) -> Result<(HubRuntimeState, Vec<&'static str>, bool, Vec<String>)> {
+    ) -> Result<(HubRuntimeState, Vec<String>, bool, Vec<String>)> {
         let mut candidate = HubRuntimeState::from_persisted(persisted)?;
         ensure!(
             candidate.pubkey == self.state.pubkey,
@@ -1076,7 +755,7 @@ impl HubStore {
         let ignored_completed_flows = attempted_completed_flows
             .difference(&candidate.node.completed_flows)
             .copied()
-            .map(flow_label)
+            .map(|flow| flow_label(flow).to_owned())
             .collect::<Vec<_>>();
         if !ignored_completed_flows.is_empty() {
             warnings.push(format!(
@@ -1122,7 +801,7 @@ impl HubStore {
         Ok(HubView {
             pubkey: self.state.pubkey.clone(),
             node_id: hex_prefixed(&self.state.node.node_id),
-            network: network_label(self.state.node.network),
+            network: network_label(self.state.node.network).to_string(),
             state_path: self.path.display().to_string(),
             rpc,
             security,
@@ -1190,7 +869,7 @@ impl HubStore {
             required_flows: MorphNodeState::required_business_flows()
                 .iter()
                 .copied()
-                .map(flow_label)
+                .map(|flow| flow_label(flow).to_owned())
                 .collect(),
             completed_flows: self
                 .state
@@ -1198,7 +877,7 @@ impl HubStore {
                 .completed_flows
                 .iter()
                 .copied()
-                .map(flow_label)
+                .map(|flow| flow_label(flow).to_owned())
                 .collect(),
             missing_flows: self
                 .state
@@ -1206,7 +885,7 @@ impl HubStore {
                 .missing_business_flows()
                 .iter()
                 .copied()
-                .map(flow_label)
+                .map(|flow| flow_label(flow).to_owned())
                 .collect(),
         })
     }
@@ -1538,7 +1217,13 @@ impl HubServer {
         if request.path.starts_with("/api/") || request.path == "/api" {
             self.route_api(request, request_id)
         } else {
-            self.route_static(request)
+            Ok(api_error_response(
+                404,
+                "Not Found",
+                "route_not_found",
+                "Hub serves the API only; use morph-desktop for the native operator interface",
+                request_id,
+            ))
         }
     }
 
@@ -1640,7 +1325,7 @@ impl HubServer {
             ("POST", "/api/invoices") => self.mutate(request_id, |store| {
                 let payee_signing_key = self.invoice_signing_key.as_ref().ok_or_else(|| {
                     anyhow!(
-                        "invoice signing is disabled; restart Morph Hub with --invoice-private-key to create signed invoices"
+                        "invoice signing is disabled; restart Morph Hub with --invoice-private-key-file to create signed invoices"
                     )
                 })?;
                 let body: CreateInvoiceRequest = parse_body(&request.body)?;
@@ -2264,9 +1949,9 @@ impl HubServer {
         HubSecurityView {
             auth_required: self.auth_token.is_some(),
             auth_mode: if self.auth_token.is_some() {
-                "scoped_bearer"
+                "scoped_bearer".to_string()
             } else {
-                "explicit_unauthenticated_loopback"
+                "explicit_unauthenticated_loopback".to_string()
             },
             auth_scopes: self
                 .auth_token
@@ -2295,7 +1980,7 @@ impl HubServer {
     fn rpc_view(&self) -> RpcView {
         let Some(url) = self.ckb_rpc_url.clone() else {
             return RpcView {
-                status: "not_configured",
+                status: "not_configured".to_string(),
                 url: None,
                 tip_height: None,
                 chain: None,
@@ -2305,7 +1990,7 @@ impl HubServer {
         let (view, should_refresh) = {
             let Ok(mut cache) = self.rpc_cache.lock() else {
                 return RpcView {
-                    status: "offline",
+                    status: "offline".to_string(),
                     url: Some(url),
                     tip_height: None,
                     chain: None,
@@ -2325,7 +2010,7 @@ impl HubServer {
                 cache.refresh_in_flight = true;
             }
             let view = cached_view.unwrap_or_else(|| RpcView {
-                status: "degraded",
+                status: "degraded".to_string(),
                 url: Some(url.clone()),
                 tip_height: None,
                 chain: None,
@@ -2419,42 +2104,6 @@ impl HubServer {
             cache.value = Some(value.clone());
         }
         value
-    }
-
-    fn route_static(&self, request: HttpRequest) -> Result<HttpResponse> {
-        ensure!(request.method == "GET", "static assets only support GET");
-        let path = static_path(&self.ui_dir, &request.path)?;
-        if path.exists() && path.is_file() {
-            let body = fs::read(&path)
-                .with_context(|| format!("failed to read static asset {}", path.display()))?;
-            return Ok(HttpResponse {
-                status: 200,
-                reason: "OK",
-                content_type: content_type(&path),
-                headers: static_cache_headers(&path),
-                body,
-            });
-        }
-        let index = static_path(&self.ui_dir, "/")?;
-        if index.exists() {
-            return Ok(HttpResponse {
-                status: 200,
-                reason: "OK",
-                content_type: "text/html; charset=utf-8",
-                headers: static_cache_headers(&index),
-                body: fs::read(index)?,
-            });
-        }
-        Ok(json_response(
-            404,
-            "Not Found",
-            &json!({
-                "error": format!(
-                    "hub UI not built at {}; run npm run build in ui/morph-hub",
-                    self.ui_dir.display()
-                )
-            }),
-        ))
     }
 }
 
@@ -2552,9 +2201,9 @@ fn probe_rpc_view(url: String) -> RpcView {
     match CkbRpcClient::new_health_check(url.clone()).and_then(|client| client.status()) {
         Ok(status) => RpcView {
             status: if status.node.active {
-                "connected"
+                "connected".to_string()
             } else {
-                "degraded"
+                "degraded".to_string()
             },
             url: Some(url),
             tip_height: status.tip.number_value().ok(),
@@ -2562,7 +2211,7 @@ fn probe_rpc_view(url: String) -> RpcView {
             message: None,
         },
         Err(err) => RpcView {
-            status: "offline",
+            status: "offline".to_string(),
             url: Some(url),
             tip_height: None,
             chain: None,
@@ -2575,7 +2224,7 @@ fn restore_confirmation_hash(
     current: &PersistedHubState,
     candidate: &PersistedHubState,
     allowed: bool,
-    ignored_completed_flows: &[&'static str],
+    ignored_completed_flows: &[String],
     warnings: &[String],
 ) -> Result<String> {
     #[derive(Serialize)]
@@ -2584,7 +2233,7 @@ fn restore_confirmation_hash(
         current: &'a PersistedHubState,
         candidate: &'a PersistedHubState,
         allowed: bool,
-        ignored_completed_flows: &'a [&'static str],
+        ignored_completed_flows: &'a [String],
         warnings: &'a [String],
     }
 
@@ -2771,15 +2420,17 @@ fn parse_pubkey_bytes(value: &str) -> Result<[u8; 33]> {
 fn parse_signing_key(value: &str, label: &str) -> Result<SigningKey> {
     let value = value.trim();
     ensure!(!value.is_empty(), "{label} must not be empty");
-    let raw = hex::decode(value.strip_prefix("0x").unwrap_or(value))
-        .with_context(|| format!("{label} must be hex encoded"))?;
+    let raw = zeroize::Zeroizing::new(
+        hex::decode(value.strip_prefix("0x").unwrap_or(value))
+            .with_context(|| format!("{label} must be hex encoded"))?,
+    );
     ensure!(raw.len() == 32, "{label} must be 32 bytes");
     SigningKey::from_slice(&raw)
         .map_err(|err| anyhow!("{label} is not a valid secp256k1 private key: {err:?}"))
 }
 
 fn signing_key_pubkey_sec1(signing_key: &SigningKey) -> [u8; 33] {
-    let encoded = signing_key.verifying_key().to_encoded_point(true);
+    let encoded = signing_key.verifying_key().to_sec1_point(true);
     let mut out = [0u8; 33];
     out.copy_from_slice(encoded.as_bytes());
     out
@@ -3186,99 +2837,6 @@ fn empty_response(status: u16, reason: &'static str) -> HttpResponse {
     }
 }
 
-fn static_path(ui_dir: &Path, request_path: &str) -> Result<PathBuf> {
-    let clean = request_path.trim_start_matches('/');
-    ensure!(
-        !clean.contains('\0'),
-        "static path must not contain NUL bytes"
-    );
-    ensure!(
-        !clean
-            .split('/')
-            .any(|part| part == ".." || percent_decoded_component_is_parent(part)),
-        "static path must not traverse directories"
-    );
-    let path = if clean.is_empty() {
-        ui_dir.join("index.html")
-    } else {
-        ui_dir.join(clean)
-    };
-    if path.exists() {
-        let root = ui_dir
-            .canonicalize()
-            .with_context(|| format!("failed to canonicalise UI directory {}", ui_dir.display()))?;
-        let canonical = path
-            .canonicalize()
-            .with_context(|| format!("failed to canonicalise static asset {}", path.display()))?;
-        ensure!(
-            canonical.starts_with(&root),
-            "static asset path resolves outside the UI directory"
-        );
-        return Ok(canonical);
-    }
-    Ok(path)
-}
-
-fn percent_decoded_component_is_parent(component: &str) -> bool {
-    let bytes = component.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let Some(high) = hex_value(bytes[index + 1]) else {
-                decoded.push(bytes[index]);
-                index += 1;
-                continue;
-            };
-            let Some(low) = hex_value(bytes[index + 2]) else {
-                decoded.push(bytes[index]);
-                index += 1;
-                continue;
-            };
-            decoded.push((high << 4) | low);
-            index += 3;
-        } else {
-            decoded.push(bytes[index]);
-            index += 1;
-        }
-    }
-    decoded == b".."
-}
-
-fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
-}
-
-fn static_cache_headers(path: &Path) -> Vec<(&'static str, String)> {
-    let cache_control = if path.file_name().and_then(|name| name.to_str()) == Some("index.html") {
-        "no-cache, must-revalidate"
-    } else if path
-        .components()
-        .any(|component| component.as_os_str() == "assets")
-    {
-        "public, max-age=31536000, immutable"
-    } else {
-        "no-cache"
-    };
-    vec![("Cache-Control", cache_control.to_string())]
-}
-
-fn content_type(path: &Path) -> &'static str {
-    match path.extension().and_then(|ext| ext.to_str()) {
-        Some("html") => "text/html; charset=utf-8",
-        Some("js") => "text/javascript; charset=utf-8",
-        Some("css") => "text/css; charset=utf-8",
-        Some("svg") => "image/svg+xml",
-        Some("json") => "application/json; charset=utf-8",
-        _ => "application/octet-stream",
-    }
-}
-
 fn persisted_peer(
     peer: &MorphPeer,
     peer_pubkeys: &BTreeMap<Bytes32, String>,
@@ -3353,7 +2911,7 @@ fn channel_view(
         funding_epoch: channel.funding_epoch,
         funding_context_id: hex_prefixed(&channel.funding_context_id),
         state_number: channel.state_number,
-        phase: phase_label(channel.phase),
+        phase: phase_label(channel.phase).to_string(),
         balances: channel.balances.iter().map(balance_view).collect(),
         sponsor_budget: channel.sponsor_budget,
         provenance: local_state_provenance(),
@@ -3368,8 +2926,8 @@ fn invoice_view(
     InvoiceView {
         invoice_id: hex_prefixed(&stored.invoice.invoice_id),
         encoded_invoice: stored.encoded_invoice.clone(),
-        status: invoice_status_label(stored.status),
-        network: network_label(stored.invoice.network),
+        status: invoice_status_label(stored.status).to_string(),
+        network: network_label(stored.invoice.network).to_string(),
         payee_pubkey: Some(hex::encode(&stored.invoice.payee_pubkey_sec1)),
         payee_node_id: hex_prefixed(&stored.invoice.payee_node_id),
         channel_id: stored.invoice.channel_id.map(|id| hex_prefixed(&id)),
@@ -3630,7 +3188,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[cfg(unix)]
-    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::os::unix::fs::PermissionsExt;
 
     static TEST_STATE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -3762,11 +3320,7 @@ mod tests {
                 let key = SigningKey::from_slice(&[seed; 32]).unwrap();
                 let signature: k256::ecdsa::Signature = key.sign_prehash(&digest).unwrap();
                 morph_core::ParticipantSignature {
-                    pubkey_sec1: key
-                        .verifying_key()
-                        .to_encoded_point(true)
-                        .as_bytes()
-                        .to_vec(),
+                    pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                     signature: signature.to_bytes().to_vec(),
                 }
             })
@@ -4216,36 +3770,6 @@ mod tests {
             read_request_from_reader(Cursor::new(http2)).expect_err("HTTP/2.0 should be rejected");
         assert!(
             err.to_string().contains("HTTP request version"),
-            "unexpected error: {err:#}"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn static_path_rejects_symlink_escape() {
-        let ui_dir = temp_file_path("ui-root", "dir");
-        fs::create_dir_all(&ui_dir).unwrap();
-        let outside = temp_file_path("outside-ui", "txt");
-        fs::write(&outside, b"private").unwrap();
-        symlink(&outside, ui_dir.join("leak.txt")).unwrap();
-
-        let err = static_path(&ui_dir, "/leak.txt")
-            .expect_err("static symlink escaping UI root should be rejected");
-        assert!(
-            err.to_string().contains("outside the UI directory"),
-            "unexpected error: {err:#}"
-        );
-    }
-
-    #[test]
-    fn static_path_rejects_percent_decoded_parent_dir() {
-        let ui_dir = temp_file_path("ui-root-percent", "dir");
-        fs::create_dir_all(&ui_dir).unwrap();
-
-        let err = static_path(&ui_dir, "/%2e%2e/secrets.txt")
-            .expect_err("percent-decoded parent traversal should be rejected");
-        assert!(
-            err.to_string().contains("traverse directories"),
             "unexpected error: {err:#}"
         );
     }
@@ -4727,29 +4251,22 @@ mod tests {
     }
 
     #[test]
-    fn static_responses_set_cache_control_headers() {
-        let local_pubkey = pubkey_from_scalar(1);
-        let mut server = test_server(&local_pubkey);
-        let ui_dir = temp_file_path("ui-cache", "dir");
-        let assets_dir = ui_dir.join("assets");
-        fs::create_dir_all(&assets_dir).unwrap();
-        fs::write(ui_dir.join("index.html"), b"<!doctype html>").unwrap();
-        fs::write(assets_dir.join("index-abc123.js"), b"console.log('ok');").unwrap();
-        server.ui_dir = ui_dir;
-
-        let index = route_empty(&server, "GET", "/");
-        assert_eq!(index.status, 200);
-        assert_eq!(
-            response_header(&index, "Cache-Control"),
-            Some("no-cache, must-revalidate")
-        );
-
-        let asset = route_empty(&server, "GET", "/assets/index-abc123.js");
-        assert_eq!(asset.status, 200);
-        assert_eq!(
-            response_header(&asset, "Cache-Control"),
-            Some("public, max-age=31536000, immutable")
-        );
+    fn hub_never_serves_files_or_a_browser_application() {
+        let server = test_server(&pubkey_from_scalar(1));
+        for path in [
+            "/",
+            "/index.html",
+            "/assets/index.js",
+            "/%2e%2e/secrets.txt",
+            "/leak.txt",
+        ] {
+            let response = route_empty(&server, "GET", path);
+            assert_eq!(response.status, 404);
+            assert!(response.content_type.starts_with("application/json"));
+            let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+            assert_eq!(body["code"], "route_not_found");
+        }
+        assert_eq!(route_empty(&server, "GET", "/api/state").status, 200);
     }
 
     #[test]
@@ -4986,9 +4503,7 @@ mod tests {
         let invoice = MorphInvoice::new_signed(
             NewMorphInvoice {
                 network: MorphNetwork::Devnet,
-                payee_node_id: blake2b256(
-                    payee_key.verifying_key().to_encoded_point(true).as_bytes(),
-                ),
+                payee_node_id: blake2b256(payee_key.verifying_key().to_sec1_point(true).as_bytes()),
                 channel_id: None,
                 asset: MorphAsset::Ckb,
                 amount: 100_000_000,
@@ -5422,7 +4937,6 @@ mod tests {
             active_sse_streams: Arc::new(AtomicUsize::new(0)),
             request_counter: Arc::new(AtomicU64::new(1)),
             rate_limiter: Arc::new(Mutex::new(RateLimiter::default())),
-            ui_dir: PathBuf::from("ui/morph-hub/dist"),
             ckb_rpc_url: None,
             watch_alert_file: None,
             invoice_signing_key: test_signing_key_for_pubkey(local_pubkey),
@@ -5579,12 +5093,7 @@ mod tests {
         let mut bytes = [0u8; 32];
         bytes[31] = value;
         let signing_key = k256::ecdsa::SigningKey::from_bytes((&bytes).into()).unwrap();
-        hex::encode(
-            signing_key
-                .verifying_key()
-                .to_encoded_point(true)
-                .as_bytes(),
-        )
+        hex::encode(signing_key.verifying_key().to_sec1_point(true).as_bytes())
     }
 
     fn signing_key_from_scalar(value: u8) -> k256::ecdsa::SigningKey {

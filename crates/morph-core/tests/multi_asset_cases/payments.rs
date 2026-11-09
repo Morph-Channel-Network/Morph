@@ -30,14 +30,14 @@ fn intent(
         payer: blake2b256(&participant_pubkey(1)),
         payee: blake2b256(&participant_pubkey(2)),
         asset: if ckb {
-            AgentAsset::Ckb {
+            GatewayAsset::Ckb {
                 ckb_genesis_hash: backend.current().state.header.chain_id,
             }
         } else {
             let VaultAsset::Xudt(type_hash) = backend.current().manifest.vaults[0].asset else {
                 panic!("typed test fixture")
             };
-            AgentAsset::Xudt {
+            GatewayAsset::Xudt {
                 ckb_genesis_hash: backend.current().state.header.chain_id,
                 type_script_hash: type_hash,
             }
@@ -252,7 +252,7 @@ fn expiry_stops_new_authorization_but_cannot_revoke_an_issued_state_signature() 
     let prepared = book.prepare_payment(&mut backend, payment, 110).unwrap();
     assert_eq!(
         book.reserve_payment_signature(&mut backend, &prepared.prepared_id, 200),
-        Err(PaymentError::Agent(AgentError::Expired))
+        Err(PaymentError::Gateway(GatewayError::Expired))
     );
     authorize(&book, &mut backend, &prepared);
     assert_eq!(
@@ -399,7 +399,7 @@ fn payment_network_identity_and_overflow_fail_before_signing() {
     let mut book = payments(&backend);
     let mut wrong_network = intent(&book, &backend, false, 20);
     match &mut wrong_network.asset {
-        AgentAsset::Xudt {
+        GatewayAsset::Xudt {
             ckb_genesis_hash, ..
         } => *ckb_genesis_hash = [99; 32],
         _ => unreachable!(),

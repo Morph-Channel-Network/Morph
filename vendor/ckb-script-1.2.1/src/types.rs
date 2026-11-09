@@ -1,0 +1,1101 @@
+//! Common type definitions for ckb-script package.
+
+use crate::{error::ScriptError, verify_env::TxVerifyEnv};
+use ckb_chain_spec::consensus::Consensus;
+use ckb_types::{
+    core::{
+        Cycle, ScriptHashType,
+        cell::{CellMeta, ResolvedTransaction},
+    },
+    packed::{Byte32, CellOutput, OutPoint, Script},
+    prelude::*,
+};
+use ckb_vm::{
+    ISA_B, ISA_IMC, ISA_MOP, Syscalls,
+    machine::{VERSION0, VERSION1, VERSION2},
+};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
+use std::fmt;
+use std::sync::{
+    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering},
+};
+
+use ckb_traits::CellDataProvider;
+use ckb_vm::snapshot2::Snapshot2Context;
+
+use ckb_vm::{
+    DefaultMachineRunner, SupportMachine, bytes::Bytes, machine::Pause, snapshot2::DataSource,
+};
+
+/// The type of CKB-VM ISA.
+pub type VmIsa = u8;
+/// /// The type of CKB-VM version.
+pub type VmVersion = u32;
+
+/// The default machine type when asm feature is enabled. Note that ckb-script now functions
+/// solely based on ckb_vm::DefaultMachineRunner trait. The type provided here is only for
+/// default implementations.
+#[cfg(has_asm)]
+pub type Machine = ckb_vm::machine::asm::AsmMachine;
+/// The default machine type when neither asm feature nor flatmemory feature is not enabled
+#[cfg(all(not(has_asm), not(feature = "flatmemory")))]
+pub type Machine = ckb_vm::TraceMachine<
+    ckb_vm::DefaultCoreMachine<u64, ckb_vm::WXorXMemory<ckb_vm::SparseMemory<u64>>>,
+>;
+/// The default machine type when asm feature is not enabled, but flatmemory is enabled
+#[cfg(all(not(has_asm), feature = "flatmemory"))]
+pub type Machine = ckb_vm::TraceMachine<
+    ckb_vm::DefaultCoreMachine<u64, ckb_vm::WXorXMemory<ckb_vm::FlatMemory<u64>>>,
+>;
+
+/// Debug printer function type
+pub type DebugPrinter = Arc<dyn Fn(&Byte32, &str) + Send + Sync>;
+/// Syscall generator function type
+pub type SyscallGenerator<DL, V, M> =
+    fn(&VmId, &SgData<DL>, &VmContext<DL>, &V) -> Vec<Box<dyn Syscalls<M>>>;
+
+/// The version of CKB Script Verifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ScriptVersion {
+    /// CKB VM 0 with Syscall version 1.
+    V0 = 0,
+    /// CKB VM 1 with Syscall version 1 and version 2.
+    V1 = 1,
+    /// CKB VM 2 with Syscall version 1, version 2 and version 3.
+    V2 = 2,
+}
+
+impl ScriptVersion {
+    /// Returns the latest version.
+    pub const fn latest() -> Self {
+        Self::V2
+    }
+
+    /// Returns the ISA set of CKB VM in current script version.
+    pub fn vm_isa(self) -> VmIsa {
+        match self {
+            Self::V0 => ISA_IMC,
+            Self::V1 => ISA_IMC | ISA_B | ISA_MOP,
+            Self::V2 => ISA_IMC | ISA_B | ISA_MOP,
+        }
+    }
+
+    /// Returns the version of CKB VM in current script version.
+    pub fn vm_version(self) -> VmVersion {
+        match self {
+            Self::V0 => VERSION0,
+            Self::V1 => VERSION1,
+            Self::V2 => VERSION2,
+        }
+    }
+
+    /// Returns the specific data script hash type.
+    ///
+    /// Returns:
+    /// - `ScriptHashType::Data` for version 0;
+    /// - `ScriptHashType::Data1` for version 1;
+    pub fn data_hash_type(self) -> ScriptHashType {
+        match self {
+            Self::V0 => ScriptHashType::Data,
+            Self::V1 => ScriptHashType::Data1,
+            Self::V2 => ScriptHashType::Data2,
+        }
+    }
+
+    /// Creates a CKB VM core machine without cycles limit.
+    ///
+    /// In fact, there is still a limit of `max_cycles` which is set to `2^64-1`.
+    pub fn init_core_machine_without_limit(self) -> <Machine as DefaultMachineRunner>::Inner {
+        self.init_core_machine(u64::MAX)
+    }
+
+    /// Creates a CKB VM core machine.
+    pub fn init_core_machine(self, max_cycles: Cycle) -> <Machine as DefaultMachineRunner>::Inner {
+        let isa = self.vm_isa();
+        let version = self.vm_version();
+        <<Machine as DefaultMachineRunner>::Inner as SupportMachine>::new(isa, version, max_cycles)
+    }
+}
+
+/// A script group is defined as scripts that share the same hash.
+///
+/// A script group will only be executed once per transaction, the
+/// script itself should check against all inputs/outputs in its group
+/// if needed.
+#[derive(Clone, Debug)]
+pub struct ScriptGroup {
+    /// The script.
+    ///
+    /// A script group is a group of input and output cells that share the same script.
+    pub script: Script,
+    /// The script group type.
+    pub group_type: ScriptGroupType,
+    /// Indices of input cells.
+    pub input_indices: Vec<usize>,
+    /// Indices of output cells.
+    pub output_indices: Vec<usize>,
+}
+
+/// The methods included here are defected in a way: all construction
+/// methods here create ScriptGroup without any `input_indices` or
+/// `output_indices` filled. One has to manually fill them later(or forgot
+/// about this).
+/// As a result, we are marking them as crate-only methods for now. This
+/// forces users to one of the following 2 solutions:
+/// * Call `groups()` on `TxData` so they can fetch `ScriptGroup` data with
+///   all correct data filled.
+/// * Manually construct the struct where they have to think what shall be
+///   used for `input_indices` and `output_indices`.
+impl ScriptGroup {
+    /// Creates a new script group struct.
+    pub(crate) fn new(script: &Script, group_type: ScriptGroupType) -> Self {
+        Self {
+            group_type,
+            script: script.to_owned(),
+            input_indices: vec![],
+            output_indices: vec![],
+        }
+    }
+
+    /// Creates a lock script group.
+    pub(crate) fn from_lock_script(script: &Script) -> Self {
+        Self::new(script, ScriptGroupType::Lock)
+    }
+
+    /// Creates a type script group.
+    pub(crate) fn from_type_script(script: &Script) -> Self {
+        Self::new(script, ScriptGroupType::Type)
+    }
+}
+
+/// The script group type.
+///
+/// A cell can have a lock script and an optional type script. Even they reference the same script,
+/// lock script and type script will not be grouped together.
+#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum ScriptGroupType {
+    /// Lock script group.
+    Lock,
+    /// Type script group.
+    Type,
+}
+
+impl fmt::Display for ScriptGroupType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ScriptGroupType::Lock => write!(f, "Lock"),
+            ScriptGroupType::Type => write!(f, "Type"),
+        }
+    }
+}
+
+/// Struct specifies which script has verified so far.
+#[derive(Clone)]
+pub struct TransactionState {
+    /// current suspended script index
+    pub current: usize,
+    /// current consumed cycle
+    pub current_cycles: Cycle,
+    /// limit cycles
+    pub limit_cycles: Cycle,
+}
+
+impl TransactionState {
+    /// Creates a new TransactionState struct
+    pub fn new(current: usize, current_cycles: Cycle, limit_cycles: Cycle) -> Self {
+        TransactionState {
+            current,
+            current_cycles,
+            limit_cycles,
+        }
+    }
+
+    /// Return next limit cycles according to max_cycles and step_cycles
+    pub fn next_limit_cycles(&self, step_cycles: Cycle, max_cycles: Cycle) -> (Cycle, bool) {
+        let remain = max_cycles - self.current_cycles;
+        let next_limit = self.limit_cycles + step_cycles;
+
+        if next_limit < remain {
+            (next_limit, false)
+        } else {
+            (remain, true)
+        }
+    }
+}
+
+/// Enum represent resumable verify result
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
+pub enum VerifyResult {
+    /// Completed total cycles
+    Completed(Cycle),
+    /// Suspended state
+    Suspended(TransactionState),
+}
+
+impl std::fmt::Debug for TransactionState {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("TransactionState")
+            .field("current", &self.current)
+            .field("current_cycles", &self.current_cycles)
+            .field("limit_cycles", &self.limit_cycles)
+            .finish()
+    }
+}
+
+/// ChunkCommand is used to control the verification process to suspend or resume
+#[derive(Eq, PartialEq, Clone, Debug)]
+pub enum ChunkCommand {
+    /// Suspend the verification process
+    Suspend,
+    /// Resume the verification process
+    Resume,
+    /// Stop the verification process
+    Stop,
+}
+
+/// VM id type
+pub type VmId = u64;
+/// The first VM booted always have 0 as the ID
+pub const FIRST_VM_ID: VmId = 0;
+
+/// File descriptor
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Fd(pub u64);
+
+/// The first FD to be used
+pub const FIRST_FD_SLOT: u64 = 2;
+
+impl Fd {
+    /// Creates a new pipe with 2 fds, also return the next available fd slot
+    pub fn create(slot: u64) -> (Fd, Fd, u64) {
+        (Fd(slot), Fd(slot + 1), slot + 2)
+    }
+
+    /// Finds the other file descriptor of a pipe
+    pub fn other_fd(&self) -> Fd {
+        Fd(self.0 ^ 0x1)
+    }
+
+    /// Tests if current fd is used for reading from a pipe
+    pub fn is_read(&self) -> bool {
+        self.0.is_multiple_of(2)
+    }
+
+    /// Tests if current fd is used for writing to a pipe
+    pub fn is_write(&self) -> bool {
+        self.0 % 2 == 1
+    }
+}
+
+/// VM is in waiting-to-read state.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ReadState {
+    /// FD to read from
+    pub fd: Fd,
+    /// Length to read
+    pub length: u64,
+    /// VM address to read data into
+    pub buffer_addr: u64,
+    /// Length address to keep final read length
+    pub length_addr: u64,
+}
+
+/// VM is in waiting-to-write state.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WriteState {
+    /// FD to write to
+    pub fd: Fd,
+    /// Bytes that have already been written
+    pub consumed: u64,
+    /// Length to write
+    pub length: u64,
+    /// VM address to write data from
+    pub buffer_addr: u64,
+    /// Length of address to keep final written length
+    pub length_addr: u64,
+}
+
+/// VM State.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum VmState {
+    /// Runnable.
+    Runnable,
+    /// Terminated.
+    Terminated,
+    /// Wait.
+    Wait {
+        /// Target vm id.
+        target_vm_id: VmId,
+        /// Exit code addr.
+        exit_code_addr: u64,
+    },
+    /// WaitForWrite.
+    WaitForWrite(WriteState),
+    /// WaitForRead.
+    WaitForRead(ReadState),
+}
+
+/// Used to specify the location of script data.
+#[derive(Clone, Debug)]
+pub struct DataLocation {
+    /// A pointer to the data.
+    pub data_piece_id: DataPieceId,
+    /// Data offset.
+    pub offset: u64,
+    /// Data length.
+    pub length: u64,
+}
+
+/// Arguments for exec syscall
+#[derive(Clone, Debug)]
+pub struct ExecV2Args {
+    /// Data location for the program to invoke
+    pub location: DataLocation,
+    /// Argc
+    pub argc: u64,
+    /// Argv
+    pub argv: u64,
+}
+
+/// Arguments for spawn syscall
+#[derive(Clone, Debug)]
+pub struct SpawnArgs {
+    /// Data location for the program to spawn
+    pub location: DataLocation,
+    /// Argc
+    pub argc: u64,
+    /// Argv
+    pub argv: u64,
+    /// File descriptors to pass to spawned child process
+    pub fds: Vec<Fd>,
+    /// VM address to keep pid for spawned child process
+    pub process_id_addr: u64,
+}
+
+/// Arguments for wait syscall
+#[derive(Clone, Debug)]
+pub struct WaitArgs {
+    /// VM ID to wait for termination
+    pub target_id: VmId,
+    /// VM address to keep exit code for the waited process
+    pub exit_code_addr: u64,
+}
+
+/// Arguments for pipe syscall
+#[derive(Clone, Debug)]
+pub struct PipeArgs {
+    /// VM address to keep the first created file descriptor
+    pub fd1_addr: u64,
+    /// VM address to keep the second created file descriptor
+    pub fd2_addr: u64,
+}
+
+/// Arguments shared by read, write and inherited fd syscalls
+#[derive(Clone, Debug)]
+pub struct FdArgs {
+    /// For each and write syscalls, this contains the file descriptor to use
+    pub fd: Fd,
+    /// Length to read or length to write for read/write syscalls. Inherited
+    /// fd syscall will ignore this field.
+    pub length: u64,
+    /// VM address to keep returned data
+    pub buffer_addr: u64,
+    /// VM address for a input / output length buffer.
+    /// For read / write syscalls, this contains the actual data length.
+    /// For inherited fd syscall, this contains the number of file descriptors.
+    pub length_addr: u64,
+}
+
+/// Inter-process message, this is now used for implementing syscalls, but might
+/// be expanded for more usages later.
+#[derive(Clone, Debug)]
+pub enum Message {
+    /// Exec syscall
+    ExecV2(VmId, ExecV2Args),
+    /// Spawn syscall
+    Spawn(VmId, SpawnArgs),
+    /// Wait syscall
+    Wait(VmId, WaitArgs),
+    /// Pipe syscall
+    Pipe(VmId, PipeArgs),
+    /// Read syscall
+    FdRead(VmId, FdArgs),
+    /// Write syscall
+    FdWrite(VmId, FdArgs),
+    /// Inherited FD syscall
+    InheritedFileDescriptor(VmId, FdArgs),
+    /// Close syscall
+    Close(VmId, Fd),
+}
+
+/// A pointer to the data that is part of the transaction.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DataPieceId {
+    /// The nth input cell data.
+    Input(u32),
+    /// The nth output data.
+    Output(u32),
+    /// The nth cell dep cell data.
+    CellDep(u32),
+    /// The nth group input cell data.
+    GroupInput(u32),
+    /// The nth group output data.
+    GroupOutput(u32),
+    /// The nth witness.
+    Witness(u32),
+    /// The nth witness group input.
+    WitnessGroupInput(u32),
+    /// The nth witness group output.
+    WitnessGroupOutput(u32),
+}
+
+impl TryFrom<(u64, u64, u64)> for DataPieceId {
+    type Error = String;
+
+    fn try_from(value: (u64, u64, u64)) -> Result<Self, Self::Error> {
+        let (source, index, place) = value;
+        let index: u32 =
+            u32::try_from(index).map_err(|e| format!("Error casting index to u32: {}", e))?;
+        match (source, place) {
+            (1, 0) => Ok(DataPieceId::Input(index)),
+            (2, 0) => Ok(DataPieceId::Output(index)),
+            (3, 0) => Ok(DataPieceId::CellDep(index)),
+            (0x0100000000000001, 0) => Ok(DataPieceId::GroupInput(index)),
+            (0x0100000000000002, 0) => Ok(DataPieceId::GroupOutput(index)),
+            (1, 1) => Ok(DataPieceId::Witness(index)),
+            (2, 1) => Ok(DataPieceId::Witness(index)),
+            (0x0100000000000001, 1) => Ok(DataPieceId::WitnessGroupInput(index)),
+            (0x0100000000000002, 1) => Ok(DataPieceId::WitnessGroupOutput(index)),
+            _ => Err(format!("Invalid source value: {:#x}", source)),
+        }
+    }
+}
+
+/// A cell that is either loaded, or not yet loaded.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum DataGuard {
+    /// Un-loaded out point
+    NotLoaded(OutPoint),
+    /// Loaded data
+    Loaded(Bytes),
+}
+
+/// LazyData wrapper make sure not-loaded data will be loaded only after one access
+#[derive(Debug, Clone)]
+pub struct LazyData(Arc<RwLock<DataGuard>>);
+
+impl LazyData {
+    fn from_cell_meta(cell_meta: &CellMeta) -> LazyData {
+        match &cell_meta.mem_cell_data {
+            Some(data) => LazyData(Arc::new(RwLock::new(DataGuard::Loaded(data.to_owned())))),
+            None => LazyData(Arc::new(RwLock::new(DataGuard::NotLoaded(
+                cell_meta.out_point.clone(),
+            )))),
+        }
+    }
+
+    fn access<DL: CellDataProvider>(&self, data_loader: &DL) -> Result<Bytes, ScriptError> {
+        let guard = self
+            .0
+            .read()
+            .map_err(|_| ScriptError::Other("RwLock poisoned".into()))?
+            .to_owned();
+        match guard {
+            DataGuard::NotLoaded(out_point) => {
+                let data = data_loader
+                    .get_cell_data(&out_point)
+                    .ok_or(ScriptError::Other("cell data not found".into()))?;
+                let mut write_guard = self
+                    .0
+                    .write()
+                    .map_err(|_| ScriptError::Other("RwLock poisoned".into()))?;
+                *write_guard = DataGuard::Loaded(data.clone());
+                Ok(data)
+            }
+            DataGuard::Loaded(bytes) => Ok(bytes),
+        }
+    }
+}
+
+/// A tri-state enum for representing binary lookup results.
+#[derive(Debug, Clone)]
+pub enum Binaries {
+    /// A unique cell is found for the requested binary.
+    Unique(Byte32, usize, LazyData),
+    /// Multiple cells are found for the requested binary, but all
+    /// the cells contains the same content(hence binary lookup still
+    /// succeeds).
+    Duplicate(Byte32, usize, LazyData),
+    /// Multiple cells are found for the requested binary, and they
+    /// differ so there is no way to tell which binary shall be used.
+    Multiple,
+}
+
+impl Binaries {
+    fn new(data_hash: Byte32, dep_index: usize, data: LazyData) -> Self {
+        Self::Unique(data_hash, dep_index, data)
+    }
+
+    fn merge(&mut self, data_hash: &Byte32) {
+        match self {
+            Self::Unique(hash, dep_index, data) | Self::Duplicate(hash, dep_index, data) => {
+                if hash != data_hash {
+                    *self = Self::Multiple;
+                } else {
+                    *self = Self::Duplicate(hash.to_owned(), *dep_index, data.to_owned());
+                }
+            }
+            Self::Multiple => {}
+        }
+    }
+}
+
+/// Immutable context data at transaction level
+#[derive(Clone, Debug)]
+pub struct TxData<DL> {
+    /// ResolvedTransaction.
+    pub rtx: Arc<ResolvedTransaction>,
+
+    /// Passed & derived information.
+    pub info: Arc<TxInfo<DL>>,
+}
+
+/// Information that is either passed as the context of the transaction,
+/// or can be derived from the transaction.
+#[derive(Clone, Debug)]
+pub struct TxInfo<DL> {
+    /// Data loader.
+    pub data_loader: DL,
+    /// Chain consensus parameters
+    pub consensus: Arc<Consensus>,
+    /// Transaction verification environment
+    pub tx_env: Arc<TxVerifyEnv>,
+
+    /// Potential binaries in current transaction indexed by data hash
+    pub binaries_by_data_hash: HashMap<Byte32, (usize, LazyData)>,
+    /// Potential binaries in current transaction indexed by type script hash
+    pub binaries_by_type_hash: HashMap<Byte32, Binaries>,
+    /// Lock script groups, orders here are important
+    pub lock_groups: BTreeMap<Byte32, ScriptGroup>,
+    /// Type script groups, orders here are important
+    pub type_groups: BTreeMap<Byte32, ScriptGroup>,
+    /// Output cells in current transaction reorganized in CellMeta format
+    pub outputs: Vec<CellMeta>,
+}
+
+impl<DL> TxData<DL>
+where
+    DL: CellDataProvider,
+{
+    /// Creates a new TxData structure
+    pub fn new(
+        rtx: Arc<ResolvedTransaction>,
+        data_loader: DL,
+        consensus: Arc<Consensus>,
+        tx_env: Arc<TxVerifyEnv>,
+    ) -> Self {
+        let tx_hash = rtx.transaction.hash();
+        let resolved_cell_deps = &rtx.resolved_cell_deps;
+        let resolved_inputs = &rtx.resolved_inputs;
+        let outputs = rtx
+            .transaction
+            .outputs_with_data_iter()
+            .enumerate()
+            .map(|(index, (cell_output, data))| {
+                let out_point = OutPoint::new_builder()
+                    .tx_hash(tx_hash.clone())
+                    .index(index)
+                    .build();
+                let data_hash = CellOutput::calc_data_hash(&data);
+                CellMeta {
+                    cell_output,
+                    out_point,
+                    transaction_info: None,
+                    data_bytes: data.len() as u64,
+                    mem_cell_data: Some(data),
+                    mem_cell_data_hash: Some(data_hash),
+                }
+            })
+            .collect();
+
+        let mut binaries_by_data_hash: HashMap<Byte32, (usize, LazyData)> = HashMap::default();
+        let mut binaries_by_type_hash: HashMap<Byte32, Binaries> = HashMap::default();
+        for (i, cell_meta) in resolved_cell_deps.iter().enumerate() {
+            let data_hash = data_loader
+                .load_cell_data_hash(cell_meta)
+                .expect("cell data hash");
+            let lazy = LazyData::from_cell_meta(cell_meta);
+            binaries_by_data_hash.insert(data_hash.to_owned(), (i, lazy.to_owned()));
+
+            if let Some(t) = &cell_meta.cell_output.type_().to_opt() {
+                binaries_by_type_hash
+                    .entry(t.calc_script_hash())
+                    .and_modify(|bin| bin.merge(&data_hash))
+                    .or_insert_with(|| Binaries::new(data_hash.to_owned(), i, lazy.to_owned()));
+            }
+        }
+
+        let mut lock_groups = BTreeMap::default();
+        let mut type_groups = BTreeMap::default();
+        for (i, cell_meta) in resolved_inputs.iter().enumerate() {
+            // here we are only pre-processing the data, verify method validates
+            // each input has correct script setup.
+            let output = &cell_meta.cell_output;
+            let lock_group_entry = lock_groups
+                .entry(output.calc_lock_hash())
+                .or_insert_with(|| ScriptGroup::from_lock_script(&output.lock()));
+            lock_group_entry.input_indices.push(i);
+            if let Some(t) = &output.type_().to_opt() {
+                let type_group_entry = type_groups
+                    .entry(t.calc_script_hash())
+                    .or_insert_with(|| ScriptGroup::from_type_script(t));
+                type_group_entry.input_indices.push(i);
+            }
+        }
+        for (i, output) in rtx.transaction.outputs().into_iter().enumerate() {
+            if let Some(t) = &output.type_().to_opt() {
+                let type_group_entry = type_groups
+                    .entry(t.calc_script_hash())
+                    .or_insert_with(|| ScriptGroup::from_type_script(t));
+                type_group_entry.output_indices.push(i);
+            }
+        }
+
+        Self {
+            rtx,
+            info: Arc::new(TxInfo {
+                data_loader,
+                consensus,
+                tx_env,
+                binaries_by_data_hash,
+                binaries_by_type_hash,
+                lock_groups,
+                type_groups,
+                outputs,
+            }),
+        }
+    }
+
+    #[inline]
+    /// Extracts actual script binary either in dep cells.
+    pub fn extract_script(&self, script: &Script) -> Result<Bytes, ScriptError> {
+        self.info.extract_script(script)
+    }
+}
+
+impl<DL> TxInfo<DL>
+where
+    DL: CellDataProvider,
+{
+    #[inline]
+    /// Extracts actual script binary either in dep cells.
+    pub fn extract_script(&self, script: &Script) -> Result<Bytes, ScriptError> {
+        let (lazy, _) = self.extract_script_and_dep_index(script)?;
+        lazy.access(&self.data_loader)
+    }
+}
+
+impl<DL> TxData<DL> {
+    #[inline]
+    /// Calculates transaction hash
+    pub fn tx_hash(&self) -> Byte32 {
+        self.rtx.transaction.hash()
+    }
+
+    #[inline]
+    /// Extracts the index of the script binary in dep cells
+    pub fn extract_referenced_dep_index(&self, script: &Script) -> Result<usize, ScriptError> {
+        self.info.extract_referenced_dep_index(script)
+    }
+
+    #[inline]
+    /// Finds the script group from cell deps.
+    pub fn find_script_group(
+        &self,
+        script_group_type: ScriptGroupType,
+        script_hash: &Byte32,
+    ) -> Option<&ScriptGroup> {
+        self.info.find_script_group(script_group_type, script_hash)
+    }
+
+    #[inline]
+    /// Returns the version of the machine based on the script and the consensus rules.
+    pub fn select_version(&self, script: &Script) -> Result<ScriptVersion, ScriptError> {
+        self.info.select_version(script)
+    }
+
+    #[inline]
+    /// Returns all script groups.
+    pub fn groups(&self) -> impl Iterator<Item = (&'_ Byte32, &'_ ScriptGroup)> {
+        self.info.groups()
+    }
+
+    #[inline]
+    /// Returns all script groups with type.
+    pub fn groups_with_type(
+        &self,
+    ) -> impl Iterator<Item = (ScriptGroupType, &'_ Byte32, &'_ ScriptGroup)> {
+        self.info.groups_with_type()
+    }
+}
+
+impl<DL> TxInfo<DL> {
+    #[inline]
+    /// Extracts the index of the script binary in dep cells
+    pub fn extract_referenced_dep_index(&self, script: &Script) -> Result<usize, ScriptError> {
+        let (_, dep_index) = self.extract_script_and_dep_index(script)?;
+        Ok(*dep_index)
+    }
+
+    fn extract_script_and_dep_index(
+        &self,
+        script: &Script,
+    ) -> Result<(&LazyData, &usize), ScriptError> {
+        let script_hash_type = ScriptHashType::try_from(script.hash_type())
+            .map_err(|err| ScriptError::InvalidScriptHashType(err.to_string()))?;
+        match script_hash_type {
+            ScriptHashType::Data | ScriptHashType::Data1 | ScriptHashType::Data2 => {
+                if let Some((dep_index, lazy)) = self.binaries_by_data_hash.get(&script.code_hash())
+                {
+                    Ok((lazy, dep_index))
+                } else {
+                    Err(ScriptError::ScriptNotFound(script.code_hash()))
+                }
+            }
+            ScriptHashType::Type => {
+                if let Some(ref bin) = self.binaries_by_type_hash.get(&script.code_hash()) {
+                    match bin {
+                        Binaries::Unique(_, dep_index, lazy) => Ok((lazy, dep_index)),
+                        Binaries::Duplicate(_, dep_index, lazy) => Ok((lazy, dep_index)),
+                        Binaries::Multiple => Err(ScriptError::MultipleMatches),
+                    }
+                } else {
+                    Err(ScriptError::ScriptNotFound(script.code_hash()))
+                }
+            }
+            hash_type => {
+                return Err(ScriptError::InvalidScriptHashType(format!(
+                    "The ScriptHashType/{:?} has not been activated, and is not permitted for use.",
+                    hash_type
+                )));
+            }
+        }
+    }
+
+    /// Finds the script group from cell deps.
+    pub fn find_script_group(
+        &self,
+        script_group_type: ScriptGroupType,
+        script_hash: &Byte32,
+    ) -> Option<&ScriptGroup> {
+        match script_group_type {
+            ScriptGroupType::Lock => self.lock_groups.get(script_hash),
+            ScriptGroupType::Type => self.type_groups.get(script_hash),
+        }
+    }
+
+    fn is_vm_version_1_and_syscalls_2_enabled(&self) -> bool {
+        // If the proposal window is allowed to prejudge on the vm version,
+        // it will cause proposal tx to start a new vm in the blocks before hardfork,
+        // destroying the assumption that the transaction execution only uses the old vm
+        // before hardfork, leading to unexpected network splits.
+        let epoch_number = self.tx_env.epoch_number_without_proposal_window();
+        let hardfork_switch = self.consensus.hardfork_switch();
+        hardfork_switch
+            .ckb2021
+            .is_vm_version_1_and_syscalls_2_enabled(epoch_number)
+    }
+
+    fn is_vm_version_2_and_syscalls_3_enabled(&self) -> bool {
+        // If the proposal window is allowed to prejudge on the vm version,
+        // it will cause proposal tx to start a new vm in the blocks before hardfork,
+        // destroying the assumption that the transaction execution only uses the old vm
+        // before hardfork, leading to unexpected network splits.
+        let epoch_number = self.tx_env.epoch_number_without_proposal_window();
+        let hardfork_switch = self.consensus.hardfork_switch();
+        hardfork_switch
+            .ckb2023
+            .is_vm_version_2_and_syscalls_3_enabled(epoch_number)
+    }
+
+    /// Returns the version of the machine based on the script and the consensus rules.
+    pub fn select_version(&self, script: &Script) -> Result<ScriptVersion, ScriptError> {
+        let is_vm_version_2_and_syscalls_3_enabled = self.is_vm_version_2_and_syscalls_3_enabled();
+        let is_vm_version_1_and_syscalls_2_enabled = self.is_vm_version_1_and_syscalls_2_enabled();
+        let script_hash_type = ScriptHashType::try_from(script.hash_type())
+            .map_err(|err| ScriptError::InvalidScriptHashType(err.to_string()))?;
+        match script_hash_type {
+            ScriptHashType::Data => Ok(ScriptVersion::V0),
+            ScriptHashType::Data1 => {
+                if is_vm_version_1_and_syscalls_2_enabled {
+                    Ok(ScriptVersion::V1)
+                } else {
+                    Err(ScriptError::InvalidVmVersion(1))
+                }
+            }
+            ScriptHashType::Data2 => {
+                if is_vm_version_2_and_syscalls_3_enabled {
+                    Ok(ScriptVersion::V2)
+                } else {
+                    Err(ScriptError::InvalidVmVersion(2))
+                }
+            }
+            ScriptHashType::Type => {
+                if is_vm_version_2_and_syscalls_3_enabled {
+                    Ok(ScriptVersion::V2)
+                } else if is_vm_version_1_and_syscalls_2_enabled {
+                    Ok(ScriptVersion::V1)
+                } else {
+                    Ok(ScriptVersion::V0)
+                }
+            }
+            hash_type => {
+                return Err(ScriptError::InvalidScriptHashType(format!(
+                    "The ScriptHashType/{:?} has not been activated, and is not permitted for use.",
+                    hash_type
+                )));
+            }
+        }
+    }
+
+    /// Returns all script groups.
+    pub fn groups(&self) -> impl Iterator<Item = (&'_ Byte32, &'_ ScriptGroup)> {
+        self.lock_groups.iter().chain(self.type_groups.iter())
+    }
+
+    /// Returns all script groups with type.
+    pub fn groups_with_type(
+        &self,
+    ) -> impl Iterator<Item = (ScriptGroupType, &'_ Byte32, &'_ ScriptGroup)> {
+        self.lock_groups
+            .iter()
+            .map(|(hash, group)| (ScriptGroupType::Lock, hash, group))
+            .chain(
+                self.type_groups
+                    .iter()
+                    .map(|(hash, group)| (ScriptGroupType::Type, hash, group)),
+            )
+    }
+}
+
+/// Immutable context data at script group level
+#[derive(Clone, Debug)]
+pub struct SgData<DL> {
+    /// ResolvedTransaction.
+    pub rtx: Arc<ResolvedTransaction>,
+
+    /// Passed & derived information at transaction level.
+    pub tx_info: Arc<TxInfo<DL>>,
+
+    /// Passed & derived information at script group level.
+    pub sg_info: Arc<SgInfo>,
+}
+
+/// Script group level derived information.
+#[derive(Clone, Debug)]
+pub struct SgInfo {
+    /// Currently executed script version
+    pub script_version: ScriptVersion,
+    /// Currently executed script group
+    pub script_group: ScriptGroup,
+    /// Currently executed script hash
+    pub script_hash: Byte32,
+    /// DataPieceId for the root program
+    pub program_data_piece_id: DataPieceId,
+}
+
+impl<DL> SgData<DL> {
+    /// Creates a new SgData structure from TxData, and script group information
+    pub fn new(tx_data: &TxData<DL>, script_group: &ScriptGroup) -> Result<Self, ScriptError> {
+        let script_hash = script_group.script.calc_script_hash();
+        let script_version = tx_data.select_version(&script_group.script)?;
+        let dep_index = tx_data
+            .extract_referenced_dep_index(&script_group.script)?
+            .try_into()
+            .map_err(|_| ScriptError::Other("u32 overflow".to_string()))?;
+        Ok(Self {
+            rtx: Arc::clone(&tx_data.rtx),
+            tx_info: Arc::clone(&tx_data.info),
+            sg_info: Arc::new(SgInfo {
+                script_version,
+                script_hash,
+                script_group: script_group.clone(),
+                program_data_piece_id: DataPieceId::CellDep(dep_index),
+            }),
+        })
+    }
+
+    /// Shortcut to data loader
+    pub fn data_loader(&self) -> &DL {
+        &self.tx_info.data_loader
+    }
+
+    /// Shortcut to group input indices
+    pub fn group_inputs(&self) -> &[usize] {
+        &self.sg_info.script_group.input_indices
+    }
+
+    /// Shortcut to group output indices
+    pub fn group_outputs(&self) -> &[usize] {
+        &self.sg_info.script_group.output_indices
+    }
+
+    /// Shortcut to all outputs
+    pub fn outputs(&self) -> &[CellMeta] {
+        &self.tx_info.outputs
+    }
+}
+
+impl<DL> DataSource<DataPieceId> for SgData<DL>
+where
+    DL: CellDataProvider,
+{
+    fn load_data(&self, id: &DataPieceId, offset: u64, length: u64) -> Option<(Bytes, u64)> {
+        match id {
+            DataPieceId::Input(i) => self
+                .rtx
+                .resolved_inputs
+                .get(*i as usize)
+                .and_then(|cell| self.data_loader().load_cell_data(cell)),
+            DataPieceId::Output(i) => self
+                .rtx
+                .transaction
+                .outputs_data()
+                .get(*i as usize)
+                .map(|data| data.raw_data()),
+            DataPieceId::CellDep(i) => self
+                .rtx
+                .resolved_cell_deps
+                .get(*i as usize)
+                .and_then(|cell| self.data_loader().load_cell_data(cell)),
+            DataPieceId::GroupInput(i) => self
+                .sg_info
+                .script_group
+                .input_indices
+                .get(*i as usize)
+                .and_then(|gi| self.rtx.resolved_inputs.get(*gi))
+                .and_then(|cell| self.data_loader().load_cell_data(cell)),
+            DataPieceId::GroupOutput(i) => self
+                .sg_info
+                .script_group
+                .output_indices
+                .get(*i as usize)
+                .and_then(|gi| self.rtx.transaction.outputs_data().get(*gi))
+                .map(|data| data.raw_data()),
+            DataPieceId::Witness(i) => self
+                .rtx
+                .transaction
+                .witnesses()
+                .get(*i as usize)
+                .map(|data| data.raw_data()),
+            DataPieceId::WitnessGroupInput(i) => self
+                .sg_info
+                .script_group
+                .input_indices
+                .get(*i as usize)
+                .and_then(|gi| self.rtx.transaction.witnesses().get(*gi))
+                .map(|data| data.raw_data()),
+            DataPieceId::WitnessGroupOutput(i) => self
+                .sg_info
+                .script_group
+                .output_indices
+                .get(*i as usize)
+                .and_then(|gi| self.rtx.transaction.witnesses().get(*gi))
+                .map(|data| data.raw_data()),
+        }
+        .map(|data| {
+            let offset = std::cmp::min(offset as usize, data.len());
+            let full_length = data.len() - offset;
+            let real_length = if length > 0 {
+                std::cmp::min(full_length, length as usize)
+            } else {
+                full_length
+            };
+            (data.slice(offset..offset + real_length), full_length as u64)
+        })
+    }
+}
+
+/// When the vm is initialized, arguments are loaded onto the stack.
+/// This enum specifies how to locate these arguments.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum VmArgs {
+    /// Represents reading arguments from other vm.
+    Reader {
+        /// An identifier for the virtual machine/process.
+        vm_id: u64,
+        /// The number of arguments provided.
+        argc: u64,
+        /// The pointer of the actual arguments.
+        argv: u64,
+    },
+    /// Represents reading arguments from a vector.
+    Vector(Vec<Bytes>),
+}
+
+/// Mutable data at virtual machine level
+#[derive(Clone)]
+pub struct VmContext<DL>
+where
+    DL: CellDataProvider,
+{
+    /// Cycles executed before current VM starts
+    pub base_cycles: Arc<AtomicU64>,
+    /// A mutable reference to scheduler's message box
+    pub message_box: Arc<Mutex<Vec<Message>>>,
+    /// A snapshot for COW usage
+    pub snapshot2_context: Arc<Mutex<Snapshot2Context<DataPieceId, SgData<DL>>>>,
+}
+
+impl<DL> VmContext<DL>
+where
+    DL: CellDataProvider + Clone,
+{
+    /// Creates a new VM context. It is by design that parameters to this function
+    /// are references. It is a reminder that the inputs are designed to be shared
+    /// among different entities.
+    pub fn new(sg_data: &SgData<DL>, message_box: &Arc<Mutex<Vec<Message>>>) -> Self {
+        Self {
+            base_cycles: Arc::new(AtomicU64::new(0)),
+            message_box: Arc::clone(message_box),
+            snapshot2_context: Arc::new(Mutex::new(Snapshot2Context::new(sg_data.clone()))),
+        }
+    }
+
+    /// Sets current base cycles
+    pub fn set_base_cycles(&mut self, base_cycles: u64) {
+        self.base_cycles.store(base_cycles, Ordering::Release);
+    }
+}
+
+/// The scheduler's running mode.
+#[derive(Clone)]
+pub enum RunMode {
+    /// Continues running until cycles are exhausted.
+    LimitCycles(Cycle),
+    /// Continues running until a Pause signal is received or cycles are exhausted.
+    Pause(Pause, Cycle),
+}
+
+/// Terminated result
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TerminatedResult {
+    /// Root VM exit code
+    pub exit_code: i8,
+    /// Total consumed cycles by all VMs in current scheduler,
+    /// up to this execution point.
+    pub consumed_cycles: Cycle,
+}
+
+/// Single iteration result
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct IterationResult {
+    /// VM ID that gets executed
+    pub executed_vm: VmId,
+    /// Terminated status
+    pub terminated_status: Option<TerminatedResult>,
+}

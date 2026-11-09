@@ -21,9 +21,9 @@ use serde_json::{Value, json};
 
 pub struct MultiAssetSmokeOptions {
     pub contracts_dir: PathBuf,
-    pub private_key: String,
-    pub alice_private_key: String,
-    pub bob_private_key: String,
+    pub private_key: morph_key_input::SecretString,
+    pub alice_private_key: morph_key_input::SecretString,
+    pub bob_private_key: morph_key_input::SecretString,
     pub asset_count: usize,
     pub shared_funding: bool,
     pub funding_reorg: bool,
@@ -214,18 +214,21 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         xudt_code.cell_dep.clone(),
         secp.clone(),
     ];
-    let seed = hex::decode(options.private_key.trim_start_matches("0x"))
-        .context("invalid devnet funding key")?;
+    let seed = zeroize::Zeroizing::new(
+        hex::decode(options.private_key.trim_start_matches("0x"))
+            .context("invalid devnet funding key")?,
+    );
     let mut assets = Vec::new();
     let mut issuance = Vec::new();
     for index in 0..options.asset_count {
-        let issuer_seed = script_blake2b256(&[
+        let issuer_seed = zeroize::Zeroizing::new(script_blake2b256(&[
             b"CKB_MORPH_DEVNET_MULTI_ASSET_ISSUER",
-            &seed,
+            seed.as_slice(),
             &(index as u64).to_le_bytes(),
-        ]);
-        let issuer = parse_privkey(&hex::encode(issuer_seed))
-            .map_err(|_| anyhow!("invalid derived devnet issuer key"))?;
+        ]));
+        let issuer_hex = zeroize::Zeroizing::new(hex::encode(issuer_seed.as_ref()));
+        let issuer =
+            parse_privkey(&issuer_hex).map_err(|_| anyhow!("invalid derived devnet issuer key"))?;
         let issuer_lock = secp256k1_lock(&issuer)?;
         let script = data1_script(
             xudt_code.data_hash.clone(),
@@ -480,10 +483,26 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     let terms_path = options.store_dir.join("root-funding-terms.json");
     ensure!(!terms_path.exists(), "root funding terms already exist");
     crate::persistence::write_private_atomic(&terms_path, &serde_json::to_vec_pretty(&terms)?)?;
+    let admission_config = options.store_dir.join("bilateral-admission-config.json");
+    crate::admission::create_config(
+        rpc,
+        crate::admission::ConfigOptions {
+            envelope: PathBuf::from("release/factory-preproduction/envelope.json"),
+            contracts_dir: options.contracts_dir.clone(),
+            ledger: options.store_dir.join("bilateral-admission-ledger.json"),
+            output: admission_config.clone(),
+            admitted_asset_types: assets
+                .iter()
+                .map(|asset| canonical_root_hex(asset.script.calc_script_hash().as_slice()))
+                .collect(),
+            no_real_assets: true,
+        },
+    )?;
     let draft_path = options.store_dir.join("root-funding-draft.json");
     super::multi_asset_root_operator::prepare(
         rpc,
         super::multi_asset_root_operator::PrepareOptions {
+            admission_config: admission_config.clone(),
             terms: terms_path.clone(),
             contracts_dir: options.contracts_dir.clone(),
             max_fee: options.fee,
@@ -509,6 +528,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         funding_run(
             session,
             FundingSessionCommand::Init {
+                admission_config: admission_config.clone(),
                 draft: draft_path.clone(),
                 local_pubkey: canonical_root_hex(&k256_pubkey(&k256_signing_key(secret)?)),
                 contracts_dir: options.contracts_dir.clone(),
@@ -602,6 +622,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     let rejected = super::multi_asset_funding_operator::submit(
         rpc,
         super::multi_asset_funding_operator::Options {
+            admission_config: admission_config.clone(),
             transaction: intent.clone(),
             package: pre_funding_recovery.clone(),
             contracts_dir: options.contracts_dir.clone(),
@@ -650,6 +671,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         let signed = super::multi_asset_root_operator::sign_wallet(
             rpc,
             super::multi_asset_root_operator::SignOptions {
+                admission_config: admission_config.clone(),
                 terms: terms_path.clone(),
                 transaction: intent,
                 package: pre_funding_recovery.clone(),
@@ -672,6 +694,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     let mut fund = super::multi_asset_funding_operator::submit(
         rpc,
         super::multi_asset_funding_operator::Options {
+            admission_config: admission_config.clone(),
             transaction: intent,
             package: pre_funding_recovery.clone(),
             contracts_dir: options.contracts_dir.clone(),
@@ -722,6 +745,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         let replayed = super::multi_asset_funding_operator::submit(
             rpc,
             super::multi_asset_funding_operator::Options {
+                admission_config: admission_config.clone(),
                 transaction: signed_path.clone(),
                 package: pre_funding_recovery.clone(),
                 contracts_dir: options.contracts_dir.clone(),
@@ -1510,7 +1534,7 @@ fn service_watch_acceptance(
         &config,
         WatchtowerRuntimeOptions {
             contracts_dir: options.contracts_dir,
-            private_key: funding_key.to_string(),
+            private_key: funding_key.to_string().into(),
         },
         WatchtowerConfigServiceOptions {
             max_passes: Some(1),

@@ -90,11 +90,7 @@ fn current_factory_release_handles_eight_types_sixteen_members_with_one_signatur
             let key = SigningKey::from_bytes((&[i; 32]).into()).unwrap();
             FactoryParticipantKey {
                 participant: [i; 32],
-                pubkey_sec1: key
-                    .verifying_key()
-                    .to_encoded_point(true)
-                    .as_bytes()
-                    .to_vec(),
+                pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
             }
         })
         .collect();

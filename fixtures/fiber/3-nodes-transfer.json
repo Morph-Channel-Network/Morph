@@ -1,0 +1,1175 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/3-nodes-transfer",
+  "steps": [
+    {
+      "id": "e2e/3-nodes-transfer/01-node1-connect-node2",
+      "source_sha256": "95543e4b4a4da46bde2eedda9f63120b1706720104b3711005ab87cffe26ddb8",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/02-node2-connect-node3",
+      "source_sha256": "fcebbbd0fcd769c3a32164306a7f4dc5da47c0f3092a2eed25b2b9969e0bbcdd",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 2,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE2_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/03-node1-node2-open-channel",
+      "source_sha256": "772ee98843447896e56b6623a8c5c3461ff4e05757a7f37ca4440102dc676b05",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 3,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "funding_amount": "0x377aab54d000"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/04-node2-get-auto-accepted-channel",
+      "source_sha256": "8e9f7a9d70dd9f7b0b38ed139d14988429e8633ba168b6593c64b1a0058d8621",
+      "source_script_sha256": "18f3bbbf78bf9c26f7f4015fd409219ca23e7edda1e2601f69abfe791263fde6",
+      "sequence": 4,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/enabled"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/tlc_expiry_delta"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/tlc_fee_proportional_millionths"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/06-ckb-generate-blocks",
+      "source_sha256": "cf869fea0ef134558b36b7d0ddca6892eadb0bbfeaf0a97437f47393226c3f83",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 6,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/07-node2-node3-open-channel",
+      "source_sha256": "702c811fcb4e3e51da31193995927fce59925b32293724c27333b8b78410eae1",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 7,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}",
+            "funding_amount": "0x377aab54d000"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/08-node3-get-auto-accepted-channel",
+      "source_sha256": "09e63d8b379df92e177e82579b90e05cb0e26eb48299527972811640d594b3d6",
+      "source_script_sha256": "a525a4c421b5a5798c591f665dd5b2dee3c268f8491a6e125306d42d115a4342",
+      "sequence": 8,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N2N3_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/10-ckb-generate-blocks",
+      "source_sha256": "74942c01dfb5af7021300c6aefe67056034dce51e28800fd333f01b4a2c43c0a",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 10,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/10-node2-list-channels",
+      "source_sha256": "462887fac812f6fe60b54fdf2c397616b7f96b49d9896254eb98b8233b53bfc1",
+      "source_script_sha256": "a27765ff12cd4a6d0acd27572c85ce61292424578ba7b233b29099051214033c",
+      "sequence": 10,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/remote_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x0"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/local_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x37785d3ecd00"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/11-node3-gen-invoice",
+      "source_sha256": "891ba2dde0089d49cd35ad6a5706cc628e4554fdf005a5d17a92461b0db18645",
+      "source_script_sha256": "3466ca264ff7ad4ef32d84828727c36b23cb479f22d3c86895afb31b52a2aa28",
+      "sequence": 11,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x613ae6500",
+            "currency": "Fibd",
+            "description": "test invoice generated by node3",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "payment_hash",
+          "value": {
+            "pointer": "/result/invoice/data/payment_hash"
+          }
+        },
+        {
+          "variable": "payment_amount",
+          "value": {
+            "pointer": "/result/invoice/amount"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/12-node1-add-tlc",
+      "source_sha256": "ef65f5586a438600d756b47acc962d4d359f3be328dcd577362869faec492868",
+      "source_script_sha256": "64b9a957b8f51bced40b8eaf0765e9465a28b2c1c9bf088c29dd6e58be47d9ca",
+      "sequence": 12,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{N1N2_CHANNEL_ID}}",
+            "amount": "{{payment_amount}}",
+            "payment_hash": "{{payment_hash}}",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "N1N2_TLC_ID1",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/13-node2-add-tlc",
+      "source_sha256": "9adc8084cc59ff95c2ba4bdc6e887183f8d4c392ae977ba80f5a165195406efe",
+      "source_script_sha256": "42a02ff7ec44bba1257181be8e360504b2be212352e57873c39c7bf1da988e1a",
+      "sequence": 13,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{N2N3_CHANNEL_ID}}",
+            "amount": "{{payment_amount}}",
+            "payment_hash": "{{payment_hash}}",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "N2N3_TLC_ID1",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/14-node3-get-invoice",
+      "source_sha256": "1f662e0a11e08b157cdfbebf5e3fbe969be228479faab10c7d98442cefd4300f",
+      "source_script_sha256": "a86880338b17e822cf91279aa35d439c0f7482bfc76a55f482f41abe08e269cb",
+      "sequence": 14,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "get_invoice",
+        "params": [
+          {
+            "payment_hash": "{{payment_hash}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "Paid"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/14-node3-remove-tlc",
+      "source_sha256": "adb3c9a6202a133820d53df34d66e2d4e48838d19df83fb3ac7c7f88004044ee",
+      "source_script_sha256": "df7c0a535e65eaa5cb249c317d9b76077610b10e9ac7c102945525a35acc2912",
+      "sequence": 14,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{N2N3_CHANNEL_ID}}",
+            "tlc_id": "{{N2N3_TLC_ID1}}",
+            "reason": {
+              "payment_preimage": "{{payment_preimage}}"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "contains",
+          "right": {
+            "literal": "Trying to remove non-existing tlc with id"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/15-node2-remove-tlc",
+      "source_sha256": "2d1b40ff69ef61f3d0783ff466c08a476321d7f7159d3b43d0c90dc3c9c082a9",
+      "source_script_sha256": "2c056ed4c0a816349f4ac49f937ac6c098ccb274637a1d9ad760f8a99566e171",
+      "sequence": 15,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{N1N2_CHANNEL_ID}}",
+            "tlc_id": "{{N1N2_TLC_ID1}}",
+            "reason": {
+              "payment_preimage": "{{payment_preimage}}"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "optional_contains",
+          "right": {
+            "literal": "Trying to remove non-existing tlc with id"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/16-node3-gen-invoice",
+      "source_sha256": "9fb64fead9db0522398776a3ca0054897c3cc3e50ab6041c0b509ad48ac2d793",
+      "source_script_sha256": "3466ca264ff7ad4ef32d84828727c36b23cb479f22d3c86895afb31b52a2aa28",
+      "sequence": 16,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x867ba4900",
+            "currency": "Fibd",
+            "description": "test invoice generated by node3",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "payment_hash",
+          "value": {
+            "pointer": "/result/invoice/data/payment_hash"
+          }
+        },
+        {
+          "variable": "payment_amount",
+          "value": {
+            "pointer": "/result/invoice/amount"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/17-node1-add-tlc",
+      "source_sha256": "da49554748de7a1147155d0fa4d15b150df2b225df00e86ee8de852dd422e17a",
+      "source_script_sha256": "372a43b742aa751e4c080d0709885113cf666e07a84d80fa7fcf12571ae83afe",
+      "sequence": 17,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{N1N2_CHANNEL_ID}}",
+            "amount": "{{payment_amount}}",
+            "payment_hash": "{{payment_hash}}",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "N1N2_TLC_ID2",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/18-node2-add-tlc",
+      "source_sha256": "b362fe28b8d67c75cb5430071e93a7223260194c386cd1e35676f718d9b22782",
+      "source_script_sha256": "a54c38bef14a7870c3306a6639bc0eca24a85cfd0dbec1d651b35a60cbdb9935",
+      "sequence": 18,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{N2N3_CHANNEL_ID}}",
+            "amount": "{{payment_amount}}",
+            "payment_hash": "{{payment_hash}}",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "N2N3_TLC_ID2",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/19-node3-remove-tlc",
+      "source_sha256": "5aecf29e0bdebecaf9f8da421a17f5c1933f294f7e8a9e014072310f7fe39c98",
+      "source_script_sha256": "1c0729a6c440a97cbe2aed1d9392d7a7c0f5d91a98ccaa4c7871b7c244bf03a9",
+      "sequence": 19,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{N2N3_CHANNEL_ID}}",
+            "tlc_id": "{{N2N3_TLC_ID2}}",
+            "reason": {
+              "payment_preimage": "{{payment_preimage}}"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "contains",
+          "right": {
+            "literal": "Trying to remove non-existing tlc with id"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/20-node2-remove-tlc",
+      "source_sha256": "826f7d4cd38bc1591392dd51e86aff1ca7b7b8d4df23ad13afec08640d94acfc",
+      "source_script_sha256": "332fd4fe9a605170bd77bb0a61e0dc9f9d96cb56e8d536a84ddbf4055b495ec2",
+      "sequence": 19,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{N1N2_CHANNEL_ID}}",
+            "tlc_id": "{{N1N2_TLC_ID2}}",
+            "reason": {
+              "payment_preimage": "{{payment_preimage}}"
+            }
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "optional_contains",
+          "right": {
+            "literal": "Trying to remove non-existing tlc with id"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/20-node3-list-channels",
+      "source_sha256": "65a8ff0033229ad290ad6f63fad1d5ea63490e19d52a01036127f593646d5db3",
+      "source_script_sha256": "06b4f82f983258797421376539635a03ccbcce233d16656fbe6ef81d665b7ff9",
+      "sequence": 20,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 3000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/local_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0xe7b68ae00"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/remote_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x3769e1d61f00"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/state/state_name"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "ChannelReady"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/21-node1-send-shutdown-channel-1",
+      "source_sha256": "47b854693a1b2e3a536c1e753b58c463c02e9cc2e4b549feb740ab17681988ff",
+      "source_script_sha256": "32bac7eee119e4e590fa6f216f64924aa53cb387b1807e929fe4947dbd4b186a",
+      "sequence": 21,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{N1N2_CHANNEL_ID}}",
+            "close_script": {
+              "code_hash": "0x2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+              "hash_type": "data",
+              "args": "0x0101010101010101010101010101010101010101"
+            },
+            "fee_rate": "0x3FC"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/3-nodes-transfer/23-node2-send-shutdown-channel-2",
+      "source_sha256": "899d4cc7ef907844b1455c83b4d47120864e111f8ba46efe9dd0364a99ec67dc",
+      "source_script_sha256": "32bac7eee119e4e590fa6f216f64924aa53cb387b1807e929fe4947dbd4b186a",
+      "sequence": 23,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{N2N3_CHANNEL_ID}}",
+            "close_script": {
+              "code_hash": "0x2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+              "hash_type": "data",
+              "args": "0x0101010101010101010101010101010101010101"
+            },
+            "fee_rate": "0x3FC"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    }
+  ]
+}

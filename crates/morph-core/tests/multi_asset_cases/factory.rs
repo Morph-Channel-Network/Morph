@@ -112,7 +112,7 @@ fn factory_members(n: u8) -> Bytes32 {
     for seed in 1..=n {
         let key = SigningKey::from_slice(&[seed; 32]).unwrap();
         raw.extend_from_slice(&[seed; 32]);
-        raw.extend_from_slice(key.verifying_key().to_encoded_point(true).as_bytes());
+        raw.extend_from_slice(key.verifying_key().to_sec1_point(true).as_bytes());
         raw.extend_from_slice(&[0; 64]);
     }
     FactorySignatureWitness::parse(&raw)
@@ -130,11 +130,7 @@ fn factory_authorization(
             let signature: Signature = key.sign_prehash(&digest).unwrap();
             FactoryParticipantSignature {
                 participant: [seed; 32],
-                pubkey_sec1: key
-                    .verifying_key()
-                    .to_encoded_point(true)
-                    .as_bytes()
-                    .to_vec(),
+                pubkey_sec1: key.verifying_key().to_sec1_point(true).as_bytes().to_vec(),
                 signature: signature.to_bytes().to_vec(),
             }
         })
@@ -246,11 +242,7 @@ fn factory_partition_accepts_outside_child_parties_but_preserves_parent_and_exit
     for (i, sig) in auth.iter_mut().enumerate() {
         let key = SigningKey::from_slice(&[10 + i as u8; 32]).unwrap();
         let signature: Signature = key.sign_prehash(&digest).unwrap();
-        sig.pubkey_sec1 = key
-            .verifying_key()
-            .to_encoded_point(true)
-            .as_bytes()
-            .to_vec();
+        sig.pubkey_sec1 = key.verifying_key().to_sec1_point(true).as_bytes().to_vec();
         sig.signature = signature.to_bytes().to_vec();
     }
     let mut raw = vec![1, 0, 2, 2];

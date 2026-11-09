@@ -1,0 +1,24 @@
+{
+  "schema": "morph.rust_fiber_scenario_sources.v1",
+  "fiber_commit": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+  "requests": 268,
+  "suites": {
+    "e2e/external-funding-open": 22,
+    "e2e/open-use-close-a-channel": 22,
+    "e2e/3-nodes-transfer": 23,
+    "e2e/router-pay": 39,
+    "e2e/reestablish": 9,
+    "e2e/shutdown-force": 12,
+    "e2e/hold-invoice-cancel-failure": 10,
+    "e2e/period-check/force-close-expiry": 12,
+    "e2e/udt": 15,
+    "e2e/udt-router-pay": 16,
+    "e2e/watchtower/force-close-after-open-channel": 18,
+    "e2e/watchtower/force-close-with-pending-tlcs": 24,
+    "e2e/watchtower/force-close-after-multiple-payments": 22,
+    "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower": 21,
+    "e2e/funding-tx-verification": 3
+  },
+  "runtime": "Rust only; data has a closed native action/assertion vocabulary; no JavaScript interpreter or source embedded",
+  "qualification": "implementation pending real-stack validation"
+}

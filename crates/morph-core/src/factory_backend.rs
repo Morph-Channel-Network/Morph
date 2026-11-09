@@ -28,7 +28,7 @@ pub fn factory_membership_commitment(
     for member in members {
         let key = k256::ecdsa::VerifyingKey::from_sec1_bytes(&member.pubkey_sec1)
             .map_err(|_| FactoryBackendError::InvalidMembers)?;
-        if key.to_encoded_point(true).as_bytes() != member.pubkey_sec1 {
+        if key.to_sec1_point(true).as_bytes() != member.pubkey_sec1 {
             return Err(FactoryBackendError::InvalidMembers);
         }
     }
@@ -686,11 +686,7 @@ impl FactoryChildDeliveryReceipt {
     ) -> FactoryBackendResult<Self> {
         use k256::ecdsa::signature::hazmat::PrehashSigner;
         request.verify_child_recovery(child_index, recovery)?;
-        let pubkey_sec1 = key
-            .verifying_key()
-            .to_encoded_point(true)
-            .as_bytes()
-            .to_vec();
+        let pubkey_sec1 = key.verifying_key().to_sec1_point(true).as_bytes().to_vec();
         let digest = delivery_digest(request, child_index, &pubkey_sec1)?;
         let signature: k256::ecdsa::Signature = key
             .sign_prehash(&digest)
@@ -737,7 +733,7 @@ fn verify_factory_signature(
     use k256::ecdsa::signature::hazmat::PrehashVerifier;
     let key = k256::ecdsa::VerifyingKey::from_sec1_bytes(pubkey)
         .map_err(|_| FactoryBackendError::InvalidSignature)?;
-    if key.to_encoded_point(true).as_bytes() != pubkey {
+    if key.to_sec1_point(true).as_bytes() != pubkey {
         return Err(FactoryBackendError::InvalidSignature);
     }
     let signature = k256::ecdsa::Signature::from_slice(signature)

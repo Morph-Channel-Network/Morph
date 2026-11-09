@@ -1,0 +1,857 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower",
+  "steps": [
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/01-connect-peer",
+      "source_sha256": "95543e4b4a4da46bde2eedda9f63120b1706720104b3711005ab87cffe26ddb8",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/02-get-node1-funding-script",
+      "source_sha256": "2277d987a97412b70bab99cc79be8dfde16d3b9165bda057d9d967992a141bc4",
+      "source_script_sha256": "2f5a301842a3476437fdf39a53e8f56a3afb79511db8366d5c0fd4309b815943",
+      "sequence": 2,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE1_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/03-get-node2-funding-script",
+      "source_sha256": "83b3de4c6e9cbc5e66fbb9dbdd07bc8ae5dfe556aeb756548df41f2c512c13a1",
+      "source_script_sha256": "ec63d002dbfeda0a499bce933cecba62ace598184ff1bb0be80f632f352ae209",
+      "sequence": 3,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE2_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/04-get-node1-balance",
+      "source_sha256": "d6c665caff9d7ff27bb4329117a1361fac3f21d01ddd2418bd19d1f9b66d69d6",
+      "source_script_sha256": "730b645f049cd50800e3475e7bd43b283a6858207e33a9a48ec36c0b810a6ab4",
+      "sequence": 4,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE1_BALANCE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/05-get-node2-balance",
+      "source_sha256": "e822f017205b324dfa60d8eacf2d0d3e72edc6a437bb63fb3d1b3c9be90ad4a3",
+      "source_script_sha256": "02dd69b2890b773d3ee54f9e9c0c2e1ac7235fb320535a4d75d5094bb7004559",
+      "sequence": 5,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE2_BALANCE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/06-open-channel",
+      "source_sha256": "29ce527dae34777dee076bba38980ec1e1b56e6025f674e94eb80652c8b09519",
+      "source_script_sha256": "2f631affeed467ebda55336a85a2f4ebacc9d56d485ec29ac28a26b7014de383",
+      "sequence": 6,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "funding_amount": "0x2540be400"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_TEMP_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/temporary_channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/07-accept-channel",
+      "source_sha256": "6c0af2cfbdea457779c40527d7f9502ca7fdbac53593e38f3bd988dd697ee72b",
+      "source_script_sha256": "a8a451f956367e891992cb25929894c6ae35d4cf19fd4ac93e446348d09ff1f8",
+      "sequence": 7,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "accept_channel",
+        "params": [
+          {
+            "temporary_channel_id": "{{N1N2_TEMP_CHANNEL_ID}}",
+            "funding_amount": "0x826299e00"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/08-generate-blocks-for-funding-tx",
+      "source_sha256": "e7d94c1631bbced2319e2e18ddbceee98b1432d4c8b26cfb5bcd418d579278e9",
+      "source_script_sha256": "05b59a1e6bcd84f960569adce9006e9c126bd6aafa3e56d46a718316bd43b930",
+      "sequence": 8,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "both_ready",
+          "variable": "CHANNEL_ID"
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/09-node1-add-tlc1",
+      "source_sha256": "8964b926119533aed37ce5febb6af2897c5301d9d79cb0f5a9e8e6253b42b32c",
+      "source_script_sha256": "e989a7f7440a160142408962d101e8b16f240153b8ec6b6a0e60fcba77e38220",
+      "sequence": 9,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0x2dc6c0",
+            "payment_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 10
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/10-node2-stop-watchtower",
+      "source_sha256": "53828f81899ea60905295c3abd9c8bc93439de29b9f5e7129e2daa94e9d38d77",
+      "source_script_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "sequence": 10,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_watch_channel",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/11-force-close",
+      "source_sha256": "0afd75d52ebd3653a3b2e8295ff1ce6e445a6824e09b995bdd0eb2a640413f06",
+      "source_script_sha256": "e95aca9dc6e35cbc29c7b3ce4ea839da7db56385169a1d329f3dbe1074a12d9a",
+      "sequence": 11,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "force": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/12-get-force-closed-commitment-tx-hash",
+      "source_sha256": "20b27c1a801788f3ee63a0ea9b2ce9dc2431dd0352e68ab2733f9d1ba5a6e6a4",
+      "source_script_sha256": "9c9698fbd0fe726640f30be9305ecbd1ad04368f7deb09c0c0c88182f3e1c49c",
+      "sequence": 12,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "include_closed": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "TX_HASH",
+          "value": {
+            "pointer": "/result/channels/0/latest_commitment_transaction_hash"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/13-generate-blocks-for-commitment-tx",
+      "source_sha256": "e581160ed60097919ef74f387480f22fec4092893aad6df726c12ccd74dcf255",
+      "source_script_sha256": "23779d2debc259082a43167e483d1a96a56bbdff00a426c9549b258c88fe2b6b",
+      "sequence": 13,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/14-generate-blocks-for-onchain-timestamp-updates",
+      "source_sha256": "18e859104194eda1e48330073ee5ae0cb263ecc2953be86566425f7c4d4ef806",
+      "source_script_sha256": "3247bd6bfd84715836eca81a2d6d23b6a1a2d2708279ede047889623ecf82182",
+      "sequence": 14,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x10"
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 20000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/15-generate-blocks-for-settlement-tx1-committed",
+      "source_sha256": "66e1c72f871430490e5379efb2700e115ff1afaf6ba57a1fa1ee63fda89d6771",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 15,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x7"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/16-generate-blocks-for-settlement-tx2-committed",
+      "source_sha256": "a237a66dede03e11e2d2995e0f872a2ef58f964b1cd375c5dab17a9c7e70b5c0",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 16,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x10"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/17-generate-blocks-for-final-settlement-tx-committed",
+      "source_sha256": "b963954299ff7fdc9edd34046bbc53871bffd0c9da0145560485805eeddcf31b",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 17,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x10"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/18-check-commitment-tx",
+      "source_sha256": "44cb3d4f1ee8750e724c26125df81b3c134d8fe026138c34f7edbe332e158014",
+      "source_script_sha256": "a1fb8b47df4f9d1269cfc598802061dd799b6dc345c6e3b477cf31f38c1fe0f0",
+      "sequence": 18,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_live_cell",
+        "params": [
+          {
+            "index": "0x0",
+            "tx_hash": "{{TX_HASH}}"
+          },
+          false
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "unknown"
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/19-check-balance-node1",
+      "source_sha256": "49a5c727e77e853c8bbe7f88a0e79a7d10046162eac72b0d4bb1054ef367604b",
+      "source_script_sha256": "82a2611612a5b1415e16bd2bebb6fd99acf32db8fea1787acc865fbe1141517c",
+      "sequence": 19,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "variable": "NODE1_BALANCE"
+              },
+              {
+                "pointer": "/result/capacity"
+              }
+            ]
+          },
+          "op": "lt",
+          "right": {
+            "literal": 5000
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/20-check-balance-node2",
+      "source_sha256": "22dee0adb54869b67fd8bb33a042a6f1b53634c28cba0248801e747d44b1d34e",
+      "source_script_sha256": "0b63d2fa5336f495dd6328e9ef4e6cb3339a2470a3d0cb8213c6f0e59eb56edc",
+      "sequence": 20,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "variable": "NODE2_BALANCE"
+              },
+              {
+                "pointer": "/result/capacity"
+              }
+            ]
+          },
+          "op": "lt",
+          "right": {
+            "literal": 35000005000
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-remote-with-pending-tlcs-and-stop-watchtower/21-disconnect",
+      "source_sha256": "79d8467b98dda363060a873dce9701387e027dcd9fafea39c784e351b9f2cac1",
+      "source_script_sha256": "a9b9304da1d8f4de2851d1e46dc7ad838ef50bc77960d1a7cb0a1288a0fdbd5a",
+      "sequence": 21,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "disconnect_peer",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    }
+  ]
+}

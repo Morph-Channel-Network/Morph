@@ -13,7 +13,7 @@ make release-readiness
 make package-contract-release
 ```
 
-The Rust release must be 1.92.0, the Git worktree must be clean, and the
+The Rust release must be 1.95.0, the Git worktree must be clean, and the
 manifest verifier must report eight matching scripts. Compare the deployment
 report's `data_hash` values with
 `release/factory-preproduction/contracts.json` before creating cells.
@@ -32,8 +32,10 @@ umask 077
 install -d -m 0700 target/operator-secrets
 ```
 
-Store one raw secret per file with mode 0600. Prefer CLI `--private-key-file`
-or the documented `*_PRIVATE_KEY_FILE` variable. Do not pass secrets on a
+Store one secret per owner-controlled regular file with mode 0600 or 0400.
+The only supported private-key input is a CLI `--private-key-file` path
+(or its role-specific file flag) or the documented `*_PRIVATE_KEY_FILE` path
+variable; see [key input](key-input.md). Do not pass secrets on a
 command line, commit them, place them in watch configs, copy them into reports,
 or paste them into incident tickets. Use scoped Hub tokens; rotate them by
 restarting the Hub. The webhook HMAC secret must be different from every Hub
@@ -75,7 +77,8 @@ Retain:
 
 - every signed state, conditional-batch, Factory, reduced-right, exit, and splice package;
 - watch configuration, policy, cursor, health, and JSONL alerts;
-- the deployment report and exact release bundle;
+- the deployment report and exact local contract bundle;
+- the immutable admission configuration, complete pilot ledger and its identity marker;
 - smoke/stateful summaries and transaction hashes;
 - the incident timeline for any warning or critical alert.
 

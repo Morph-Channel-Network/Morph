@@ -1,6 +1,4 @@
 /target/
-**/node_modules/
-sdk/typescript/dist/
 **/*.aux
 **/*.log
 **/*.out
@@ -8,3 +6,7 @@ sdk/typescript/dist/
 .DS_Store
 .env
 .cap/
+
+# Generated Python bytecode is never implementation source.
+**/__pycache__/
+*.py[cod]

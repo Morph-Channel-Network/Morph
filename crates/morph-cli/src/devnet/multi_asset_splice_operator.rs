@@ -15,8 +15,8 @@ use std::io::Read;
 pub enum FeeAuthorization {
     Presigned,
     Wallet {
-        #[arg(long, env = "MORPH_DEVNET_PRIVATE_KEY", hide_env_values = true)]
-        private_key: String,
+        #[arg(long = "private-key-file", env = "MORPH_DEVNET_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
     },
 }
 impl std::fmt::Debug for FeeAuthorization {
@@ -28,6 +28,7 @@ impl std::fmt::Debug for FeeAuthorization {
     }
 }
 pub struct Options {
+    pub admission_config: PathBuf,
     pub transaction: PathBuf,
     pub old_package: PathBuf,
     pub new_package: PathBuf,
@@ -170,6 +171,14 @@ pub fn submit(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         );
     }
     let fee = validate_balances(&transaction, &inputs, &current, &plan, options.max_fee)?;
+    crate::admission_channel::reserve(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &recovery,
+        &transaction,
+        fee,
+    )?;
     let wallet_key = match &options.fee_authorization {
         FeeAuthorization::Presigned => None,
         FeeAuthorization::Wallet { private_key } => {
@@ -350,6 +359,7 @@ fn validate_wallet(
 }
 
 pub struct PrepareOptions {
+    pub admission_config: PathBuf,
     pub old_package: PathBuf,
     pub state_out_point: String,
     pub terms: PathBuf,
@@ -465,6 +475,15 @@ pub fn prepare(rpc: &CkbRpcClient, options: PrepareOptions) -> Result<Value> {
         canonical_checkpoint(rpc, &checkpoint)?,
         "chain reorganized during splice preparation"
     );
+    let future = plan.initial_recovery_contents(&current)?;
+    crate::admission_channel::reserve(
+        rpc,
+        &options.admission_config,
+        &options.contracts_dir,
+        &future,
+        &transaction,
+        options.fee,
+    )?;
     let encoded = serde_json::to_vec_pretty(&draft)?;
     let _lock = crate::persistence::lock_private_path(&options.output)?;
     if options.output.exists() {
@@ -678,49 +697,7 @@ pub(crate) fn canonical_transaction(
     ckb_types::packed::Transaction,
     crate::multi_asset_session_chain::CanonicalInclusion,
 )> {
-    use crate::multi_asset_session_chain::CanonicalInclusion;
-    ensure!(min_confirmations > 0, "confirmation depth must be positive");
-    let status = rpc.transaction(hash.clone())?.tx_status;
-    ensure!(
-        status.status == Status::Committed,
-        "channel lineage transaction is not committed"
-    );
-    let number = status
-        .block_number
-        .ok_or_else(|| anyhow!("missing inclusion height"))?
-        .value();
-    let included_hash = status
-        .block_hash
-        .ok_or_else(|| anyhow!("missing inclusion hash"))?;
-    let block = rpc
-        .block_by_number(number)?
-        .ok_or_else(|| anyhow!("inclusion block is unavailable"))?;
-    ensure!(
-        block.header.hash == included_hash,
-        "channel lineage inclusion block is not canonical"
-    );
-    ensure!(
-        block_confirmations(number, rpc.tip_header()?.number_value()?)? >= min_confirmations,
-        "channel lineage has insufficient confirmations"
-    );
-    let transaction = block
-        .transactions
-        .into_iter()
-        .find(|tx| tx.hash == hash)
-        .ok_or_else(|| anyhow!("transaction missing from canonical inclusion block"))?;
-    let transaction: ckb_types::packed::Transaction = transaction.inner.into();
-    ensure!(
-        H256::from(transaction.calc_tx_hash()) == hash,
-        "canonical transaction body hash mismatch"
-    );
-    Ok((
-        transaction,
-        CanonicalInclusion {
-            transaction_hash: format!("{hash:#x}"),
-            block_number: number,
-            block_hash: format!("{included_hash:#x}"),
-        },
-    ))
+    crate::rpc::canonical_transaction(rpc, hash, min_confirmations)
 }
 
 pub fn confirm_context(

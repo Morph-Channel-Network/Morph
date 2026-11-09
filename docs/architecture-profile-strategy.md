@@ -49,7 +49,7 @@
 | Factory 授权与局部退出 | `MORPHW!!` kinds 2/3/4/7/8 提供特定单触及者路径 | `MORPHFS!`/`MORPHFM!` 的价值释放依赖完整成员授权；激活不要求新签名 | 删除旧 reduced 不会给新 Factory 补出单侧退出 |
 | Factory 终端退休 | 旧 State 没有 input-without-successor 分支 | 全量 materialisation 可退休父 State、退款 carrier，并创建 children | 新旧生命周期有真实差异 |
 | 宿主支付接口 | `ChannelBackend` 有 prepare/commit/cancel，返回旧 `StateCell` | `MultiAssetChannelBackend` 是独立的签名状态协商器 | 不能只替换类型名就声称支付能力完成迁移 |
-| Provider edge 证据 | `MaterializedChannelEvidence` 是一个 Vault、旧 descriptor 1/2 | 需要把完整 custody、资产和 funding context 接入边证据 | Agent/Fiber 集成是单独的移植工作 |
+| Provider edge 证据 | `MaterializedChannelEvidence` 是一个 Vault、旧 descriptor 1/2 | 需要把完整 custody、资产和 funding context 接入边证据 | Payment Gateway/Fiber 集成是单独的移植工作 |
 | 产品入口和发布 | Hub、默认 fixtures、envelope 等仍大量围绕旧路径 | 已有多资产 funding/session/splice/package 与部分 Hub 功能 | 目前是工程与发布边界混用，而非整齐的两个独立产品 |
 
 证据：[State 分派][state-dispatch]、[Vault 分派][vault-dispatch]、[Factory 分派][factory-dispatch]、[当前多资产编码][current-wire]、[Batch 语义][batch-design]、[Factory 已实现与开放范围][factory-scope]、[支付接口][payment-interface]、[新协商 backend][agreement-backend]、[边证据结构][edge-evidence]。
@@ -158,7 +158,7 @@ Provider edge 也需要明确资产选择、流动性和完整 custody 的对应
 
 ```mermaid
 flowchart TB
-    U["SDK / CLI / Hub / Agent"] --> L["统一支付意图、交易生命周期<br/>与恢复证据接口"]
+    U["SDK / CLI / Hub / Payment Gateway"] --> L["统一支付意图、交易生命周期<br/>与恢复证据接口"]
     L --> B["双边 State<br/>2-of-2 与争议退出"]
     L --> F["Factory State<br/>成员与权益授权"]
     B --> C["共同资产与 custody 基础<br/>manifest / exact OutPoints<br/>逐资产与容量守恒"]
@@ -254,7 +254,7 @@ flowchart TB
 
 | 阶段 | 交付物 | 通过条件 |
 | --- | --- | --- |
-| 0. 产品范围 | 首版能力矩阵 | 每项标为必需、明确延期或不提供，能解释对 Agent/Fiber/Factory 用户的影响 |
+| 0. 产品范围 | 首版能力矩阵 | 每项标为必需、明确延期或不提供，能解释对 Payment Gateway/Fiber/Factory 用户的影响 |
 | 1. 架构决策 | 当前协议家族、authority 类型与模块边界 | 解释哪些语义统一、哪些差异保留；若长期双 profile，提供必要性和成本证据 |
 | 2. 可执行设计 | 类型／授权／恢复与能力组合规范 | 每个准入状态都有符合其承诺的退出；不同角色不因复用而混淆 |
 | 3. 能力替代或范围收缩 | 当前实现、迁移测试、撤下的接口清单 | 必需功能通过验收；延期功能不再通过旧路径继续对外工作 |

@@ -426,6 +426,64 @@ fn sleep_before_rpc_retry(attempt: usize) {
     std::thread::sleep(Duration::from_millis(delay_ms));
 }
 
+pub(crate) fn canonical_transaction(
+    rpc: &CkbRpcClient,
+    hash: H256,
+    min_confirmations: u64,
+) -> Result<(
+    ckb_types::packed::Transaction,
+    crate::multi_asset_session_chain::CanonicalInclusion,
+)> {
+    use crate::multi_asset_session_chain::CanonicalInclusion;
+    anyhow::ensure!(min_confirmations > 0, "confirmation depth must be positive");
+    let status = rpc.transaction(hash.clone())?.tx_status;
+    anyhow::ensure!(
+        status.status == ckb_jsonrpc_types::Status::Committed,
+        "channel lineage transaction is not committed"
+    );
+    let number = status
+        .block_number
+        .ok_or_else(|| anyhow!("missing inclusion height"))?
+        .value();
+    let included_hash = status
+        .block_hash
+        .ok_or_else(|| anyhow!("missing inclusion hash"))?;
+    let block = rpc
+        .block_by_number(number)?
+        .ok_or_else(|| anyhow!("inclusion block is unavailable"))?;
+    anyhow::ensure!(
+        block.header.hash == included_hash,
+        "channel lineage inclusion block is not canonical"
+    );
+    anyhow::ensure!(
+        rpc.tip_header()?
+            .number_value()?
+            .checked_sub(number)
+            .and_then(|distance| distance.checked_add(1))
+            .context("inclusion is above current canonical tip")?
+            >= min_confirmations,
+        "channel lineage has insufficient confirmations"
+    );
+    let transaction = block
+        .transactions
+        .into_iter()
+        .find(|tx| tx.hash == hash)
+        .ok_or_else(|| anyhow!("transaction missing from canonical inclusion block"))?;
+    let transaction: ckb_types::packed::Transaction = transaction.inner.into();
+    anyhow::ensure!(
+        H256::from(transaction.calc_tx_hash()) == hash,
+        "canonical transaction body hash mismatch"
+    );
+    Ok((
+        transaction,
+        CanonicalInclusion {
+            transaction_hash: format!("{hash:#x}"),
+            block_number: number,
+            block_hash: format!("{included_hash:#x}"),
+        },
+    ))
+}
+
 impl HeaderView {
     pub fn number_value(&self) -> Result<u64> {
         parse_quantity(&self.number)

@@ -1,0 +1,35 @@
+{
+  "schema": "morph.gateway_authorization_interop.v1",
+  "producer": "Independent Noble secp256k1 implementation over canonical current Gateway terms",
+  "source_commit": "e6469c3b4736d8ab4f62469f054f79aef71610f9",
+  "scope": "Deterministic authorization vector with expired synthetic invoice; not a live challenge; no payer private key",
+  "requirements": {
+    "requirement_id": "0xda6c16b4349dd605407365f0dc7efd694c8aed9a0c7fc70d49e9afd23d509112",
+    "scheme": "exact",
+    "network": "morph-ckb",
+    "payment_rail": "fiber",
+    "asset": {
+      "kind": "ckb",
+      "ckb_network_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+      "symbol": "CKB",
+      "decimals": 8
+    },
+    "amount": "400",
+    "payer": "0xc3884ddf5c0e66af9bd067147e948641917a9fd9df768dc299172e35a613a6e8",
+    "payee": "0x9999999999999999999999999999999999999999999999999999999999999999",
+    "invoice": "synthetic-not-live",
+    "payment_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+    "hash_algorithm": "sha256",
+    "resource": "/test",
+    "operation": "GET",
+    "nonce": "0x0303030303030303030303030303030303030303030303030303030303030303",
+    "expires_at": 300
+  },
+  "payload": {
+    "requirement_id": "0xda6c16b4349dd605407365f0dc7efd694c8aed9a0c7fc70d49e9afd23d509112",
+    "payment_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+    "payer": "0xc3884ddf5c0e66af9bd067147e948641917a9fd9df768dc299172e35a613a6e8",
+    "payer_pubkey_sec1": "0x02989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f",
+    "payer_signature": "0x06d2b46fcef4ceaf64f704d0c76c04e172fc94153846fc7948db8c93bb8587117376fe5fcfc778ac7fe564d2e0a3c8847423b221e03817093d543bc642e85b00"
+  }
+}

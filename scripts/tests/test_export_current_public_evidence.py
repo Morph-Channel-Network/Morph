@@ -116,7 +116,7 @@ class PublicEvidenceBoundaries(unittest.TestCase):
             folder.mkdir(parents=True)
             manifest = {
                 "schema": "morph.contract_release_manifest", "release_profile": "morph-current-custody",
-                "rust_toolchain": "1.92.0", "target": "riscv64imac-unknown-none-elf",
+                "rust_toolchain": "1.95.0", "target": "riscv64imac-unknown-none-elf",
                 "build_profile": "release", "cargo_locked": True, "scripts": [],
                 "private_key": "never-export-manifest-secret",
             }

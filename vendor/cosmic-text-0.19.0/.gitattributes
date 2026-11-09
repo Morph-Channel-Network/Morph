@@ -1,0 +1,3 @@
+# Published crate fixtures are stored verbatim, without an external LFS service.
+*.png -filter -diff -merge -text
+*.ttf -filter -diff -merge -text

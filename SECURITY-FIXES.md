@@ -62,6 +62,29 @@ public-network fee/reorg/latency evidence, independent operators/builds and a
 real-asset value envelope remain required. Complete repository CI and report
 refresh are tracked separately in [the migration ledger](docs/unified-protocol-migration.md).
 
+## Factory Vault delegated authority checks (2026-11-05)
+
+- Defense in depth: the Factory Vault gate already requires the unique exact
+  Factory Type on input zero, its authenticated StateLock/header and committed
+  source OutPoint. An input carrying that exact Type necessarily executes its
+  complete transition verifier. No signature-bypass exploit is established.
+- The gate now also asserts the same global witness-zero `output_type` frame
+  consumed by Factory Type, rejects mixed `input_type` roles, checks the actual
+  raw transaction hash, and shares the Type's existing transaction bounds.
+  Materialisation, reduced release and reduced child retain the same wire
+  formats and limits. Signatures, localized rights proofs and physical
+  conservation remain the authentic Type's responsibility; the gate does not
+  repeat N-of-N signature verification.
+- VM negatives identify the rejecting input/lock or input/Type, and verify
+  otherwise-valid frame signatures before testing authority, placement or
+  transaction binding. Valid controls include fresh exact-body reapproval and
+  an ignored per-group frame. Tests:
+  `factory_vault_delegation_uses_global_frame_and_requires_type_authorization`,
+  `factory_vault_delegation_rejects_foreign_missing_and_aliased_source_types`,
+  `factory_vault_delegation_rejects_group_frame_mixed_roles_and_source_relocation`,
+  `factory_vault_delegation_binds_actual_transaction_before_delegating_signatures`,
+  `factory_vault_delegation_applies_type_transaction_bounds`.
+
 ## Alpha private delivery and initial funding recovery (2026-11-05)
 
 - Private artifact writers create missing Unix directories with 0700 and
@@ -709,3 +732,69 @@ transaction's path. The synthetic shared-funding harness retains that negative
 and completes submission through the same store. Unit negatives:
 `root_builder_rejects_cross_wallet_subsidies_ownership_and_cross_type_quantity_changes`
 and `root_builder_keeps_tiny_change_with_the_owner_without_changing_fee`.
+
+## Protected signing-key input
+
+Private signing keys no longer enter either binary through argv or raw-key
+environment values. All bilateral, funding, Factory, child, delivery, invoice,
+wallet, watch and Payment Gateway key options use explicit protected-file parsers from
+`morph-key-input`; no raw-key aliases are retained. Linux loading checks the
+opened descriptor with no leaf-symlink following and nonblocking open, requires
+an owner-controlled regular file with no group/other permissions, and bounds
+the complete single-key input to 256 bytes. Scalars and role-specific encodings
+are validated before use. Unsupported platforms fail closed: POSIX mode bits
+alone do not establish equivalent macOS ACL confidentiality.
+
+Owned runtime key strings redact Debug and zeroize on drop, as do owned decode
+buffers. This is not a claim of OS cache/swap or upstream-library memory erasure.
+Development harnesses pass only paths and keep public fixture staging outside
+published evidence; explicit user files are never chmodded or copied to bypass
+their permission checks. Existing signing reservation/fsync ordering is kept.
+
+Negative and legitimate controls:
+`every_private_key_argument_is_a_protected_file_without_raw_env_or_aliases`,
+`retired_raw_key_argument_forms_reject_without_echoing_the_value`,
+`payment_gateway_private_keys_only_accept_protected_file_paths`,
+`rejects_exposed_symlink_directory_and_fifo_inputs`,
+`rejects_oversize_multiple_tokens_and_invalid_scalars_without_echo`,
+`protected_file_accepts_valid_key_and_redacts_debug`, and
+`validates_biscuit_encoding_separately`. The non-Linux implementation has a
+separate fail-closed test; no native macOS/Windows key-input support is claimed.
+
+The Linux process regressions
+`protected_keys_start_real_gateway_without_process_or_output_leakage` and
+`real_gateway_key_file_errors_never_echo_private_material` launch the actual
+Payment Gateway binary with only protected-file paths in its environment. They
+require healthy HTTP startup and the configured receipt public key, inspect
+the live process's `/proc` command line and environment for both encoded and
+decoded public fixture keys, and check captured stdout/stderr on successful
+startup and rejected files. The SDK's
+`protected_payer_key_file_rejects_unsafe_inputs_before_rpc` uses the same helper
+as its Fiber harness and runs that harness as a subprocess against exposed
+permissions, symlinks, directories, FIFOs, oversized/malformed files, invalid
+scalars and retired raw-key input; these cases fail before RPC configuration.
+
+## Cross-Batch payout reuse (current custody fix, 2026-11-07)
+
+- Issue: distinct Batch lock groups each verified their own input capacity but
+  matched their payouts against every transaction output. Two groups could
+  accept the same pair of participant outputs, burning a full Batch as fees or
+  redirecting its value to an unrelated output. CKB-VM tests reproduce both
+  attacks with distinct Batch args (different channels) referencing the same
+  executable.
+- Fix: the Batch Lock requires its sole group input to be transaction input 0
+  and returns `WrongGroupShape` (error code 8) otherwise. No second Batch group
+  can occupy that position, independently of its code hash or hash type. The
+  existing group-cardinality check still rejects two inputs with the same lock.
+- Compatibility: the host builders already place the Batch at input 0 with
+  independent fee inputs after it. Descriptor, witness and package bytes are
+  unchanged; only the Batch ELF identity changes, so the release manifest was
+  regenerated. Custom builders must use that input order and resolve separate
+  Batches in separate transactions.
+- Negative tests: `current_conditional_batch_rejects_cross_group_payout_reuse`
+  (shared payouts as fee and stolen-surplus redirect) and
+  `current_conditional_batch_requires_leading_input_and_allows_trailing_fee_input`
+  (non-leading Batch input).
+- Legitimate control: the same leading-input test proves a trailing independent
+  fee input and its change remain valid. This boundary prevents Batch-to-Batch
+  reuse; it does not establish arbitrary cross-contract settlement composition.

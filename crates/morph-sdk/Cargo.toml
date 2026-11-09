@@ -1,0 +1,24 @@
+[package]
+name = "morph-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Typed Rust clients and canonical public package inspection for Morph"
+readme = "README.md"
+
+[dependencies]
+anyhow.workspace = true
+morph-core = { path = "../morph-core" }
+morph-packages = { path = "../morph-packages" }
+morph-hub-api = { path = "../morph-hub-api" }
+morph-payment-gateway = { path = "../morph-payment-gateway" }
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+k256.workspace = true

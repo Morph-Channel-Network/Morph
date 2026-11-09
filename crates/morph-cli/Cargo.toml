@@ -12,9 +12,11 @@ publish = false
 
 [features]
 default = []
-devnet = []
+devnet = ["morph-packages/devnet"]
 
 [dependencies]
+morph-key-input = { version = "4.0.0-alpha.1", path = "../morph-key-input" }
+zeroize.workspace = true
 anyhow.workspace = true
 ckb-crypto.workspace = true
 ckb-hash.workspace = true
@@ -25,9 +27,16 @@ getrandom.workspace = true
 hex.workspace = true
 k256.workspace = true
 morph-core = { version = "4.0.0-alpha.1", path = "../morph-core" }
+morph-packages = { version = "4.0.0-alpha.1", path = "../morph-packages" }
+morph-hub-api = { version = "4.0.0-alpha.1", path = "../morph-hub-api" }
 morph-script-common = { version = "0.1.0", path = "../../contracts/morph-script-common" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 url = "2.5"
+
+[dev-dependencies]
+morph-packages = { version = "4.0.0-alpha.1", path = "../morph-packages", features = ["devnet"] }
+morph-sdk = { path = "../morph-sdk" }
+tokio.workspace = true

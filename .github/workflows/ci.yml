@@ -21,7 +21,7 @@ jobs:
   rust:
     name: Rust workspace and contracts
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,19 +31,15 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@87eb139fed4b08a67bd1fa429a21d1f5d523e03e # 1.92.0
+        uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
         with:
           components: clippy,rustfmt
           targets: riscv64imac-unknown-none-elf
 
-      - name: Install Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            sdk/typescript/package-lock.json
-            ui/morph-hub/package-lock.json
+      - name: Install native Linux development dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config clang cmake libfontconfig-dev libfreetype-dev libxkbcommon-x11-dev libxcb-xinput-dev libxcb-cursor-dev libx11-xcb-dev libssl-dev libwayland-dev libvulkan-dev mesa-vulkan-drivers
 
       - name: Cache cargo build outputs
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -71,11 +67,19 @@ jobs:
       - name: Run fixture checks
         run: make fixture-checks
 
-      - name: Check TypeScript SDK
-        run: make sdk-check
+      - name: Check native GPUI application
+        run: make desktop-build
 
-      - name: Check Morph Hub UI
-        run: make hub-ui-check
+      - name: Stage native Linux package with source and license notices
+        run: make package-desktop
+
+      - name: Upload native desktop package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: morph-desktop-linux-${{ github.event.pull_request.head.sha || github.sha }}
+          path: target/morph-desktop-linux-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Run contract tests
         run: make contract-tests

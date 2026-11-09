@@ -1,0 +1,536 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/shutdown-force",
+  "steps": [
+    {
+      "id": "e2e/shutdown-force/01-connect-peer",
+      "source_sha256": "087a89df9d6e5fb6bb04cddc734802edc51e2ceddce2d3240ff8d3bb1092be9c",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/02-open-channel",
+      "source_sha256": "4f479e0a941ee1b2c5ad943940b401413ea5534c7354234a56a2ac0710f614d1",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 2,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "funding_amount": "0xba43b7400"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/03-get-auto-accepted-channel",
+      "source_sha256": "a582d1009401813c86db8b9392e8c83ef43d8bbc5b219b6991b7e85f589526f7",
+      "source_script_sha256": "339b988e7547e186349b5019cae5cf95a4ab6514627007bf0172bfbcef428b6c",
+      "sequence": 3,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/04-generate-a-few-blocks",
+      "source_sha256": "b24be31b606705ca64e54fb02e02712c86cdf7266c1629fc04ad88db0a57a80a",
+      "source_script_sha256": "63684078e0dd28da3596c2c5df58d0647673541184eb45ed7dfdf202ec681af1",
+      "sequence": 4,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "method": "generate_block",
+        "params": []
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        },
+        {
+          "kind": "delay",
+          "milliseconds": 10
+        }
+      ],
+      "repeat": 10
+    },
+    {
+      "id": "e2e/shutdown-force/05-disconnect-peer",
+      "source_sha256": "d1e03bbebdbdcbe25297904f86fcceb903f7d09451c58e1d831d40a182e9cf01",
+      "source_script_sha256": "45fe19474c3af8f7109ce113217d4e30be2ea49fa255ce08c61f708027e93030",
+      "sequence": 5,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "disconnect_peer",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/06-shutdown-force-NODE1",
+      "source_sha256": "28487aa782d829ba138cc3b01a8af76405ca2775db89b82f8295798e39ec9acd",
+      "source_script_sha256": "45fe19474c3af8f7109ce113217d4e30be2ea49fa255ce08c61f708027e93030",
+      "sequence": 6,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "force": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/07-generate-a-few-blocks",
+      "source_sha256": "aa08c494533b90d16f84a823f4614225e1c4058b2aab2b6d6ad0f9464029c23d",
+      "source_script_sha256": "7ad93d813cfa5b248ac5b2a1cd639d08875add19e10ee557f45a08636762ff40",
+      "sequence": 7,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 1,
+        "jsonrpc": "2.0",
+        "method": "generate_block",
+        "params": []
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        },
+        {
+          "kind": "delay",
+          "milliseconds": 10
+        }
+      ],
+      "repeat": 10
+    },
+    {
+      "id": "e2e/shutdown-force/08-list-channel-NODE1",
+      "source_sha256": "44dd95d979cb32f8da4c8d43ae38e0091dc951d5481b50cf3eb376fa93420f3e",
+      "source_script_sha256": "27bd9805ac2a6d79d7150a9a550c32a2d1cd4f30d4c3e7ea080a7c12f453af06",
+      "sequence": 8,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 0
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/09-list-closed-channel-NODE1",
+      "source_sha256": "a97c9ebc3293438dde28fa7cb43edb9a949530107da296bb0223c795f4660a8a",
+      "source_script_sha256": "80ebc3ce4324798714f8b9309a4de7ecb0a5dd90a1238b6711ca60932260715e",
+      "sequence": 9,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}",
+            "include_closed": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/state/state_name"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "Closed"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/shutdown_transaction_hash"
+          },
+          "op": "ne",
+          "right": {
+            "literal": null
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/10-set-channel-id",
+      "source_sha256": "b1fd62b25a9053df2af29ff6e86785c6a9c336bd39909ea0dfb0ca7a55a14f57",
+      "source_script_sha256": "0947799e040c13946d5b62e6a901c167821fa5abdf986ceb8c241b06fb547328",
+      "sequence": 10,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/11-trigger-check-shutdown",
+      "source_sha256": "b7185f018d8f2f415df786aaf60c99d0ff733315bea8ba409a76228362985879",
+      "source_script_sha256": "7de6c1482ed9c86bb47897c3d5339c2413be7b74fd3af8ea4f967d601904419b",
+      "sequence": 11,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "check_channel_shutdown",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/shutdown-force/12-list-channel-NODE3",
+      "source_sha256": "b1a69a06c13a716115a0e40463291db2fb1b1fd93b862fe936777b84427ed736",
+      "source_script_sha256": "1ce4112eb7fb6e198ea905c397e012e1fafd766f3e70244d6d477f4f2ab6b2f2",
+      "sequence": 12,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/length"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 0
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    }
+  ]
+}
