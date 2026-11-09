@@ -31,10 +31,13 @@ PY
 OUT_DIR="$OUT_DIR/native" scripts/devnet-current-e2e.sh
 make package-contract-release >"$OUT_DIR/logs/package-contracts.log" 2>&1
 cp target/morph-current-custody.tar.gz "$OUT_DIR/morph-current-custody.tar.gz"
+make package-desktop >"$OUT_DIR/logs/package-desktop.log" 2>&1
+cp target/morph-desktop-linux-x86_64.tar.gz "$OUT_DIR/morph-desktop-linux-x86_64.tar.gz"
 python3 -B scripts/export-current-public-evidence.py \
   --run-dir "$OUT_DIR/native" --source-commit "$(git rev-parse HEAD)" \
   --ci-log "$OUT_DIR/logs/make-ci.log" --output-dir "$OUT_DIR/public-evidence"
 python3 -B scripts/verify-local-candidate.py \
   --public-evidence "$OUT_DIR/public-evidence" --bundle "$OUT_DIR/morph-current-custody.tar.gz" \
+  --desktop-bundle "$OUT_DIR/morph-desktop-linux-x86_64.tar.gz" \
   --ci-receipt "$OUT_DIR/ci-receipt.json" >"$OUT_DIR/qualification.json"
 printf 'Local qualification passed: %s/qualification.json\n' "$OUT_DIR"

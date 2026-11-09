@@ -120,7 +120,7 @@ mod tests {
             }
         }
         let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../sdk/typescript/test/fixtures/factory-transitions.json"
+            "../../../fixtures/protocol/factory-transitions.json"
         ))
         .unwrap();
         let case = corpus["cases"]

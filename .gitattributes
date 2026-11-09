@@ -2,4 +2,5 @@
 *.sh text eol=lf
 # Vendored archive bytes are checked against upstream SHA-256 inventories.
 # Preserve CRLF/LF exactly through Git staging and clean checkouts.
-vendor/** -text
+# Archive formatting and literal unified-diff context must also remain intact.
+vendor/** -text -whitespace

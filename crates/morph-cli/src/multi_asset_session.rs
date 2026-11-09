@@ -11,7 +11,7 @@ use crate::multi_asset_session_chain::{SessionLineage, SessionOrigin};
 use crate::multi_asset_signatures::{SIGNATURE_SCHEMA, SignatureMessage, channel_signing_key};
 use crate::multi_asset_splice_transaction::SpliceDraft;
 use anyhow::{Result, anyhow, ensure};
-use ckb_types::{bytes::Bytes, packed, prelude::*};
+use ckb_types::{packed, prelude::*};
 use clap::{Subcommand, ValueEnum};
 #[cfg(test)]
 use k256::ecdsa::SigningKey;
@@ -26,7 +26,6 @@ use crate::multi_asset_packages::{
 };
 
 const SESSION_SCHEMA: &str = "morph.multi_asset_session.v1";
-const PROPOSAL_SCHEMA: &str = "morph.multi_asset_proposal.v1";
 const RETIRED_SCHEMA: &str = "morph.multi_asset_retired_session.v1";
 const MAX_SESSION_BYTES: u64 = 512 * 1024;
 const MAX_DESCRIPTOR_BYTES: usize = wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
@@ -215,15 +214,7 @@ struct RetiredSession {
     session: StoredSession,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProposalMessage {
-    schema: String,
-    base_state_digest: String,
-    state_number: String,
-    descriptor_hex: String,
-    signing_digest: String,
-}
+pub use morph_packages::proposal::ProposalMessage;
 
 fn read_limited(path: &Path) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
@@ -243,56 +234,7 @@ fn digest(value: &str) -> Result<Bytes32> {
         .map_err(|_| anyhow!("digest must be 32 bytes"))
 }
 
-impl ProposalMessage {
-    fn from_proposal(proposal: &MultiAssetProposal) -> Result<Self> {
-        Ok(Self {
-            schema: PROPOSAL_SCHEMA.to_string(),
-            base_state_digest: canonical_hex(&proposal.base_state_digest),
-            state_number: proposal.state.header.state_number.to_string(),
-            descriptor_hex: canonical_hex(&proposal.settlement.encode()?),
-            signing_digest: canonical_hex(&proposal.signing_digest()?),
-        })
-    }
-    fn proposal(&self, backend: &MultiAssetChannelBackend) -> Result<MultiAssetProposal> {
-        ensure!(
-            self.schema == PROPOSAL_SCHEMA,
-            "unsupported proposal schema"
-        );
-        let number = self.state_number.parse::<u64>()?;
-        ensure!(
-            number.to_string() == self.state_number,
-            "state number must be canonical decimal"
-        );
-        let descriptor = decode_hex(&self.descriptor_hex, MAX_DESCRIPTOR_BYTES)?;
-        let settlement = MultiAssetSettlement::decode(&descriptor)?;
-        let mut state = backend.current().state.clone();
-        state.header.state_number = number;
-        state.header.settlement_descriptor_commitment = settlement.commitment()?;
-        let proposal = MultiAssetProposal {
-            base_state_digest: digest(&self.base_state_digest)?,
-            state,
-            settlement,
-        };
-        ensure!(
-            proposal.signing_digest()? == digest(&self.signing_digest)?,
-            "proposal digest does not match contents"
-        );
-        Ok(proposal)
-    }
-}
-
-fn asset_summary(asset: &VaultAsset) -> Option<String> {
-    match asset {
-        VaultAsset::Ckb => None,
-        VaultAsset::Xudt(hash) => Some(canonical_hex(hash)),
-    }
-}
-fn value_summary(value: MultiAssetValue) -> Value {
-    json!({"reserve":value.reserve.to_string(), "business_ckb":value.business_ckb.to_string(), "amount":value.amount.to_string()})
-}
-pub(crate) fn payout_summary(settlement: &MultiAssetSettlement) -> Vec<Value> {
-    settlement.payouts.iter().map(|payout| json!({"type_hash":asset_summary(&payout.asset), "allocations":payout.values.map(value_summary)})).collect()
-}
+pub use morph_packages::summaries::{asset_summary, payout_summary, value_summary};
 
 impl StoredSession {
     fn verify_conditional_policy(&self, settlement: &MultiAssetSettlement) -> Result<()> {
@@ -544,28 +486,7 @@ impl StoredSession {
             .splice_draft
             .as_ref()
             .ok_or_else(|| anyhow!("missing splice body"))?;
-        draft.validate_plan(self.backend.current(), plan)?;
-        let transaction = draft.transaction()?;
-        let witness = packed::WitnessArgs::new_builder()
-            .input_type(
-                Some(Bytes::from(
-                    encode_multi_asset_signatures(&plan.new_state_authorization)?.to_vec(),
-                ))
-                .pack(),
-            )
-            .output_type(
-                Some(Bytes::from(
-                    plan.encode_witness(self.backend.current(), &authorization)?,
-                ))
-                .pack(),
-            )
-            .build();
-        let mut witnesses = transaction.witnesses().into_iter().collect::<Vec<_>>();
-        if witnesses.is_empty() {
-            witnesses.push(Bytes::new().pack());
-        }
-        witnesses[0] = witness.as_bytes().pack();
-        Ok(transaction.as_builder().witnesses(witnesses.pack()).build())
+        draft.authorized_transaction(self.backend.current(), plan, &authorization)
     }
     /// Import public receipts from the exact fully authorized transaction.
     /// The caller separately establishes canonical inclusion before handoff.
@@ -727,7 +648,7 @@ fn run_loaded(
         }
         SessionCommand::Accept { proposal } => {
             let message: ProposalMessage = serde_json::from_slice(&read_limited(&proposal)?)?;
-            let proposal = message.proposal(&session.backend)?;
+            let proposal = message.proposal(session.backend.current())?;
             session.verify_conditional_policy(&proposal.settlement)?;
             session.backend.accept_proposal(proposal)?;
             save(path, &session)?;
@@ -1352,6 +1273,7 @@ fn refresh_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ckb_types::bytes::Bytes;
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -2107,7 +2029,7 @@ mod cross_language_tests {
     #[test]
     fn accepts_sdk_proposal_and_peer_signature_with_full_u128_values() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../sdk/typescript/test/fixtures/multi-asset-update.json"
+            "../../../fixtures/protocol/multi-asset-update.json"
         ))
         .unwrap();
         let package = packages::fixture_package().unwrap();
@@ -2120,7 +2042,7 @@ mod cross_language_tests {
         .unwrap();
         let proposal: ProposalMessage =
             serde_json::from_value(fixture["proposal"].clone()).unwrap();
-        let proposal = proposal.proposal(&backend).unwrap();
+        let proposal = proposal.proposal(backend.current()).unwrap();
         backend.accept_proposal(proposal).unwrap();
         let peer: SignatureMessage = serde_json::from_value(fixture["signature"].clone()).unwrap();
         backend

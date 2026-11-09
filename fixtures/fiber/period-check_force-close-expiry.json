@@ -1,0 +1,528 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/period-check/force-close-expiry",
+  "steps": [
+    {
+      "id": "e2e/period-check/force-close-expiry/01-node1-connect-node2",
+      "source_sha256": "95543e4b4a4da46bde2eedda9f63120b1706720104b3711005ab87cffe26ddb8",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/02-node2-connect-node3",
+      "source_sha256": "fcebbbd0fcd769c3a32164306a7f4dc5da47c0f3092a2eed25b2b9969e0bbcdd",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 2,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE2_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/03-node1-node2-open-channel",
+      "source_sha256": "c6d8e340e5f298a5e86b90b0051becb860a8fe44edfd57d0a9c412c0299842b9",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 3,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "funding_amount": "0x377aab54d000"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/04-node2-get-auto-accepted-channel",
+      "source_sha256": "58c8cf7569450577c4c36e80af94979d9172d38dc0061b5a2c2bd6907d8b0257",
+      "source_script_sha256": "a6c4a67cb18225ee64305461f8e898d4d5da8ce20c08a16f89c7afd30d24b1b1",
+      "sequence": 4,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        },
+        {
+          "variable": "base_n1n2_local",
+          "value": {
+            "pointer": "/result/channels/0/local_balance"
+          }
+        },
+        {
+          "variable": "base_n1n2_remote",
+          "value": {
+            "pointer": "/result/channels/0/remote_balance"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/05-ckb-generate-blocks",
+      "source_sha256": "a82f222362e00b736543ed7bc65f05bc79322134291c156a5a94e0220f338aad",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 5,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/06-node2-node3-open-channel",
+      "source_sha256": "24c7578f34d9d80da73a0617b9910f8f184e8ac26e3860fdafb9d798eaf0e9a4",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 6,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}",
+            "funding_amount": "0x377aab54d000"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/07-node3-get-auto-accepted-channel",
+      "source_sha256": "8379f381daeddc446b6296a6c567d68828982beced4ab0f247977b9c5a9602c3",
+      "source_script_sha256": "d3a67ef8ac0f82932d3eaae3cb646f68bd99dddddabedb1b9105d3faa288877e",
+      "sequence": 7,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N2N3_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        },
+        {
+          "variable": "base_n2n3_local",
+          "value": {
+            "pointer": "/result/channels/0/local_balance"
+          }
+        },
+        {
+          "variable": "base_n2n3_remote",
+          "value": {
+            "pointer": "/result/channels/0/remote_balance"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/08-ckb-generate-blocks",
+      "source_sha256": "9e514b1f3d4c2a3146965dd110cf2968dbf5c5399a65c2b9ace5d1dcda1b698a",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 8,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/09-node1-add-tlc",
+      "source_sha256": "d7d96b2eb0fdcaaba34948fdeda5e9cf3de3a6af94f157e454f01874ae628a38",
+      "source_script_sha256": "e5c921e410a784ffd25961a492cf68aa9db2534d8f6a507cf03b0a737621a5ed",
+      "sequence": 9,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{N1N2_CHANNEL_ID}}",
+            "amount": "0x5f5e100",
+            "payment_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 30
+        }
+      ],
+      "captures": [
+        {
+          "variable": "N1N2_TLC_ID1",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/10-node2-add-tlc",
+      "source_sha256": "f9dbfdf58e4959a7065eb94f9742d290d4f9c0de96b68321bb36e27c10098680",
+      "source_script_sha256": "c865172ac5efb66e28212572ee3ef102d201d54d22be616b1d709d13b0ba2474",
+      "sequence": 10,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{N2N3_CHANNEL_ID}}",
+            "amount": "0x5f5e100",
+            "payment_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 15
+        }
+      ],
+      "captures": [
+        {
+          "variable": "N2N3_TLC_ID1",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/11-node2-list-channels",
+      "source_sha256": "e560e41a84955d7e2eb24ec0a3630344274926020eb9a5e7953952038c1c5b60",
+      "source_script_sha256": "b7859f19ceb0a4421f21fe728ddffa56e92aeabadf3bdb9936787e198f6156e8",
+      "sequence": 11,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 20000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "expired_tlcs",
+          "channel": "N2N3_CHANNEL_ID",
+          "tlc": "N2N3_TLC_ID1",
+          "local": "base_n2n3_remote",
+          "remote": "base_n2n3_local",
+          "peer_endpoint": "NODE3_RPC_URL"
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 20,
+        "mine": false
+      }
+    },
+    {
+      "id": "e2e/period-check/force-close-expiry/12-node1-list-channels",
+      "source_sha256": "cb4168a5a88d0149784c830f02df84d061ec7d1f1455f1c7c0838bf4e6eb1a50",
+      "source_script_sha256": "b7859f19ceb0a4421f21fe728ddffa56e92aeabadf3bdb9936787e198f6156e8",
+      "sequence": 12,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 20000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "expired_tlcs",
+          "channel": "N1N2_CHANNEL_ID",
+          "tlc": "N1N2_TLC_ID1",
+          "local": "base_n1n2_remote",
+          "remote": "base_n1n2_local",
+          "peer_endpoint": "NODE2_RPC_URL"
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 20,
+        "mine": false
+      }
+    }
+  ]
+}

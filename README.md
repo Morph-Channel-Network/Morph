@@ -193,8 +193,12 @@ crates/morph-cli       Fixture tooling, package validators, devnet operations,
 contracts/             no-std CKB scripts and shared script parsers.
 docs/                  Devnet, implementation, readiness, and tutorial notes.
 scripts/               Devnet, smoke, and environment helpers.
-ui/morph-hub           Local Morph operator console for invoices, channels,
-                       factories, and watchtower state.
+crates/morph-packages  Shared canonical package codecs and construction/review.
+crates/morph-hub-api   Typed public service contract, without private store state.
+crates/morph-sdk       Native Rust protocol and HTTP client.
+crates/morph-desktop   Native GPUI operator console.
+crates/morph-xtask     Rust regression, Fiber/Gateway and hygiene tools.
+fixtures/             Protocol, independent interop and native scenario data.
 ```
 
 Important scripts:
@@ -231,10 +235,6 @@ scripts/check-devnet-env.sh
 Run the local operator console:
 
 ```sh
-cd ui/morph-hub
-npm install
-npm run build
-cd ../..
 cargo run -p morph-cli -- hub serve \
   --listen 127.0.0.1:4617 \
   --pubkey "${MORPH_PUBKEY:?set MORPH_PUBKEY to the local compressed secp256k1 pubkey}" \
@@ -245,9 +245,10 @@ cargo run -p morph-cli -- hub serve \
 
 Set `MORPH_PUBKEY` to the local 33-byte compressed secp256k1 public key as
 66 hex characters without `0x`, matching Fiber's RPC-facing node identity
-format. Morph derives its internal 32-byte node id from that pubkey. Then open
-`http://127.0.0.1:4617/`. During UI development, `npm run dev` proxies `/api`
-to that hub server.
+format. Morph derives its internal 32-byte node id from that pubkey. In a second
+terminal run `make desktop`, then connect to `http://127.0.0.1:4617` with the
+runtime token. The Hub serves `/api` only. The desktop is native GPUI, with no
+browser, WebView or JS/TS build. See [native desktop setup](docs/native-desktop.md).
 
 When you have a real watchtower JSONL output from a devnet run, add
 `--watch-alert-file "$MORPH_WATCH_ALERT_FILE"`. Without that file, Morph Hub
@@ -260,28 +261,28 @@ Morph Hub is token-first. Start with `--auth-token`, `--auth-token-file`,
 the shared secret is not left in shell history, process listings, or environment
 dumps. Rotation is restart-based: start the hub with
 `--rotate-auth-token-on-restart`, copy the printed `morph_hub_auth_token=...`
-value into the browser unlock prompt, and stop using the old token. Scoped
+value into the native token field, and stop using the old token. Scoped
 tokens are supported with
 `read,write,restore,sign:<secret>`; omit the prefix only for an all-scope token.
 For local development only, `--allow-unauthenticated-loopback` explicitly
 restores no-token loopback mode. Direct cross-origin browser access is disabled
 unless `--cors-origin` is set to an explicit `http://` or `https://` origin.
-Replacing the durable state file through the UI/API is disabled by default; add
+Replacing the durable state file through the desktop/API is disabled by default; add
 `--allow-state-restore` only when you intentionally need that operator recovery
 path. Rows shown in the console are labelled as local Hub state unless future
 chain evidence fields prove otherwise.
 
-The console keeps itself current while it is open. Explicit
-`--allow-unauthenticated-loopback` sessions use `/api/events` server-sent
-events; token-protected sessions use authenticated short polling so the bearer
-token is never placed in an event-stream URL. When the API requires a token, the
-UI accepts it at runtime and stores it only in the browser session.
+The console uses bounded authenticated polling while connected. It retains the
+token in memory only and clears it on disconnect. It never places credentials in
+URLs or persistent preferences. Offline/stale state disables writes, and every
+write requires reviewing and confirming the exact request. A lost write response
+requires explicit reconciliation, with no automatic retry.
 
 **Morph Payment Gateway** (`morph-payment-gateway`) is the application-layer
 payment and access gateway. It processes payments, issues signed receipts and
 Biscuit credentials, and controls paid API access. The Rust crate, directory,
-and binary all use `morph-payment-gateway`; the TypeScript package is
-`@morph-network/payment-gateway-sdk` with `MorphPaymentGatewayClient`.
+and binary all use `morph-payment-gateway`; `morph-sdk` reuses its native Rust
+client, payer authorization, receipt validation and fair-exchange decryption.
 
 ```sh
 cargo run -p morph-payment-gateway -- --help

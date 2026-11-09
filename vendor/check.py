@@ -12,6 +12,43 @@ import tomllib
 import urllib.request
 
 
+NATIVE_SOURCE_PATCHES = {'accesskit_atspi_common': ['src/action.rs', 'src/rect.rs'],
+ 'accesskit_unix': ['src/atspi/bus.rs',
+                    'src/atspi/object_address.rs',
+                    'src/atspi/object_id.rs',
+                    'src/context.rs',
+                    'src/executor.rs'],
+ 'cosmic-text': ['.gitattributes'],
+ 'atspi': [],
+ 'atspi-common': ['src/action.rs',
+                  'src/cache.rs',
+                  'src/error.rs',
+                  'src/events/cache.rs',
+                  'src/events/event_body.rs',
+                  'src/events/event_wrappers.rs',
+                  'src/events/keyboard.rs',
+                  'src/events/mouse.rs',
+                  'src/events/object.rs',
+                  'src/events/registry.rs',
+                  'src/events/traits.rs',
+                  'src/events/window.rs',
+                  'src/interface.rs',
+                  'src/lib.rs',
+                  'src/macros.rs',
+                  'src/object_match.rs',
+                  'src/object_ref.rs',
+                  'src/relation_type.rs',
+                  'src/role.rs',
+                  'src/state.rs'],
+ 'atspi-proxies': ['src/accessible.rs',
+                   'src/collection.rs',
+                   'src/device_event_controller.rs',
+                   'src/proxy_ext.rs',
+                   'src/socket.rs',
+                   'src/text.rs'],
+ 'zbus-lockstep': ['src/lib.rs', 'src/macros.rs'],
+ 'zbus-lockstep-macros': ['src/lib.rs']}
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -33,6 +70,16 @@ def check(upstream_archives):
         allowed = {"Cargo.toml"}
         if name == "ckb-verification":
             allowed.add("src/cache.rs")
+        if name == "gpui-pre":
+            allowed.add("src/svg_renderer.rs")
+        if name == "gpui-kit":
+            allowed.add("src/lib.rs")
+        if name == "gpui-pre-linux":
+            allowed.update({"src/linux/platform.rs", "src/linux/power.rs"})
+        allowed.update(NATIVE_SOURCE_PATCHES.get(name, []))
+        if name == "gpui-base":
+            # Only qualified imports move to the maintained timing package.
+            allowed.update(['src/hover_card.rs', 'src/measure.rs', 'src/scrollable_mask.rs', 'src/scrollbar.rs', 'src/undo_history.rs', 'src/input/base/blink_cursor.rs', 'src/input/editor/lsp/document_colors.rs', 'src/input/editor/lsp/hover.rs', 'src/input/editor/lsp/semantic_tokens.rs'])
         if changed.keys() != allowed:
             raise ValueError(f"unexpected dependency patch scope in {directory_name}")
         if not changed.keys() <= original.keys():
@@ -91,6 +138,18 @@ def check(upstream_archives):
     for notice in manifest["license_notices"]:
         if digest((vendor / notice["path"]).read_bytes()) != notice["sha256"]:
             raise ValueError(f"changed upstream license notice: {notice['path']}")
+    lock = tomllib.loads((vendor.parent / "Cargo.lock").read_text())
+    for source in manifest.get("redistribution_sources", []):
+        identity = f"{source['name']}-{source['version']}"
+        expected_url = f"https://static.crates.io/crates/{source['name']}/{identity}.crate"
+        checksum = next(
+            package["checksum"] for package in lock["package"]
+            if package["name"] == source["name"] and package["version"] == source["version"]
+        )
+        if source["modified"] or source["archive_url"] != expected_url:
+            raise ValueError(f"unexpected redistribution source identity: {identity}")
+        if checksum != source["archive_sha256"] or digest((vendor / source["path"]).read_bytes()) != checksum:
+            raise ValueError(f"changed redistribution source archive: {identity}")
     print(f"Verified {len(expected_patches)} vendored dependencies and their reviewed deltas")
 
 

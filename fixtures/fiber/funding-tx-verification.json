@@ -1,0 +1,134 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/funding-tx-verification",
+  "steps": [
+    {
+      "id": "e2e/funding-tx-verification/01-connect-peer",
+      "source_sha256": "087a89df9d6e5fb6bb04cddc734802edc51e2ceddce2d3240ff8d3bb1092be9c",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/funding-tx-verification/02-open-channel",
+      "source_sha256": "8ce058746b2d205744df57f631a63ecf4622d89408b1954993bfb4f87bf0cca1",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 2,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "funding_amount": "0xba43b7400",
+            "commitment_delay_epoch": "0x20001000003"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/funding-tx-verification/03-get-auto-accepted-channel",
+      "source_sha256": "7d0012dda360735056ff56b79fa933803fa6cb003af8cf7ef4c241eb69b3cca8",
+      "source_script_sha256": "7bf508b48babdbbb29d89b6a26be56513bdd2b4c379a32689004d5e3aae43f40",
+      "sequence": 3,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "length",
+          "right": {
+            "literal": 0
+          }
+        }
+      ],
+      "after": []
+    }
+  ]
+}

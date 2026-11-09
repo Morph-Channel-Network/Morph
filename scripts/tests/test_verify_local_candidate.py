@@ -116,5 +116,69 @@ class LocalCandidateTests(unittest.TestCase):
                 MODULE.verify_policy_window({"effective_unix": start, "review_by_unix": 20}, 15)
 
 
+
+class NativeDesktopQualificationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        self.root = Path(__file__).resolve().parents[2]
+
+    def native_bundle(self, *, dirty=False, forged_binary=False, forged_source=False,
+                      linked=False, duplicate=False):
+        lock = (self.root / "Cargo.lock").read_bytes()
+        vendor = (self.root / "vendor/provenance.json").read_bytes()
+        provenance = json.loads(vendor)
+        original = b"native binary expected by the caller"
+        binary = b"another executable" if forged_binary else original
+        files = {"bin/morph-desktop": binary, "Cargo.lock": lock,
+                 "vendor-provenance.json": vendor, "THIRD_PARTY_NOTICES.md": b"notices",
+                 "native-gui-dependencies.md": b"redistribution policy"}
+        for item in provenance["redistribution_sources"]:
+            raw = (self.root / "vendor" / item["path"]).read_bytes()
+            files["sources/mpl/" + Path(item["path"]).name] = b"forged" if forged_source else raw
+        for item in provenance["license_notices"]:
+            if item["path"].startswith("licenses/native-desktop/"):
+                files[item["path"]] = (self.root / "vendor" / item["path"]).read_bytes()
+        files["sources/registry/option-ext-0.2.0.crate"] = (self.root / "vendor/redistribution/option-ext-0.2.0.crate").read_bytes()
+        files["manifest.json"] = json.dumps({
+            "schema": "morph.native_desktop_bundle.v1", "platform": "x86_64-unknown-linux-gnu",
+            "source_commit": "1" * 40, "tracked_clean": not dirty, "published": False,
+            "cargo_lock_sha256": MODULE.sha(lock), "vendor_provenance_sha256": MODULE.sha(vendor),
+            "binary_sha256": MODULE.sha(binary), "packages": [
+                {"name": "option-ext", "version": "0.2.0", "source_kind": "registry_archive"}]
+        }).encode()
+        files["SHA256SUMS"] = "".join(f"{MODULE.sha(raw)}  ./{name}\n" for name, raw in sorted(files.items())).encode()
+        path = self.directory / "native.tar.gz"
+        with tarfile.open(path, "w:gz") as archive:
+            for name, raw in files.items():
+                entry = tarfile.TarInfo("morph-desktop-linux-x86_64/" + name)
+                entry.mode = 0o755 if name == "bin/morph-desktop" else 0o644
+                if linked and name == "bin/morph-desktop":
+                    entry.type, entry.linkname = tarfile.SYMTYPE, "/tmp/outside-the-bundle"
+                    archive.addfile(entry)
+                else:
+                    entry.size = len(raw)
+                    archive.addfile(entry, io.BytesIO(raw))
+                if duplicate and name == "manifest.json":
+                    archive.addfile(entry, io.BytesIO(raw))
+        return path, "1" * 40, lock, vendor, MODULE.sha(original)
+
+    def test_native_reader_binds_binary_lock_sources_and_mpl_without_extracting(self):
+        result = MODULE.verify_desktop_archive(*self.native_bundle())
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["mpl_source_archives"], 2)
+
+    def test_consistent_new_checksums_cannot_replace_native_binary_or_mpl_source(self):
+        for mutation in ("forged_binary", "forged_source", "dirty"):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                MODULE.verify_desktop_archive(*self.native_bundle(**{mutation: True}))
+
+    def test_native_links_and_duplicate_members_are_rejected(self):
+        for mutation in ("linked", "duplicate"):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                MODULE.verify_desktop_archive(*self.native_bundle(**{mutation: True}))
+
+
 if __name__ == "__main__":
     unittest.main()

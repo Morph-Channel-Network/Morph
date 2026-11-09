@@ -1,0 +1,22 @@
+--- atspi-0.29.0/Cargo.toml.orig-registry
++++ atspi-0.29.0/Cargo.toml
+@@ -50,6 +50,7 @@
+ repository = "https://github.com/odilia-app/atspi"
+ 
+ [features]
++zbus = []
+ connection = ["dep:atspi-connection"]
+ default = [
+     "connection",
+@@ -80,9 +81,8 @@
+ optional = true
+ 
+ [dependencies.zbus]
+-version = "5.5"
+-features = ["async-io"]
+-optional = true
++version = "=6.2.1"
++features = ["default-rt", "proxy", "service", "object-manager"]
+ default-features = false
+ 
+ [dev-dependencies.criterion]

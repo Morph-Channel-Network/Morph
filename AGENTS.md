@@ -5,7 +5,7 @@ Guidance for LLM/AI agents working in this repository. Focus on non-obvious know
 ## Project Snapshot
 
 - Morph Channel is a CKB-native off-chain channel + factory implementation being developed for production deployment. Host-side protocol semantics live in `morph-core`; the on-chain boundary is a set of `no_std` CKB scripts built for `riscv64imac-unknown-none-elf`.
-- Workspace members: five host Rust crates (`crates/morph-core`, `crates/morph-key-input`, `crates/morph-cli`, `crates/morph-payment-gateway`, `crates/morph-fiber-adapter`) and nine contract crates under `contracts/` (including the shared script crate). Plus a TypeScript SDK (`sdk/typescript`), a React UI (`ui/morph-hub`).
+- Workspace members: ten host Rust crates (`morph-core`, `morph-key-input`, `morph-cli`, `morph-payment-gateway`, `morph-fiber-adapter`, `morph-packages`, `morph-hub-api`, `morph-sdk`, `morph-desktop`, `morph-xtask`) and nine contract crates under `contracts/` (including the shared script crate). The sole frontend is native GPUI; JavaScript/TypeScript sources, Node tooling and browser UI builds are retired.
 - Morph Payment Gateway (`morph-payment-gateway`) is the application-layer payment and access gateway: payment processing, signed receipts, Biscuit authorization, and paid API access. Its current name is the sole supported crate, binary, SDK, and environment namespace.
 - Production implementation is the development focus; current deployment evidence is from controlled devnet. Mainnet and real-asset releases require the gates in `docs/mainnet-readiness.md`. The bilateral multi-asset wire profile is implemented; remaining integrations are tracked in `docs/multi-asset-channels.md`.
 
@@ -15,11 +15,11 @@ Use `make` targets — they orchestrate the right flags.
 
 | Command | What it does |
 | --- | --- |
-| `make ci` | `fmt-check` + `lint` + `source-hygiene` + `supply-chain` + `test` + `fixture-checks` + SDK/UI checks + `contract-tests`. Use this for a full local gate. |
+| `make ci` | `fmt-check` + `lint` + `source-hygiene` + `supply-chain` + `test` + `fixture-checks` + Rust client/native desktop checks + `contract-tests`. Use this for a full local gate. |
 | `make test` | `cargo test --workspace --all-features`. |
 | `make lint` | `cargo clippy --workspace --all-features --all-targets -- -D warnings`. Treat warnings as errors. |
 | `make fmt` / `make fmt-check` | Apply / verify `cargo fmt --all`. |
-| `make source-hygiene` | Syntax-check every shell script, reject npm lockfiles pinned to the unsupported `npmmirror.com` registry, and deny `unwrap`/`expect`/`panic!` in production Rust targets. |
+| `make source-hygiene` | Syntax-check every shell script, reject JS/TS source and retired client dependency manifests, and deny `unwrap`/`expect`/`panic!` in production Rust targets. |
 | `make build-contracts` | Build all RISC-V scripts to `target/riscv64imac-unknown-none-elf/release/`. Required before `make contract-tests`. |
 | `make contract-tests` | Runs `crates/morph-core/tests/contract_scripts.rs` against the built ELFs (uses `--ignored --test-threads=1`). Fails if ELFs are missing. |
 | `make release-readiness` | Verifies all eight built ELF CKB data hashes, the current-custody no-real-assets envelope, and required operator runbooks. Run after `make build-contracts`. |
@@ -41,13 +41,15 @@ Devnet orchestration (requires a local CKB node binary and `jq`):
 | `scripts/devnet-stateful-e2e.sh` / `make devnet-stateful-e2e` | Delegates to the same current acceptance pipeline. |
 | `scripts/fiber-morph-devnet-{preflight,acceptance,audit}.sh` | Cross-stack acceptance with Fiber (see `docs/fiber-morph-devnet-runbook.md`). |
 
-UI (`ui/morph-hub`):
+Native desktop and clients:
 
 | Command | Purpose |
 | --- | --- |
-| `npm install` | One-time install. |
-| `npm run build` | Type-check (`tsc --noEmit`) and produce `ui/morph-hub/dist/`, which the hub server serves. |
-| `npm run dev` | Vite dev server; proxies `/api` to `http://127.0.0.1:4617` (see `ui/morph-hub/vite.config.ts`). |
+| `make desktop` | Check native Linux build inputs and start the GPUI application. |
+| `make desktop-check` | Native headless interaction/model tests and desktop binary build. |
+| `make rust-client-check` | Shared codecs, Rust SDK interop/transport and native acceptance runner tests. |
+
+`morph-cli hub serve` serves JSON `/api` only; it has no static directory or browser fallback. Start it separately, then connect from the native desktop. See `docs/native-desktop.md` for platform, dependency and runtime limits. Private signing journals stay in the existing operator ceremony; the desktop has no channel signing authority.
 
 Notes:
 
@@ -71,7 +73,12 @@ contracts/morph-factory-{type,vault-lock}  Current Factory authority + Vault-set
 contracts/morph-devnet-xudt           Devnet-only xUDT issuer/conservation script.
 docs/                          Audits, runbooks, readiness gates, tutorials.
 scripts/                       Devnet orchestration (see table above).
-ui/morph-hub                   React + Vite + TypeScript operator console.
+crates/morph-packages          Sole shared public package codecs, construction/review and persistence.
+crates/morph-hub-api           Owned typed public Hub requests/responses, no private store state.
+crates/morph-sdk               Bounded authenticated Rust HTTP client and stateless protocol inspection.
+crates/morph-desktop           Native GPUI operator console; bounded worker, review/confirm, no signer.
+crates/morph-xtask             Rust protocol/Fiber/Gateway regression and source-hygiene tools.
+fixtures/                     Protocol fixtures and independent interop/scenario baselines.
 ```
 
 ## Code Patterns and Conventions
@@ -147,13 +154,13 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - Root creation is epoch-0 unbound Active/0, signed over `MULTI_ASSET_ROOT_FUNDING_DOMAIN || state_digest || raw_tx_hash`. Ordinary state votes are rejected; public recovery validation requires bound epoch-0 evidence. Preserve a complete exact-TX exit before broadcasting. The funding ceremony collects a complete exit before creation, then `confirm` seals initial reservations and switches the same path to a guarded session; `export-root-funding` works offline/orphaned and `multi-asset-funding-submit` validates exact signed replay. Lineage uses explicit tagged Root/Splice/Factory origins, with no old-shape parser.
 - Public root construction uses `multi-asset-funding-prepare` and strict `morph.multi_asset_root_terms.v1`: canonical explicit funders/inputs, exact per-wallet CKB/fee and per-Type token contributions, and owner-only change. The native builder never mints or selects replacement inputs. `multi-asset-funding-wallet-sign` reconstructs the exact body before signing only the declared wallet group, after complete root/exit authorization. `multi-asset-funding-submit` is keyless with no wallet/presigned fallback; full VM preflight precedes immutable binary persistence, preventing partial-witness attempts from poisoning that path. The harness uses these public paths.
 - `multi-asset-supervise` observes 1–32 registered session paths with four workers, nonblocking journal locks and one total RPC budget per check. Its atomic health has a config-bound expiry and is never signing authority; `multi-asset-supervision-health` fails on stale/unverified entries. Stable alert history survives busy checks and restart. Unguarded epoch-0 sessions are explicitly unmanaged; failover and pooled publication remain open. Runbook: `docs/runbooks/signer-supervision.md`.
-- Public proposal/signature messages use decimal strings and canonical hex. The private backend snapshot uses Rust serde integers and is not a JavaScript interchange format. SDK inspection is stateless and does not reserve a signer state number.
+- Public proposal/signature messages use decimal strings and canonical hex. Private snapshots use Rust serde integers. `serde_json` arbitrary_precision is required when passing state-file JSON through the SDK so u128 values remain exact. SDK inspection is stateless and does not reserve a signer state number.
 - Payment intent expiry gates preparation and new local signing reservations. Already issued valid state signatures remain authority after expiry; `commit_payment` may reconcile the exact co-signed proposal or recover its already committed result. Expiry alone never authorizes cancellation, refund or journal reset.
 
 ### Morph Hub server
 
-- `crates/morph-cli/src/hub.rs` implements the full hub server from scratch (stdlib `TcpListener` + threads + `Mutex<HubStore>`); no HTTP framework. Constants `MAX_REQUEST_BODY_BYTES`, `MAX_REQUEST_LINE_BYTES`, `MAX_REQUEST_HEADER_BYTES`, `REQUEST_IO_TIMEOUT`, `MAX_CONCURRENT_CONNECTIONS`, `MAX_CONCURRENT_MUTATIONS`, `MAX_CONCURRENT_SSE_STREAMS`, mutation rate limit, and `MAX_INVOICE_EXPIRY_SECS` are all explicit guard rails; respect them.
-- Server-sent events use `/api/events` only for the unauthenticated loopback path; token-protected sessions use authenticated short polling so the bearer token never appears in a URL.
+- `crates/morph-cli/src/hub.rs` implements the API-only hub server from scratch (stdlib `TcpListener` + threads + `Mutex<HubStore>`); no HTTP framework. Constants `MAX_REQUEST_BODY_BYTES`, `MAX_REQUEST_LINE_BYTES`, `MAX_REQUEST_HEADER_BYTES`, `REQUEST_IO_TIMEOUT`, `MAX_CONCURRENT_CONNECTIONS`, `MAX_CONCURRENT_MUTATIONS`, `MAX_CONCURRENT_SSE_STREAMS`, mutation rate limit, and `MAX_INVOICE_EXPIRY_SECS` are all explicit guard rails; respect them.
+- The server retains `/api/events` for explicit unauthenticated loopback clients. The native application uses bounded authenticated polling in both modes; tokens never enter URLs or persistent preferences.
 - The Hub state file has one current unpublished shape; replacing it via the UI is disabled unless `--allow-state-restore` is passed.
 - CORS for direct browser API access requires an explicit `--cors-origin http(s)://...`. Loopback is the default; `--allow-unauthenticated-loopback` is for local dev only.
 - `--pubkey` is the **33-byte compressed secp256k1 pubkey as 66 hex chars without `0x`**; the 32-byte node id is derived from it. This matches Fiber's RPC-facing node-identity format.
@@ -217,3 +224,11 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - Safety boundaries and their tests: `SECURITY-FIXES.md`
 - Audit findings and remediation: `docs/swarm-audit-*.md`, `docs/audit-*.md`
 - Readiness gates: `docs/mainnet-readiness.md`, `docs/roadmap.md`
+
+### Native client boundaries
+
+- Keep the GPUI 0.3.11 / Kit 0.9.0 family pinned together; the exact native consumer deltas and archives are verified by `vendor/check.py`. No alternate Fast/WebView/WASM UI is supported. Read `docs/native-gui-dependencies.md` before changing the family or packaging it.
+- `morph-packages` is the sole package implementation. CLI thin modules retain test namespaces; never rebuild a separate signing digest/parser in SDK/UI.
+- SDK writes are never automatically retried. A lost mutation response is an unknown outcome, which blocks automatic polling/resubmission until explicit reconciliation. Cancelling a UI wait does not undo server effects.
+- GUI mutation confirmation binds the reviewed request and the latest event id; edits/new events invalidate it. Empty scopes with explicit unauthenticated loopback follow the server's policy; offline/stale state still disables writes.
+- Fiber scenario definitions use the closed Rust vocabulary in `morph-xtask`, preserve named economic/recovery assertions and source hashes, and never evaluate script strings. `scenario` mode records development evidence only; final full/coexistence qualification still requires committed tracked source. External funding signatures use a protected key file; restart may stop only an exact node1 executable in the owned stack tree.

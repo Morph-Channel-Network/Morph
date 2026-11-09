@@ -65,7 +65,7 @@ Factory/Channel wire model remains unchanged.
 | delegation | Biscuit attenuation/policy | none |
 | fair exchange | SHA-256 preimage as AES-256-GCM key, AAD/result hash | paid hold/standard invoice status |
 | payment index | encrypted atomic Morph store | provider reconciliation input |
-| Rust/TypeScript SDK | Morph-owned API, payer signing, receipt types, and WebCrypto decryption | none |
+| Rust SDK | Morph-owned API, payer signing, receipt types, and authenticated native AES-GCM decryption | none |
 | RGB++ identity | CKB genesis + xUDT Type Script hash + Bitcoin network + binding code hash | UDT invoice transport |
 | RGB++ provenance | allowlisted binding/proof-program hashes + proof Cell/outpoint + Bitcoin depth | operator admits only verifier-produced commitments; live watcher pending |
 
@@ -345,7 +345,7 @@ consistency, exact vault asset shape, and trusted CKB genesis/deployment IDs.
 - AES-256-GCM fair exchange;
 - encrypted atomic store and payment index;
 - fixed-upstream Gateway;
-- Rust and TypeScript SDKs.
+- One native Rust SDK, reusing the canonical service/protocol implementation.
 
 The acceptance harness establishes Fiber's native three-node `router-pay`
 topology, then executes one x402 credential purchase and one hash-locked fair

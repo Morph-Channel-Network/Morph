@@ -1,0 +1,962 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/watchtower/force-close-after-multiple-payments",
+  "steps": [
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/01-connect-peer",
+      "source_sha256": "95543e4b4a4da46bde2eedda9f63120b1706720104b3711005ab87cffe26ddb8",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/02-get-node1-funding-script",
+      "source_sha256": "2277d987a97412b70bab99cc79be8dfde16d3b9165bda057d9d967992a141bc4",
+      "source_script_sha256": "2f5a301842a3476437fdf39a53e8f56a3afb79511db8366d5c0fd4309b815943",
+      "sequence": 2,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE1_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/03-get-node2-funding-script",
+      "source_sha256": "83b3de4c6e9cbc5e66fbb9dbdd07bc8ae5dfe556aeb756548df41f2c512c13a1",
+      "source_script_sha256": "ec63d002dbfeda0a499bce933cecba62ace598184ff1bb0be80f632f352ae209",
+      "sequence": 3,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE2_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/04-get-node1-balance",
+      "source_sha256": "d6c665caff9d7ff27bb4329117a1361fac3f21d01ddd2418bd19d1f9b66d69d6",
+      "source_script_sha256": "730b645f049cd50800e3475e7bd43b283a6858207e33a9a48ec36c0b810a6ab4",
+      "sequence": 4,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE1_BALANCE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/05-get-node2-balance",
+      "source_sha256": "e822f017205b324dfa60d8eacf2d0d3e72edc6a437bb63fb3d1b3c9be90ad4a3",
+      "source_script_sha256": "02dd69b2890b773d3ee54f9e9c0c2e1ac7235fb320535a4d75d5094bb7004559",
+      "sequence": 5,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE2_BALANCE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/06-open-channel",
+      "source_sha256": "b4ea7da60c3eded7971151d3b233b952bd03a592f7cc95505018656b0d1e212b",
+      "source_script_sha256": "2f631affeed467ebda55336a85a2f4ebacc9d56d485ec29ac28a26b7014de383",
+      "sequence": 6,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "funding_amount": "0x2540be4000"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_TEMP_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/temporary_channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/07-node2-get-auto-accepted-channel",
+      "source_sha256": "c93a91c90b879fffcfbbd709fe8f8c3facbf62a5fee89564bf8a06d1cbfc3aa0",
+      "source_script_sha256": "a6c4a67cb18225ee64305461f8e898d4d5da8ce20c08a16f89c7afd30d24b1b1",
+      "sequence": 7,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/08-generate-a-few-blocks",
+      "source_sha256": "18b53fd458e8a7a81c0a018761c46f795ee2b815c15b4c731f3cc129d11f7f98",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 8,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/09-node2-gen-invoice",
+      "source_sha256": "c38b4390cd82a65dd9d294662291f3f878e114a8075cac4470d1d510afcc9cf9",
+      "source_script_sha256": "20c968f8a034618640691ccbf612cc2df7e0ef504d55d629628ca2f2c90f318f",
+      "sequence": 9,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x2dc6c0",
+            "currency": "Fibd",
+            "description": "test invoice generated by node2",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "encoded_invoice",
+          "value": {
+            "pointer": "/result/invoice_address"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/10-node1-send-payment-with-invoice",
+      "source_sha256": "dcd16b1811086eef87fc8104aaf79997684f43446b0a9c85e560371e8b828876",
+      "source_script_sha256": "382cbb3f24c73bde0a040c188a17256647e001514f639632b58fe44c5438e48a",
+      "sequence": 10,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "invoice": "{{encoded_invoice}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/11-node1-gen-invoice",
+      "source_sha256": "82558b04b71ac2eb79e70590b595164dfa25e11585c4e9886238c6fefd9ae76b",
+      "source_script_sha256": "20c968f8a034618640691ccbf612cc2df7e0ef504d55d629628ca2f2c90f318f",
+      "sequence": 11,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x16e360",
+            "currency": "Fibd",
+            "description": "test invoice generated by node1",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "encoded_invoice",
+          "value": {
+            "pointer": "/result/invoice_address"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/12-node2-send-payment-with-invoice",
+      "source_sha256": "007638c292a99dbb657d413e0bd558363bfa918dfd2c284ad7bc7821e2344c2c",
+      "source_script_sha256": "382cbb3f24c73bde0a040c188a17256647e001514f639632b58fe44c5438e48a",
+      "sequence": 12,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "invoice": "{{encoded_invoice}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/13-force-close",
+      "source_sha256": "4e08e69875a936637e322d63fb27c7da0f8855095f4d3882425f0faaabfa4607",
+      "source_script_sha256": "e95aca9dc6e35cbc29c7b3ce4ea839da7db56385169a1d329f3dbe1074a12d9a",
+      "sequence": 13,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{N1N2_CHANNEL_ID}}",
+            "force": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/14-get-force-closed-commitment-tx-hash",
+      "source_sha256": "330026e9f0fc20aa05e02067cd76c6dba31373bbb8bb16e5273801a9960ac73d",
+      "source_script_sha256": "9c9698fbd0fe726640f30be9305ecbd1ad04368f7deb09c0c0c88182f3e1c49c",
+      "sequence": 14,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "include_closed": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "TX_HASH",
+          "value": {
+            "pointer": "/result/channels/0/latest_commitment_transaction_hash"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/15-generate-a-few-blocks-for-settlement-tx1-committed",
+      "source_sha256": "db59ed16c9f5447d9dc11c2212fd5f3eafdc2f1bf51b75a5be206f07df76f872",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 15,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/16-generate-a-few-blocks-for-commitment-tx",
+      "source_sha256": "e9660c81b1121dce1c1541bfab5a3abc511fb880fd263b480c4ef471204af117",
+      "source_script_sha256": "b8d7aaeadefc445dbf0bd3857e5943ef15f38404166550bfaf2173bf5260afe2",
+      "sequence": 16,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/17-generate-a-few-blocks-for-settlement-tx1-generated",
+      "source_sha256": "87471fb5ba093a5fbb460e63b0d08412e7b9363ec8b795bc7480c57ab6fd9ff1",
+      "source_script_sha256": "196519f47ad8478299be47acc46c9cf8ff6b0e89149e895976c0301310470286",
+      "sequence": 17,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x7"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/18-generate-a-few-blocks-for-settlement-tx2-committed",
+      "source_sha256": "eacfa376596d199f7e2e26ba6f262f73ad49a114b8df589aab317e1286b70650",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 18,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/19-check-commitment-tx",
+      "source_sha256": "18415d95895b7ab9bfa204869186088bfe79ee7f0d6339804511a5587ee5c392",
+      "source_script_sha256": "a1fb8b47df4f9d1269cfc598802061dd799b6dc345c6e3b477cf31f38c1fe0f0",
+      "sequence": 19,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_live_cell",
+        "params": [
+          {
+            "index": "0x0",
+            "tx_hash": "{{TX_HASH}}"
+          },
+          false
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "unknown"
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/21-check-balance-node2",
+      "source_sha256": "8b50c746d2dc850920226cafcf601a4715ee05bb12aae6028043a078784d81dd",
+      "source_script_sha256": "38ad9ce33c0d4d27aefa9135e469e6a605464d6f74b9e48cd47a0ea96617be3d",
+      "sequence": 19,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "pointer": "/result/capacity"
+              },
+              {
+                "variable": "NODE2_BALANCE"
+              }
+            ]
+          },
+          "op": "gt",
+          "right": {
+            "literal": "1498000"
+          }
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "pointer": "/result/capacity"
+              },
+              {
+                "variable": "NODE2_BALANCE"
+              }
+            ]
+          },
+          "op": "lt",
+          "right": {
+            "literal": "1500000"
+          }
+        }
+      ],
+      "after": [],
+      "poll": {
+        "kind": "checks",
+        "attempts": 6,
+        "mine": true
+      }
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/20-check-balance-node1",
+      "source_sha256": "62b8d96d9df44dea0e1be24624426d6e15e915a6d1d4e0bc17bf3f8621b3113e",
+      "source_script_sha256": "ecf58c16f4d5dcbd78301db9bfa0cd91dce798216c228a422396ff31c93000c3",
+      "sequence": 20,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "variable": "NODE1_BALANCE"
+              },
+              {
+                "pointer": "/result/capacity"
+              }
+            ]
+          },
+          "op": "gt",
+          "right": {
+            "literal": "1500000"
+          }
+        },
+        {
+          "left": {
+            "difference": [
+              {
+                "variable": "NODE1_BALANCE"
+              },
+              {
+                "pointer": "/result/capacity"
+              }
+            ]
+          },
+          "op": "lt",
+          "right": {
+            "literal": "1502000"
+          }
+        }
+      ],
+      "after": [],
+      "poll": {
+        "kind": "checks",
+        "attempts": 6,
+        "mine": true
+      }
+    },
+    {
+      "id": "e2e/watchtower/force-close-after-multiple-payments/22-disconnect",
+      "source_sha256": "bcd9d8d45ba98b064d01b2d4b302b662cdbc500ed9779b7c90896ea9de7d45c3",
+      "source_script_sha256": "a9b9304da1d8f4de2851d1e46dc7ad838ef50bc77960d1a7cb0a1288a0fdbd5a",
+      "sequence": 22,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "disconnect_peer",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    }
+  ]
+}

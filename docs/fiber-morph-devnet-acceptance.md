@@ -37,7 +37,7 @@ Same-devnet coexistence gate:
 make fiber-morph-devnet-acceptance
 ```
 
-Full gate, including additional Fiber Bruno suites:
+Full gate, including additional Fiber Rust scenarios:
 
 ```sh
 make fiber-morph-devnet-acceptance-full
@@ -102,9 +102,9 @@ The production coexistence gate:
    `MORPH_DEVNET_STATEFUL_BUDGET_PROFILE=docs/devnet-stateful-budget.example.json`,
    so Morph uses Fiber's CKB devnet while preserving the same audit and budget
    gates as `make devnet-stateful-e2e`;
-5. runs Fiber's `e2e/external-funding-open` Bruno suite;
+5. runs Fiber's `e2e/external-funding-open` Rust scenario;
 6. runs Fiber's required external-funding restart regression;
-7. starts a fresh `e2e/router-pay` three-node topology and passes its Bruno
+7. starts a fresh `e2e/router-pay` three-node topology and passes its native Rust
    suite;
 8. runs two real Morph Payment Gateway payments over that route, covering x402 terminal
    settlement/Biscuit issuance and hash-locked fair exchange.
@@ -118,7 +118,7 @@ full cross-repository run.
 ### `full`
 
 Runs `coexistence`, then starts fresh Fiber devnets for the strict Fiber suite
-set listed in `FIBER_BRUNO_SUITES`.
+set listed in `FIBER_RUST_SUITES`.
 
 Default strict Fiber suites:
 
@@ -163,7 +163,7 @@ Key files:
 - `business-flow-audit.json`: machine-checked Morph/Fiber business-flow and
   security-family coverage;
 - `summary.json`: top-level pass summary;
-- `logs/`: Fiber stack logs, Morph stateful logs, Bruno logs, and build logs;
+- `logs/`: Fiber stack logs, Morph stateful logs, Rust scenario logs, and build logs;
 - `morph-stateful/evidence.json`: actual external RPC/genesis and current code/report binding;
 - `fiber-coexistence-genesis.json`: independent observation of the same Fiber genesis;
 - `morph-stateful/scenarios/`: strict current stateful ledger;
@@ -226,23 +226,20 @@ The `full` gate additionally requires:
 - `e2e/funding-tx-verification/fund_from_peer`
 - `e2e/funding-tx-verification/missing_inputs`
 
-For Fiber, the audit does not merely trust each suite's JSON status. It also
-checks the Bruno or restart log for named request evidence, including external
-funding submission after restart, duplicate-payment rejection, reconnect
-re-establishment, forced shutdown, cancelled hold-invoice failure decoding,
-periodic expired-TLC cleanup, xUDT routing, watchtower settlement, and all four
-funding-transaction verification cases. The period-check expiry suite also
-requires stack-log evidence that both expired TLCs were removed with
-`RemoveTlcFail` and both sides reached zero active TLCs; the dedicated
-shutdown/watchtower suites provide the force-close evidence.
+The native runner records every request id, source hash, method, assertion count
+and bounded attempt count in `*.evidence.json`. It verifies each result against
+the exact typed corpus, and the combined audit requires those native results
+plus the named flow markers. External funding submission after restart,
+duplicate-payment rejection, reconnect, force-close, cancelled invoice decoding,
+xUDT routing, watchtower settlement and all four funding-shape cases remain
+required.
 
-The coexistence gate treats Fiber's `e2e/external-funding-open` balance and
-early-readiness checks as stale in this devnet profile when the upstream Bruno
-collection fails only after the essential external-funding requests have
-succeeded. In that case the harness still requires explicit `200 OK` evidence
-for open, sign, submit, cooperative shutdown, closed-state capture, and shutdown
-transaction inspection before it writes a passed evidence JSON. This exception
-does not accept a failure of the external-funding flow itself.
+External funding balances and shutdown refunds are checked with exact integers
+and bounded waits for indexer convergence. A known stale assertion is never
+accepted as a passed suite. Periodic expiry checks observe zero in-flight balances and confirmed failed-removal bookkeeping
+on the surviving channels through the current RPC; closing the healthy channel
+is not required. The dedicated force-close/watchtower suites retain actual
+settlement and payout checks.
 
 The generated `business-flow-audit.json` records these named flows, their
 evidence files, the Morph and Fiber security families, and the minimum evidence
@@ -280,7 +277,7 @@ CKB_BIN=/absolute/path/to/ckb
 CKB_CLI_BIN=/absolute/path/to/ckb-cli
 FIBER_MORPH_ACCEPTANCE_MODE=coexistence
 FIBER_TEST_ENV=debug
-FIBER_BRUNO_SUITES="e2e/open-use-close-a-channel e2e/udt"
+FIBER_RUST_SUITES="e2e/open-use-close-a-channel e2e/udt"
 FIBER_FUNDING_TX_VERIFICATION_CASES="remove_change missing_inputs"
 FIBER_CXXFLAGS="-include cstdint"
 MORPH_FIBER_DEPLOYER_KEY_FILE=../fiber/tests/nodes/deployer/ckb/plain_key
@@ -291,7 +288,7 @@ MORPH_FIBER_BOB_KEY_FILE=../fiber/tests/nodes/2/ckb/plain_key
 The current Morph phase builds and captures its intended ELFs through the sole
 runner; it does not select an older prebuilt implementation.
 
-`FIBER_BRUNO_SUITES` and `FIBER_FUNDING_TX_VERIFICATION_CASES` are useful for
+`FIBER_RUST_SUITES` and `FIBER_FUNDING_TX_VERIFICATION_CASES` are useful for
 local debugging. Production `fiber` and `full` audit runs expect the strict
 default suite and case set above.
 

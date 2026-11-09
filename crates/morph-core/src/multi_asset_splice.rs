@@ -227,10 +227,8 @@ impl MultiAssetSpliceProposal {
         recovery.validate_contents()?;
         Ok(recovery)
     }
-    pub(crate) fn intent_digest(
-        &self,
-        current: &MultiAssetRecoveryPackage,
-    ) -> MultiAssetResult<Bytes32> {
+    /// Validated unsigned review digest. This grants no bridge or recovery authority.
+    pub fn intent_digest(&self, current: &MultiAssetRecoveryPackage) -> MultiAssetResult<Bytes32> {
         self.validate_contents(current)?;
         Ok(crate::multi_asset::host_commitment(
             crate::hash::MULTI_ASSET_SPLICE_DOMAIN,

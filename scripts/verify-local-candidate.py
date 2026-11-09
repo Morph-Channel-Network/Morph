@@ -12,6 +12,7 @@ import re
 import subprocess
 import tarfile
 import time
+import tomllib
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,7 +138,103 @@ def verify_policy_window(envelope, now_unix):
     require(start <= now_unix <= end, "local qualification envelope is not effective or has expired")
 
 
-def verify(public, bundle, ci_receipt, envelope_path):
+def sha_file(path):
+    require(path.is_file() and not path.is_symlink(), "missing or linked native artifact")
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def verify_desktop_archive(path, source_commit, lock_raw, vendor_raw, binary_sha256):
+    prefix = "morph-desktop-linux-x86_64/"
+    require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 512 * 1024 * 1024,
+            "oversized, linked or missing native bundle")
+    digests, selected, seen = {}, {}, set()
+    total = 0
+    with tarfile.open(path, "r:gz") as archive:
+        for member in archive:
+            require(len(seen) < 100000, "too many native archive members")
+            require(member.name not in seen, "duplicate native archive member")
+            seen.add(member.name)
+            normalized = PurePosixPath(member.name)
+            require(not normalized.is_absolute() and ".." not in normalized.parts
+                    and str(normalized) == member.name.rstrip("/"), "unsafe native archive path")
+            if member.name.rstrip("/") == prefix.rstrip("/"):
+                require(member.isdir(), "invalid native archive root")
+                continue
+            require(member.name.startswith(prefix), "native archive escaped its root")
+            name = member.name[len(prefix):]
+            if member.isdir():
+                continue
+            require(member.isfile(), "native archive contains a link or special file")
+            require(0 <= member.size <= 64 * 1024 * 1024, "oversized native archive member")
+            total += member.size
+            require(total <= 1024 * 1024 * 1024, "native archive exceeds total size bound")
+            file = archive.extractfile(member)
+            require(file is not None, "unreadable native archive member")
+            digest = hashlib.sha256()
+            keep = name in {"manifest.json", "Cargo.lock", "vendor-provenance.json", "SHA256SUMS"}
+            raw = bytearray()
+            for block in iter(lambda: file.read(1024 * 1024), b""):
+                digest.update(block)
+                if keep:
+                    require(len(raw) + len(block) <= MAX_FILE, "oversized native metadata")
+                    raw.extend(block)
+            digests[name] = digest.hexdigest()
+            if keep:
+                selected[name] = bytes(raw)
+            if name == "bin/morph-desktop":
+                require(member.mode & 0o111 != 0, "native bundle binary is not executable")
+    indexed = checksums(selected["SHA256SUMS"].replace(b"  ./", b"  "))
+    require(set(indexed) | {"SHA256SUMS"} == set(digests), "native archive checksum inventory differs")
+    require(all(digests[name] == digest for name, digest in indexed.items()), "native archive checksum mismatch")
+    manifest = decode(selected["manifest.json"])
+    require(manifest["schema"] == "morph.native_desktop_bundle.v1"
+            and manifest["platform"] == "x86_64-unknown-linux-gnu"
+            and manifest["source_commit"] == source_commit and manifest["tracked_clean"] is True
+            and manifest["published"] is False, "native bundle is dirty, stale or another platform")
+    require(selected["Cargo.lock"] == lock_raw and selected["vendor-provenance.json"] == vendor_raw,
+            "native dependency metadata differs from the candidate")
+    require(manifest["cargo_lock_sha256"] == sha(lock_raw)
+            and manifest["vendor_provenance_sha256"] == sha(vendor_raw), "native dependency digest mismatch")
+    require(manifest["binary_sha256"] == binary_sha256 == digests["bin/morph-desktop"],
+            "native executable differs from the built candidate")
+    lock = tomllib.loads(lock_raw.decode())
+    registry = {(p["name"], p["version"]): p["checksum"] for p in lock["package"] if "checksum" in p}
+    packages = manifest["packages"]
+    require(packages and len({(p["name"], p["version"]) for p in packages}) == len(packages),
+            "missing or duplicate native dependency records")
+    archives = 0
+    for package in packages:
+        if package["source_kind"] == "registry_archive":
+            name = f"sources/registry/{package['name']}-{package['version']}.crate"
+            require(digests.get(name) == registry[(package["name"], package["version"])],
+                    "native registry source archive differs from Cargo.lock")
+            archives += 1
+        else:
+            kind = {"verified_patched_source": "patched", "pinned_git_source": "git", "morph_source": "morph"}
+            require(package["source_kind"] in kind, "unknown native source origin")
+            folder = package["name"] if package["source_kind"] == "morph_source" else f"{package['name']}-{package['version']}"
+            require(f"sources/{kind[package['source_kind']]}/{folder}/Cargo.toml" in digests,
+                    "native dependency source omitted")
+    provenance = decode(vendor_raw)
+    for item in provenance["redistribution_sources"]:
+        require(digests.get("sources/mpl/" + Path(item["path"]).name) == item["archive_sha256"],
+                "exact MPL source archive missing or changed")
+    for item in provenance["license_notices"]:
+        if item["path"].startswith("licenses/native-desktop/"):
+            require(digests.get(item["path"]) == item["sha256"], "native MPL notice missing or changed")
+    require("THIRD_PARTY_NOTICES.md" in digests and "native-gui-dependencies.md" in digests,
+            "native redistribution documentation omitted")
+    return {"schema": "morph.native_desktop_qualification.v1", "status": "passed",
+            "binary_sha256": binary_sha256, "bundle_sha256": sha_file(path),
+            "dependency_records": len(packages), "registry_source_archives": archives,
+            "archive_files": len(digests), "mpl_source_archives": len(provenance["redistribution_sources"])}
+
+
+def verify(public, bundle, ci_receipt, envelope_path, desktop_bundle):
     git = lambda *args: subprocess.check_output(["git", *args], cwd=ROOT).decode().strip()
     head = git("rev-parse", "HEAD")
     require(not git("status", "--porcelain", "--untracked-files=no"), "candidate has tracked changes")
@@ -199,6 +296,9 @@ def verify(public, bundle, ci_receipt, envelope_path):
     metadata = {name: read(ROOT / "release/factory-preproduction" / name) for name in
                 ("README.md", "watch-policy.json", "publication-profile.json", "watch-config.example.json")}
     verify_archive(bundle, manifest, envelope_raw, checkpoint["contracts"], metadata)
+    desktop = verify_desktop_archive(desktop_bundle, head, read(ROOT / "Cargo.lock"),
+                                     read(ROOT / "vendor/provenance.json"),
+                                     sha_file(ROOT / "target/desktop/morph-desktop"))
     return {"schema": "morph.local_candidate_qualification.v1", "source_commit": head,
             "source_tree_sha256": checkpoint["source_tree_sha256"], "status": "passed",
             "verified_at_unix": now_unix, "policy_review_by_unix": envelope["review_by_unix"],
@@ -209,17 +309,18 @@ def verify(public, bundle, ci_receipt, envelope_path):
             "toolchain_sha256": sha(read(ROOT / "rust-toolchain.toml")),
             "contract_bundle_sha256": sha(read(bundle)), "public_evidence_index_sha256": sha(read(public / "SHA256SUMS")),
             "ci_receipt_sha256": sha(read(ci_receipt)), "genesis_hash": checkpoint["genesis_hash"],
-            "counts": counts, "contract_vm_tests": ci["contract_vm_tests"]}
+            "counts": counts, "contract_vm_tests": ci["contract_vm_tests"], "native_desktop": desktop}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--public-evidence", type=Path, required=True)
     parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--desktop-bundle", type=Path, required=True)
     parser.add_argument("--ci-receipt", type=Path, required=True)
     parser.add_argument("--envelope", type=Path, default=ROOT / "release/factory-preproduction/envelope.json")
     args = parser.parse_args()
-    print(json.dumps(verify(args.public_evidence, args.bundle, args.ci_receipt, args.envelope), indent=2))
+    print(json.dumps(verify(args.public_evidence, args.bundle, args.ci_receipt, args.envelope, args.desktop_bundle), indent=2))
 
 
 if __name__ == "__main__":

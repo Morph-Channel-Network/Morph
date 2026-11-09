@@ -1,0 +1,1871 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/router-pay",
+  "steps": [
+    {
+      "id": "e2e/router-pay/01-node1-connect-node2",
+      "source_sha256": "3881e634d04a4b03123e5ed58fb54f3b0d952078dab0ef2bc434f8fe811dbb79",
+      "source_script_sha256": "350e2960343f57e6f830fbb588ee9b55d53e14cf651a0762ef20bbf79d5f18da",
+      "sequence": 1,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/02-node2-connect-node3",
+      "source_sha256": "fcebbbd0fcd769c3a32164306a7f4dc5da47c0f3092a2eed25b2b9969e0bbcdd",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 2,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE2_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/03-node1-node2-open-channel",
+      "source_sha256": "d5a272b5f4db18dc4923c41289992a14db3465e61fb045e097cbaadba5999867",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 3,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}",
+            "funding_amount": "0x377aab54d000",
+            "tlc_fee_proportional_millionths": "0x4B0"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/04-node2-get-auto-accepted-channel",
+      "source_sha256": "2618f526ce8283e2462c078c10df3577d73572d55432bce734407d40d0873e8a",
+      "source_script_sha256": "18f3bbbf78bf9c26f7f4015fd409219ca23e7edda1e2601f69abfe791263fde6",
+      "sequence": 4,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N1N2_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/06-ckb-generate-blocks",
+      "source_sha256": "cf869fea0ef134558b36b7d0ddca6892eadb0bbfeaf0a97437f47393226c3f83",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 6,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/07-node2-node3-open-channel",
+      "source_sha256": "870d43d2fb26114ef2a6dfe092cb445dc1c2187767152159493870de2a35cb23",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 7,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}",
+            "funding_amount": "0x377aab54d000",
+            "tlc_fee_proportional_millionths": "0x578"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/08-node3-get-auto-accepted-channel",
+      "source_sha256": "09e63d8b379df92e177e82579b90e05cb0e26eb48299527972811640d594b3d6",
+      "source_script_sha256": "a525a4c421b5a5798c591f665dd5b2dee3c268f8491a6e125306d42d115a4342",
+      "sequence": 8,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE2_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "N2N3_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/10-ckb-generate-blocks",
+      "source_sha256": "74942c01dfb5af7021300c6aefe67056034dce51e28800fd333f01b4a2c43c0a",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 10,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/11-node2-list-channels",
+      "source_sha256": "394907c8d2d677e45a047269677ec65504468153612455530a902a89cccb5179",
+      "source_script_sha256": "b539cf7ec354934bdbe5765ed1430dd50bda646d6a99e67c787839d3f4cffea7",
+      "sequence": 11,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/11-node2-list-graph-channels",
+      "source_sha256": "433d1eeecf72d892d454b9375160967ff2fe3d0d05bbbdcc95ab4a78349bd104",
+      "source_script_sha256": "176419ccde6751012f838f8b7c3765985f94d8808dd4e20145cf63bc00f2b2b4",
+      "sequence": 11,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "graph_channels",
+        "params": [
+          {}
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 2
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/router-pay/11-node3-gen-invoice",
+      "source_sha256": "7ff4b84c30c8dca5e3a9d6c4358af8427482a307963d6b9561dfc556ceb21bfa",
+      "source_script_sha256": "cdebe3f164d99d766fb1e96c77de87c166c27e933c0d2629fbd51a81712c6bab",
+      "sequence": 11,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x190",
+            "currency": "Fibd",
+            "description": "test invoice generated by node3",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "payment_hash",
+          "value": {
+            "pointer": "/result/invoice/data/payment_hash"
+          }
+        },
+        {
+          "variable": "payment_amount",
+          "value": {
+            "pointer": "/result/invoice/amount"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/invoice/data/attrs/2/final_htlc_minimum_expiry_delta"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0xdffa0"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/12-node1-send-payment",
+      "source_sha256": "6aae645fc77a7199be22c0f0eac95b148fa162c59ea884ae378e9199926247bf",
+      "source_script_sha256": "987ddfe4a2d9e1289d5ab48ec076ecbbedd93d42fef3e164f9c78dbe8da42fe9",
+      "sequence": 12,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "target_pubkey": "03032b99943822e721a651c5a5b9621043017daa9dc3ec81d83215fd2e25121187",
+            "amount": "0x190",
+            "payment_hash": "{{payment_hash}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/13-node-send-duplicate-payment-err",
+      "source_sha256": "e5a75bb2ac01f338cf7e6e9f46962a844486bcab479d42debb70bb1fe4c0ee36",
+      "source_script_sha256": "9c1e78e130ff6f5132ea537ec912f65564a8dd7a9e02e04d0662ef708bd3ee28",
+      "sequence": 13,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "target_pubkey": "03032b99943822e721a651c5a5b9621043017daa9dc3ec81d83215fd2e25121187",
+            "amount": "0x190",
+            "payment_hash": "{{payment_hash}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/13-node1-to-get-payment-status",
+      "source_sha256": "4fe5b434618efd76ebfe1b490e5127f102eec4548f9b37e561ff11a9ff852726",
+      "source_script_sha256": "be61e6f9abb0d9b850c648245a552d4fde96b5c77b601ab7f608a7014130a3f1",
+      "sequence": 13,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "get_payment",
+        "params": [
+          {
+            "payment_hash": "{{payment_hash}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 3000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "Success"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 500
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/13-node2-list-channels",
+      "source_sha256": "338635842b55d2f14b2247bae1c21556f3f49977705a72a36255c297a2b1664e",
+      "source_script_sha256": "0c34df7d90005da7bc6cd8c95aebd2f585855ed14febf981ad9f2e5d34add51a",
+      "sequence": 13,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 3000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/remote_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x190"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/local_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x37785d3ecb70"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/14-node3-gen-invoice-later",
+      "source_sha256": "14a69a4e6eaba5d1779db2079ffe8f56029274a0cd2a7495da8410dd11d8bdb6",
+      "source_script_sha256": "a461169ec5b9dcf60d2ca9d853766bb034d03d2e019d4d0170f89f78ad3c72bb",
+      "sequence": 14,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x613",
+            "currency": "Fibd",
+            "description": "test invoice generated by node3",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "encoded_invoice",
+          "value": {
+            "pointer": "/result/invoice_address"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/15-node1-send-payment-with-invoice",
+      "source_sha256": "bd02f13e00a743ff7e2bbbdb2484ad944c72d0804de6095055ca259bd264346d",
+      "source_script_sha256": "88c9e612f6cf7ce1bb8042a5faac02d94811ad82153d3346f4b48aea08f96cd7",
+      "sequence": 15,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "invoice": "{{encoded_invoice}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [
+        {
+          "variable": "payment_hash",
+          "value": {
+            "pointer": "/result/payment_hash"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/16-node1-get-nodes",
+      "source_sha256": "a595864a2d89243fe75ecc8da573060b5bd9b7fba8fd9da03b9fd01eb31365c8",
+      "source_script_sha256": "ca6ff662db90c7cd4fd207becc9cab8deed3e6a16de794976e6fc9037c408631",
+      "sequence": 16,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "graph_nodes",
+        "params": [
+          {}
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/nodes/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 4
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/16-node1-send-payment-keysend",
+      "source_sha256": "76e4ac92c2c9e41237c9682c0ac341eb225700d7ca32bda2dd742ec704eb7ec2",
+      "source_script_sha256": "88c9e612f6cf7ce1bb8042a5faac02d94811ad82153d3346f4b48aea08f96cd7",
+      "sequence": 16,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "target_pubkey": "03032b99943822e721a651c5a5b9621043017daa9dc3ec81d83215fd2e25121187",
+            "amount": "0x1F4",
+            "keysend": true
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [
+        {
+          "variable": "payment_hash",
+          "value": {
+            "pointer": "/result/payment_hash"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/17-node1-get-payment-status",
+      "source_sha256": "77f757b3e3437fc78899ca75eebc6f97973ff74deefdf259041cd1c8b9b762fe",
+      "source_script_sha256": "c8abb2c0f56297ffcaa31b3d3bdf485c52ad463cff65665d0c923dbe992b0805",
+      "sequence": 17,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "get_payment",
+        "params": [
+          {
+            "payment_hash": "{{payment_hash}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "Success"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/18-node1-get-channels",
+      "source_sha256": "23c37cd8abce42f528dfc00174e7126b5833a0c47def02685761ab938bf08ec3",
+      "source_script_sha256": "5197e235a0b2fb899180cd4892672a084f7f435f5234ba4c45df0781a672e869",
+      "sequence": 18,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "graph_channels",
+        "params": [
+          {}
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 2
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/19-node1-get-nodes-page",
+      "source_sha256": "341a6a7c7598e4524a25983f267163dbd369e35f5947ede8ec1036ee9119e7b7",
+      "source_script_sha256": "302b9b79a8cfed9511d77dbc08d9142907f5d4f94e6a38151a491e473a927201",
+      "sequence": 19,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "graph_nodes",
+        "params": [
+          {
+            "limit": "0x2"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [
+        {
+          "variable": "last_cursor",
+          "value": {
+            "pointer": "/result/last_cursor"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/nodes/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 2
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/20-node1-get-nodes-page-2",
+      "source_sha256": "040b035561b4689ab8340de7d49059a12dff84bfa0549dc8db2e41a4eeb4ad5e",
+      "source_script_sha256": "d4654deeb9a8c380c6ab65561e017b9f4b956c01c8304b9dc3de96810313cab8",
+      "sequence": 20,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "graph_nodes",
+        "params": [
+          {
+            "limit": "0x2",
+            "after": "{{last_cursor}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [
+        {
+          "variable": "last_cursor_2",
+          "value": {
+            "pointer": "/result/last_cursor"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/nodes/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 2
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/21-node1-get-nodes-page-3",
+      "source_sha256": "17fc4e3f47a1d17c82f1e3c593b33a71cfd81f47b579ea43fce0aa65b9fb7979",
+      "source_script_sha256": "b59ac75b2d143de9dc651a8fccf38f817cda137473811ba4e903300e75e9a53a",
+      "sequence": 21,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "graph_nodes",
+        "params": [
+          {
+            "limit": "0x2",
+            "after": "{{last_cursor_2}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/nodes/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 0
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/21-node2-list-channels",
+      "source_sha256": "06cc9ea4c955a648fb8041dcb439f7bd9011115bf75e009269f3d87f6f750889",
+      "source_script_sha256": "ca31a10835dfec431ea77147f8bba70880fa5eaa9ac63fdd0e38648c86485306",
+      "sequence": 21,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 6000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/remote_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x997"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/0/local_balance"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x37785d3ec369"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/22-node3-gen-expiring-invoice",
+      "source_sha256": "b4fa2d82a2c8c823d70d06afa714d133a5ed7f87ae53c403f06ddc016a243e12",
+      "source_script_sha256": "79acd31130b742af96805f5a6984644d1b32d4645f8b5c2e9f0091c8f22044af",
+      "sequence": 22,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x613",
+            "currency": "Fibd",
+            "description": "test invoice generated by node3",
+            "expiry": "0x2",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "encoded_invoice",
+          "value": {
+            "pointer": "/result/invoice_address"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 3000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/23-node1-send-payment-will-fail",
+      "source_sha256": "fb1a1f5276d3e5019c45e173ea02aa9f3ce701ba21793edece25aa2fbd8b9120",
+      "source_script_sha256": "d986c447106ed15d4e59c614ce4e221853c18a38212bd6d464c61207405739ee",
+      "sequence": 23,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "invoice": "{{encoded_invoice}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "contains",
+          "right": {
+            "literal": "invoice is expired"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/24-node1-gen-invoice-for-self",
+      "source_sha256": "4bbd57bc68453d4b0ee070dc047fcdc8eadf91da73bec0fa2330e33f9e419e93",
+      "source_script_sha256": "c7b32057ff7488cf12c358eb3e153ced4021c20530533c9eb4b2ec82f2ff776b",
+      "sequence": 24,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "new_invoice",
+        "params": [
+          {
+            "amount": "0x613ae650",
+            "currency": "Fibd",
+            "description": "test invoice generated by node1",
+            "expiry": "0xe10",
+            "final_expiry_delta": "0xDFFA0",
+            "payment_preimage": "{{payment_preimage}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "random",
+          "variable": "payment_preimage"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "payment_hash_self",
+          "value": {
+            "pointer": "/result/invoice/data/payment_hash"
+          }
+        },
+        {
+          "variable": "encoded_invoice_self",
+          "value": {
+            "pointer": "/result/invoice_address"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/25-node1-pay-self-with-node2-err",
+      "source_sha256": "d7f485fdeda12bcdb9e507755647a5876e851c7840719aa920bba0c67e8eed14",
+      "source_script_sha256": "6a6142f341082d656155fed1e61c9b40315ad11779cba2684583fc196b0a47c7",
+      "sequence": 25,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "invoice": "{{encoded_invoice_self}}",
+            "allow_self_payment": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "contains",
+          "right": {
+            "literal": "Failed to build route"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/26-node2-node1-open-channel",
+      "source_sha256": "5a6fad29be25b00d2f80a389ea198cd9be9b06bf1101bf40ace5f0574147dce9",
+      "source_script_sha256": "bf350d3dd68386bb3644d70681d647cacbdca8f7446d0f07dd982445795b2f05",
+      "sequence": 26,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "funding_amount": "0x277aab54d000",
+            "tlc_fee_proportional_millionths": "0x4B0"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/27-ckb-generate-blocks",
+      "source_sha256": "6c317eb65f8a8d1290d30783a9f1c347c00e3e25cdacb65f8029452de214f056",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 27,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/28-node1-list-graph-channels",
+      "source_sha256": "d0c0ef6048b441168bebc5fd7fd61b9ef33bcda043507904115ee65959698610",
+      "source_script_sha256": "25ae276332831a033c55a4c0d31253acb21979184c1ff82e30efda8449c58666",
+      "sequence": 28,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "graph_channels",
+        "params": [
+          {}
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 3
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/router-pay/29-node1-pay-self-with-node2-succ",
+      "source_sha256": "10ccc883e09732f208096efa4cce2a50c266b382a70037fd141c5c0ed9d70a70",
+      "source_script_sha256": "33ee1a81027fc8ae2806b67324dcbc76a0418cc27fd274ccea24a667e3330465",
+      "sequence": 29,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "invoice": "{{encoded_invoice_self}}",
+            "allow_self_payment": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/30-node2-list-graph-channels",
+      "source_sha256": "ac2a0e3e6a417ed3c67d6bd76ec7fc1466568aad90b324c5ea957b2a9b1035d4",
+      "source_script_sha256": "25ae276332831a033c55a4c0d31253acb21979184c1ff82e30efda8449c58666",
+      "sequence": 30,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "graph_channels",
+        "params": [
+          {}
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/channels/length"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 3
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/router-pay/31-node1-get-payment-status",
+      "source_sha256": "1924a6870ba4558047da5c3038936245db0e3bb24d67525b966d855dce770a19",
+      "source_script_sha256": "8333bc5652ca65ecf8f489c7d729e2d964c965c5aa2c88ad9fcbab3dbf23899b",
+      "sequence": 31,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "get_payment",
+        "params": [
+          {
+            "payment_hash": "{{payment_hash_self}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "Success"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 500
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/32-node2-list-channels",
+      "source_sha256": "115caa6b1bc5757a96b766a582b75a49c1b5798e8b324477910dac6797d2f3d8",
+      "source_script_sha256": "321ca0976d60efbfed81811f277f37a33d7c2ff2c1bae213738ee21e2aa20e8d",
+      "sequence": 32,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "CHANNEL_ID_TO_UPDATE",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/33-node2-update-channel",
+      "source_sha256": "66d70af530bb1ab8c89e8a8b0dbe743d0debb244f4231a1c7d3dcc5fc7508a4d",
+      "source_script_sha256": "6ca2a2136463b3983f10338250b11dbb92ca59650052a029b0853ae6675b662e",
+      "sequence": 32,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "update_channel",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID_TO_UPDATE}}",
+            "tlc_fee_proportional_millionths": "0x2710"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 3000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/34-node1-send-payment",
+      "source_sha256": "2d630d030e204fa18a13fa5b0077ef3fed40a35e004dbee0c7e1520f701f4910",
+      "source_script_sha256": "769fca1b0e583b3a8ca8b8219500660d05f7fceceb39743cfddcb27dbe5cfa55",
+      "sequence": 34,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "send_payment",
+        "params": [
+          {
+            "target_pubkey": "03032b99943822e721a651c5a5b9621043017daa9dc3ec81d83215fd2e25121187",
+            "amount": "0x190",
+            "keysend": true,
+            "custom_records": {
+              "0x1": "0x01020304",
+              "0x2": "0x05060708",
+              "0x3": "0x090a0b0c",
+              "0x4": "0x0d0e0f10",
+              "0x5": "0x11121314",
+              "0x6": "0x15161718",
+              "0x7": "0x191a1b1c191a1b1c"
+            }
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "payment_hash",
+          "value": {
+            "pointer": "/result/payment_hash"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/router-pay/35-node1-get-payment-status",
+      "source_sha256": "7b6c55f4d12e0eb0311161aa42b8beef27dcc237d9fec0f2bff6e3c8f6e598bc",
+      "source_script_sha256": "1351481ba58c3fc2a8ca5ce0e2a5cd9386021ce1f0eac3978cbda03e1fbd87e7",
+      "sequence": 35,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "get_payment",
+        "params": [
+          {
+            "payment_hash": "{{payment_hash}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "Success"
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result/custom_records/0x7"
+          },
+          "op": "eq",
+          "right": {
+            "literal": "0x191a1b1c191a1b1c"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 500
+        }
+      ]
+    }
+  ]
+}

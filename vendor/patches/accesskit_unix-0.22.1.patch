@@ -1,0 +1,277 @@
+--- accesskit_unix-0.22.1/Cargo.toml.orig-registry
++++ accesskit_unix-0.22.1/Cargo.toml
+@@ -99,6 +99,6 @@
+ optional = true
+ 
+ [dependencies.zbus]
+-version = "5.5"
+-features = ["async-io"]
++version = "=6.2.1"
++features = ["default-rt", "proxy", "service", "object-manager"]
+ default-features = false
+--- accesskit_unix-0.22.1/src/atspi/bus.rs.orig-registry
++++ accesskit_unix-0.22.1/src/atspi/bus.rs
+@@ -6,7 +6,7 @@
+ use crate::{
+     atspi::{ObjectId, cache_path, interfaces::*},
+     context::get_or_init_app_context,
+-    executor::{Executor, Task},
++    executor::Executor,
+ };
+ use accesskit_atspi_common::{
+     NodeId, NodeIdOrRoot, ObjectEvent, PlatformNode, PlatformRoot, Property, WindowEvent,
+@@ -24,12 +24,11 @@
+     Address, Connection, Result,
+     connection::Builder,
+     names::{BusName, InterfaceName, MemberName, OwnedUniqueName},
+-    zvariant::{Str, Value},
++    wire::{Str, Variant as Value},
+ };
+ 
+ pub(crate) struct Bus {
+     conn: Connection,
+-    _task: Task<()>,
+     socket_proxy: SocketProxy<'static>,
+     desktop: Arc<OnceLock<ObjectRefOwned>>,
+ }
+@@ -37,30 +36,17 @@
+ impl Bus {
+     pub(crate) async fn new(
+         session_bus: &Connection,
+-        executor: &Executor<'_>,
++        _executor: &Executor<'_>,
+     ) -> zbus::Result<Self> {
+         let address = match var("AT_SPI_BUS_ADDRESS") {
+             Ok(address) if !address.is_empty() => address,
+             _ => BusProxy::new(session_bus).await?.get_address().await?,
+         };
+         let address: Address = address.as_str().try_into()?;
+-        let conn = Builder::address(address)?
+-            .internal_executor(false)
+-            .build()
+-            .await?;
+-        let conn_copy = conn.clone();
+-        let _task = executor.spawn(
+-            async move {
+-                loop {
+-                    conn_copy.executor().tick().await;
+-                }
+-            },
+-            "accesskit_atspi_bus_task",
+-        );
++        let conn = Builder::address(address).build().await?;
+         let socket_proxy = SocketProxy::new(&conn).await?;
+         let mut bus = Bus {
+             conn,
+-            _task,
+             socket_proxy,
+             desktop: Arc::new(OnceLock::new()),
+         };
+@@ -80,7 +66,7 @@
+             .conn
+             .object_server()
+             .at(path.clone(), ApplicationInterface(node.clone()))
+-            .await?
++            .await?.is_none()
+         {
+             let desktop = self
+                 .socket_proxy
+@@ -174,7 +160,7 @@
+         map_or_ignoring_recoverable_error(
+             self.conn.object_server().at(path, interface).await,
+             false,
+-            |result| result,
++            |result| result.is_none(),
+         )
+     }
+ 
+@@ -412,7 +398,7 @@
+ 
+     async fn emit_cache_signal<B>(&self, signal_name: &str, body: &B) -> Result<()>
+     where
+-        B: serde::Serialize + zbus::zvariant::DynamicType,
++        B: serde::Serialize + zbus::wire::DynamicType,
+     {
+         map_or_ignoring_recoverable_error(
+             self.conn
+--- accesskit_unix-0.22.1/src/atspi/object_address.rs.orig-registry
++++ accesskit_unix-0.22.1/src/atspi/object_address.rs
+@@ -7,7 +7,7 @@
+ use serde::{Deserialize, Serialize};
+ use zbus::{
+     names::UniqueName,
+-    zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Type, Value},
++    wire::{ObjectPath, OwnedObjectPath, OwnedVariant as OwnedValue, Type, Variant as Value},
+ };
+ 
+ // https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/const.DBUS_PATH_NULL.html
+--- accesskit_unix-0.22.1/src/atspi/object_id.rs.orig-registry
++++ accesskit_unix-0.22.1/src/atspi/object_id.rs
+@@ -8,7 +8,7 @@
+ use serde::{Serialize, Serializer};
+ use zbus::{
+     names::UniqueName,
+-    zvariant::{ObjectPath, OwnedObjectPath, Signature, Structure, Type},
++    wire::{ObjectPath, OwnedObjectPath, Signature, Structure, Type},
+ };
+ 
+ const ACCESSIBLE_PATH_PREFIX: &str = "/org/a11y/atspi/accessible/";
+--- accesskit_unix-0.22.1/src/context.rs.orig-registry
++++ accesskit_unix-0.22.1/src/context.rs
+@@ -55,13 +55,10 @@
+             thread::spawn(|| {
+                 let executor = Executor::new();
+                 block_on(executor.run(async {
+-                    if let Ok(session_bus) = Builder::session() {
+-                        if let Ok(session_bus) = session_bus.internal_executor(false).build().await
+-                        {
+-                            if let Err(error) = run_event_loop(&executor, session_bus, rx).await {
+-                                if zbus_error_is_unrecoverable(&error) {
+-                                    panic!("Accessibility event loop failed: {error}");
+-                                }
++                    if let Ok(session_bus) = Builder::session().build().await {
++                        if let Err(error) = run_event_loop(&executor, session_bus, rx).await {
++                            if zbus_error_is_unrecoverable(&error) {
++                                panic!("Accessibility event loop failed: {error}");
+                             }
+                         }
+                     }
+@@ -171,16 +168,6 @@
+     session_bus: Connection,
+     rx: Receiver<Message>,
+ ) -> zbus::Result<()> {
+-    let session_bus_copy = session_bus.clone();
+-    let _session_bus_task = executor.spawn(
+-        async move {
+-            loop {
+-                session_bus_copy.executor().tick().await;
+-            }
+-        },
+-        "accesskit_session_bus_task",
+-    );
+-
+     let status = StatusProxy::new(&session_bus).await?;
+     let changes = status.receive_is_enabled_changed().await.fuse();
+     pin!(changes);
+--- accesskit_unix-0.22.1/src/executor.rs.orig-registry
++++ accesskit_unix-0.22.1/src/executor.rs
+@@ -9,24 +9,16 @@
+ 
+ #[cfg(not(feature = "tokio"))]
+ use async_executor::Executor as AsyncExecutor;
+-#[cfg(not(feature = "tokio"))]
+-use async_task::Task as AsyncTask;
+ #[cfg(feature = "tokio")]
+ use std::marker::PhantomData;
+ #[cfg(not(feature = "tokio"))]
+ use std::sync::Arc;
+-use std::{
+-    future::Future,
+-    pin::Pin,
+-    task::{Context, Poll},
+-};
+-#[cfg(feature = "tokio")]
+-use tokio::task::JoinHandle;
++use std::future::Future;
+ 
+ /// A wrapper around the underlying runtime/executor.
+ ///
+ /// This is used to run asynchronous tasks internally and allows integration with various runtimes.
+-/// See [`crate::Connection::executor`] for an example of integration with external runtimes.
++/// Runs the adapter control loop; zbus 6 owns its connection I/O tasks.
+ ///
+ /// **Note:** You can (and should) completely ignore this type when building with `tokio` feature
+ /// enabled.
+@@ -42,23 +34,6 @@
+ }
+ 
+ impl Executor<'_> {
+-    /// Spawns a task onto the executor.
+-    pub(crate) fn spawn<T: Send + 'static>(
+-        &self,
+-        future: impl Future<Output = T> + Send + 'static,
+-        #[allow(unused)] name: &str,
+-    ) -> Task<T> {
+-        #[cfg(not(feature = "tokio"))]
+-        {
+-            Task(Some(self.executor.spawn(future)))
+-        }
+-
+-        #[cfg(feature = "tokio")]
+-        {
+-            Task(Some(tokio::task::spawn(future)))
+-        }
+-    }
+-
+     /// Create a new `Executor`.
+     pub(crate) fn new() -> Self {
+         #[cfg(not(feature = "tokio"))]
+@@ -91,68 +66,3 @@
+     }
+ }
+ 
+-/// A wrapper around the task API of the underlying runtime/executor.
+-///
+-/// This follows the semantics of `async_task::Task` on drop:
+-///
+-/// * it will be cancelled, rather than detached. For detaching, use the `detach` method.
+-/// * errors from the task cancellation will will be ignored. If you need to know about task errors,
+-///   convert the task to a `FallibleTask` using the `fallible` method.
+-#[cfg(not(feature = "tokio"))]
+-#[derive(Debug)]
+-pub(crate) struct Task<T>(Option<AsyncTask<T>>);
+-#[cfg(feature = "tokio")]
+-#[derive(Debug)]
+-pub(crate) struct Task<T>(Option<JoinHandle<T>>);
+-
+-impl<T> Task<T> {
+-    /// Detaches the task to let it keep running in the background.
+-    #[allow(unused_mut)]
+-    #[allow(unused)]
+-    pub(crate) fn detach(mut self) {
+-        #[cfg(not(feature = "tokio"))]
+-        {
+-            self.0.take().expect("async_task::Task is none").detach()
+-        }
+-
+-        #[cfg(feature = "tokio")]
+-        {
+-            self.0.take().expect("tokio::task::JoinHandle is none");
+-        }
+-    }
+-}
+-
+-impl<T> Drop for Task<T> {
+-    fn drop(&mut self) {
+-        #[cfg(feature = "tokio")]
+-        {
+-            if let Some(join_handle) = self.0.take() {
+-                join_handle.abort();
+-            }
+-        }
+-    }
+-}
+-
+-impl<T> Future for Task<T> {
+-    type Output = T;
+-
+-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+-        #[cfg(not(feature = "tokio"))]
+-        {
+-            Pin::new(&mut self.get_mut().0.as_mut().expect("async_task::Task is none")).poll(cx)
+-        }
+-
+-        #[cfg(feature = "tokio")]
+-        {
+-            Pin::new(
+-                &mut self
+-                    .get_mut()
+-                    .0
+-                    .as_mut()
+-                    .expect("tokio::task::JoinHandle is none"),
+-            )
+-            .poll(cx)
+-            .map(|r| r.expect("tokio::task::JoinHandle error"))
+-        }
+-    }
+-}

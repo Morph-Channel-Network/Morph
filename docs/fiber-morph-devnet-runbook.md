@@ -20,7 +20,7 @@ evidence to trust.
 | --- | --- | --- |
 | Check local dependencies only | `make fiber-morph-devnet-preflight` | Creates a run directory with `status=preflight-passed`. |
 | Prove Morph/Fiber coexistence and Payment Gateway multi-hop | `make fiber-morph-devnet-acceptance` | Runs Morph stateful scenarios, Fiber external funding, and Morph Payment Gateway x402/fair-exchange over a real three-node Fiber route. |
-| Prove the full Morph plus Fiber matrix | `make fiber-morph-devnet-acceptance-full` | Runs coexistence, strict Fiber Bruno suites, funding-tx verification, and the combined audit. |
+| Prove the full Morph plus Fiber matrix | `make fiber-morph-devnet-acceptance-full` | Runs coexistence, strict Fiber Rust scenarios, funding-tx verification, and the combined audit. |
 | Recheck existing evidence | `make fiber-morph-devnet-audit FIBER_MORPH_ACCEPTANCE_RUN=target/fiber-morph-devnet-acceptance/<run-id>` | Rebuilds `business-flow-audit.json` from an existing run. |
 | Debug only the Fiber strict matrix | `FIBER_MORPH_ACCEPTANCE_MODE=fiber scripts/fiber-morph-devnet-acceptance.sh` | Runs Fiber suites without the Morph stateful matrix. |
 
@@ -48,7 +48,6 @@ Required tools:
 - Rust and Cargo
 - `jq`
 - `curl`
-- Node.js and `npm`
 - either `lsof` or `ss` (from iproute2) for deterministic failed-stack cleanup
 - CKB and ckb-cli build prerequisites
 
@@ -93,10 +92,10 @@ The full gate performs these phases:
 4. Runs the sole current matrix with `EXTERNAL_RPC_URL` against Fiber's CKB RPC, capturing actual genesis/code evidence without starting or killing another chain.
 5. Runs Fiber external funding on the same CKB devnet.
 6. Runs the Fiber external-funding restart regression.
-7. Starts a fresh Fiber `router-pay` topology and runs its Bruno suite.
+7. Starts a fresh Fiber `router-pay` topology and runs its Rust scenario.
 8. Runs Morph Payment Gateway x402/credential and fair-exchange payments from Fiber
    node1 through node2 to node3.
-9. Starts fresh Fiber devnets for the remaining strict Fiber Bruno suite set.
+9. Starts fresh Fiber devnets for the remaining strict Fiber Rust scenario set.
 10. Runs the four Fiber funding-transaction verification cases.
 11. Writes the acceptance matrix, summary, and business-flow audit.
 
@@ -122,7 +121,7 @@ the expected files and log markers are present.
 
 | Flow | What it proves | Main evidence |
 | --- | --- | --- |
-| Same CKB devnet coexistence | Morph deploys and exercises scripts on the CKB node started by Fiber, then Fiber runs channel acceptance on that same node. | `acceptance-matrix.json`, `morph-stateful/scenarios/summary-check.json`, `fiber-bruno-e2e_external-funding-open.json` |
+| Same CKB devnet coexistence | Morph deploys and exercises scripts on the CKB node started by Fiber, then Fiber runs channel acceptance on that same node. | `acceptance-matrix.json`, `morph-stateful/scenarios/summary-check.json`, `fiber-rust-e2e_external-funding-open.json` |
 
 ### Morph Business Flows
 
@@ -241,8 +240,8 @@ target/fiber-morph-devnet-acceptance/<run-id>/fiber-coexistence-genesis.json
 target/fiber-morph-devnet-acceptance/<run-id>/logs/morph-stateful-on-fiber-ckb.log
 target/fiber-morph-devnet-acceptance/<run-id>/morph-payment-gateway-fiber-e2e/result.json
 target/fiber-morph-devnet-acceptance/<run-id>/morph-payment-gateway-fiber-e2e/manifest.json
-target/fiber-morph-devnet-acceptance/<run-id>/fiber-bruno-*.json
-target/fiber-morph-devnet-acceptance/<run-id>/logs/fiber-bruno-*.log
+target/fiber-morph-devnet-acceptance/<run-id>/fiber-rust-*.json
+target/fiber-morph-devnet-acceptance/<run-id>/logs/fiber-rust-*.log
 ```
 
 Useful checks:
@@ -271,7 +270,7 @@ Use the failing command's run directory. Do not delete it before audit.
 1. Read `manifest.txt`. If it lacks `status=passed`, the run failed before the
    final audit.
 2. Read `logs/morph-stateful-on-fiber-ckb.log` for Morph scenario failures.
-3. Read the relevant `fiber-bruno-*.json`, then open the log path stored in its
+3. Read the relevant `fiber-rust-*.json`, then open the log path stored in its
    `.log` field.
 4. Rerun `make fiber-morph-devnet-audit FIBER_MORPH_ACCEPTANCE_RUN=<run-dir>`
    after fixing missing evidence or stale artefacts.
@@ -286,17 +285,17 @@ Common causes:
 | Clean-worktree error | Local source files changed before a production gate. | Commit, stash, or run only preflight. |
 | Missing CKB or ckb-cli binary | Sibling checkout is absent or not built. | Run preflight, then build the reported dependency. |
 | Morph freshness failure | Artefacts were generated from a different Morph commit. | Rerun the gate from a clean current commit. |
-| Missing Fiber result file | A strict Fiber suite or funding case was skipped. | Use the default `FIBER_BRUNO_SUITES` and `FIBER_FUNDING_TX_VERIFICATION_CASES`. |
-| Missing Morph Payment Gateway result | The Payment Gateway process, terminal payment polling, or three-node `router-pay` substrate failed. | Inspect `logs/morph-payment-gateway-fiber-e2e.log`, both Payment Gateway logs, and the router-pay Bruno log. |
-| Missing Fiber log marker | The Bruno suite did not produce the required behavioural evidence. | Inspect the suite log and update the test or marker deliberately. |
-| `external-funding-open` balance/readiness failure | Current Fiber Bruno balance deltas can be stale even when open/sign/submit/close/inspect requests succeed. | The coexistence harness accepts only the known stale shape and still requires the critical request markers. |
+| Missing Fiber result file | A strict Fiber suite or funding case was skipped. | Use the default `FIBER_RUST_SUITES` and `FIBER_FUNDING_TX_VERIFICATION_CASES`. |
+| Missing Morph Payment Gateway result | The Payment Gateway process, terminal payment polling, or three-node `router-pay` substrate failed. | Inspect `logs/morph-payment-gateway-fiber-e2e.log`, both Payment Gateway logs, and the router-pay Rust log. |
+| Missing Fiber log marker | The Rust scenario did not produce the required behavioural evidence. | Inspect the suite log and update the test or marker deliberately. |
+| External funding balance/readiness timeout | Native exact-integer checks did not converge within their bound. | Inspect the saved native step and actual chain/indexer state; do not waive the failed economic check. |
 
 ## Narrow Debug Runs
 
 Use narrow runs only for diagnosis. They are not release acceptance.
 
 ```sh
-FIBER_BRUNO_SUITES="e2e/router-pay" \
+FIBER_RUST_SUITES="e2e/router-pay" \
 FIBER_MORPH_ACCEPTANCE_MODE=fiber \
 scripts/fiber-morph-devnet-acceptance.sh
 ```
@@ -337,7 +336,7 @@ protocol merger by itself.
 ## Evidence scope after current-protocol consolidation
 
 The same-chain Morph phase and the restarted Fiber Payment Gateway routing
-phase are separate recorded phases. Preserve all Bruno/restart logs and actual
+phase are separate recorded phases. Preserve all native scenario/restart logs and actual
 terminal Payment Gateway receipts. The Payment Gateway manifest records its
 executed binary and SDK digest and explicitly says that routed Fiber traffic
 does not prove Morph custody backing. The current Factory can create children whose parties are outside

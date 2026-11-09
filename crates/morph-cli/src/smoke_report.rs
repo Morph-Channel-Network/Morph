@@ -2242,7 +2242,7 @@ mod tests {
         let damaged = transaction.as_builder().witnesses(witnesses.pack()).build();
         assert!(proof_from_request("factory", "root.json", &request, Some(&damaged)).is_err());
         let corpus: Value = serde_json::from_str(include_str!(
-            "../../../sdk/typescript/test/fixtures/factory-transitions.json"
+            "../../../fixtures/protocol/factory-transitions.json"
         ))
         .unwrap();
         for case in corpus["cases"].as_array().unwrap() {

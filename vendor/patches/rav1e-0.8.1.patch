@@ -1,0 +1,12 @@
+--- rav1e-0.8.1/Cargo.toml.orig-registry
++++ rav1e-0.8.1/Cargo.toml
+@@ -222,7 +222,8 @@
+ version = "0.2"
+ 
+ [dependencies.paste]
+-version = "1.0"
++version = "=0.2.3"
++package = "pastey"
+ 
+ [dependencies.profiling]
+ version = "1"

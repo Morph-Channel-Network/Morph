@@ -165,7 +165,7 @@ evidence={'schema':'morph.current_splice_fixture_evidence.v1','scope':'developme
  'factory':factory}
 (run/'evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
 if os.environ.get('MORPH_UPDATE_FIXTURES')=='1':
- dest=Path('sdk/typescript/test/fixtures/multi-asset-splice-transitions.json')
+ dest=Path('fixtures/protocol/multi-asset-splice-transitions.json')
  dest.write_bytes(trace.read_bytes());dest.with_suffix('.evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
 print('[current-e2e] native cases completed; artifacts: '+str(run))
 PY

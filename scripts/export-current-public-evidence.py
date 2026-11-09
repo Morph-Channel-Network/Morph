@@ -350,7 +350,7 @@ for arbitrary wallet/asset scripts or all proof topologies.
 Maximum-dimension VM fixture measurements are documented in
 [`current-protocol-coverage.md`](https://github.com/Morph-Channel-Network/Morph/blob/{origin['source_commit']}/docs/current-protocol-coverage.md#measured-dimensional-limits).
 Retained Factory floors, proof-data availability and signer rollback assumptions
-remain material. Full external Fiber/Bruno traffic was not executed in this
+remain material. Full external Fiber/Rust-scenario traffic was not executed in this
 migration checkpoint; no real-asset or mainnet admission is implied.
 
 ## Files and publication boundary

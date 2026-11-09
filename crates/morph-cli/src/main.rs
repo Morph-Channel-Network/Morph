@@ -535,12 +535,9 @@ enum HubCommand {
         /// Allow replacing the durable Hub state file through PUT /api/state-file.
         #[arg(long)]
         allow_state_restore: bool,
-        /// Explicit CORS origin for direct browser API access, for example http://127.0.0.1:5173.
+        /// Explicit CORS origin for direct browser API access, when an external browser client is explicitly admitted.
         #[arg(long, env = "MORPH_HUB_CORS_ORIGIN")]
         cors_origin: Option<String>,
-        /// Directory containing the built Morph Hub UI.
-        #[arg(long, default_value = "ui/morph-hub/dist")]
-        ui_dir: PathBuf,
     },
 }
 
@@ -1136,7 +1133,6 @@ fn main() -> Result<()> {
                 allow_unauthenticated_loopback,
                 allow_state_restore,
                 cors_origin,
-                ui_dir,
             } => hub::serve(hub::HubServeOptions {
                 listen,
                 state_path,
@@ -1145,7 +1141,6 @@ fn main() -> Result<()> {
                 network: morph_network(network),
                 ckb_rpc_url,
                 watch_alert_file,
-                ui_dir,
                 auth_token: resolve_hub_auth_token(
                     auth_token,
                     auth_token_file,

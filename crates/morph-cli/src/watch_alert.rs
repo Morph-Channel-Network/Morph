@@ -11,27 +11,7 @@ use serde::{Deserialize, Serialize};
 
 const WATCH_ALERT_SCHEMA: &str = "morph.watchtower_alert";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WatchAlertSeverity {
-    Info,
-    Warning,
-    Critical,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WatchAlertEvent {
-    ChainReorgDetected,
-    RecoveryDataInvalid,
-    PublicationFailed,
-    OlderStateDetected,
-    PublicationSubmitted,
-    SpliceDetected,
-    SplicePackageStale,
-    SplicePublicationSubmitted,
-    ScanIdle,
-}
+pub use morph_hub_api::{WatchAlertEvent, WatchAlertSeverity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WatchtowerAlert {

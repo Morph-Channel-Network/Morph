@@ -6,6 +6,11 @@ members = [
   "crates/morph-cli",
   "crates/morph-payment-gateway",
   "crates/morph-fiber-adapter",
+  "crates/morph-desktop",
+  "crates/morph-packages",
+  "crates/morph-hub-api",
+  "crates/morph-sdk",
+  "crates/morph-xtask",
   "contracts/morph-script-common",
   "contracts/morph-state-lock",
   "contracts/morph-state-type",
@@ -46,7 +51,9 @@ hex = "0.4"
 getrandom = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# State-file exports may contain private Rust u128 quantities. Dynamic JSON
+# must preserve them exactly while public protocol amounts remain strings.
+serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 thiserror = "2.0"
 ckb-std = { version = "1.1.0", default-features = false, features = ["allocator", "calc-hash", "ckb-types"] }
 ckb-testtool = "1.1.1"
@@ -72,8 +79,43 @@ ckb-verification = { path = "vendor/ckb-verification-1.2.1" }
 ckb-vm-definitions = { path = "vendor/ckb-vm-definitions-0.24.15" }
 molecule = { path = "vendor/molecule-0.9.2" }
 
+gpui-base = { path = "vendor/gpui-base-0.9.0" }
+gpui-component = { path = "vendor/gpui-component-0.9.0" }
+
+gpui-pre = { path = "vendor/gpui-pre-0.3.11" }
+
+cosmic-text = { path = "vendor/cosmic-text-0.19.0" }
+
+gpui-pre-linux = { path = "vendor/gpui-pre-linux-0.3.11" }
+
+gpui-kit = { path = "vendor/gpui-kit-0.9.0" }
+
+gpui-kit-assets = { path = "vendor/gpui-kit-assets-0.9.0" }
+
+rav1e = { path = "vendor/rav1e-0.8.1" }
+
+accesskit_unix = { path = "vendor/accesskit_unix-0.22.1" }
+
+accesskit_atspi_common = { path = "vendor/accesskit_atspi_common-0.19.1" }
+
+atspi = { path = "vendor/atspi-0.29.0" }
+
+atspi-common = { path = "vendor/atspi-common-0.13.0" }
+
+atspi-proxies = { path = "vendor/atspi-proxies-0.13.0" }
+
+zbus-lockstep = { path = "vendor/zbus-lockstep-0.5.2" }
+
+zbus-lockstep-macros = { path = "vendor/zbus-lockstep-macros-0.5.2" }
+
 [profile.release]
 codegen-units = 1
 lto = true
 panic = "abort"
 strip = true
+
+# Host desktop packaging only; contract release flags remain unchanged.
+[profile.desktop]
+inherits = "release"
+codegen-units = 16
+lto = "thin"

@@ -35,6 +35,19 @@ allow = [
   "Zlib",
 ]
 
+# Exact native-desktop exceptions, not a general MPL allowlist. The complete
+# unchanged registry source archives and notices ship with desktop bundles;
+# vendor/check.py verifies them against Cargo.lock. See docs/native-gui-dependencies.md.
+[[licenses.exceptions]]
+name = "option-ext"
+version = "=0.2.0"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "cbindgen"
+version = "=0.28.0"
+allow = ["MPL-2.0"]
+
 [licenses.private]
 ignore = false
 

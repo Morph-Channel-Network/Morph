@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn current_factory_policy_preserves_all_five_verified_transition_classes() {
         let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../sdk/typescript/test/fixtures/factory-transitions.json"
+            "../../../fixtures/protocol/factory-transitions.json"
         ))
         .unwrap();
         let cases = corpus["cases"].as_array().unwrap();
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn observed_current_splices_require_old_authority_and_preserve_removed_and_admitted_assets() {
         let transitions: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../sdk/typescript/test/fixtures/multi-asset-splice-transitions.json"
+            "../../../fixtures/protocol/multi-asset-splice-transitions.json"
         ))
         .unwrap();
         for (index, transition) in transitions.into_iter().enumerate() {

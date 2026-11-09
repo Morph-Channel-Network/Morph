@@ -62,7 +62,7 @@ pub fn reduced_child_request() -> (
     Vec<MultiAssetRecoveryPackage>,
 ) {
     let cases: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../sdk/typescript/test/fixtures/factory-transitions.json"
+        "../../../../fixtures/protocol/factory-transitions.json"
     ))
     .unwrap();
     let case = cases["cases"]

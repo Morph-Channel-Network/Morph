@@ -1,0 +1,54 @@
+--- gpui-kit-assets-0.9.0/Cargo.toml.orig-registry
++++ gpui-kit-assets-0.9.0/Cargo.toml
+@@ -37,7 +37,7 @@
+ resolver = "2"
+ 
+ [features]
+-gpui-fast = ["dep:gpui-fast"]
++gpui-fast = []
+ 
+ [lib]
+ name = "gpui_kit_assets"
+@@ -66,24 +66,8 @@
+ version = "=0.3.11"
+ package = "gpui-pre"
+ 
+-[dependencies.gpui-fast]
+-version = "0.1.13"
+-features = ["windows-manifest-provided-by-host"]
+-optional = true
+-package = "gpui-fast"
+-
+ [dependencies.log]
+ version = "0.4"
+-
+-[dev-dependencies.gpui-fast-platform]
+-version = "0.1.13"
+-features = [
+-    "font-kit",
+-    "x11",
+-    "wayland",
+-    "runtime_shaders",
+-]
+-package = "gpui-fast-platform"
+ 
+ [dev-dependencies.gpui_platform]
+ version = "=0.3.11"
+@@ -103,7 +87,7 @@
+ ]
+ 
+ [target.'cfg(target_family = "wasm")'.dependencies.reqwest]
+-version = "=0.12.15"
++version = "=0.12.28"
+ features = [
+     "charset",
+     "http2",
+@@ -114,7 +98,7 @@
+     "stream",
+ ]
+ default-features = false
+-package = "gpui-pre-reqwest"
++package = "reqwest"
+ 
+ [target.'cfg(target_family = "wasm")'.dependencies.wasm-bindgen]
+ version = "0.2"

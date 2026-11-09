@@ -1162,7 +1162,7 @@ mod activation_tests {
     fn factory_child_activation_uses_public_parent_authority_and_original_child_terms() {
         let (request, _, _, children) = crate::factory_journal_fixture::reduced_child_request();
         let corpus: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../sdk/typescript/test/fixtures/factory-transitions.json"
+            "../../../../fixtures/protocol/factory-transitions.json"
         ))
         .unwrap();
         let case = corpus["cases"]

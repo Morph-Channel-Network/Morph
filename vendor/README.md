@@ -23,7 +23,9 @@ The complete local changes are:
 | Consumers | Change |
 | --- | --- |
 | ckb-crypto, ckb-fixed-hash-core, ckb-jsonrpc-types, ckb-script, ckb-system-scripts, ckb-testtool, molecule | Select registry faster-hex =0.10.1 with std and without its optional serde feature. Molecule retains its optional dependency and existing std feature gate. |
-| ckb-types, ckb-vm-definitions | Select the maintained pastey =0.2.3 macro package under the existing `paste` Rust import name. This replaces the original unmaintained paste package. |
+| ckb-types, ckb-vm-definitions, gpui-component | Select the maintained pastey =0.2.3 macro package under the existing `paste` Rust import name. This replaces the original unmaintained paste package. |
+| gpui-base, gpui-component | Select maintained web-time =1.1.0 for timing; gpui-base changes only the former `instant::` import qualifications. |
+| gpui-pre, cosmic-text | Select resvg/usvg =0.49.0 and fontdb =0.24.0; the sole GPUI SVG glyph-coverage query uses maintained skrifa =0.44.0 instead of ttf-parser. Public GUI APIs and the GPUI 0.3.11 family stay pinned. |
 | cacache | Select registry memmap2 =0.9.12; preserve its optional mmap feature. |
 | ckb-verification | Select registry lru =0.18.2; construct the same 30,000-entry cache using the required positive capacity type. |
 

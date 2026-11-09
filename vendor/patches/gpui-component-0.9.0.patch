@@ -1,0 +1,325 @@
+--- gpui-component-0.9.0/Cargo.toml.orig-registry
++++ gpui-component-0.9.0/Cargo.toml
+@@ -40,222 +40,49 @@
+ 
+ [features]
+ decimal = ["gpui-base/decimal"]
+-gpui-fast = [
+-    "dep:gpui-fast",
+-    "gpui-base/gpui-fast",
+-    "gpui-kit-assets/gpui-fast",
+-]
+-inspector = [
+-    "gpui_macros/inspector",
+-    "gpui/inspector",
+-    "gpui-base/inspector",
+-    "gpui-fast?/inspector",
+-]
+-speech = [
+-    "dep:cpal",
+-    "dep:block2",
+-    "dep:objc2-speech",
+-    "dep:objc2-avf-audio",
+-    "dep:objc2-av-foundation",
+-    "objc2-foundation/NSBundle",
+-    "objc2-foundation/NSDictionary",
+-    "objc2-foundation/NSError",
+-    "objc2-foundation/NSLocale",
+-    "windows/Foundation_Collections",
+-    "windows/Globalization",
+-    "windows/Media_SpeechRecognition",
+-]
+-syntect = [
+-    "dep:syntect",
+-    "dep:two-face",
+-]
+-test-support = [
+-    "gpui/test-support",
+-    "gpui-base/test-support",
+-    "gpui-fast?/test-support",
+-]
+-tree-sitter = [
+-    "dep:tree-sitter",
+-    "dep:tree-sitter-json",
+-]
+-tree-sitter-astro = [
+-    "tree-sitter",
+-    "dep:tree-sitter-astro-next",
+-]
+-tree-sitter-bash = [
+-    "tree-sitter",
+-    "dep:tree-sitter-bash",
+-]
+-tree-sitter-c = [
+-    "tree-sitter",
+-    "dep:tree-sitter-c",
+-]
+-tree-sitter-cmake = [
+-    "tree-sitter",
+-    "dep:tree-sitter-cmake",
+-]
+-tree-sitter-cpp = [
+-    "tree-sitter",
+-    "dep:tree-sitter-cpp",
+-]
+-tree-sitter-csharp = [
+-    "tree-sitter",
+-    "dep:tree-sitter-c-sharp",
+-]
+-tree-sitter-css = [
+-    "tree-sitter",
+-    "dep:tree-sitter-css",
+-]
+-tree-sitter-diff = [
+-    "tree-sitter",
+-    "dep:tree-sitter-diff",
+-]
+-tree-sitter-ejs = [
+-    "tree-sitter",
+-    "dep:tree-sitter-embedded-template",
+-]
+-tree-sitter-elixir = [
+-    "tree-sitter",
+-    "dep:tree-sitter-elixir",
+-]
+-tree-sitter-erb = [
+-    "tree-sitter",
+-    "dep:tree-sitter-embedded-template",
+-]
+-tree-sitter-go = [
+-    "tree-sitter",
+-    "dep:tree-sitter-go",
+-]
+-tree-sitter-graphql = [
+-    "tree-sitter",
+-    "dep:tree-sitter-graphql",
+-]
+-tree-sitter-html = [
+-    "tree-sitter",
+-    "dep:tree-sitter-html",
+-]
+-tree-sitter-java = [
+-    "tree-sitter",
+-    "dep:tree-sitter-java",
+-]
+-tree-sitter-javascript = [
+-    "tree-sitter",
+-    "dep:tree-sitter-javascript",
+-]
+-tree-sitter-jsdoc = [
+-    "tree-sitter",
+-    "dep:tree-sitter-jsdoc",
+-]
+-tree-sitter-kotlin = [
+-    "tree-sitter",
+-    "dep:tree-sitter-kotlin-sg",
+-]
+-tree-sitter-languages = [
+-    "tree-sitter-astro",
+-    "tree-sitter-bash",
+-    "tree-sitter-c",
+-    "tree-sitter-cmake",
+-    "tree-sitter-cpp",
+-    "tree-sitter-csharp",
+-    "tree-sitter-css",
+-    "tree-sitter-diff",
+-    "tree-sitter-ejs",
+-    "tree-sitter-elixir",
+-    "tree-sitter-erb",
+-    "tree-sitter-go",
+-    "tree-sitter-graphql",
+-    "tree-sitter-html",
+-    "tree-sitter-java",
+-    "tree-sitter-javascript",
+-    "tree-sitter-jsdoc",
+-    "tree-sitter-kotlin",
+-    "tree-sitter-lua",
+-    "tree-sitter-make",
+-    "tree-sitter-markdown",
+-    "tree-sitter-php",
+-    "tree-sitter-proto",
+-    "tree-sitter-python",
+-    "tree-sitter-ruby",
+-    "tree-sitter-rust",
+-    "tree-sitter-scala",
+-    "tree-sitter-sql",
+-    "tree-sitter-svelte",
+-    "tree-sitter-swift",
+-    "tree-sitter-toml",
+-    "tree-sitter-tsx",
+-    "tree-sitter-typescript",
+-    "tree-sitter-yaml",
+-    "tree-sitter-zig",
+-]
+-tree-sitter-lua = [
+-    "tree-sitter",
+-    "dep:tree-sitter-lua",
+-]
+-tree-sitter-make = [
+-    "tree-sitter",
+-    "dep:tree-sitter-make",
+-]
+-tree-sitter-markdown = [
+-    "tree-sitter",
+-    "dep:tree-sitter-md",
+-]
++gpui-fast = []
++inspector = ["gpui_macros/inspector", "gpui/inspector", "gpui-base/inspector"]
++speech = ["dep:cpal", "dep:block2", "dep:objc2-speech", "dep:objc2-avf-audio", "dep:objc2-av-foundation", "objc2-foundation/NSBundle", "objc2-foundation/NSDictionary", "objc2-foundation/NSError", "objc2-foundation/NSLocale", "windows/Foundation_Collections", "windows/Globalization", "windows/Media_SpeechRecognition"]
++syntect = ["dep:syntect", "dep:two-face"]
++test-support = ["gpui/test-support", "gpui-base/test-support"]
++tree-sitter = ["dep:tree-sitter", "dep:tree-sitter-json"]
++tree-sitter-astro = ["tree-sitter", "dep:tree-sitter-astro-next"]
++tree-sitter-bash = ["tree-sitter", "dep:tree-sitter-bash"]
++tree-sitter-c = ["tree-sitter", "dep:tree-sitter-c"]
++tree-sitter-cmake = ["tree-sitter", "dep:tree-sitter-cmake"]
++tree-sitter-cpp = ["tree-sitter", "dep:tree-sitter-cpp"]
++tree-sitter-csharp = ["tree-sitter", "dep:tree-sitter-c-sharp"]
++tree-sitter-css = ["tree-sitter", "dep:tree-sitter-css"]
++tree-sitter-diff = ["tree-sitter", "dep:tree-sitter-diff"]
++tree-sitter-ejs = ["tree-sitter", "dep:tree-sitter-embedded-template"]
++tree-sitter-elixir = ["tree-sitter", "dep:tree-sitter-elixir"]
++tree-sitter-erb = ["tree-sitter", "dep:tree-sitter-embedded-template"]
++tree-sitter-go = ["tree-sitter", "dep:tree-sitter-go"]
++tree-sitter-graphql = ["tree-sitter", "dep:tree-sitter-graphql"]
++tree-sitter-html = ["tree-sitter", "dep:tree-sitter-html"]
++tree-sitter-java = ["tree-sitter", "dep:tree-sitter-java"]
++tree-sitter-javascript = ["tree-sitter", "dep:tree-sitter-javascript"]
++tree-sitter-jsdoc = ["tree-sitter", "dep:tree-sitter-jsdoc"]
++tree-sitter-kotlin = ["tree-sitter", "dep:tree-sitter-kotlin-sg"]
++tree-sitter-languages = ["tree-sitter-astro", "tree-sitter-bash", "tree-sitter-c", "tree-sitter-cmake", "tree-sitter-cpp", "tree-sitter-csharp", "tree-sitter-css", "tree-sitter-diff", "tree-sitter-ejs", "tree-sitter-elixir", "tree-sitter-erb", "tree-sitter-go", "tree-sitter-graphql", "tree-sitter-html", "tree-sitter-java", "tree-sitter-javascript", "tree-sitter-jsdoc", "tree-sitter-kotlin", "tree-sitter-lua", "tree-sitter-make", "tree-sitter-markdown", "tree-sitter-php", "tree-sitter-proto", "tree-sitter-python", "tree-sitter-ruby", "tree-sitter-rust", "tree-sitter-scala", "tree-sitter-sql", "tree-sitter-svelte", "tree-sitter-swift", "tree-sitter-toml", "tree-sitter-tsx", "tree-sitter-typescript", "tree-sitter-yaml", "tree-sitter-zig"]
++tree-sitter-lua = ["tree-sitter", "dep:tree-sitter-lua"]
++tree-sitter-make = ["tree-sitter", "dep:tree-sitter-make"]
++tree-sitter-markdown = ["tree-sitter", "dep:tree-sitter-md"]
+ tree-sitter-markdown-inline = ["tree-sitter-markdown"]
+-tree-sitter-php = [
+-    "tree-sitter",
+-    "dep:tree-sitter-php",
+-]
+-tree-sitter-proto = [
+-    "tree-sitter",
+-    "dep:tree-sitter-proto",
+-]
+-tree-sitter-python = [
+-    "tree-sitter",
+-    "dep:tree-sitter-python",
+-]
+-tree-sitter-ruby = [
+-    "tree-sitter",
+-    "dep:tree-sitter-ruby",
+-]
+-tree-sitter-rust = [
+-    "tree-sitter",
+-    "dep:tree-sitter-rust",
+-]
+-tree-sitter-scala = [
+-    "tree-sitter",
+-    "dep:tree-sitter-scala",
+-]
+-tree-sitter-sql = [
+-    "tree-sitter",
+-    "dep:tree-sitter-sequel",
+-]
+-tree-sitter-svelte = [
+-    "tree-sitter",
+-    "dep:tree-sitter-svelte-next",
+-]
+-tree-sitter-swift = [
+-    "tree-sitter",
+-    "dep:tree-sitter-swift",
+-]
+-tree-sitter-toml = [
+-    "tree-sitter",
+-    "dep:tree-sitter-toml-ng",
+-]
+-tree-sitter-tsx = [
+-    "tree-sitter",
+-    "dep:tree-sitter-typescript",
+-]
+-tree-sitter-typescript = [
+-    "tree-sitter",
+-    "dep:tree-sitter-typescript",
+-]
+-tree-sitter-yaml = [
+-    "tree-sitter",
+-    "dep:tree-sitter-yaml",
+-]
+-tree-sitter-zig = [
+-    "tree-sitter",
+-    "dep:tree-sitter-zig",
+-]
++tree-sitter-php = ["tree-sitter", "dep:tree-sitter-php"]
++tree-sitter-proto = ["tree-sitter", "dep:tree-sitter-proto"]
++tree-sitter-python = ["tree-sitter", "dep:tree-sitter-python"]
++tree-sitter-ruby = ["tree-sitter", "dep:tree-sitter-ruby"]
++tree-sitter-rust = ["tree-sitter", "dep:tree-sitter-rust"]
++tree-sitter-scala = ["tree-sitter", "dep:tree-sitter-scala"]
++tree-sitter-sql = ["tree-sitter", "dep:tree-sitter-sequel"]
++tree-sitter-svelte = ["tree-sitter", "dep:tree-sitter-svelte-next"]
++tree-sitter-swift = ["tree-sitter", "dep:tree-sitter-swift"]
++tree-sitter-toml = ["tree-sitter", "dep:tree-sitter-toml-ng"]
++tree-sitter-tsx = ["tree-sitter", "dep:tree-sitter-typescript"]
++tree-sitter-typescript = ["tree-sitter", "dep:tree-sitter-typescript"]
++tree-sitter-yaml = ["tree-sitter", "dep:tree-sitter-yaml"]
++tree-sitter-zig = ["tree-sitter", "dep:tree-sitter-zig"]
+ 
+ [lib]
+ name = "gpui_component"
+@@ -285,12 +112,6 @@
+ [dependencies.gpui-component-macros]
+ version = "0.9.0"
+ 
+-[dependencies.gpui-fast]
+-version = "0.1.13"
+-features = ["windows-manifest-provided-by-host"]
+-optional = true
+-package = "gpui-fast"
+-
+ [dependencies.gpui-kit-assets]
+ version = "0.9.0"
+ 
+@@ -299,8 +120,8 @@
+ package = "gpui-pre-macros"
+ 
+ [dependencies.instant]
+-version = "0.1"
+-features = ["wasm-bindgen"]
++version = "=1.1.0"
++package = "web-time"
+ 
+ [dependencies.itertools]
+ version = "0.13.0"
+@@ -326,7 +147,8 @@
+ version = "1.19.0"
+ 
+ [dependencies.paste]
+-version = "1"
++version = "=0.2.3"
++package = "pastey"
+ 
+ [dependencies.regex]
+ version = "1"
+@@ -398,14 +220,6 @@
+ version = "=0.3.11"
+ features = ["test-support"]
+ package = "gpui-pre"
+-
+-[dev-dependencies.gpui-fast]
+-version = "0.1.13"
+-features = [
+-    "windows-manifest-provided-by-host",
+-    "test-support",
+-]
+-package = "gpui-fast"
+ 
+ [dev-dependencies.indoc]
+ version = "2"
+@@ -631,7 +445,7 @@
+ version = "0.6.2"
+ 
+ [target.'cfg(target_os = "windows")'.dependencies.resvg]
+-version = "0.45.1"
++version = "=0.49.0"
+ 
+ [target.'cfg(target_os = "windows")'.dependencies.windows]
+ version = "0.58.0"

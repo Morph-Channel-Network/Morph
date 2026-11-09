@@ -42,7 +42,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-for tool in cargo curl jq node npm sha256sum; do
+for tool in cargo curl jq sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing required tool: $tool"
 done
 
@@ -105,9 +105,9 @@ wait_for_payment_gateway() {
   fail "$label did not become healthy"
 }
 
-log "building Morph Payment Gateway and TypeScript SDK"
-(cd "$ROOT_DIR" && cargo build -p morph-payment-gateway) >"$OUT_DIR/morph-payment-gateway-build.log" 2>&1
-(cd "$ROOT_DIR/sdk/typescript" && npm run build) >"$OUT_DIR/typescript-sdk-build.log" 2>&1
+log "building Morph Payment Gateway and the Rust acceptance runner"
+(cd "$ROOT_DIR" && cargo build -p morph-payment-gateway -p morph-xtask) >"$OUT_DIR/morph-payment-gateway-build.log" 2>&1
+cp "$ROOT_DIR/target/debug/morph-xtask" "$OUT_DIR/bin/morph-xtask"
 cp "$PAYMENT_GATEWAY_BIN" "$OUT_DIR/bin/morph-payment-gateway"
 PAYMENT_GATEWAY_BIN="$OUT_DIR/bin/morph-payment-gateway"
 
@@ -187,7 +187,7 @@ MORPH_PAYMENT_GATEWAY_EXPECTED_PAYEE="$node3_account_id" \
 MORPH_PAYMENT_GATEWAY_FIBER_NODE1_PUBKEY="$node1_pubkey" \
 MORPH_PAYMENT_GATEWAY_FIBER_NODE2_PUBKEY="$node2_pubkey" \
 MORPH_PAYMENT_GATEWAY_FIBER_NODE3_PUBKEY="$node3_pubkey" \
-  node "$ROOT_DIR/sdk/typescript/test/fiber-devnet.mjs" >"$OUT_DIR/result.json"
+  "$OUT_DIR/bin/morph-xtask" gateway-fiber >"$OUT_DIR/result.json"
 
 jq -e \
   '.schema == "morph.payment_gateway_fiber_devnet_e2e" and .status == "passed" and
@@ -204,7 +204,7 @@ jq -n \
   --arg finished_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg git_commit "$(git -C "$ROOT_DIR" rev-parse --short HEAD)" \
   --arg payment_gateway_binary_sha256 "$(sha256sum "$PAYMENT_GATEWAY_BIN" | cut -d' ' -f1)" \
-  --arg sdk_index_sha256 "$(sha256sum "$ROOT_DIR/sdk/typescript/dist/index.js" | cut -d' ' -f1)" \
+  --arg rust_runner_sha256 "$(sha256sum "$OUT_DIR/bin/morph-xtask" | cut -d' ' -f1)" \
   --arg ckb_network_id "$ckb_network_id" \
   --arg fiber_node1_pubkey "$node1_pubkey" \
   --arg fiber_node2_pubkey "$node2_pubkey" \
@@ -218,7 +218,7 @@ jq -n \
     finished_at_utc:$finished_at_utc,
     git_commit:$git_commit,
     payment_gateway_binary_sha256:$payment_gateway_binary_sha256,
-    sdk_index_sha256:$sdk_index_sha256,
+    rust_runner_sha256:$rust_runner_sha256,
     proof_scope:"fiber_provider_route",
     morph_custody_backing_proven:false,
     ckb_network_id:$ckb_network_id,

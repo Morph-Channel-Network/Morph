@@ -151,6 +151,33 @@ pub(crate) fn decrypt_with_nonce(
         .map_err(|_| CryptoError::AuthenticationFailed)
 }
 
+/// Verify the hash-locked key, offer binding, AES-GCM authentication and result
+/// commitment before returning an application's plaintext.
+pub fn decrypt_fair_exchange(
+    envelope: &crate::FairExchangeEnvelope,
+    claim: &crate::FairExchangeClaim,
+) -> Result<Vec<u8>, CryptoError> {
+    if envelope.offer_id != claim.offer_id {
+        return Err(CryptoError::AuthenticationFailed);
+    }
+    verify_preimage(&envelope.requirement.payment_hash, &claim.decryption_key)?;
+    let key = crate::protocol::decode_byte32(&claim.decryption_key)
+        .map_err(|_| CryptoError::InvalidKeyOrNonce)?;
+    let associated = format!(
+        "morph-fair-exchange-v1\0{}\0{}",
+        envelope.offer_id, envelope.requirement.requirement_id
+    );
+    decrypt(
+        &key,
+        &EncryptedPayload {
+            nonce: envelope.nonce.clone(),
+            ciphertext: envelope.ciphertext.clone(),
+            plaintext_hash: envelope.result_hash.clone(),
+        },
+        associated.as_bytes(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

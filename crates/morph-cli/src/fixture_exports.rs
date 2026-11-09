@@ -75,7 +75,7 @@ fn conditional_root_fixture() -> serde_json::Value {
 
 #[test]
 fn sdk_fixture_corpus_matches_current_protocol() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/typescript/test/fixtures");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/protocol");
     let ordinary = multi_asset_packages::fixture_package().unwrap();
     let conditional = conditional_package();
     let resolution = crate::conditional_packages::fixture_package().unwrap();

@@ -1,0 +1,383 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/reestablish",
+  "steps": [
+    {
+      "id": "e2e/reestablish/01-connect-peer",
+      "source_sha256": "087a89df9d6e5fb6bb04cddc734802edc51e2ceddce2d3240ff8d3bb1092be9c",
+      "source_script_sha256": "0000e6fe6238e668e3b4cd86dbea26c6d9235ed5c8f0860af22cf797eb71bd59",
+      "sequence": 1,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE1_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/reestablish/02-open-channel",
+      "source_sha256": "4f479e0a941ee1b2c5ad943940b401413ea5534c7354234a56a2ac0710f614d1",
+      "source_script_sha256": "2b6fd793062e38ed3f54612ffae27e0568e982efc8dfbf67f554642e3e1ae616",
+      "sequence": 2,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "funding_amount": "0xba43b7400"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/temporary_channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/reestablish/03-get-auto-accepted-channel",
+      "source_sha256": "a582d1009401813c86db8b9392e8c83ef43d8bbc5b219b6991b7e85f589526f7",
+      "source_script_sha256": "339b988e7547e186349b5019cae5cf95a4ab6514627007bf0172bfbcef428b6c",
+      "sequence": 3,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channels/0/channel_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 2000
+        }
+      ]
+    },
+    {
+      "id": "e2e/reestablish/06-generate-a-few-blocks",
+      "source_sha256": "e89739a93d46e1437c135953d8f8e202b25b82c1fd80211979ea8415ce383499",
+      "source_script_sha256": "8fd0d1486acf5d7f68b2ee80559f5288dc7d0b0c50b735f2d6b768efbd991ac0",
+      "sequence": 6,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x2"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/reestablish/07-add-tlc-from-NODE3",
+      "source_sha256": "350fa852e5d0834e9d84570d218601d3ea85f7993c5e029d089f7f7f9e00843e",
+      "source_script_sha256": "ee30c1a447b1e8376fa0d1b5c0aa8050e419e7de4deacebd0c6e6a8c15e07ff1",
+      "sequence": 7,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "add_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "amount": "0x5f5e100",
+            "payment_hash": "0x266cec97cbede2cfbce73666f08deed9560bdf7841a7a5a51b3a3f09da249e21",
+            "expiry": "{{expiry}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "expiry",
+          "seconds": 86400
+        }
+      ],
+      "captures": [
+        {
+          "variable": "TLC_ID1",
+          "value": {
+            "pointer": "/result/tlc_id"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/tlc_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/reestablish/08-disconnect-NODE1",
+      "source_sha256": "b89766b46acc872d6f2203f762afe851d3406a0ca58fb0cb981523faa44874eb",
+      "source_script_sha256": "a9b9304da1d8f4de2851d1e46dc7ad838ef50bc77960d1a7cb0a1288a0fdbd5a",
+      "sequence": 8,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "disconnect_peer",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/reestablish/09-reconnect-peer-NODE1",
+      "source_sha256": "5226943d2393293b3af2bec523fd5330b45cd4b0b81a49a875411b837349592d",
+      "source_script_sha256": "920a9010068f785b2088d84271fdaef7debe1154e6d910cdb21956ca0b3d4346",
+      "sequence": 9,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE3_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 4000
+        }
+      ]
+    },
+    {
+      "id": "e2e/reestablish/10-remove-tlc-from-NODE1",
+      "source_sha256": "8cd6b4d9b99d626fb869b5a2e8dec3a7c17f871e1062ab1dd19e1f5aa3dfc85a",
+      "source_script_sha256": "639e086de73ab85b94923744abba9f857c9fd189ceaab53b32ce8a9d104f0672",
+      "sequence": 10,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "remove_tlc",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "tlc_id": "{{TLC_ID1}}",
+            "reason": {
+              "error_code": "TemporaryNodeFailure"
+            }
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error/message"
+          },
+          "op": "optional_contains",
+          "right": {
+            "literal": "Unable to handle TLC command in waiting TLC ACK state"
+          }
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    },
+    {
+      "id": "e2e/reestablish/11-shutdown-from-NODE1",
+      "source_sha256": "920eb22b43833bb6207ec23f5b3944fa800475e2e1912393c4df57000fc25063",
+      "source_script_sha256": "32bac7eee119e4e590fa6f216f64924aa53cb387b1807e929fe4947dbd4b186a",
+      "sequence": 11,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{CHANNEL_ID}}",
+            "close_script": {
+              "code_hash": "0x2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+              "hash_type": "data",
+              "args": "0x0101010101010101010101010101010101010101"
+            },
+            "fee_rate": "0x3FC"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "null"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 100
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1055 @@
+{
+  "schema": "morph.rust_fiber_scenario.v1",
+  "suite": "e2e/external-funding-open",
+  "steps": [
+    {
+      "id": "e2e/external-funding-open/01-connect-peer",
+      "source_sha256": "33f4ed3439303d13d0e9ddd10d415c73980e46f0224a5b9d8eb3af56dfdcd3a7",
+      "source_script_sha256": "b9d23c962ce15e48dc11aa716244a10d093a8f63bfe5129f19fc6cc665b9c0e2",
+      "sequence": 1,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "connect_peer",
+        "params": [
+          {
+            "address": "{{NODE3_ADDR}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/external-funding-open/02-get-node1-funding-script",
+      "source_sha256": "7cac0c9160671f4fbd454dc6f5b021ce37e74cd0516a6650eb0098e512a77b8b",
+      "source_script_sha256": "2f5a301842a3476437fdf39a53e8f56a3afb79511db8366d5c0fd4309b815943",
+      "sequence": 2,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE1_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/default_funding_lock_script"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/03-get-node1-balance-before-open",
+      "source_sha256": "0fbd35a9c295b7a8dc68f1cbf47c1d9822b063c5b98ba9933ccff223ed7d4f68",
+      "source_script_sha256": "d0f0940d46870eee064afc22fafe45da83d331c7deb2a0a24195bf0e15afb963",
+      "sequence": 3,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE1_BALANCE_BEFORE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/04-get-node2-funding-script",
+      "source_sha256": "bd0efb2b228ac3fd32115c867756b4f79a1520ce339d1c409fce021474d481d9",
+      "source_script_sha256": "ec63d002dbfeda0a499bce933cecba62ace598184ff1bb0be80f632f352ae209",
+      "sequence": 4,
+      "endpoint": "NODE2_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE2_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/default_funding_lock_script"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/05-get-node2-balance-before-open",
+      "source_sha256": "af188556b6d1f6fd283128561c13e8a38f1dacd63818fb22320d81c209976841",
+      "source_script_sha256": "b3328f5dd33f2429dde539d3a829d8cd80165bad4e3a846b163388a32f1fc764",
+      "sequence": 5,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE2_BALANCE_BEFORE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/06-get-node3-funding-script",
+      "source_sha256": "5328f4b7a886292bf6f4d80980e4d84d5fb6f46cac5539243075b5c3a1444691",
+      "source_script_sha256": "d7319fe1d46590e0fc14d98305054c51177d9ff63cafe5f24284f4f2be2c0471",
+      "sequence": 6,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "node_info",
+        "params": []
+      },
+      "before": [],
+      "captures": [
+        {
+          "variable": "NODE3_FUNDING_SCRIPT",
+          "value": {
+            "pointer": "/result/default_funding_lock_script"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/default_funding_lock_script"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/07-get-node3-balance-before-open",
+      "source_sha256": "aefa94a5d00346de52c4de36ae0dca427c1ea5aea059506300c0a03dea9223d3",
+      "source_script_sha256": "891bbe940cf450a5f3ab5b48461535e140aeae26a0cb8d758e03338a22d9c74f",
+      "sequence": 7,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE3_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "NODE3_BALANCE_BEFORE",
+          "value": {
+            "pointer": "/result/capacity"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/08-open-channel-with-external-funding",
+      "source_sha256": "d7b5d19db386f733bd13e653f94616b257a4799c1f9c399f7829db1de680d1f0",
+      "source_script_sha256": "88a0a6233412e825b798aec1b15724af6cf16026ee2e1adb2c239def96efc18e",
+      "sequence": 8,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "open_channel_with_external_funding",
+        "params": [
+          {
+            "pubkey": "{{NODE3_PUBKEY}}",
+            "funding_amount": "0xba43b7400",
+            "public": true,
+            "shutdown_script": {},
+            "funding_lock_script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/shutdown_script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        },
+        {
+          "kind": "inject",
+          "pointer": "/params/0/funding_lock_script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        },
+        {
+          "kind": "capture_request",
+          "pointer": "/params/0/funding_amount",
+          "variable": "EXTERNAL_FUNDING_AMOUNT"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "EXTERNAL_FUNDING_CHANNEL_ID",
+          "value": {
+            "pointer": "/result/channel_id"
+          }
+        },
+        {
+          "variable": "EXTERNAL_FUNDING_UNSIGNED_TX",
+          "value": {
+            "pointer": "/result/unsigned_funding_tx"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/unsigned_funding_tx/outputs/length"
+          },
+          "op": "gt",
+          "right": {
+            "literal": 0
+          }
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/09-sign-external-funding-tx",
+      "source_sha256": "f7ac240d8f9942d488b028ed1174573e6d146e49e59194d4353aad85228d7327",
+      "source_script_sha256": "3566c0866cc34c28ba90efc2a21d6aab7c6b1a5db937711692e8a55bf08932b9",
+      "sequence": 9,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "sign_external_funding_tx",
+        "params": [
+          {
+            "unsigned_funding_tx": {},
+            "private_key": "{{EXTERNAL_FUNDING_PRIVKEY}}"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/unsigned_funding_tx",
+          "variable": "EXTERNAL_FUNDING_UNSIGNED_TX"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "EXTERNAL_FUNDING_SIGNED_TX",
+          "value": {
+            "pointer": "/result/signed_funding_tx"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/signed_funding_tx"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/signed_funding_tx/witnesses"
+          },
+          "op": "array"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/10-submit-signed-funding-tx",
+      "source_sha256": "04a5360a408fd06fc63ee6661cebf496cbe6e41abc1a1150ee68912b9ab5a817",
+      "source_script_sha256": "278f38629f0c5584c64b41564cea68a6681f1c697440c5968205ef97d6446c5b",
+      "sequence": 10,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "submit_signed_funding_tx",
+        "params": [
+          {
+            "channel_id": "{{EXTERNAL_FUNDING_CHANNEL_ID}}",
+            "signed_funding_tx": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/signed_funding_tx",
+          "variable": "EXTERNAL_FUNDING_SIGNED_TX"
+        }
+      ],
+      "captures": [
+        {
+          "variable": "EXTERNAL_FUNDING_TX_HASH",
+          "value": {
+            "pointer": "/result/funding_tx_hash"
+          }
+        }
+      ],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/funding_tx_hash"
+          },
+          "op": "exists"
+        },
+        {
+          "left": {
+            "pointer": "/result/channel_id"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": []
+    },
+    {
+      "id": "e2e/external-funding-open/11-generate-epoch-for-funding-tx",
+      "source_sha256": "be2c18a28a045c728d1b3c595dccc6fb857d9d6ffb1097cc5356cd2b8685bf49",
+      "source_script_sha256": "2abe5b1d12eb1d502ae7c5f4994348410e9812cfc3b97106f93e77563140ca6b",
+      "sequence": 11,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/external-funding-open/12-wait-channel-ready",
+      "source_sha256": "20dce2c248d4d941f19b59b0c0395c74dec09f02f4965cc9bab42545296550ae",
+      "source_script_sha256": "07457a65e5c0a9de2fc418cf7aaa0b8ec261da13b368ea28ce5997cb0ff55de5",
+      "sequence": 12,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}"
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [],
+      "poll": {
+        "kind": "channel_ready",
+        "variable": "EXTERNAL_FUNDING_CHANNEL_ID",
+        "attempts": 10,
+        "mine": true
+      }
+    },
+    {
+      "id": "e2e/external-funding-open/13-check-node1-balance-after-open",
+      "source_sha256": "f9a17f50945638840d34228ca5f7021b1fb1fb4eb9973e3c048dc4b90d7fe3e7",
+      "source_script_sha256": "831c324eeab67124fe61b42592bda0ca8e77b597dde68b2be2ff030c4e80462b",
+      "sequence": 13,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "external_economics",
+          "step": 13
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 10,
+        "mine": false
+      }
+    },
+    {
+      "id": "e2e/external-funding-open/14-check-node2-balance-after-open",
+      "source_sha256": "1dc4a6c3f2a6a1ec9b339c5799fdbaec238255ce183d4f34180ce4f44cf465cd",
+      "source_script_sha256": "fa952964596d5d08bfaf27cfacd90b522bfa9dc572ed3ba07508fa185bc8b942",
+      "sequence": 14,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "external_economics",
+          "step": 14
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 10,
+        "mine": false
+      }
+    },
+    {
+      "id": "e2e/external-funding-open/15-check-node3-balance-after-open",
+      "source_sha256": "127442946f63cd4c286e4b48daaaf13daa412b4aacac04aebfe91194688d587a",
+      "source_script_sha256": "8f199ba6aef2e7f97a49e31dfe6817908677efdfcdb50dec2ebb60a2dba55988",
+      "sequence": 15,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE3_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "external_economics",
+          "step": 15
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 10,
+        "mine": false
+      }
+    },
+    {
+      "id": "e2e/external-funding-open/16-shutdown-channel-from-node1",
+      "source_sha256": "a7c6a4c96334efeebd9235778e7d983a0b1f0fbf0841dde7dbf51b4c293aa3d7",
+      "source_script_sha256": "31c979a7cb5d2b05c30eca4e3c0a8a599996fbfa450807136d7c848db14f93bb",
+      "sequence": 16,
+      "endpoint": "NODE1_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "shutdown_channel",
+        "params": [
+          {
+            "channel_id": "{{EXTERNAL_FUNDING_CHANNEL_ID}}",
+            "close_script": {},
+            "fee_rate": "0x3FC"
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/close_script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/result"
+          },
+          "op": "eq",
+          "right": {
+            "literal": null
+          }
+        },
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 1000
+        }
+      ]
+    },
+    {
+      "id": "e2e/external-funding-open/17-generate-epoch-for-shutdown-tx",
+      "source_sha256": "1dc2dfad3ec4080ad8dae9d8e61013d9b2580df0451aea2a8ea1cac2048a5f5f",
+      "source_script_sha256": "2abe5b1d12eb1d502ae7c5f4994348410e9812cfc3b97106f93e77563140ca6b",
+      "sequence": 17,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "generate_epochs",
+        "params": [
+          "0x1"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/@http_status"
+          },
+          "op": "eq",
+          "right": {
+            "literal": 200
+          }
+        },
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        }
+      ],
+      "after": [
+        {
+          "kind": "delay",
+          "milliseconds": 5000
+        }
+      ]
+    },
+    {
+      "id": "e2e/external-funding-open/18-wait-channel-closed-and-capture-shutdown-tx",
+      "source_sha256": "07700e4d27c3bd0ea491b4045ee60cdf393f7234271904a65eae34e05a0f0ccf",
+      "source_script_sha256": "9a462e03ffb1d9caf68b49ed2ca22ce0f7a620b504155c522af1f86ce3c3c90a",
+      "sequence": 18,
+      "endpoint": "NODE3_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "list_channels",
+        "params": [
+          {
+            "pubkey": "{{NODE1_PUBKEY}}",
+            "include_closed": true
+          }
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/channels"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [],
+      "poll": {
+        "kind": "channel_closed",
+        "variable": "EXTERNAL_FUNDING_CHANNEL_ID",
+        "attempts": 10,
+        "mine": true
+      }
+    },
+    {
+      "id": "e2e/external-funding-open/19-inspect-shutdown-tx",
+      "source_sha256": "ab1720d84a7173edeee01cad225ca0e39fa6f8d9d7849b61eded916d7821ab76",
+      "source_script_sha256": "85c9b9793e5db79e392100defb93c59de93371f02278adbfc160d34f382402f1",
+      "sequence": 19,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": "42",
+        "jsonrpc": "2.0",
+        "method": "get_transaction",
+        "params": [
+          "{{EXTERNAL_FUNDING_SHUTDOWN_TX_HASH}}"
+        ]
+      },
+      "before": [],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/transaction/outputs"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "external_economics",
+          "step": 19
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 10,
+        "mine": false
+      }
+    },
+    {
+      "id": "e2e/external-funding-open/20-check-node1-balance-after-close",
+      "source_sha256": "37e98534edbb654e59997c800bb714ef9a1e9e2afef7e6f95aba0fa811a5c578",
+      "source_script_sha256": "9ffd2cedd31ed71dcebdef2fbf830ce644ee4f79378a722ff9ce800d65748c0f",
+      "sequence": 20,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE1_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "external_economics",
+          "step": 20
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 10,
+        "mine": false
+      }
+    },
+    {
+      "id": "e2e/external-funding-open/21-check-node2-balance-after-close",
+      "source_sha256": "14cee45c5afb696dbe029c953a1acd7353c9278aa9b320194a10642465a71e55",
+      "source_script_sha256": "8e58fd55e1c074ab971727964d78698c121f124b14ea2807552a3c5613962f31",
+      "sequence": 21,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE2_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "external_economics",
+          "step": 21
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 10,
+        "mine": false
+      }
+    },
+    {
+      "id": "e2e/external-funding-open/22-check-node3-balance-after-close",
+      "source_sha256": "7d87cf35561f942ac53174b6f3efd261e30d0f41c041a0b5a4a7cdc925b88151",
+      "source_script_sha256": "3352dc51060e68f3b9701facdbc948f8eb430f4088d3f7494d97b99783c44b08",
+      "sequence": 22,
+      "endpoint": "CKB_RPC_URL",
+      "request": {
+        "id": 42,
+        "jsonrpc": "2.0",
+        "method": "get_cells_capacity",
+        "params": [
+          {
+            "script_type": "lock",
+            "script": {}
+          }
+        ]
+      },
+      "before": [
+        {
+          "kind": "inject",
+          "pointer": "/params/0/script",
+          "variable": "NODE3_FUNDING_SCRIPT"
+        }
+      ],
+      "captures": [],
+      "checks": [
+        {
+          "left": {
+            "pointer": "/error"
+          },
+          "op": "absent"
+        },
+        {
+          "left": {
+            "pointer": "/result/capacity"
+          },
+          "op": "exists"
+        }
+      ],
+      "after": [
+        {
+          "kind": "external_economics",
+          "step": 22
+        }
+      ],
+      "poll": {
+        "kind": "checks",
+        "attempts": 10,
+        "mine": false
+      }
+    }
+  ]
+}

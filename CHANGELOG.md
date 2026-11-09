@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — native Rust clients
+
+- Replace the browser frontend with one native GPUI operator application. Retire React/Vite, the TypeScript SDK, Node/Bruno runners, dependency manifests and Hub static serving; the Hub remains an API service.
+- Extract canonical package codecs and owned public DTOs into shared Rust crates, with a typed bounded SDK and no second signing authority. Preserve independent protocol/authorization vectors, exact u128 JSON values and ambiguous-write reconciliation.
+- Port selected Fiber/Gateway regressions to source-bound native Rust scenarios, including exact balances, terminal payments, credential/decryption checks and owned-node funding recovery.
+- Pin and qualify the native dependency family, resolve incoming unmaintained packages without new advisory waivers, and provide source/notice-carrying local desktop bundles. Protocol formats and contract release flags stay unchanged.
+- Migration acceptance and platform scope are recorded in `docs/gpui-migration-status.md`; this entry publishes no release.
+
 ## v4.0.0-alpha.1 — 2026-11-05
 
 This prerelease consolidates the unpublished channel and Factory capabilities

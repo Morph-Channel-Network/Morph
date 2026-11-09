@@ -1,0 +1,34 @@
+--- accesskit_atspi_common-0.19.1/Cargo.toml.orig-registry
++++ accesskit_atspi_common-0.19.1/Cargo.toml
+@@ -57,6 +57,7 @@
+ [dependencies.serde]
+ version = "1.0"
+ 
+-[dependencies.zvariant]
+-version = "5.4"
++
++[dependencies.zbus]
++version = "=6.2.1"
+ default-features = false
+--- accesskit_atspi_common-0.19.1/src/action.rs.orig-registry
++++ accesskit_atspi_common-0.19.1/src/action.rs
+@@ -4,7 +4,7 @@
+ // the LICENSE-MIT file), at your option.
+ 
+ use serde::{Deserialize, Serialize};
+-use zvariant::Type;
++use zbus::wire::Type;
+ 
+ #[derive(Deserialize, Serialize, Type)]
+ pub struct Action {
+--- accesskit_atspi_common-0.19.1/src/rect.rs.orig-registry
++++ accesskit_atspi_common-0.19.1/src/rect.rs
+@@ -4,7 +4,7 @@
+ // the LICENSE-MIT file), at your option.
+ 
+ use serde::{Deserialize, Serialize};
+-use zvariant::{OwnedValue, Type, Value};
++use zbus::wire::{OwnedVariant as OwnedValue, Type, Variant as Value};
+ 
+ #[derive(
+     Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, OwnedValue, Type, Value,

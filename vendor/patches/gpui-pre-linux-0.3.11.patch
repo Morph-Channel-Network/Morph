@@ -1,0 +1,66 @@
+--- gpui-pre-linux-0.3.11/Cargo.toml.orig-registry
++++ gpui-pre-linux-0.3.11/Cargo.toml
+@@ -95,7 +95,7 @@
+ optional = true
+ 
+ [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.ashpd]
+-version = "0.13"
++version = "=0.14.0"
+ features = [
+     "async-io",
+     "inhibit",
+@@ -155,10 +155,10 @@
+ default-features = false
+ 
+ [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.notify-rust]
+-version = "4"
++version = "=4.19.0"
+ 
+ [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.oo7]
+-version = "0.6"
++version = "=0.7.0"
+ features = [
+     "async-std",
+     "native_crypto",
+--- gpui-pre-linux-0.3.11/src/linux/platform.rs.orig-registry
++++ gpui-pre-linux-0.3.11/src/linux/platform.rs
+@@ -23,7 +23,6 @@
+         Request,
+         inhibit::{InhibitFlags, InhibitOptions, InhibitProxy},
+     },
+-    enumflags2::BitFlags,
+ };
+ use calloop::{EventLoop, LoopHandle, LoopSignal, channel::Sender};
+ use futures::channel::oneshot;
+@@ -1710,7 +1709,7 @@
+     let request = proxy
+         .inhibit(
+             None,
+-            BitFlags::from(InhibitFlags::Suspend),
++            InhibitFlags::SUSPEND,
+             InhibitOptions::default().set_reason(reason.as_str()),
+         )
+         .await
+--- gpui-pre-linux-0.3.11/src/linux/power.rs.orig-registry
++++ gpui-pre-linux-0.3.11/src/linux/power.rs
+@@ -35,15 +35,15 @@
+     let mut changes = Vec::new();
+     for (service, path) in POWER_PROFILES_SERVICES {
+         let proxy = Builder::<Proxy<'_>>::new(connection)
+-            .destination(service)?
+-            .path(path)?
+-            .interface(service)?
++            .destination(service)
++            .path(path)
++            .interface(service)
+             .cache_properties(CacheProperties::No)
+             .build()
+             .await?;
+         let properties = PropertiesProxy::builder(connection)
+-            .destination(service)?
+-            .path(path)?
++            .destination(service)
++            .path(path)
+             .build()
+             .await?;
+         changes.push(

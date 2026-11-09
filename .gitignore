@@ -1,6 +1,4 @@
 /target/
-**/node_modules/
-sdk/typescript/dist/
 **/*.aux
 **/*.log
 **/*.out

@@ -148,8 +148,8 @@ The draft verifier checks input order, complete new Vaults, withdrawal outputs,
 carrier capacity and authority boundaries. Live input values, canonical history,
 approved executable code and dep-group members require online verification.
 
-The TypeScript SDK independently checks this same draft with
-`inspectMultiAssetSpliceDraft(currentPackage, draft)`. Its summary includes the
+The Rust SDK checks this same draft through the shared canonical implementation with
+`morph_sdk::inspection::inspect(draft, Some(current))`. Its summary includes the
 exact creation, recovery and bridge digests, old State input, future Vault
 OutPoints, bound new funding-context ID, per-participant payouts and per-asset
 deposit/withdrawal lanes. All amounts remain decimal strings. Asset admission
@@ -157,13 +157,12 @@ may change the registry; channel identity, participant/refund Scripts, authority
 code, challenge policy and State carrier stay fixed. Token-only deposits into
 an existing asset need no extra reserve when its existing reserve suffices.
 
-`inspectMultiAssetSpliceSignature` verifies a public receipt against one of
+`morph_sdk::packages::construction::splice_signature` verifies a public receipt against one of
 `splice-creation`, `splice-recovery` and `splice-bridge`.
-`assembleMultiAssetSpliceFunding(current, draft, recoveryReceipts,
-creationReceipts, bridgeReceipts)` requires all three complete pairs, verifies
+`morph_sdk::packages::construction::assemble_splice` requires all three complete pairs, verifies
 the future exit first and returns `morph.multi_asset_splice_funding.v1` containing
 both the packed transaction and full recovery package.
-`inspectMultiAssetSpliceFunding` independently verifies a completed export,
+`morph_sdk::inspection::inspect(export, Some(current))` independently verifies a completed export,
 including the exact initial exit and the canonical bridge envelope. Repricing
 an external input, dependency or change output changes the future exit and
 bridge digests even when the new allocation stays the same.

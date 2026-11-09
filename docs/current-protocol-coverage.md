@@ -170,7 +170,7 @@ cargo clippy -p morph-core -p morph-script-common --all-features --all-targets -
 ```
 
 The current Rust CKB-VM corpus exports public exact-transaction fixtures to the
-TypeScript SDK. Private child exit signatures are excluded. If ELFs or wire
+shared Rust SDK. Private child exit signatures are excluded. If ELFs or wire
 bytes change, regenerate both the transition corpus and its derived public
 child fixture; do not reuse earlier deployment-hash or acceptance reports as
 current release evidence.
@@ -192,7 +192,7 @@ completed on a development node; source freshness and budget qualification are
 recorded separately by the candidate runner. See the [migration record](unified-protocol-migration.md)
 for exact results and clean-candidate acceptance. Updated Fiber scripts require
 that same current matrix on the actual shared RPC and
-retain real Bruno/Payment Gateway receipts. A complete fresh Fiber run was not executed
+retain real Rust scenario/Payment Gateway receipts. A complete fresh Fiber run was not executed
 in this update. An external-party Factory child is valid custody; admission
 through a provider's parent-right reservation still has separate owner and
 liquidity requirements.

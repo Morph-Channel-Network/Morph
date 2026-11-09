@@ -1,0 +1,210 @@
+--- gpui-base-0.9.0/Cargo.toml.orig-registry
++++ gpui-base-0.9.0/Cargo.toml
+@@ -37,16 +37,9 @@
+ 
+ [features]
+ decimal = ["dep:rust_decimal"]
+-gpui-fast = ["dep:gpui-fast"]
+-inspector = [
+-    "gpui_macros/inspector",
+-    "gpui/inspector",
+-    "gpui-fast?/inspector",
+-]
+-test-support = [
+-    "gpui/test-support",
+-    "gpui-fast?/test-support",
+-]
++gpui-fast = []
++inspector = ["gpui_macros/inspector", "gpui/inspector"]
++test-support = ["gpui/test-support"]
+ 
+ [lib]
+ name = "gpui_base"
+@@ -90,22 +83,12 @@
+ version = "=0.3.11"
+ package = "gpui-pre"
+ 
+-[dependencies.gpui-fast]
+-version = "0.1.13"
+-features = ["windows-manifest-provided-by-host"]
+-optional = true
+-package = "gpui-fast"
+-
+ [dependencies.gpui_macros]
+ version = "=0.3.11"
+ package = "gpui-pre-macros"
+ 
+ [dependencies.html5ever]
+ version = "0.27"
+-
+-[dependencies.instant]
+-version = "0.1"
+-features = ["wasm-bindgen"]
+ 
+ [dependencies.itertools]
+ version = "0.13.0"
+@@ -166,7 +149,7 @@
+ version = "1.12.0"
+ 
+ [dependencies.web-time]
+-version = "1"
++version = "=1.1.0"
+ 
+ [dev-dependencies.criterion]
+ version = "0.8"
+@@ -179,17 +162,8 @@
+ ]
+ package = "gpui-pre"
+ 
+-[dev-dependencies.gpui-fast]
+-version = "0.1.13"
+-features = [
+-    "windows-manifest-provided-by-host",
+-    "test-support",
+-    "bench-support",
+-]
+-package = "gpui-fast"
+-
+-[dev-dependencies.gpui-fast-platform]
+-version = "0.1.13"
++[dev-dependencies.gpui_platform]
++version = "=0.3.11"
+ features = [
+     "font-kit",
+     "x11",
+@@ -197,17 +171,6 @@
+     "runtime_shaders",
+     "bench-support",
+ ]
+-package = "gpui-fast-platform"
+-
+-[dev-dependencies.gpui_platform]
+-version = "=0.3.11"
+-features = [
+-    "font-kit",
+-    "x11",
+-    "wayland",
+-    "runtime_shaders",
+-    "bench-support",
+-]
+ package = "gpui-pre-platform"
+ 
+ [dev-dependencies.indoc]
+@@ -224,7 +187,7 @@
+ version = "2.3.1"
+ 
+ [target.'cfg(target_os = "linux")'.dependencies.ashpd]
+-version = "0.13"
++version = "=0.14.0"
+ features = [
+     "async-io",
+     "settings",
+--- gpui-base-0.9.0/src/hover_card.rs.orig-registry
++++ gpui-base-0.9.0/src/hover_card.rs
+@@ -5,7 +5,7 @@
+     ParentElement as _, Render, RenderOnce, Stateful, StatefulInteractiveElement as _,
+     StyleRefinement, Styled, Task, Window, div, prelude::FluentBuilder as _,
+ };
+-use instant::Duration;
++use web_time::Duration;
+ 
+ use crate::{Popup, StyledExt as _};
+ 
+--- gpui-base-0.9.0/src/input/base/blink_cursor.rs.orig-registry
++++ gpui-base-0.9.0/src/input/base/blink_cursor.rs
+@@ -1,5 +1,5 @@
+ use gpui::{App, Context, Pixels, Subscription, Task, px};
+-use instant::Duration;
++use web_time::Duration;
+ use web_time::Instant;
+ 
+ static INTERVAL: Duration = Duration::from_millis(500);
+--- gpui-base-0.9.0/src/input/editor/lsp/document_colors.rs.orig-registry
++++ gpui-base-0.9.0/src/input/editor/lsp/document_colors.rs
+@@ -1,6 +1,6 @@
+ use anyhow::Result;
+ use gpui::{App, Context, Hsla, Task, Window};
+-use instant::Duration;
++use web_time::Duration;
+ use lsp_types::ColorInformation;
+ use ropey::Rope;
+ use std::ops::Range;
+--- gpui-base-0.9.0/src/input/editor/lsp/hover.rs.orig-registry
++++ gpui-base-0.9.0/src/input/editor/lsp/hover.rs
+@@ -1,6 +1,6 @@
+ use anyhow::Result;
+ use gpui::{App, Context, MouseMoveEvent, Task, Window};
+-use instant::Duration;
++use web_time::Duration;
+ use ropey::Rope;
+ 
+ use crate::input::{EditorMode, HoverPopoverState, InputBaseState, RopeExt};
+--- gpui-base-0.9.0/src/input/editor/lsp/semantic_tokens.rs.orig-registry
++++ gpui-base-0.9.0/src/input/editor/lsp/semantic_tokens.rs
+@@ -2,7 +2,7 @@
+ 
+ use anyhow::Result;
+ use gpui::{App, Context, HighlightStyle, SharedString, Task, Window};
+-use instant::Duration;
++use web_time::Duration;
+ use lsp_types::{Position, SemanticTokens, SemanticTokensLegend};
+ use ropey::Rope;
+ 
+--- gpui-base-0.9.0/src/measure.rs.orig-registry
++++ gpui-base-0.9.0/src/measure.rs
+@@ -28,7 +28,7 @@
+ /// An elapsed-time measurement emitted through `tracing` when ended.
+ pub struct Measure {
+     name: SharedString,
+-    start: instant::Instant,
++    start: web_time::Instant,
+ }
+ 
+ impl Measure {
+@@ -36,7 +36,7 @@
+     pub fn new(name: impl Into<SharedString>) -> Self {
+         Self {
+             name: name.into(),
+-            start: instant::Instant::now(),
++            start: web_time::Instant::now(),
+         }
+     }
+ 
+--- gpui-base-0.9.0/src/scrollable_mask.rs.orig-registry
++++ gpui-base-0.9.0/src/scrollable_mask.rs
+@@ -1,7 +1,7 @@
+ use std::cell::{Cell, RefCell};
+ use std::rc::Rc;
+ 
+-use instant::Instant;
++use web_time::Instant;
+ 
+ use gpui::{
+     App, Axis, BorderStyle, Bounds, ContentMask, Edges, Element, ElementId, GlobalElementId,
+--- gpui-base-0.9.0/src/scrollbar.rs.orig-registry
++++ gpui-base-0.9.0/src/scrollbar.rs
+@@ -1,6 +1,6 @@
+ use std::{cell::Cell, ops::Deref, panic::Location, rc::Rc};
+ 
+-use instant::{Duration, Instant};
++use web_time::{Duration, Instant};
+ 
+ use crate::{
+     AxisExt,
+--- gpui-base-0.9.0/src/undo_history.rs.orig-registry
++++ gpui-base-0.9.0/src/undo_history.rs
+@@ -1,4 +1,4 @@
+-use instant::{Duration, Instant};
++use web_time::{Duration, Instant};
+ 
+ /// A history of grouped undo transactions.
+ #[derive(Debug)]
+@@ -147,7 +147,7 @@
+ 
+ #[cfg(test)]
+ mod tests {
+-    use instant::Duration;
++    use web_time::Duration;
+ 
+     use super::UndoHistory;
+ 

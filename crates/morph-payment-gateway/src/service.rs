@@ -1243,7 +1243,7 @@ async fn gateway_proxy(
         .map_err(|_| ServiceError::GatewayUnavailable)
 }
 
-fn encode_x402_header(value: &impl Serialize) -> Result<String, ServiceError> {
+pub fn encode_x402_header(value: &impl Serialize) -> Result<String, ServiceError> {
     let raw = serde_json::to_vec(value)
         .map_err(|_| ServiceError::InvalidRequest("x402 payload is invalid".to_string()))?;
     let encoded = BASE64URL.encode(raw);
@@ -1255,7 +1255,7 @@ fn encode_x402_header(value: &impl Serialize) -> Result<String, ServiceError> {
     Ok(encoded)
 }
 
-fn decode_x402_header<T: for<'de> Deserialize<'de>>(value: &str) -> Result<T, ServiceError> {
+pub fn decode_x402_header<T: for<'de> Deserialize<'de>>(value: &str) -> Result<T, ServiceError> {
     if value.len() > MAX_X402_HEADER_BYTES {
         return Err(ServiceError::InvalidRequest(
             "x402 header exceeds the safety limit".to_string(),
@@ -1718,6 +1718,22 @@ mod tests {
         .await
         .unwrap()
         .0;
+        assert_eq!(
+            crate::decrypt_fair_exchange(&envelope, &claim).unwrap(),
+            plaintext
+        );
+        let mut wrong_claim = claim.clone();
+        wrong_claim.offer_id.push('x');
+        assert!(crate::decrypt_fair_exchange(&envelope, &wrong_claim).is_err());
+        wrong_claim = claim.clone();
+        wrong_claim.decryption_key = hex32(&[0; 32]);
+        assert!(crate::decrypt_fair_exchange(&envelope, &wrong_claim).is_err());
+        let mut wrong_envelope = envelope.clone();
+        wrong_envelope.requirement.requirement_id = hex32(&[0; 32]);
+        assert!(crate::decrypt_fair_exchange(&wrong_envelope, &claim).is_err());
+        wrong_envelope = envelope.clone();
+        wrong_envelope.result_hash = hex32(&[0; 32]);
+        assert!(crate::decrypt_fair_exchange(&wrong_envelope, &claim).is_err());
         verify_preimage(&envelope.requirement.payment_hash, &claim.decryption_key).unwrap();
         let key = decode_byte32(&claim.decryption_key).unwrap();
         let associated_data = format!(
@@ -1953,6 +1969,138 @@ mod tests {
         assert_eq!(payments.len(), 1);
         assert_eq!(payments[0].payment_hash, requirement.payment_hash);
         assert_eq!(payments[0].status, "PendingSubmission");
+    }
+
+    #[tokio::test]
+    async fn native_client_challenge_paid_get_and_post_preserve_auth_and_receipt_boundaries() {
+        let upstream = Router::new().route(
+            "/paid",
+            get(|| async { "native GET" }).post(|body: String| async move { body }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_url = format!("http://{}/", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            axum::serve(listener, upstream).await.unwrap();
+        });
+        let (service, _dir) = test_service(Some(upstream_url)).await;
+        let asset = service.config.supported_assets[0].clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            axum::serve(listener, service.router()).await.unwrap();
+        });
+        // A configured gateway token must never appear on its separate paid resource request:
+        // that endpoint rejects combined Authorization and PAYMENT-SIGNATURE.
+        let client = crate::PaymentGatewayClient::new(&url)
+            .unwrap()
+            .with_bearer_token("test-only-gateway-token".repeat(3))
+            .unwrap();
+        let signer = SigningKey::from_slice(&[3; 32])
+            .unwrap()
+            .verifying_key()
+            .to_sec1_point(true);
+        let key = SigningKey::from_slice(&[4; 32]).unwrap();
+        for method in [reqwest::Method::GET, reqwest::Method::POST] {
+            let requirement = client
+                .create_x402_challenge(&CreateChallengeRequest {
+                    asset: asset.clone(),
+                    amount: "17".into(),
+                    payer: payer_id(4),
+                    resource: "/paid".into(),
+                    operation: method.as_str().into(),
+                    description: None,
+                    expires_in_seconds: Some(300),
+                    rgbpp_proof_commitment: None,
+                })
+                .await
+                .unwrap();
+            let settlement = SettleRequest {
+                payload: PaymentPayload::new_signed(&requirement, None, &key).unwrap(),
+                requirements: requirement,
+                credential_ttl_seconds: Some(300),
+            };
+            let resource = format!("{url}/gateway/paid");
+            let (body, receipt) = if method == reqwest::Method::GET {
+                client
+                    .x402_get(&resource, &settlement, signer.as_bytes())
+                    .await
+                    .unwrap()
+            } else {
+                client
+                    .x402_request(
+                        method.clone(),
+                        &resource,
+                        HeaderMap::new(),
+                        b"native POST".to_vec(),
+                        &settlement,
+                        signer.as_bytes(),
+                    )
+                    .await
+                    .unwrap()
+            };
+            assert_eq!(
+                body,
+                if method == reqwest::Method::GET {
+                    b"native GET".to_vec()
+                } else {
+                    b"native POST".to_vec()
+                }
+            );
+            assert_eq!(
+                receipt.requirement_id,
+                settlement.requirements.requirement_id
+            );
+            let wrong_signer = key.verifying_key().to_sec1_point(true);
+            assert!(matches!(
+                client
+                    .x402_request(
+                        method.clone(),
+                        &resource,
+                        HeaderMap::new(),
+                        Vec::new(),
+                        &settlement,
+                        wrong_signer.as_bytes()
+                    )
+                    .await,
+                Err(crate::PaymentGatewayClientError::InvalidResponse)
+            ));
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                header::AUTHORIZATION,
+                "Bearer must-not-leak".parse().unwrap(),
+            );
+            assert!(matches!(
+                client
+                    .x402_request(
+                        method.clone(),
+                        &resource,
+                        headers,
+                        Vec::new(),
+                        &settlement,
+                        signer.as_bytes()
+                    )
+                    .await,
+                Err(crate::PaymentGatewayClientError::InvalidResponse)
+            ));
+            let wrong_method = if method == reqwest::Method::GET {
+                reqwest::Method::POST
+            } else {
+                reqwest::Method::GET
+            };
+            assert!(matches!(
+                client
+                    .x402_request(
+                        wrong_method,
+                        &resource,
+                        HeaderMap::new(),
+                        Vec::new(),
+                        &settlement,
+                        signer.as_bytes()
+                    )
+                    .await,
+                Err(crate::PaymentGatewayClientError::InvalidResponse)
+            ));
+        }
     }
 
     #[tokio::test]
