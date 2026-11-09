@@ -1,47 +1,78 @@
 # GPUI / Rust migration execution ledger
 
-Objective: replace the frontend, internal clients and former JS/TS/Node test tools with Rust, preserving existing protocol, recovery and service capabilities, then remove every active old implementation and dependency. The detailed contract is [the migration plan](gpui-rust-migration-plan.md).
+The frontend, internal clients and former JS/TS/Node test runners now use Rust. React/Vite, the TypeScript SDK, Node/Bruno execution, static serving and their installation outputs are retired. Existing shell node orchestration and Python evidence validators remain; neither executes a retired client runtime. See [the plan](gpui-rust-migration-plan.md), [native operations](native-desktop.md) and [dependency provenance](native-gui-dependencies.md).
 
-Baseline: `e6469c3b4736d8ab4f62469f054f79aef71610f9`.
+Baseline: `e6469c3b4736d8ab4f62469f054f79aef71610f9`. Implementation: `371aae9`; qualification cache isolation: `31a5cf2`. This ledger and the final audit invocation correction follow those commits. No release, main merge, script deployment or real-asset admission is performed.
 
 ## Required gates
 
-- [ ] P0: one exact native GPUI dependency family compiles with the pinned toolchain and passes real native input/platform checks.
-- [x] P1: shared public DTOs and a thin Rust SDK reuse the canonical protocol/package validators; fixtures and independent expected vectors survive.
-- [ ] P2: Rust controls replace SDK/Node regressions and all selected Fiber/Bruno scenario families, including real three-node Gateway payment, credentials and fair exchange.
-- [ ] P3: complete native read views preserve model capabilities, record provenance, permissions, offline/stale/error and task lifecycle behavior.
-- [ ] P4: all existing package, root-funding, write, export and restore workflows have native replacements with unchanged authorization/recovery boundaries.
-- [ ] P5: React/Vite/TypeScript/Node/Bruno implementation, static serving, build/config/CI and active documentation dependencies are removed without deleting unrelated user materials.
-- [ ] P6: full clean-source Rust/desktop/native/VM/supply-chain and artifact qualification passes; desktop packaging and platform evidence are recorded.
+- [x] P0: one pinned GPUI family builds and passes the recorded native input/platform checks.
+- [x] P1: shared DTOs and Rust clients reuse canonical protocol/package validators; independent expected vectors survive.
+- [x] P2: Rust replaces SDK/Node regressions and all 15 selected Fiber scenario families, including real three-node Gateway payment, credentials and fair exchange.
+- [x] P3: native read views retain capabilities, provenance, permissions, freshness and task lifecycle behavior.
+- [x] P4: all 23 Hub workflows, package/root-funding review, file export and restore have native replacements with existing authorization/recovery boundaries.
+- [x] P5: old implementation, static serving, build/CI and active documentation dependencies are removed; unrelated user materials are preserved.
+- [x] P6: full local CI, clean-source native matrix, VM, supply-chain and exact desktop/contract artifact qualification pass. Full Fiber runtime cases pass; the final audit invocation defect and successful post-run verification are recorded below.
 
-## Current evidence (implementation in progress)
+## Architecture and preserved behavior
 
-- Registry GPUI Kit **=0.9.0** / GPUI **=0.3.11** compiles on Rust 1.95.0. Only native component/assets are selected. An actual X11 window opens and renders CJK text. Native X11 core-key delivery, UTF-8 clipboard paste, request review/confirmation and a real Hub write have passed. The system portal opened its task-specific GNOME/Nautilus chooser; closing it returned cancellation and restored controls. The user separately confirmed native Chinese IME, Enter confirmation and Esc composition cancellation as normal. That manual report is recorded independently of automated core-event/headless evidence.
-- A local linker shim under `target/native-libs` uses the installed `libxkbcommon-x11.so.0`; the development linker name is absent on this machine. Qualification/CI still needs an explicit system dependency setup.
-- `morph-packages` owns the former CLI public codecs and common artifact persistence; CLI files re-export that sole implementation and retain the existing test namespaces. Shared public Hub DTOs are in `morph-hub-api`, and typed bounded HTTP workflows in `morph-sdk`.
-- All 13 protocol fixtures moved byte-for-byte to `fixtures/protocol`. Independent retired-SDK output is preserved under `fixtures/interop`: 29 initial vectors plus **202 public protocol calls captured while the complete retiring smoke assertions passed**. Rust validates their positive and negative behavior; it never executes the retired code to obtain expected output during tests.
-- CLI regression: **271 passed**. Payment Gateway library regression: **31 passed**; its existing integration suites also passed. SDK: **4 transport tests + 3 gateway authorization tests + 2 vector suites passed**. Native GPUI: **5 tests passed**, including actual GPUI pointer/key dispatch, CJK composition via the public input handler, clipboard, retained drafts and disabled offline writes. These GPUI tests use the headless platform and do not establish native OS IME compatibility.
-- The desktop implementation has read pages, virtual record lists, scope/freshness gates, 23 Hub workflow forms, explicit request review/confirmation, offline inspection, bounded worker dispatch, JSON file dialogs and private immutable export. These are **implemented, not yet fully accepted**. Mutation cancellation/transport uncertainty prevents automatic mutation retries. Service records retain their `local_operator_projection` / provenance boundaries.
-- `morph-xtask gateway-fiber` now provides a Rust replacement for the former Node three-node Gateway flow: protected key-file loading, unpaid settlement rejection, exact route assertions, terminal receipts, Biscuit authorization, hash-locked AES-GCM exchange and payment indexes. It passed a real three-node Fiber route together with the **39-request** native router-pay suite. Exact source-bound final qualification remains open.
+Five new host crates bring the host workspace to ten: `morph-packages`, `morph-hub-api`, `morph-sdk`, `morph-desktop`, `morph-xtask`. CLI modules re-export the sole package implementation. The desktop acquires no channel key, state-number reservation or chain publication authority.
 
-## Supply-chain qualification
+The native application has virtualized read lists and 23 typed workflows, explicit review/confirmation, scope/freshness gates, bounded background work, stale-connection rejection, native file dialogs and immutable owner-only exports. Ambiguous mutations require reconciliation and are never retried automatically. Local Hub projections, saved signatures and confirmed chain facts remain distinct.
 
-`make supply-chain` passes with no new advisory ignore; the existing explicit rand 0.7 upstream waiver remains. **26** vendored dependencies have exact checksummed provenance and pass complete upstream archive reconstruction. Native timing, macro, SVG/font and D-Bus paths use maintained dependencies; the AT-SPI stack is ported to zbus 6.2.1. Native GPUI headless tests pass on that graph. See [native dependency provenance and redistribution](native-gui-dependencies.md).
+All 13 protocol fixtures moved byte-for-byte to `fixtures/protocol`. Interoperability data preserves 29 initial vectors and 202 public calls captured while the retiring SDK's complete assertions passed. These overlap and are not advertised as 231 independent test functions. No retired implementation generates expected results during Rust tests. Dynamic JSON exports preserve u128 through `serde_json` arbitrary precision.
 
-MPL-2.0 is permitted only for `option-ext =0.2.0` and macOS build-only `cbindgen =0.28.0`, not globally. Exact upstream source archives and original license texts are retained under `vendor/redistribution` and `vendor/licenses/native-desktop`. Desktop packages must carry them; packaging qualification remains open.
+## Verified source and artifacts
 
-SDK dynamic state-file exports use lossless `serde_json` arbitrary-precision numbers: a regression passes quantities above both JavaScript's exact-number limit and u64. Public protocol amounts remain decimal strings. No snapshot/journal authority or wire encoding changed.
+`target/gpui-migration/clean-candidate-02/qualification.json` passes for clean source `31a5cf266a2b27aee86feec17dcd69bf5effe5bc`:
 
-The native Fiber runner now loads **268** source-bound request definitions across **15** scenario families through a closed Rust action/assertion vocabulary. The corpus/order, exact-integer refund, missing-value and mutation-no-retry negative tests pass. Real router-pay (39), external funding (22), owned-node restart, open/use/close (22), three-node transfer (23), reestablish (9), force shutdown (12) and Gateway routing have passed in development runs. Other scenario families and final clean-source qualification remain in progress. No retired runtime is invoked to execute these definitions.
+| Gate | Result |
+| --- | --- |
+| Full `make ci` | Passed: formatting, clippy, hygiene, supply chain, workspace, fixtures, native build, contracts and readiness |
+| CLI / real Hub transport | 269 CLI tests plus the real-service native-client integration passed |
+| Gateway | 31 library tests plus existing integration suites passed |
+| SDK | 4 transport tests, 3 authorization tests, 2 independent vector suites passed |
+| GPUI | 5 headless tests passed; native OS evidence is separate below |
+| Evidence validators | 22 Python tests passed, including forged/dirty/unsafe native archive rejection |
+| CKB-VM | 91 passed, 0 failed; all eight rebuilt ELF identities match the existing manifest |
+| Clean native chain | 5 native cases, 10 derived scenarios, 118 evidence assertions, 83 unique transactions, 11 audit families |
+| Desktop archive | 751 dependency records, 721 registry archives, 4,161 files and 2 exact MPL source archives verified |
 
-## Current retirement and packaging
+The optimized desktop binary is about 36 MiB; its source/notices bundle is about 93 MiB. Qualified binary SHA256: `e7982f4c64e99ee561dda5fe2b6d528726317c33f1263028b90c03c26b6a113d`. The local package is not published. The contract release profile and wire boundary did not change.
 
-The React/Vite frontend, TypeScript SDK, Node regression sources and their installation/build outputs are deleted. Hub static serving and `--ui-dir` are removed; arbitrary file/root paths have a negative 404 test. Make/CI use Rust client and GPUI checks, and the new Rust source-surface gate passes with zero JS/TS/manifests. This is an implementation cutover under qualification, **not a claim that every live acceptance gate has finished**.
+The first candidate run passed CI but correctly failed source cleanliness because of a pre-existing untracked Python bytecode cache. The original cache was preserved. Generated caches are excluded from source inventories, qualification uses an isolated cache prefix, and candidate 02 reran the gates from a new clean signed commit. The failed record was not restamped.
 
-A separate host-only `desktop` profile produces an optimized Linux binary of about 36 MiB; contract release flags remain unchanged. Local packaging passes and includes the dependency closure's published source archives, exact patched/Git sources, original notices and both explicit MPL source archives. The initial bundle is deliberately marked `tracked_clean:false` until final qualification. No artifact is published.
+## Real Fiber / Gateway acceptance
 
-Workspace tests (including the existing 19 Python evidence-validator tests), full clippy, supply-chain checks and **91 CKB-VM cases** pass on the current working tree. Final source-commit qualification still requires clean tracked inputs and will rerun the required gates.
+`target/gpui-migration/fiber-full-clean-01` executed from clean `31a5cf2` against the pinned external Fiber checkout:
 
-## Remaining acceptance and retirement
+- All 15 scenario families passed: **18 runtime instances**, **277 recorded request steps**, **584 checks**. The funding family runs independently for four mutation cases. Polling attempts, development block repetitions, restart and Gateway flows are not silently counted as additional source definitions; the corpus contains 268 definitions.
+- External funding and owned-node restart passed; exact signed funding survived restart and the channel reached Closed.
+- Real node1 → node2 → node3 x402 settlement, terminal signed receipts, Biscuit credential delivery and hash-locked encrypted result exchange passed. This proves a Fiber provider route, not Morph custody backing for that route.
+- UDT, reconnection, cooperative/force closure, hold/cancel, periodic expiry and all four watchtower combinations passed with actual economic/state assertions.
+- Morph's complete native matrix passed on Fiber's exact CKB genesis and RPC.
 
-Remaining work is the rest of the native Fiber scenario matrix and four malicious funding shapes; package/runtime/portal/IME evidence; final freshness/scope, GUI and exact-artifact verification; the final documentation/Vault report; and clean-source candidate qualification. The implementation is not yet declared complete, committed as a migration baseline or released.
+The original full command exited **1 at its final summary auditor**, after every runtime case had passed: that auditor omitted the mandatory stateful budget profile. No scenario failure was waived. Before changing tracked source, a candidate verifier added the explicit budget and audit profiles, retained all source/artifact guards and successfully rechecked the original run. The resulting audit covers **27 business flows and 22 security/recovery families**. The production script now uses those same arguments.
+
+`target/gpui-migration/audit-replay/verification.json` records the original exit/failure, source commit, correction hash, verifier hash, input hashes and successful post-run audit. Raw scenario evidence retains its original source identity; it was not rewritten as a newer run. This is a successful post-run verification, not a claim that the original shell invocation returned zero. Runtime binaries and scenarios are unchanged by the invocation fix.
+
+Periodic expiry checks both peers' zero in-flight balances, unchanged business balances, the same live channel and exact confirmed failed-removal TLC statuses. Current Fiber can retain terminal bookkeeping; an empty list is not substituted for these checks. Missing values, live Committed TLCs, wrong balances and closed/missing channels fail.
+
+## Native platform evidence
+
+GPUI Kit `=0.9.0` / GPUI pre `=0.3.11` is the sole supported family. Linux x86-64 is the tested target.
+
+- Actual native X11 core-key delivery, UTF-8 clipboard, request review/confirmation and real Hub write passed. Automation does not claim physical keyboard delivery.
+- The task-specific GNOME/Nautilus portal opened; cancellation returned and restored controls.
+- The user separately confirmed actual Chinese IME, Enter confirmation and Esc composition cancellation as **正常** in the opened native window.
+- The optimized Wayland binary opened, connected, navigated and opened/cancelled the native portal. This is separate from the debug-window physical IME report.
+
+Headless input handlers, native events, physical IME and screenshots are distinct evidence classes. Other operating systems and full assistive-technology compatibility are not certified by these checks. Native dependency preparation uses system libraries or a local linker shim, never system library replacement.
+
+## Supply chain and remaining boundaries
+
+`make supply-chain` passes with no new advisory ignore. Only the existing rand 0.7 upstream waiver remains. All 26 exact vendored consumers have checksummed provenance and verified upstream archive reconstruction. Maintained timing/macros, SVG/fonts and zbus 6 platform dependencies replace the obsolete native graph. Unsupported alternate frontend backends are not selected.
+
+MPL exceptions remain exact: option-ext 0.2.0 and macOS build-only cbindgen 0.28.0. Local bundles carry original notices and exact source archives. These bounded source patches require maintenance until compatible upstream releases replace them.
+
+This migration does not implement Spore/RNA custody, change consensus formats, relax signer journals, certify independent watchtower failover or authorize real assets. Those protocol/product boundaries remain governed by their own plans and readiness gates.

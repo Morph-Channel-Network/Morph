@@ -196,7 +196,10 @@ verify_morph_stateful() {
   # evidence, code identity, budget checks and source freshness. Do not retain
   # the retired implementation's transaction-count/proof-profile thresholds.
   (cd "$ROOT_DIR" && "$morph_bin" devnet-stateful-assert --dir "$scenarios" \
-    --contracts-dir "$matrix_dir/contracts" --json) >"$current/current-assertion.json"
+    --contracts-dir "$matrix_dir/contracts" \
+    --budget-profile "$ROOT_DIR/docs/devnet-stateful-budget.example.json" \
+    --audit-profile "$ROOT_DIR/docs/devnet-audit-profile.example.json" \
+    --json) >"$current/current-assertion.json"
   python3 - "$current" "$run_dir/fiber-coexistence-genesis.json" "$morph_bin" "$run_dir/manifest.txt" <<'CURRENT_MATRIX_PY'
 from pathlib import Path
 import json,subprocess,sys
