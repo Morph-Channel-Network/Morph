@@ -1,4 +1,11 @@
-# GPUI / Rust migration execution ledger
+# GPUI / Rust migration acceptance record (d988c79)
+
+> Historical acceptance record for `d988c79`, not a qualification of subsequent edits.
+> Follow-up cleanup removed the retired SDK snapshots, dynamic camelCase adapter,
+> unused generated package copies and duplicated node evidence. Current tests reuse
+> canonical Rust package samples and a single current Gateway vector. The user
+> explicitly requested no gates for that cleanup; the results below remain tied
+> to their original commits, not to the subsequent unqualified cleanup and UI changes.
 
 The frontend, internal clients and former JS/TS/Node test runners now use Rust. React/Vite, the TypeScript SDK, Node/Bruno execution, static serving and their installation outputs are retired. Existing shell node orchestration and Python evidence validators remain; neither executes a retired client runtime. See [the plan](gpui-rust-migration-plan.md), [native operations](native-desktop.md) and [dependency provenance](native-gui-dependencies.md).
 

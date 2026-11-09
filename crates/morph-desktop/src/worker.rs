@@ -30,7 +30,6 @@ pub enum Work {
     },
     Open {
         path: PathBuf,
-        slot: usize,
     },
     Save {
         path: PathBuf,
@@ -38,16 +37,19 @@ pub enum Work {
     },
 }
 pub struct Job {
+    pub id: u64,
     pub generation: u64,
     pub work: Work,
 }
 pub enum Reply {
     Hub(Box<HubReply>),
     Document(Value),
-    Opened(usize, Value),
+    Opened(Value, u64),
     Saved,
 }
 pub struct Completion {
+    pub review: Option<Value>,
+    pub id: u64,
     pub generation: u64,
     pub result: Result<Reply>,
 }
@@ -57,10 +59,16 @@ pub struct Worker {
 }
 impl Worker {
     pub fn start() -> Result<Self> {
+        Self::start_named("morph-desktop-network")
+    }
+    pub fn start_files() -> Result<Self> {
+        Self::start_named("morph-desktop-files")
+    }
+    fn start_named(name: &str) -> Result<Self> {
         let (send, queue) = mpsc::sync_channel::<Job>(1);
         let (out, receive) = mpsc::sync_channel(2);
         std::thread::Builder::new()
-            .name("morph-desktop-io".into())
+            .name(name.into())
             .spawn(move || {
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
@@ -127,8 +135,9 @@ impl Worker {
                                 };
                                 Ok(Reply::Document(review))
                             }
-                            Work::Open { path, slot } => {
-                                Ok(Reply::Opened(slot, read_document(&path)?))
+                            Work::Open { path } => {
+                                let (value, bytes) = read_document(&path)?;
+                                Ok(Reply::Opened(value, bytes))
                             }
 
                             Work::Save { path, document } => {
@@ -140,8 +149,27 @@ impl Worker {
                             }
                         }
                     })();
+                    let mut review = None;
+                    let result = result.and_then(|reply| {
+                        if let Reply::Hub(hub) = &reply
+                            && let HubReply::Document(document) = hub.as_ref()
+                            && matches!(
+                                document["schema"].as_str(),
+                                Some(
+                                    "morph.multi_asset_recovery_package.v1"
+                                        | "morph.multi_asset_root_funding.v1"
+                                        | "morph.multi_asset_root_collection.v1"
+                                )
+                            )
+                        {
+                            review = Some(morph_sdk::inspection::inspect(document, None)?);
+                        }
+                        Ok(reply)
+                    });
                     if out
                         .send(Completion {
+                            review,
+                            id: job.id,
                             generation: job.generation,
                             result,
                         })
@@ -155,7 +183,7 @@ impl Worker {
     }
 }
 
-fn read_document(path: &std::path::Path) -> Result<Value> {
+fn read_document(path: &std::path::Path) -> Result<(Value, u64)> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -171,7 +199,7 @@ fn read_document(path: &std::path::Path) -> Result<Value> {
             .take(4 * 1024 * 1024 + 1)
             .read_to_end(&mut data)?;
         ensure!(data.len() <= 4 * 1024 * 1024, "document exceeds 4 MiB");
-        Ok(serde_json::from_slice(&data)?)
+        Ok((serde_json::from_slice(&data)?, data.len() as u64))
     }
     #[cfg(not(unix))]
     {

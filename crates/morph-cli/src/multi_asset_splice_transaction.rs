@@ -188,7 +188,7 @@ pub(crate) mod tests {
         );
     }
 
-    pub(crate) fn sdk_splice_fixture() -> serde_json::Value {
+    pub(crate) fn splice_fixture() -> serde_json::Value {
         use crate::multi_asset_funding::root_collection_tests::signed_receipts;
         use crate::multi_asset_packages::StoredMultiAssetPackage;
         let stored = crate::multi_asset_packages::fixture_package().unwrap();
@@ -262,12 +262,12 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn sdk_splice_fixture_matches_all_three_domains_and_exact_transaction() {
+    fn splice_fixture_matches_all_three_domains_and_exact_transaction() {
         let expected: serde_json::Value = serde_json::from_str(include_str!(
             "../../../fixtures/protocol/multi-asset-splice.json"
         ))
         .unwrap();
-        assert_eq!(sdk_splice_fixture(), expected);
+        assert_eq!(splice_fixture(), expected);
         // Recorded node transactions cover actual asset admission/removal and
         // withdrawal custody; revalidate their public evidence without RPC.
         let transitions: Vec<serde_json::Value> = serde_json::from_str(include_str!(

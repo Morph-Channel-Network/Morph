@@ -134,7 +134,7 @@ mod tests {
                 .unwrap();
         assert_eq!(
             shared, package,
-            "Rust and TypeScript must share the canonical signed fixture"
+            "the recorded package must match the canonical signed fixture"
         );
         assert_eq!(
             serde_json::to_value(summary).unwrap(),

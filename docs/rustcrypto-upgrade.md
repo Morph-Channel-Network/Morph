@@ -43,7 +43,7 @@ continues to reject high-S signatures; it does not normalize received signatures
 into accepted authority. Biscuit now signs through `PrivateKey` directly instead
 of the removed `KeyPair` wrapper.
 
-`morph-script-common::crypto_compatibility` pins deterministic signature bytes
+`morph-script-common::crypto_vectors` pins deterministic signature bytes
 captured from k256 0.13.4 and checks both bilateral and Factory verifiers against
 low-S signatures, high-S twins, modified digests, wrong signers, malformed keys,
 zero scalars and incorrect witness lengths. Existing hash-parity and protocol

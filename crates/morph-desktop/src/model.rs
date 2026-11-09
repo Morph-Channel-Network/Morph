@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Page {
     Overview,
     Channels,
@@ -16,20 +16,8 @@ pub enum Page {
     Model,
     Actions,
     Inspector,
+    Search,
 }
-pub const PAGES: &[(Page, &str)] = &[
-    (Page::Overview, "Overview"),
-    (Page::Channels, "Channels"),
-    (Page::Factories, "Factories"),
-    (Page::Invoices, "Invoices"),
-    (Page::Peers, "Peers"),
-    (Page::Recovery, "Recovery & funding"),
-    (Page::Watch, "Watchtower"),
-    (Page::Events, "Events"),
-    (Page::Model, "Model & permissions"),
-    (Page::Actions, "Operations"),
-    (Page::Inspector, "Offline inspector"),
-];
 #[derive(Clone)]
 pub struct Row {
     pub title: String,
@@ -50,7 +38,12 @@ pub fn rows(state: &HubView, page: Page) -> Vec<Row> {
             .iter()
             .map(|v| {
                 record(
-                    format!("{} · state {} · {}", v.channel_id, v.state_number, v.phase),
+                    state
+                        .peers
+                        .iter()
+                        .find(|peer| peer.pubkey == v.counterparty_pubkey)
+                        .map(|peer| peer.alias.clone())
+                        .unwrap_or_default(),
                     format!("{} · {}", v.provenance.label, v.provenance.message),
                     v,
                 )
@@ -185,17 +178,17 @@ pub fn rows(state: &HubView, page: Page) -> Vec<Row> {
         _ => vec![],
     }
 }
+pub fn matches(row: &Row, tokens: &[String]) -> bool {
+    let text = format!("{} {} {}", row.title, row.subtitle, row.document).to_lowercase();
+    tokens.iter().all(|q| text.contains(q))
+}
+#[cfg(test)]
 pub fn filter(rows: Vec<Row>, query: &str) -> Vec<Row> {
     let tokens = query
         .split_whitespace()
         .map(str::to_lowercase)
         .collect::<Vec<_>>();
-    rows.into_iter()
-        .filter(|row| {
-            let text = format!("{} {} {}", row.title, row.subtitle, row.document).to_lowercase();
-            tokens.iter().all(|q| text.contains(q))
-        })
-        .collect()
+    rows.into_iter().filter(|r| matches(r, &tokens)).collect()
 }
 pub fn can_operate(state: Option<&HubView>, checked: Option<Instant>, scope: AuthScope) -> bool {
     checked.is_some_and(|t| t.elapsed() < Duration::from_secs(15))

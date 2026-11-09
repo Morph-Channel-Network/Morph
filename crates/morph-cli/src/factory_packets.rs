@@ -39,7 +39,7 @@ use crate::multi_asset_packages::{canonical_hex, decode_hex, read_bounded_json};
 use crate::persistence::required_option;
 
 #[cfg(test)]
-pub(crate) fn sdk_packet_fixture() -> Value {
+pub(crate) fn packet_fixture() -> Value {
     use k256::ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner};
     fn case(name: &str, request: &FactorySigningRequest) -> Value {
         let packet = StoredFactoryRequest::from_delivery_review(request).unwrap();
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn factory_public_review_requires_verified_delivery_before_strict_signing_decode() {
-        let fixture = sdk_packet_fixture();
+        let fixture = packet_fixture();
         for case in fixture["cases"].as_array().unwrap() {
             let packet: StoredFactoryRequest =
                 serde_json::from_value(case["request"].clone()).unwrap();

@@ -1,4 +1,4 @@
-//! Pin the byte-level prehash and strict low-S behavior across RustCrypto upgrades.
+//! Fixed vectors for the current prehash and strict low-S verification rules.
 extern crate alloc;
 
 use super::*;
@@ -80,7 +80,7 @@ fn high_s(signature: &[u8]) -> [u8; 64] {
 }
 
 #[test]
-fn prehashed_signature_bytes_match_previous_rustcrypto_release() {
+fn canonical_prehashed_signatures_match_fixed_vectors() {
     for index in 0..2 {
         let key = SigningKey::from_slice(&[index as u8 + 1; 32]).unwrap();
         assert_eq!(

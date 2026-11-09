@@ -210,7 +210,7 @@ mod tests {
     }
     #[test]
     fn factory_request_policy_counts_simultaneous_children_and_external_carriers() {
-        let fixture = crate::factory_packets::sdk_packet_fixture();
+        let fixture = crate::factory_packets::packet_fixture();
         let case = fixture["cases"]
             .as_array()
             .unwrap()

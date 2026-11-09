@@ -2000,7 +2000,7 @@ mod tests {
 }
 
 #[cfg(test)]
-pub(crate) fn sdk_update_fixture() -> Value {
+pub(crate) fn proposal_fixture() -> Value {
     let recovery = packages::fixture_package().unwrap().recovery().unwrap();
     let key = SigningKey::from_slice(&[1u8; 32]).unwrap();
     let public = key.verifying_key().to_sec1_point(true).as_bytes().to_vec();
@@ -2023,11 +2023,11 @@ pub(crate) fn sdk_update_fixture() -> Value {
 }
 
 #[cfg(test)]
-mod cross_language_tests {
+mod public_proposal_tests {
     use super::*;
 
     #[test]
-    fn accepts_sdk_proposal_and_peer_signature_with_full_u128_values() {
+    fn accepts_public_proposal_and_peer_signature_with_full_u128_values() {
         let fixture: Value = serde_json::from_str(include_str!(
             "../../../fixtures/protocol/multi-asset-update.json"
         ))

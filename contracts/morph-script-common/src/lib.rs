@@ -7,7 +7,7 @@ use k256::ecdsa::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
 
 #[cfg(test)]
-mod crypto_compatibility;
+mod crypto_vectors;
 
 pub mod factory_multi_asset;
 pub mod multi_asset;

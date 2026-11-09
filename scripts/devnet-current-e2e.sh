@@ -112,7 +112,7 @@ printf '[current-e2e] running eight-asset complete-set lifecycle\n'
   --contracts-dir "$MATRIX_DIR/contracts" --store-dir "$MATRIX_DIR/eight-asset-packages" --json >"$MATRIX_DIR/eight-asset-acceptance.json" 2>"$OUT_DIR/logs/eight-asset-acceptance.log"
 python3 - "$OUT_DIR" "$MATRIX_DIR" "$CKB_BIN" "$RPC_URL" <<'PY'
 from pathlib import Path
-import datetime,hashlib,json,os,subprocess,sys
+import datetime,hashlib,json,subprocess,sys
 run=Path(sys.argv[1]);out=Path(sys.argv[2]); report=json.loads((out/'acceptance.json').read_text())
 factory=json.loads((out/'factory-acceptance.json').read_text())
 shared=json.loads((out/'shared-acceptance.json').read_text())
@@ -164,9 +164,6 @@ evidence={'schema':'morph.current_splice_fixture_evidence.v1','scope':'developme
  'transitions':report['transitions']['operations'],'terminal':report['transitions']['terminal'],
  'factory':factory}
 (run/'evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
-if os.environ.get('MORPH_UPDATE_FIXTURES')=='1':
- dest=Path('fixtures/protocol/multi-asset-splice-transitions.json')
- dest.write_bytes(trace.read_bytes());dest.with_suffix('.evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
 print('[current-e2e] native cases completed; artifacts: '+str(run))
 PY
 python3 scripts/current-stateful-ledger.py --run-dir "$OUT_DIR" --cli "$CLI_BIN"

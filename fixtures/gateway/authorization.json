@@ -1,6 +1,6 @@
 {
   "schema": "morph.gateway_authorization_interop.v1",
-  "producer": "retiring Noble SDK against canonical public Rust requirement terms",
+  "producer": "Independent Noble secp256k1 implementation over canonical current Gateway terms",
   "source_commit": "e6469c3b4736d8ab4f62469f054f79aef71610f9",
   "scope": "Deterministic authorization vector with expired synthetic invoice; not a live challenge; no payer private key",
   "requirements": {

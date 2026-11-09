@@ -1,8 +1,8 @@
 //! Stateless public review: canonical codecs and Core own all validation.
 use anyhow::{Result, ensure};
 use morph_core::*;
-pub use morph_packages::{
-    conditional_packages, construction, factory_packets, factory_transition_packages,
+use morph_packages::{
+    conditional_packages, factory_packets, factory_transition_packages,
     multi_asset_funding, multi_asset_packages, multi_asset_signatures,
     multi_asset_splice_transaction, proposal,
 };
@@ -143,87 +143,4 @@ pub fn inspect_signature(document: &Value, base: Option<&Value>, receipt: &Value
     let signers: [String; 2] = serde_json::from_value(review["summary"]["signer_pubkeys"].clone())?;
     message.verify(&digest, &signers)?;
     Ok(json!({"signer_pubkey":message.pubkey,"signing_digest":message.signing_digest}))
-}
-
-/// Adapter for migration vectors and Rust automation. Production consumers may use
-/// the concrete package methods re-exported above instead of dynamic dispatch.
-pub fn public_operation(operation: &str, args: &[Value]) -> Result<Value> {
-    let a = |index: usize| {
-        args.get(index)
-            .ok_or_else(|| anyhow::anyhow!("missing argument {index}"))
-    };
-    let text = |index: usize| {
-        a(index)?
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("argument {index} must be a string"))
-    };
-    let out = match operation {
-        "inspectMultiAssetPackage"
-        | "inspectConditionalBatchPackage"
-        | "inspectMultiAssetRootDraft"
-        | "inspectMultiAssetRootCollection"
-        | "inspectMultiAssetRootFunding"
-        | "inspectFactoryRequest"
-        | "inspectFactoryTransitionPackage" => inspect(a(0)?, None)?,
-        "inspectFactoryCustody" => {
-            decode::<factory_packets::StoredFactoryCustody>(a(0)?)?.inspect()?
-        }
-        "inspectMultiAssetProposal"
-        | "inspectMultiAssetSpliceDraft"
-        | "inspectMultiAssetSpliceFunding" => inspect(a(1)?, Some(a(0)?))?,
-        "inspectMultiAssetProposalSignature" => inspect_signature(a(1)?, Some(a(0)?), a(2)?)?,
-        "inspectFactorySignature" => inspect_signature(a(0)?, None, a(1)?)?,
-        "inspectMultiAssetPublicExitTerms" => serde_json::to_value(
-            construction::public_exit_terms(text(0)?, text(1)?, text(2)?, &decode(a(3)?)?)?,
-        )?,
-        "inspectMultiAssetSettlementCapability" => {
-            let package: StoredMultiAssetPackage = decode(a(0)?)?;
-            package.validate()?.capability
-        }
-        "createMultiAssetProposal" => serde_json::to_value(construction::create_proposal(
-            &decode(a(0)?)?,
-            text(1)?,
-            text(2)?,
-        )?)?,
-        "inspectMultiAssetFundingSignature" => construction::inspect_funding_signature(
-            &decode(a(0)?)?,
-            decode(a(1)?)?,
-            &decode(a(2)?)?,
-        )?,
-        "assembleMultiAssetRootFunding" => serde_json::to_value(construction::assemble_root(
-            decode(a(0)?)?,
-            &decode::<Vec<_>>(a(1)?)?,
-            &decode::<Vec<_>>(a(2)?)?,
-        )?)?,
-        "createConditionalBatchPackage" => serde_json::to_value(
-            conditional_packages::StoredConditionalBatchPackage::from_source(
-                decode(a(0)?)?,
-                decode(a(1)?)?,
-                conditional_packages::decimal_u64("input_since", text(2)?)?,
-            )?,
-        )?,
-        "inspectMultiAssetSpliceSignature" => {
-            let target = match text(2)? {
-                "splice-creation" => construction::SpliceTarget::Creation,
-                "splice-recovery" => construction::SpliceTarget::Recovery,
-                "splice-bridge" => construction::SpliceTarget::Bridge,
-                _ => anyhow::bail!("unknown explicit splice signing role"),
-            };
-            construction::splice_signature(
-                &decode(a(0)?)?,
-                &decode(a(1)?)?,
-                target,
-                &decode(a(3)?)?,
-            )?
-        }
-        "assembleMultiAssetSpliceFunding" => serde_json::to_value(construction::assemble_splice(
-            &decode(a(0)?)?,
-            &decode(a(1)?)?,
-            &decode::<Vec<_>>(a(2)?)?,
-            &decode::<Vec<_>>(a(3)?)?,
-            &decode::<Vec<_>>(a(4)?)?,
-        )?)?,
-        _ => anyhow::bail!("unknown public operation"),
-    };
-    Ok(out)
 }

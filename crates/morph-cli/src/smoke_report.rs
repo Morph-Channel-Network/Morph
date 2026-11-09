@@ -2057,7 +2057,7 @@ mod tests {
         run
     }
     fn root_request() -> (FactorySigningRequest, packed::Transaction) {
-        let corpus = crate::factory_packets::sdk_packet_fixture();
+        let corpus = crate::factory_packets::packet_fixture();
         let case = &corpus["cases"][0];
         let packet: StoredFactoryRequest = serde_json::from_value(case["request"].clone()).unwrap();
         let request = packet.decode().unwrap();

@@ -40,7 +40,8 @@ fair-exchange decryption. Paid resource requests never inherit the gateway API
 bearer token, require the signed method, and validate an independently pinned
 receipt signer. Both GET and payload-carrying methods are supported.
 
-Run `make rust-client-check`. Independent protocol and authorization vectors live
-under `fixtures/interop`; transport ambiguity, redirects, precision and actual
-Hub/Gateway service paths have native Rust coverage. The SDK neither evaluates
-retired scripts nor admits noncanonical earlier requirement identifiers.
+Run `make rust-client-check`. Current package review tests reuse the canonical
+samples under `fixtures/protocol`; the independent current authorization vector
+lives at `fixtures/gateway/authorization.json`. Transport ambiguity, redirects,
+precision and actual Hub/Gateway service paths have native Rust coverage. There
+is no old SDK operation-name dispatcher or historical snapshot loader.

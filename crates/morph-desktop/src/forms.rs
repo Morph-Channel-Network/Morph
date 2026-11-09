@@ -1,4 +1,5 @@
 //! Declarative native forms; requests are decoded into the shared typed API at dispatch.
+use crate::i18n::{Language, Text};
 use anyhow::{Result, anyhow, ensure};
 use morph_sdk::hub::HubOperation;
 use serde_json::{Map, Value};
@@ -15,19 +16,19 @@ pub enum Kind {
 #[derive(Debug, Clone, Copy)]
 pub struct Field {
     pub key: &'static str,
-    pub label: &'static str,
+    pub label: Text,
     pub kind: Kind,
     pub default: &'static str,
 }
 #[derive(Debug, Clone, Copy)]
 pub struct Form {
     pub operation: HubOperation,
-    pub label: &'static str,
+    pub label: Text,
     pub fields: &'static [Field],
     pub needs_id: bool,
     pub document: bool,
 }
-const fn field(key: &'static str, label: &'static str, kind: Kind, default: &'static str) -> Field {
+const fn field(key: &'static str, label: Text, kind: Kind, default: &'static str) -> Field {
     Field {
         key,
         label,
@@ -36,89 +37,89 @@ const fn field(key: &'static str, label: &'static str, kind: Kind, default: &'st
     }
 }
 const PEER: &[Field] = &[
-    field("pubkey", "Peer public key (66 hex)", Kind::Text, ""),
-    field("alias", "Alias", Kind::Text, ""),
+    field("pubkey", Text::PeerPublicKey66Hex, Kind::Text, ""),
+    field("alias", Text::Alias, Kind::Text, ""),
 ];
 const INVOICE: &[Field] = &[
-    field("amount", "Amount (integer base units)", Kind::Text, ""),
-    field("description", "Description", Kind::Text, ""),
+    field("amount", Text::AmountIntegerBaseUnits, Kind::Text, ""),
+    field("description", Text::Description, Kind::Text, ""),
     field(
         "payment_preimage",
-        "Payment preimage (set preimage OR hash)",
+        Text::PaymentPreimageSetPreimageORHash,
         Kind::Secret,
         "",
     ),
     field(
         "payment_hash",
-        "Payment hash (optional)",
+        Text::PaymentHashOptional,
         Kind::Optional,
         "",
     ),
-    field("expiry_secs", "Expiry (seconds)", Kind::Number, "3600"),
-    field("channel_id", "Channel id (optional)", Kind::Optional, ""),
+    field("expiry_secs", Text::ExpirySeconds, Kind::Number, "3600"),
+    field("channel_id", Text::ChannelIdOptional, Kind::Optional, ""),
 ];
 const CHANNEL: &[Field] = &[
-    field("channel_id", "Channel id", Kind::Text, ""),
+    field("channel_id", Text::ChannelId, Kind::Text, ""),
     field(
         "counterparty_pubkey",
-        "Counterparty public key",
+        Text::CounterpartyPublicKey,
         Kind::Text,
         "",
     ),
     field(
         "counterparty_alias",
-        "Counterparty alias (optional)",
+        Text::CounterpartyAliasOptional,
         Kind::Optional,
         "",
     ),
-    field("funding_context_id", "Funding context id", Kind::Text, ""),
-    field("local", "Local base units", Kind::Text, "0"),
-    field("remote", "Remote base units", Kind::Text, "0"),
-    field("pending", "Pending base units", Kind::Optional, "0"),
+    field("funding_context_id", Text::FundingContextId, Kind::Text, ""),
+    field("local", Text::LocalBaseUnits, Kind::Text, "0"),
+    field("remote", Text::RemoteBaseUnits, Kind::Text, "0"),
+    field("pending", Text::PendingBaseUnits, Kind::Optional, "0"),
     field(
         "sponsor_budget",
-        "Sponsor budget (shannons)",
+        Text::SponsorBudgetShannons,
         Kind::Number,
         "1000000",
     ),
 ];
 const CHILD: &[Field] = &[
-    field("child_channel_id", "Child channel id", Kind::Text, ""),
+    field("child_channel_id", Text::ChildChannelId, Kind::Text, ""),
     field(
         "counterparty_pubkey",
-        "Counterparty public key",
+        Text::CounterpartyPublicKey,
         Kind::Text,
         "",
     ),
     field(
         "counterparty_alias",
-        "Counterparty alias (optional)",
+        Text::CounterpartyAliasOptional,
         Kind::Optional,
         "",
     ),
-    field("funding_context_id", "Funding context id", Kind::Text, ""),
-    field("local", "Local base units", Kind::Text, "0"),
-    field("remote", "Remote base units", Kind::Text, "0"),
-    field("pending", "Pending base units", Kind::Optional, "0"),
+    field("funding_context_id", Text::FundingContextId, Kind::Text, ""),
+    field("local", Text::LocalBaseUnits, Kind::Text, "0"),
+    field("remote", Text::RemoteBaseUnits, Kind::Text, "0"),
+    field("pending", Text::PendingBaseUnits, Kind::Optional, "0"),
     field(
         "sponsor_budget",
-        "Sponsor budget (shannons)",
+        Text::SponsorBudgetShannons,
         Kind::Number,
         "1000000",
     ),
 ];
 const FACTORY: &[Field] = &[
-    field("factory_id", "Factory id", Kind::Text, ""),
+    field("factory_id", Text::FactoryId, Kind::Text, ""),
     field(
         "participant_pubkeys",
-        "Member public keys (comma or newline separated)",
+        Text::MemberPublicKeysCommaOrNewline,
         Kind::Pubkeys,
         "",
     ),
-    field("reserve", "Reserve base units", Kind::Text, "0"),
+    field("reserve", Text::ReserveBaseUnits, Kind::Text, "0"),
 ];
 macro_rules! form {
-    ($op:ident,$label:literal,$fields:expr,$id:expr,$doc:expr) => {
+    ($op:ident,$label:expr,$fields:expr,$id:expr,$doc:expr) => {
         Form {
             operation: HubOperation::$op,
             label: $label,
@@ -129,14 +130,14 @@ macro_rules! form {
     };
 }
 pub const FORMS: &[Form] = &[
-    form!(Peer, "Connect peer", PEER, false, false),
-    form!(CreateInvoice, "Create invoice", INVOICE, false, false),
+    form!(Peer, Text::AddPeerRecord, PEER, false, false),
+    form!(CreateInvoice, Text::CreateInvoice, INVOICE, false, false),
     form!(
         DecodeInvoice,
-        "Decode / receive invoice",
+        Text::ImportInvoice,
         &[field(
             "encoded_invoice",
-            "Morph Bech32m invoice",
+            Text::MorphBech32mInvoice,
             Kind::Text,
             ""
         )],
@@ -145,26 +146,26 @@ pub const FORMS: &[Form] = &[
     ),
     form!(
         SettleInvoice,
-        "Settle invoice",
+        Text::SettleInvoice,
         &[field(
             "payment_preimage",
-            "Payment preimage",
+            Text::PaymentPreimage,
             Kind::Secret,
             ""
         )],
         true,
         false
     ),
-    form!(ReceiveInvoice, "Mark invoice received", &[], true, false),
-    form!(OpenChannel, "Record channel", CHANNEL, false, false),
+    form!(ReceiveInvoice, Text::MarkReceived, &[], true, false),
+    form!(OpenChannel, Text::AddChannelRecord, CHANNEL, false, false),
     form!(
         SpliceChannel,
-        "Record splice",
+        Text::RecordSplice,
         &[
-            field("new_funding_epoch", "New funding epoch", Kind::Number, ""),
+            field("new_funding_epoch", Text::NewFundingEpoch, Kind::Number, ""),
             field(
                 "new_funding_context_id",
-                "New funding context id",
+                Text::NewFundingContextId,
                 Kind::Text,
                 ""
             )
@@ -174,64 +175,70 @@ pub const FORMS: &[Form] = &[
     ),
     form!(
         PublishChannel,
-        "Record published state",
+        Text::RecordPublishedState,
         &[
-            field("funding_context_id", "Funding context id", Kind::Text, ""),
-            field("state_number", "State number", Kind::Number, "")
+            field("funding_context_id", Text::FundingContextId, Kind::Text, ""),
+            field("state_number", Text::StateNumber, Kind::Number, "")
         ],
         true,
         false
     ),
-    form!(FinaliseChannel, "Record finalisation", &[], true, false),
-    form!(OpenFactory, "Record Factory", FACTORY, false, false),
+    form!(FinaliseChannel, Text::RecordFinalisation, &[], true, false),
+    form!(OpenFactory, Text::AddFactoryRecord, FACTORY, false, false),
     form!(
         AdvanceFactory,
-        "Advance Factory record",
+        Text::AdvanceFactoryRecord,
         &[field(
             "new_update_number",
-            "New update number",
+            Text::NewUpdateNumber,
             Kind::Number,
             ""
         )],
         true,
         false
     ),
-    form!(MaterialiseChild, "Record Factory child", CHILD, true, false),
-    form!(ImportRecovery, "Import recovery package", &[], false, true),
-    form!(ExportRecovery, "Export recovery package", &[], true, false),
-    form!(ImportBatch, "Import conditional Batch", &[], false, true),
-    form!(ImportRoot, "Import root funding draft", &[], false, true),
-    form!(InspectRoot, "Review root collection", &[], true, false),
     form!(
-        RootExitSignature,
-        "Collect root exit receipt",
-        &[],
+        MaterialiseChild,
+        Text::RecordChildChannel,
+        CHILD,
         true,
+        false
+    ),
+    form!(
+        ImportRecovery,
+        Text::ImportRecoveryPackage,
+        &[],
+        false,
         true
     ),
+    form!(
+        ExportRecovery,
+        Text::ExportRecoveryPackage,
+        &[],
+        true,
+        false
+    ),
+    form!(ImportBatch, Text::ImportConditionalBatch, &[], false, true),
+    form!(ImportRoot, Text::ImportFundingDraft, &[], false, true),
+    form!(InspectRoot, Text::ReviewFundingCeremony, &[], true, false),
+    form!(RootExitSignature, Text::CollectExitReceipt, &[], true, true),
     form!(
         RootCreationSignature,
-        "Collect root creation receipt",
+        Text::CollectCreationReceipt,
         &[],
         true,
         true
     ),
-    form!(ExportRoot, "Export complete root funding", &[], true, false),
-    form!(ExportState, "Export Hub state file", &[], false, false),
+    form!(ExportRoot, Text::ExportCompleteFunding, &[], true, false),
+    form!(ExportState, Text::ExportWorkspace, &[], false, false),
     form!(
         PreviewRestore,
-        "Preview bootstrap restore",
+        Text::PreviewWorkspaceRestore,
         &[],
         false,
         true
     ),
-    form!(
-        Restore,
-        "Restore previewed bootstrap state",
-        &[],
-        false,
-        true
-    ),
+    form!(Restore, Text::RestorePreviewedWorkspace, &[], false, true),
 ];
 pub fn payload(form: &Form, fields: &BTreeMap<String, String>, token_asset: &str) -> Result<Value> {
     let mut value = Map::new();
@@ -244,13 +251,16 @@ pub fn payload(form: &Form, fields: &BTreeMap<String, String>, token_asset: &str
         let item = match field.kind {
             Kind::Optional | Kind::Secret if raw.is_empty() => Value::Null,
             Kind::Number => {
-                let n = raw
-                    .parse::<u64>()
-                    .map_err(|_| anyhow!("{} must be an unsigned integer", field.label))?;
+                let n = raw.parse::<u64>().map_err(|_| {
+                    anyhow!(
+                        "{} must be an unsigned integer",
+                        Language::English.t(field.label)
+                    )
+                })?;
                 ensure!(
                     n.to_string() == raw,
                     "{} must be canonical decimal",
-                    field.label
+                    Language::English.t(field.label)
                 );
                 Value::from(n)
             }
@@ -265,7 +275,11 @@ pub fn payload(form: &Form, fields: &BTreeMap<String, String>, token_asset: &str
                 Value::Array(keys)
             }
             _ => {
-                ensure!(!raw.is_empty(), "{} is required", field.label);
+                ensure!(
+                    !raw.is_empty(),
+                    "{} is required",
+                    Language::English.t(field.label)
+                );
                 Value::String(raw.to_owned())
             }
         };

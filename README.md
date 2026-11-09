@@ -198,7 +198,7 @@ crates/morph-hub-api   Typed public service contract, without private store stat
 crates/morph-sdk       Native Rust protocol and HTTP client.
 crates/morph-desktop   Native GPUI operator console.
 crates/morph-xtask     Rust regression, Fiber/Gateway and hygiene tools.
-fixtures/             Protocol, independent interop and native scenario data.
+fixtures/             Current protocol samples, Gateway vector and native scenario data.
 ```
 
 Important scripts:

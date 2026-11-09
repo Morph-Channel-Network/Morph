@@ -2,9 +2,9 @@ use morph_sdk::gateway::*;
 use serde_json::{Value, json};
 
 #[test]
-fn retired_noble_authorization_matches_the_single_rust_signer_exactly() {
+fn canonical_authorization_matches_independent_signature_vector() {
     let vector: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/interop/gateway-current-authorization.json"
+        "../../../fixtures/gateway/authorization.json"
     ))
     .unwrap();
     let requirements: PaymentRequirements =
@@ -29,21 +29,14 @@ fn shared_x402_codec_preserves_exact_values_and_enforces_header_bounds() {
 }
 
 #[test]
-fn old_synthetic_identifier_never_bypasses_current_requirement_binding() {
+fn changed_identifier_never_bypasses_current_requirement_binding() {
     let vector: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/interop/gateway-current-authorization.json"
+        "../../../fixtures/gateway/authorization.json"
     ))
     .unwrap();
     let mut requirement: PaymentRequirements =
         serde_json::from_value(vector["requirements"].clone()).unwrap();
-    let old: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/interop/retiring-gateway-authorization.json"
-    ))
-    .unwrap();
-    requirement.requirement_id = old["requirements"]["requirement_id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    requirement.requirement_id = format!("0x{}", "00".repeat(32));
     let key = k256::ecdsa::SigningKey::from_slice(&[7; 32]).unwrap();
     assert!(PaymentPayload::new_signed(&requirement, None, &key).is_err());
 }

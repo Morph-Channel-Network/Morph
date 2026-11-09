@@ -47,7 +47,7 @@ Native desktop and clients:
 | --- | --- |
 | `make desktop` | Check native Linux build inputs and start the GPUI application. |
 | `make desktop-check` | Native headless interaction/model tests and desktop binary build. |
-| `make rust-client-check` | Shared codecs, Rust SDK interop/transport and native acceptance runner tests. |
+| `make rust-client-check` | Shared codecs, Rust SDK review/transport and native acceptance runner tests. |
 
 `morph-cli hub serve` serves JSON `/api` only; it has no static directory or browser fallback. Start it separately, then connect from the native desktop. See `docs/native-desktop.md` for platform, dependency and runtime limits. Private signing journals stay in the existing operator ceremony; the desktop has no channel signing authority.
 
@@ -78,7 +78,7 @@ crates/morph-hub-api           Owned typed public Hub requests/responses, no pri
 crates/morph-sdk               Bounded authenticated Rust HTTP client and stateless protocol inspection.
 crates/morph-desktop           Native GPUI operator console; bounded worker, review/confirm, no signer.
 crates/morph-xtask             Rust protocol/Fiber/Gateway regression and source-hygiene tools.
-fixtures/                     Protocol fixtures and independent interop/scenario baselines.
+fixtures/                     Minimal current protocol samples, Gateway vector and native scenario definitions.
 ```
 
 ## Code Patterns and Conventions
@@ -231,4 +231,7 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - `morph-packages` is the sole package implementation. CLI thin modules retain test namespaces; never rebuild a separate signing digest/parser in SDK/UI.
 - SDK writes are never automatically retried. A lost mutation response is an unknown outcome, which blocks automatic polling/resubmission until explicit reconciliation. Cancelling a UI wait does not undo server effects.
 - GUI mutation confirmation binds the reviewed request and the latest event id; edits/new events invalidate it. Empty scopes with explicit unauthenticated loopback follow the server's policy; offline/stale state still disables writes.
+- Native task drafts are ephemeral and keyed by operation plus object. Do not share IDs or document buffers between tasks, persist sensitive drafts, or silently evict them. File completion, network completion and inspector revisions have independent correlation checks.
+- Keep presentation in `morph-desktop/src/presentation.rs` and `views/`, visual tokens in `design.rs`, and job control in `main.rs` / `worker.rs`. JSON is an advanced view; object details and exact review are the primary flow. CKB conversion must remain integer-based; unknown token precision stays in base units. Field validation is UX feedback only; canonical SDK/service validation remains mandatory. Long evidence hex uses a monospace editor without soft wrapping.
+- Unknown writes survive reconnect until the same endpoint and Hub identity are explicitly refreshed and reviewed. A file/parser failure must not make the network stale. Review summaries never replace private original recovery evidence.
 - Fiber scenario definitions use the closed Rust vocabulary in `morph-xtask`, preserve named economic/recovery assertions and source hashes, and never evaluate script strings. `scenario` mode records development evidence only; final full/coexistence qualification still requires committed tracked source. External funding signatures use a protected key file; restart may stop only an exact node1 executable in the owned stack tree.

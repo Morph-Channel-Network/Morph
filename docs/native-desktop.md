@@ -78,11 +78,14 @@ state-file exports preserve Rust u128 integers through `serde_json`
 
 ## Operator workflows
 
-Read pages cover overview, channels, factories, invoices, peers, recovery/root
-funding, watch alerts, events and model/permissions. Lists are virtualized;
-search covers the full record, including exact quantities. Details retain their
-provenance: a local Hub projection or saved signed package is not represented as
-a confirmed chain action.
+The workspace starts with overview, channels, Factory, payments/invoices,
+evidence/funding and activity. Watch reports, connection/settings and evidence
+tools have separate utility entries. Peer records live under settings. Connection
+inputs move out of the daily workspace after connection. The overview prioritizes
+incomplete ceremonies and watch reports, with separate Hub/chain/source labels.
+Lists are virtualized; search covers full records, including exact quantities.
+Selecting a record opens structured facts, per-asset balances and contextual
+tasks. JSON is an explicit technical detail view, not the default task surface.
 
 The native operation forms cover peer connection; invoice create/decode/receive/
 settle; channel recording/splice/publish/finalise; Factory recording/advancement/
@@ -100,18 +103,58 @@ stateDiagram-v2
     Review --> Sending: explicit confirm
     Sending --> Fresh: validated response
     Sending --> Unknown: response lost or cancelled wait
-    Unknown --> Fresh: explicit refresh / reconcile
+    Unknown --> Unknown: reconnect or switch endpoint
+    Unknown --> Fresh: refresh same endpoint + Hub identity, then explicit review
     Fresh --> Stale: freshness expires
     Stale --> Fresh: authenticated refresh
     Fresh --> Offline: disconnect
     Stale --> Offline: disconnect
 ```
 
-Freshness and scope gates apply to writes. The reviewed request is bound to the
-current event id. The worker owns a bounded queue and performs HTTP/file work
-away from the UI thread. Late results from an older connection generation are
-ignored. Stopping a wait does not cancel a server-side effect; ambiguous writes
-remain unresolved until explicit reconciliation and are never retried silently.
+Freshness and scope gates apply to writes. Review binds the exact body, object,
+event id and connection. Edits and new events invalidate visible confirmation.
+Network and file jobs use independent bounded workers away from the UI thread;
+job IDs, connection generations and document revisions prevent late results from
+populating a different task. Polling updates freshness without replacing task
+notices. File/parser failures remain local errors. Stopping a wait does not cancel
+a server-side effect; ambiguous writes persist across reconnect and require an
+explicit read and review against the original endpoint and Hub identity.
+
+Drafts are isolated by operation/object and stay in memory, with explicit keep or
+discard and a 32-draft limit. Activity retains up to 200 entries and the eight
+latest original output documents; it is session history, not a durable audit or
+backup. Root collection uses distinct exit and creation stages with public role
+and participant checks. Restore continues from the exact server preview instead
+of requiring hand-built confirmation JSON; server policy still applies.
+
+Task object selection supports full-record search and pages of eight results; no
+object becomes inaccessible at an arbitrary first-32 cutoff. Field errors are
+shown next to their inputs after review is requested. Discarding a draft requires
+an explicit second click. Existing object drafts are resumed without reapplying
+initial defaults. Record mutations return to the corresponding object/list when
+the user is still in that task; read results have a separate completion view.
+
+Evidence tools start with one main document and progressively disclose optional
+base/receipt inputs. Loaded supporting documents remain explicitly indicated
+when collapsed. JSON uses a monospace font with horizontal scrolling for long
+hex fields. Activity has independent search and All/Attention/Running/Completed
+filters. Checked asset lanes and settlement allocations are rendered only from
+canonically checked results, never inferred from an arbitrary opened JSON file.
+File chooser/read results pin the input revision; a late file preserves edits and
+remains available as an unchecked task output instead of replacing input.
+
+Chinese and English use one typed message catalog and switch live from the header
+or settings without resetting drafts or reviewed requests. Language, text scale and reduced-motion device
+preferences persist through a bounded background worker; credentials remain in
+memory. See [brand and internationalization](native-ui-design-and-i18n.md).
+CKB/shannons conversion is exact integer arithmetic (at most eight decimal
+places); tokens with unknown precision remain integer base units. Asset lanes
+are never summed across Types. Compact navigation and the optional technical pane adapt to logical width divided
+by the selected text scale. See [motion and typography](native-motion-and-typography.md)
+for the finite animation policy, 90–150% controls and measured limits.
+Ctrl+= / Ctrl+- adjust text and interface size; Ctrl+0 resets it.
+Ctrl-K opens search, Ctrl-1/2/3 navigate, Ctrl-N opens tasks and Ctrl-R reads fresh
+records. Enter/Escape retain native editor/IME semantics and never confirm writes.
 
 File reads are bounded to 4 MiB and reject non-regular files. Export uses the
 shared immutable, owner-only persistence path; it does not overwrite an older
@@ -126,12 +169,12 @@ make source-hygiene
 cargo run -p morph-xtask -- inspect fixtures/protocol/multi-asset.json
 ```
 
-`fixtures/interop` preserves 29 independent public vectors and 202 calls captured
-while the retiring SDK's complete protocol assertions passed. Normal tests read
-those expected results as data; they do not run retired code. Canonical payer
-signatures are also compared with independent Noble-produced public vectors,
-without storing their private key. The older noncanonical synthetic requirement
-identifier remains a rejection vector, never a compatibility exception.
+Current SDK review tests reuse the same canonical package samples as the CLI
+under `fixtures/protocol`. An independent current authorization vector lives at
+`fixtures/gateway/authorization.json`; changed requirement identifiers are tested
+by mutating that current vector. Historical SDK call snapshots and their dynamic
+operation-name adapter are removed. Public construction uses the typed APIs in
+`morph_sdk::packages::construction`.
 
 `fixtures/fiber` contains 268 source-bound requests in 15 scenario families.
 `morph-xtask fiber-scenario` executes a closed Rust vocabulary of typed captures,
@@ -155,7 +198,11 @@ lockfile hashes, public source commit/dirty status, dependency metadata, all
 selected registry source archives, patched/Git source copies, notices and MPL
 source archives. No upload/release command is part of the target.
 
-The live acceptance ledger is [gpui-migration-status.md](gpui-migration-status.md).
+The original migration acceptance ledger is
+[gpui-migration-status.md](gpui-migration-status.md); its qualification applies
+to the recorded commit, not subsequent source changes. The later workspace
+redesign and its limited native preview evidence are documented in
+[the UI/UX implementation record](native-uiux-implementation-2026-11-09.md).
 Headless tests, real OS event delivery, clipboard composition, file portals and
 physical keyboard/IME tests are separate evidence classes. A screenshot or
 headless input handler test alone does not establish native OS IME support.
