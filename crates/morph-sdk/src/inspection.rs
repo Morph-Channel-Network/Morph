@@ -2,9 +2,8 @@
 use anyhow::{Result, ensure};
 use morph_core::*;
 use morph_packages::{
-    conditional_packages, factory_packets, factory_transition_packages,
-    multi_asset_funding, multi_asset_packages, multi_asset_signatures,
-    multi_asset_splice_transaction, proposal,
+    conditional_packages, factory_packets, factory_transition_packages, multi_asset_funding,
+    multi_asset_packages, multi_asset_signatures, multi_asset_splice_transaction, proposal,
 };
 use multi_asset_packages::{StoredMultiAssetPackage, canonical_hex};
 use serde::de::DeserializeOwned;
