@@ -6,3 +6,7 @@
 .DS_Store
 .env
 .cap/
+
+# Generated Python bytecode is never implementation source.
+**/__pycache__/
+*.py[cod]

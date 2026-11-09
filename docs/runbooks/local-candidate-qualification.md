@@ -21,7 +21,10 @@ The runner captures source identity before `make ci`. It binds the successful
 command and complete log digest in `ci-receipt.json`, then runs a fresh isolated
 native node matrix. Source changes or a dirty tracked tree fail qualification.
 The source digest also includes new implementation files and the vendor tree.
-Local packaging produces the eight ELF archive with the current envelope.
+Local packaging produces the eight-ELF archive with the current envelope and
+the optimized Linux native desktop bundle with its complete dependency source
+and license inventory. Each run uses a fresh Python cache prefix; generated
+bytecode is ignored as build output and is never an implementation source input.
 
 `public-evidence/` contains only the existing allowlisted evidence projection;
 no active signer journal, private child exit, secret preimage, private key or
@@ -31,7 +34,9 @@ remain local, outside that public projection. Do not upload the entire run.
 `qualification.json` binds the source commit/tree digest, Cargo lock/compiler,
 policy/manifest, actual ELF SHA-256 and CKB hashes, local bundle, complete CI,
 native genesis and public report index. It verifies archive contents without
-extracting them. Unexpected files, links, duplicates, changed bytes or policy,
+extracting them. The native archive additionally binds the exact built executable,
+Cargo/vendor metadata, registry archive checksums, and both MPL source/notices.
+Unexpected files, links, duplicates, changed bytes or policy,
 incomplete coverage, stale source and expired policy windows are rejected. All
 auxiliary watch/publication policy and configuration files in the archive must
 also match the exact candidate, even if someone recomputes archive checksums. To repeat verification:
@@ -40,6 +45,7 @@ also match the exact candidate, even if someone recomputes archive checksums. To
 python3 -B scripts/verify-local-candidate.py \
   --public-evidence target/local-candidate/candidate-check/public-evidence \
   --bundle target/local-candidate/candidate-check/morph-current-custody.tar.gz \
+  --desktop-bundle target/local-candidate/candidate-check/morph-desktop-linux-x86_64.tar.gz \
   --ci-receipt target/local-candidate/candidate-check/ci-receipt.json
 ```
 

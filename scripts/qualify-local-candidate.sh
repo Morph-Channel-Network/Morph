@@ -8,7 +8,18 @@ OUT_DIR="${OUT_DIR:-target/local-candidate/$(date -u +%Y%m%dT%H%M%S)-$$}"
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo 'commit tracked changes before qualification' >&2; exit 1; }
 mkdir -p "$OUT_DIR/logs"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
+# A new cache prefix prevents pre-existing bytecode from being imported; source
+# provenance still includes every untracked implementation source file.
+export PYTHONPYCACHEPREFIX="$OUT_DIR/python-cache"
+export PYTHONDONTWRITEBYTECODE=1
 python3 -B scripts/current-stateful-ledger.py --run-dir "$OUT_DIR" --capture-provenance
+python3 -B - "$OUT_DIR/source-provenance.json" <<'PY_SOURCE'
+import json, sys
+with open(sys.argv[1]) as file:
+    source = json.load(file)
+if source["git_dirty"]:
+    raise SystemExit("pre-build source includes tracked changes or untracked implementation files")
+PY_SOURCE
 make ci >"$OUT_DIR/logs/make-ci.log" 2>&1
 python3 -B - "$OUT_DIR" <<'PY'
 import hashlib, importlib.util, json, subprocess, sys
