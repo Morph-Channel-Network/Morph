@@ -3,10 +3,8 @@ use serde_json::{Value, json};
 
 #[test]
 fn canonical_authorization_matches_independent_signature_vector() {
-    let vector: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/gateway/authorization.json"
-    ))
-    .unwrap();
+    let vector: Value =
+        serde_json::from_str(include_str!("../../../fixtures/gateway/authorization.json")).unwrap();
     let requirements: PaymentRequirements =
         serde_json::from_value(vector["requirements"].clone()).unwrap();
     let key = k256::ecdsa::SigningKey::from_slice(&[7; 32]).unwrap();
@@ -30,10 +28,8 @@ fn shared_x402_codec_preserves_exact_values_and_enforces_header_bounds() {
 
 #[test]
 fn changed_identifier_never_bypasses_current_requirement_binding() {
-    let vector: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/gateway/authorization.json"
-    ))
-    .unwrap();
+    let vector: Value =
+        serde_json::from_str(include_str!("../../../fixtures/gateway/authorization.json")).unwrap();
     let mut requirement: PaymentRequirements =
         serde_json::from_value(vector["requirements"].clone()).unwrap();
     requirement.requirement_id = format!("0x{}", "00".repeat(32));
