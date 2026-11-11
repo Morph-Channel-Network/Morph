@@ -88,7 +88,7 @@ manual path uploads only the exact sanitized integration archive, not the hidden
 run directory; private output stays outside the Cargo cache. A workflow definition
 is not evidence that GitHub has executed it.
 
-The profile is `w1-local-no-value`; `full_w1_qualified=true` refers only to the
+The profile is `current-local-no-value`; `full_w1_qualified=true` refers only to the
 declared [W1 acceptance boundary](../w1-acceptance.md). Required scenarios cannot
 be skipped. Independent review/public-network retain the owner's exclusions;
 live routing, future GUI/HSM work and unexposed endpoints stay explicitly deferred.
@@ -96,3 +96,11 @@ The integration exporter verifies actual role counts, reports, fixed fuzz seeds,
 process recovery and sentinel CI results before assembling the public bundle.
 Raw private state/logs/corpora never enter that bundle. See the
 [integration evidence boundary](integration-evidence.md).
+
+The current profile additionally requires the `typed-conditions` gate: eight UDT
+Types, eight conditions each, real-node fulfillments, a controlled rollback
+with zero canonical credit, and eight refund/mixed resolutions. Both hash
+algorithms, exact payout data, independent fee inputs and unchanged participant
+journals are checked. `conditional_udt_qualified=true` is emitted only after
+these semantics and the same candidate/artifact identities pass. Earlier W1
+evidence remains historical; the base ordinary five-case matrix is preserved.

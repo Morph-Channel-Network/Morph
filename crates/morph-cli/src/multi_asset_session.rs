@@ -36,7 +36,7 @@ pub use close::CloseCommand;
 pub(crate) use close::external_authority as external_close_authority;
 const MAX_DESCRIPTOR_BYTES: usize = wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
     + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN
-    + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN;
+    + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_MAX_LEN;
 
 #[derive(Debug, Subcommand)]
 pub enum SessionCommand {
@@ -339,6 +339,7 @@ impl StoredSession {
         let rpc = crate::rpc::CkbRpcClient::new(&lineage.rpc_url)?;
         let tip = rpc.tip_header()?;
         crate::admission_channel::validate_conditional_horizon(
+            self.backend.current(),
             settlement,
             tip.number_value()?,
             &lineage.contracts_dir,
@@ -722,6 +723,7 @@ pub(crate) fn external_authority(
                 .proposal()
                 .ok_or_else(|| anyhow!("missing pending update"))?;
             crate::admission_channel::validate_conditional_horizon(
+                session.backend.current(),
                 &proposal.settlement,
                 rpc.tip_header()?.number_value()?,
                 &lineage.contracts_dir,

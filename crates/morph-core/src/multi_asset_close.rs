@@ -53,23 +53,6 @@ pub fn multi_asset_settlement_outputs(
     let mut type_index = 6;
     for index in 0..witness.descriptor().count() {
         let payout = witness.descriptor().entry(index)?;
-        if payout.asset.kind == 0
-            && let Some(conditional) = witness.descriptor().conditional()?
-        {
-            let lock = parse_script(&conditional.batch_script(
-                header.channel_id(),
-                &header.funding_context_id()?,
-                header.state_number(),
-            )?)?;
-            outputs.push((
-                CellOutput::new_builder()
-                    .capacity(witness.manifest().entry(index)?.allocation.capacity()?)
-                    .lock(lock)
-                    .build(),
-                Bytes::new(),
-            ));
-            continue;
-        }
         let ty = if payout.asset.kind == 1 {
             let value = Some(script(type_index)?);
             type_index += 1;
@@ -77,6 +60,31 @@ pub fn multi_asset_settlement_outputs(
         } else {
             None
         };
+        if let Some(conditional) = witness.descriptor().conditional()?
+            && let Some(batch_index) = conditional.index_of(payout.asset)?
+        {
+            let lock = parse_script(&conditional.batch_script(
+                batch_index,
+                header.channel_id(),
+                &header.funding_context_id()?,
+                header.state_number(),
+            )?)?;
+            let allocation = witness.manifest().entry(index)?.allocation;
+            let data = if ty.is_some() {
+                Bytes::from(allocation.amount.to_le_bytes().to_vec())
+            } else {
+                Bytes::new()
+            };
+            outputs.push((
+                CellOutput::new_builder()
+                    .capacity(allocation.capacity()?)
+                    .lock(lock)
+                    .type_(ty.pack())
+                    .build(),
+                data,
+            ));
+            continue;
+        }
         for participant in 0..2 {
             let value = payout.allocations[participant];
             let capacity = value.capacity()?;
@@ -197,18 +205,17 @@ impl MultiAssetCloseProposal {
         // payout address, but may not create another Vault, State or Batch lock.
         let vault_hash = current.manifest.vaults[0].lock_hash;
         let state_lock_hash = crate::blake2b256(&current.scripts.state_lock);
-        let batch_hash = if evidence.descriptor().conditional()?.is_some() {
-            Some(
-                expected
-                    .first()
-                    .ok_or_else(invalid)?
-                    .0
-                    .lock()
-                    .calc_script_hash(),
-            )
-        } else {
-            None
-        };
+        let mut batch_hashes = Vec::new();
+        if let Some(conditional) = evidence.descriptor().conditional()? {
+            for index in 0..conditional.count() {
+                batch_hashes.push(conditional.batch_lock_hash(
+                    index,
+                    &current.state.header.channel_id,
+                    &current.state.funding_context_id()?,
+                    current.state.header.state_number,
+                )?);
+            }
+        }
         for index in expected.len()..raw.outputs().len() {
             let output = raw.outputs().get(index).ok_or_else(invalid)?;
             let lock = output.lock().calc_script_hash();
@@ -221,7 +228,9 @@ impl MultiAssetCloseProposal {
                     .is_empty()
                 || lock.as_slice() == vault_hash
                 || lock.as_slice() == state_lock_hash
-                || batch_hash.as_ref() == Some(&lock)
+                || batch_hashes
+                    .iter()
+                    .any(|hash| hash.as_slice() == lock.as_slice())
             {
                 return Err(invalid());
             }

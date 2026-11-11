@@ -15,9 +15,9 @@ pub const MULTI_ASSET_OUTPOINT_SET_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_OUTPO
 pub const MULTI_ASSET_DESCRIPTOR_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1";
 pub const MULTI_ASSET_FUNDING_CONTEXT_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_FUNDING_CONTEXT_V1";
 pub const MULTI_ASSET_STATE_LAYOUT_VERSION: u16 = 2;
-/// Sole current descriptor. Version 4 is intentionally rejected after the
-/// capability tag was introduced; development funding must be recreated.
-pub const MULTI_ASSET_DESCRIPTOR_VERSION: u16 = 5;
+/// Sole current descriptor. Earlier descriptors, including CKB-only version 5,
+/// are rejected; development funding must be recreated.
+pub const MULTI_ASSET_DESCRIPTOR_VERSION: u16 = 6;
 pub const MULTI_ASSET_ENCODING_VERSION: u16 = 1;
 /// Candidate resource bounds; release requires worst-case CKB-VM budget evidence.
 pub const MULTI_ASSET_MAX_VAULTS: usize = 8;
@@ -72,7 +72,7 @@ pub const MULTI_ASSET_MAX_WITNESS_LEN: usize = MULTI_ASSET_WITNESS_PREFIX_LEN
     + MULTI_ASSET_MAX_VAULTS * MULTI_ASSET_VAULT_ENTRY_LEN
     + MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
     + MULTI_ASSET_MAX_VAULTS * MULTI_ASSET_PAYOUT_ENTRY_LEN
-    + crate::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN
+    + crate::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_MAX_LEN
     + MULTI_ASSET_MAX_VAULTS * MULTI_ASSET_OUTPOINT_LEN
     + (6 + MULTI_ASSET_MAX_VAULTS) * (4 + MULTI_ASSET_MAX_SCRIPT_LEN);
 
@@ -386,8 +386,7 @@ pub struct MultiAssetSettlementDescriptor<'a> {
 impl<'a> MultiAssetSettlementDescriptor<'a> {
     pub fn parse(raw: &'a [u8]) -> Result<Self> {
         use crate::multi_asset_conditional::{
-            MULTI_ASSET_CONDITIONAL_LEN, MULTI_ASSET_SETTLEMENT_CKB_CONDITIONAL,
-            MULTI_ASSET_SETTLEMENT_ORDINARY,
+            MULTI_ASSET_SETTLEMENT_CONDITIONAL, MULTI_ASSET_SETTLEMENT_ORDINARY,
         };
         if raw.len() < MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
             || read_u16(raw, 0) != MULTI_ASSET_DESCRIPTOR_VERSION
@@ -396,15 +395,16 @@ impl<'a> MultiAssetSettlementDescriptor<'a> {
             return Err(ScriptError::MultiAssetEncoding);
         }
         let count = raw[2] as usize;
-        let extension = match raw[3] {
-            MULTI_ASSET_SETTLEMENT_ORDINARY => 0,
-            MULTI_ASSET_SETTLEMENT_CKB_CONDITIONAL => MULTI_ASSET_CONDITIONAL_LEN,
-            _ => return Err(ScriptError::MultiAssetEncoding),
-        };
-        if raw.len()
-            != MULTI_ASSET_DESCRIPTOR_PREFIX_LEN + count * MULTI_ASSET_PAYOUT_ENTRY_LEN + extension
-        {
+        let base_len = MULTI_ASSET_DESCRIPTOR_PREFIX_LEN + count * MULTI_ASSET_PAYOUT_ENTRY_LEN;
+        if raw.len() < base_len {
             return Err(ScriptError::MultiAssetEncoding);
+        }
+        match raw[3] {
+            MULTI_ASSET_SETTLEMENT_ORDINARY if raw.len() == base_len => {}
+            MULTI_ASSET_SETTLEMENT_CONDITIONAL => {
+                crate::multi_asset_conditional::MultiAssetConditional::parse(&raw[base_len..])?;
+            }
+            _ => return Err(ScriptError::MultiAssetEncoding),
         }
         let descriptor = Self { raw };
         if zero(descriptor.lock_hash(0)?)
@@ -428,16 +428,28 @@ impl<'a> MultiAssetSettlementDescriptor<'a> {
             previous = Some(entry.asset);
         }
         if let Some(conditional) = descriptor.conditional()? {
-            let ckb = descriptor.entry(0)?;
-            if ckb.asset != MultiAssetId::CKB {
-                return Err(ScriptError::ConditionalValueMismatch);
-            }
-            for participant in 0..2 {
-                if conditional.batch().lock_hash(participant)
-                    != descriptor.lock_hash(participant)?
-                    || conditional.batch().settled_capacity(participant)
-                        != ckb.allocations[participant].capacity()?
-                {
+            for batch_index in 0..conditional.count() {
+                let batch = conditional.batch(batch_index)?;
+                let asset = batch.asset()?;
+                let mut found = false;
+                for index in 0..count {
+                    let payout = descriptor.entry(index)?;
+                    if payout.asset != asset {
+                        continue;
+                    }
+                    found = true;
+                    for participant in 0..2 {
+                        if batch.lock_hash(participant) != descriptor.lock_hash(participant)?
+                            || batch.settled_capacity(participant)
+                                != payout.allocations[participant].capacity()?
+                            || batch.settled_amount(participant)
+                                != payout.allocations[participant].amount
+                        {
+                            return Err(ScriptError::ConditionalValueMismatch);
+                        }
+                    }
+                }
+                if !found {
                     return Err(ScriptError::ConditionalValueMismatch);
                 }
             }
@@ -495,22 +507,27 @@ pub fn validate_multi_asset_conservation(
         let vault = manifest.entry(i)?;
         let payouts = descriptor.entry(i)?;
         let [a, b] = payouts.allocations;
-        let pending = if vault.asset == MultiAssetId::CKB {
-            descriptor
-                .conditional()?
-                .map(|conditional| conditional.pending_capacity())
-                .transpose()?
-                .unwrap_or(0)
+        let conditional = descriptor.conditional()?;
+        let pending = conditional
+            .map(|value| value.pending_amount(vault.asset))
+            .transpose()?
+            .unwrap_or(0);
+        let pending_ckb = if vault.asset == MultiAssetId::CKB {
+            u64::try_from(pending).map_err(|_| ScriptError::ConditionalValueMismatch)?
         } else {
             0
         };
+        let pending_tokens = if vault.asset.kind == 1 { pending } else { 0 };
         if vault.asset != payouts.asset
             || a.reserve.checked_add(b.reserve) != Some(vault.allocation.reserve)
             || a.business_ckb
                 .checked_add(b.business_ckb)
-                .and_then(|sum| sum.checked_add(pending))
+                .and_then(|sum| sum.checked_add(pending_ckb))
                 != Some(vault.allocation.business_ckb)
-            || a.amount.checked_add(b.amount) != Some(vault.allocation.amount)
+            || a.amount
+                .checked_add(b.amount)
+                .and_then(|sum| sum.checked_add(pending_tokens))
+                != Some(vault.allocation.amount)
         {
             return Err(ScriptError::MultiAssetConservationMismatch);
         }
@@ -1027,32 +1044,68 @@ impl<'a> MultiAssetWitness<'a> {
         }
         if let Some(conditional) = self.descriptor.conditional()? {
             let funding_context = header.funding_context_id()?;
-            let lock = conditional.batch_lock_hash(
-                header.channel_id(),
-                &funding_context,
-                header.state_number(),
-            )?;
-            if lock.as_slice() == self.descriptor.lock_hash(0)?
-                || lock.as_slice() == self.descriptor.lock_hash(1)?
-                || lock.as_slice() == self.descriptor.carrier_refund_lock()
-                || lock == blake2b256(&[self.scripts.script(3)?])
-                || lock == blake2b256(&[self.scripts.script(5)?])
-            {
-                return Err(ScriptError::ConditionalBatchLockMismatch);
-            }
-            let ckb = self.manifest.entry(0)?;
-            if ckb.asset != MultiAssetId::CKB
-                || multi_asset_occupied_capacity(
-                    &conditional.batch_script(
+            for batch_index in 0..conditional.count() {
+                let batch = conditional.batch(batch_index)?;
+                let asset = batch.asset()?;
+                let lock = conditional.batch_lock_hash(
+                    batch_index,
+                    header.channel_id(),
+                    &funding_context,
+                    header.state_number(),
+                )?;
+                if lock.as_slice() == self.descriptor.lock_hash(0)?
+                    || lock.as_slice() == self.descriptor.lock_hash(1)?
+                    || lock.as_slice() == self.descriptor.carrier_refund_lock()
+                    || lock == blake2b256(&[self.scripts.script(3)?])
+                    || lock == blake2b256(&[self.scripts.script(5)?])
+                {
+                    return Err(ScriptError::ConditionalBatchLockMismatch);
+                }
+                let mut type_index = 6;
+                let mut found = false;
+                for index in 0..self.manifest.count() {
+                    let vault = self.manifest.entry(index)?;
+                    let type_script = if vault.asset.kind == 1 {
+                        let script = Some(self.scripts.script(type_index)?);
+                        type_index += 1;
+                        script
+                    } else {
+                        None
+                    };
+                    if vault.asset != asset {
+                        continue;
+                    }
+                    found = true;
+                    let batch_script = conditional.batch_script(
+                        batch_index,
                         header.channel_id(),
                         &funding_context,
                         header.state_number(),
-                    )?,
-                    None,
-                    0,
-                )? > ckb.allocation.reserve
-            {
-                return Err(ScriptError::MultiAssetCapacityMismatch);
+                    )?;
+                    let data_len = if asset.kind == 1 { 16 } else { 0 };
+                    if multi_asset_occupied_capacity(&batch_script, type_script, data_len)?
+                        > vault.allocation.reserve
+                    {
+                        return Err(ScriptError::MultiAssetCapacityMismatch);
+                    }
+                    // Either participant can receive tokens, including one with
+                    // a zero settled token balance. Fund both possible outputs.
+                    for participant in 0..2 {
+                        let reserve =
+                            self.descriptor.entry(index)?.allocations[participant].reserve;
+                        if multi_asset_occupied_capacity(
+                            self.scripts.script(participant)?,
+                            type_script,
+                            data_len,
+                        )? > reserve
+                        {
+                            return Err(ScriptError::MultiAssetCapacityMismatch);
+                        }
+                    }
+                }
+                if !found {
+                    return Err(ScriptError::ConditionalValueMismatch);
+                }
             }
         }
         if header.vaults_are_bound() {

@@ -26,7 +26,7 @@ unchanged; new ELF identities require new deployment and evidence.
 | 366 | Exactly two sorted participant signatures, current bilateral encoding | 198 |
 | 564 | Existing `MORPHMA!` manifest/descriptor/OutPoints/scripts witness | Variable |
 
-Maximum total frame size is 10,624 bytes. It resides in input-0 WitnessArgs
+Maximum total frame size is 17,456 bytes (including the maximum conditional trailer). It resides in input-0 WitnessArgs
 `output_type`; it has no alternative legacy reader. Signatures authorize
 `blake2b256(CKB_MORPH_MULTI_ASSET_CLOSE_V1 || target_state_digest || raw_tx_hash)`
 with CKB personalization. The target retains the source's immutable context;
@@ -47,7 +47,7 @@ fail closed. New error codes 70/71 do not reuse retired discriminants.
 State layout 2 is an independent 318-byte encoding. It contains no single-Vault
 materialisation field, single-Vault OutPoint field, or duplicate content root.
 All integers use little endian order. Protocol version 1, signature scheme 1,
-bilateral mode 1, descriptor version 5, and layout version 2 are required.
+bilateral mode 1, descriptor version 6, and layout version 2 are required.
 
 | Byte offset | Field | Bytes |
 | --- | --- | --- |
@@ -115,7 +115,7 @@ produce no Cell. A funded typed Vault has a positive quantity and exactly
 | Object | Encoding |
 | --- | --- |
 | Manifest | u16 version 1, u8 count, u8 reserved; N entries of asset ID (33), Vault lock hash (32), allocation (32). Length `4 + N*97`. |
-| Settlement descriptor | u16 version 5, u8 count, u8 capability; two sorted nonzero payout lock hashes (64), carrier-refund lock hash (32); N entries of asset ID (33) and two allocations (64). Ordinary length `100 + N*97`; capability 1 appends a 36-byte executor prefix and 828-byte Batch terms. |
+| Settlement descriptor | u16 version 6, u8 count, u8 capability; two sorted nonzero payout lock hashes (64), carrier-refund lock hash (32); N entries of asset ID (33) and two allocations (64). Ordinary length `100 + N*97`; capability 1 appends a 40-byte version-2 executor/count prefix and 1–8 asset-sorted 957-byte version-4 Batch terms. |
 | Recovery witness | `MORPHMA!` (8), u16 version 1, u16 flags 0, u32 manifest length, u32 descriptor length, u16 OutPoint count, u16 reserved, u32 scripts length; manifest, descriptor, OutPoints, script evidence. |
 | OutPoints | N canonical 36-byte CKB OutPoints in manifest asset order; zero entries only for an unbound State. Duplicates and zero transaction hashes are rejected. |
 | Script evidence | Six scripts (payout 0, payout 1, carrier refund, Vault Lock, State Type, State Lock), followed by each xUDT Type Script in asset order. Each is a u32 length and complete canonical Molecule Script, bounded to 512 bytes. |
@@ -135,23 +135,26 @@ challenge delay, StateType, and StateLock. Every Vault and payout reserve must
 cover its exact occupied capacity. Carrier capacity covers both the live State
 and its plain refund output.
 
-Capability tag 0 means ordinary settlement. Tag 1 requires the exact current
-CKB conditional trailer and at least one pending transfer; unknown tags,
-descriptor 4, zero/malformed conditional shapes and trailing bytes are rejected.
-The trailer commits executor code/hash type and the canonical 828-byte Batch
-terms. Those inner terms are reused by one Batch executor, not another State
-profile. Its sole 104-byte args bind channel ID, exact funding context, state
-number and complete terms commitment. See [conditional execution](conditional-batches.md).
+Capability tag 0 means ordinary settlement. Tag 1 requires the current
+asset-bound conditional trailer, with 1–8 strictly asset-ordered Batches of
+1–8 transfers. Unknown tags, descriptor 5 and older, malformed conditional
+shapes and trailing bytes are rejected. The trailer commits one executor
+code/hash type and every 957-byte asset-bearing Batch. Each Batch's 104-byte
+args bind channel, exact funding context, state number and its complete terms.
+Pending CKB consumes only its Vault's business lane; pending UDT consumes only
+that exact Type's u128 quantity and preserves signed capacities. Both possible
+future typed payout cells must fit occupied capacity, even at zero settled
+quantity. See [conditional execution](conditional-batches.md).
 
 ## Conservation and Finalisation
 
 Each manifest asset must have the same descriptor identity. Its two payouts
-independently sum to its reserve, business CKB, and token quantity. Checked
+plus its exact-asset pending lane independently sum to its reserve, business CKB, and token quantity. Checked
 arithmetic rejects overflow, cross-asset minting, and reserve reclassification.
 The current profile conserves those lanes per Vault, a stronger restriction
 than pooling reserve across assets.
 
-Finalisation consumes all committed Vault OutPoints. Outputs appear in
+Finalisation consumes all committed Vault OutPoints. A conditional asset produces one exact Batch output; remaining ordinary outputs appear in
 asset/participant order, omitting only empty allocations. Nonzero token
 quantities produce typed outputs; zero-token allocations produce plain outputs.
 The complete State carrier refund follows those payouts. Each position is
@@ -374,7 +377,7 @@ morph-cli devnet --devnet-only multi-asset-transact \
   --fee 100000000 --max-fee 100000000 --dry-run wallet
 ```
 
-Current release evidence must use rebuilt descriptor-5 artifacts and current
+Current release evidence must use rebuilt descriptor-6 artifacts and current
 reports. Historical descriptor-4 reports and old deployment hashes do not
 qualify this boundary. See [the coverage ledger](current-protocol-coverage.md)
 for current host/CKB-VM evidence and reproduction commands.

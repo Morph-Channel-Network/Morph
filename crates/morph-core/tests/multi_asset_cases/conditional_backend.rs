@@ -29,21 +29,25 @@ fn batch(backend: &MultiAssetChannelBackend) -> ConditionalBatch {
     let locks = backend.current().settlement.participant_lock_hashes;
     let context = [81; 32];
     ConditionalBatch {
+        asset: morph_core::VaultAsset::Ckb,
         batch_id: derive_conditional_batch_id(
             &backend.current().state.header.channel_id,
             &backend.current().state.funding_context_id().unwrap(),
             backend.current().state.header.state_number + 1,
             &context,
+            &morph_core::VaultAsset::Ckb,
         ),
         application_context_commitment: context,
         participants: [
             ConditionalParticipant {
                 settlement_lock_hash: locks[0],
                 settled_capacity: 25_000_000_000,
+                settled_amount: 0,
             },
             ConditionalParticipant {
                 settlement_lock_hash: locks[1],
                 settled_capacity: 23_500_000_000,
+                settled_amount: 0,
             },
         ],
         transfers: vec![
@@ -164,7 +168,10 @@ fn conditional_service_resolves_preimages_and_mature_refunds_without_peer_signat
         force.input_since,
         morph_script_common::absolute_block_since(130).unwrap()
     );
-    assert_eq!(force.payout_capacities, [25_000_000_000, 25_000_000_000]);
+    assert_eq!(
+        force.payout_values.map(|v| v.capacity),
+        [25_000_000_000, 25_000_000_000]
+    );
     assert_eq!(force.descriptor, batch.encode_descriptor().unwrap());
     assert_eq!(backend.reservation(), &authority);
     assert!(backend.proposal().is_none());
@@ -262,4 +269,100 @@ fn conditional_service_rejects_wrong_context_and_reserve_spending_before_any_vot
     let mut snapshot = serde_json::to_value(&service).unwrap();
     snapshot.as_object_mut().unwrap().remove("pending");
     assert!(serde_json::from_value::<ChannelConditionalBatches>(snapshot).is_err());
+}
+
+#[test]
+fn simultaneous_udt_batch_survives_ckb_consolidation_and_full_width_pending_restart() {
+    let mut package = engine().current().clone();
+    let large = u64::MAX as u128 + 123;
+    package.settlement.payouts[1].values[0].amount = 2 * large;
+    package.manifest.vaults[1].value.amount =
+        2 * large + package.settlement.payouts[1].values[1].amount;
+    package.state.vault_content_set_root = package.manifest.commitment().unwrap();
+    package.state.vault_outpoint_set_root =
+        multi_asset_outpoint_commitment(&package.manifest, &package.outpoints).unwrap();
+    package.state.header.settlement_descriptor_commitment =
+        package.settlement.commitment().unwrap();
+    sign(&mut package);
+    let mut backend = MultiAssetChannelBackend::new(package, participant_pubkey(1)).unwrap();
+    let mut service = ChannelConditionalBatches::new(&backend).unwrap();
+    let ckb = arm(&mut backend, &mut service);
+    let asset = backend.current().settlement.payouts[1].asset.clone();
+    let values = backend.current().settlement.payouts[1].values;
+    let batch = ConditionalBatch {
+        asset: asset.clone(),
+        batch_id: derive_conditional_batch_id(
+            &backend.current().state.header.channel_id,
+            &backend.current().state.funding_context_id().unwrap(),
+            backend.current().state.header.state_number + 1,
+            &[82; 32],
+            &asset,
+        ),
+        application_context_commitment: [82; 32],
+        participants: core::array::from_fn(|i| ConditionalParticipant {
+            settlement_lock_hash: backend.current().settlement.participant_lock_hashes[i],
+            settled_capacity: values[i].capacity().unwrap(),
+            settled_amount: values[i].amount - if i == 0 { large } else { 0 },
+        }),
+        transfers: vec![ConditionalTransferSpec {
+            transfer_id: [83; 32],
+            payer_lock_hash: backend.current().settlement.participant_lock_hashes[0],
+            hash_algorithm: ConditionalHashAlgorithm::Sha256,
+            payment_hash: derive_conditional_payment_hash(
+                ConditionalHashAlgorithm::Sha256,
+                &[84; 32],
+            )
+            .unwrap(),
+            amount: large,
+            refund_after_block: 150,
+        }],
+    };
+    let proposal = service
+        .prepare_conditional_batch(&mut backend, batch.clone(), [31; 32], 2, 100)
+        .unwrap();
+    let snapshot = serde_json::to_value(&service).unwrap();
+    service = serde_json::from_value(snapshot).unwrap();
+    authorize(&mut backend, &proposal);
+    service.commit_change(&mut backend).unwrap();
+    backend = serde_json::from_value(serde_json::to_value(&backend).unwrap()).unwrap();
+    service
+        .learn_conditional_preimage(&ckb.batch_id, &[1; 32], [61; 32])
+        .unwrap();
+    let proposal = service
+        .prepare_cooperative_consolidation(&mut backend, &ckb.batch_id)
+        .unwrap();
+    authorize(&mut backend, &proposal);
+    service.commit_change(&mut backend).unwrap();
+    let MultiAssetSettlementCapability::Conditional { batches, .. } =
+        &backend.current().settlement.capability
+    else {
+        panic!("UDT terms must survive");
+    };
+    assert_eq!(batches, &vec![batch.clone()]);
+    service
+        .learn_conditional_preimage(&batch.batch_id, &[83; 32], [84; 32])
+        .unwrap();
+    let proposal = service
+        .prepare_cooperative_consolidation(&mut backend, &batch.batch_id)
+        .unwrap();
+    authorize(&mut backend, &proposal);
+    service.commit_change(&mut backend).unwrap();
+    assert_eq!(
+        backend.current().settlement.capability,
+        MultiAssetSettlementCapability::Ordinary
+    );
+    assert_eq!(
+        backend.current().settlement.payouts[1].values[0].amount,
+        large
+    );
+    assert_eq!(
+        backend.current().settlement.payouts[1].values[1].amount,
+        values[1].amount + large
+    );
+    assert_eq!(
+        backend.current().settlement.payouts[1]
+            .values
+            .map(|v| v.capacity().unwrap()),
+        values.map(|v| v.capacity().unwrap())
+    );
 }

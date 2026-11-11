@@ -689,6 +689,11 @@ enum DevnetCommand {
         #[arg(long, default_value_t = 5000)]
         rpc_budget_ms: u64,
     },
+    /// Resolve one signed CKB/UDT Batch with independent wallet fees.
+    ConditionalBatch {
+        #[command(subcommand)]
+        command: devnet::conditional_batch_operator::Command,
+    },
     /// Construct, fee-sign, or submit an exact cooperative bilateral close.
     MultiAssetClose {
         #[command(subcommand)]
@@ -836,6 +841,9 @@ enum DevnetCommand {
         /// Close the funded channel immediately using independent exact-body signatures.
         #[arg(long, conflicts_with_all = ["splice_transitions", "watch_publication", "sponsor_publication", "funding_reorg"])]
         cooperative_close: bool,
+        /// Exercise all eight per-asset UDT condition slots, actual claims and provider-free refunds.
+        #[arg(long, conflicts_with_all = ["splice_transitions", "cooperative_close", "watch_publication", "sponsor_publication", "funding_reorg", "shadow_provider_rpc"])]
+        conditional_settlement: bool,
         /// Dedicated no-value shadow provider; acceptance harness acknowledges its restart marker.
         #[arg(long, conflicts_with_all = ["splice_transitions", "cooperative_close"])]
         shadow_provider_rpc: Option<String>,
@@ -1420,8 +1428,8 @@ fn main() -> Result<()> {
                 println!("descriptor_commitment={}", summary.descriptor_commitment);
                 println!("input_since={}", summary.input_since);
                 println!(
-                    "resolved_capacities={},{}",
-                    summary.resolved_capacities[0], summary.resolved_capacities[1]
+                    "resolved_values={}",
+                    serde_json::to_string(&summary.resolved_values)?
                 );
             }
             Ok(())

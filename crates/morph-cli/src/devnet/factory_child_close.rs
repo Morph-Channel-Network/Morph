@@ -6,6 +6,7 @@ use super::multi_asset_close_operator::{self as close, Command};
 use super::*;
 use crate::multi_asset_packages::{canonical_hex, read_package};
 use crate::multi_asset_session::{CloseCommand, SessionCommand, run as session};
+use anyhow::Context as _;
 use serde_json::{Value, json};
 
 pub(super) fn run(
@@ -171,8 +172,12 @@ pub(super) fn run(
     }
     let batch = match &package.settlement.capability {
         morph_core::MultiAssetSettlementCapability::Ordinary => None,
-        morph_core::MultiAssetSettlementCapability::CkbConditional { batch, .. } => {
-            Some(resolve_batch(rpc, parent, &package, &tx, batch)?)
+        morph_core::MultiAssetSettlementCapability::Conditional { batches, .. } => {
+            ensure!(
+                batches.len() == 1,
+                "this child scenario declares exactly one Batch"
+            );
+            Some(resolve_batch(rpc, parent, &package, &tx, &batches[0])?)
         }
     };
     // No journal restore: the close approval remains authority on every fork.
@@ -232,6 +237,17 @@ fn resolve_batch(
     let expected = Script::from_slice(
         &conditional
             .batch_script(
+                conditional
+                    .index_of(match batch.asset {
+                        morph_core::VaultAsset::Ckb => {
+                            morph_script_common::multi_asset::MultiAssetId::CKB
+                        }
+                        morph_core::VaultAsset::Xudt(hash) => {
+                            morph_script_common::multi_asset::MultiAssetId::xudt(hash)
+                        }
+                    })
+                    .map_err(|e| anyhow!("invalid Batch asset: {e:?}"))?
+                    .context("Batch asset absent")?,
                 &package.state.header.channel_id,
                 &package.state.funding_context_id()?,
                 package.state.header.state_number,
@@ -286,14 +302,34 @@ fn resolve_batch(
             .input(CellInput::new(fees.out_point, 0))
             .witness(witness.as_bytes());
         for (lock, amount) in locks.iter().zip(amounts) {
+            let ty = match batch.asset {
+                morph_core::VaultAsset::Xudt(hash) if amount.amount > 0 => Some(
+                    package
+                        .scripts
+                        .type_scripts
+                        .iter()
+                        .map(|raw| Script::from_slice(&raw.script))
+                        .collect::<std::result::Result<Vec<_>, _>>()?
+                        .into_iter()
+                        .find(|script| script.calc_script_hash().as_slice() == hash)
+                        .context("missing exact Batch Type")?,
+                ),
+                _ => None,
+            };
+            let data = if ty.is_some() {
+                Bytes::from(amount.amount.to_le_bytes().to_vec())
+            } else {
+                Bytes::new()
+            };
             builder = builder
                 .output(
                     CellOutput::new_builder()
-                        .capacity(amount)
+                        .capacity(amount.capacity)
                         .lock(lock.clone())
+                        .type_(ty.pack())
                         .build(),
                 )
-                .output_data(Bytes::new().pack());
+                .output_data(data.pack());
         }
         builder = builder
             .output(super::multi_asset::wallet_change(
@@ -310,7 +346,11 @@ fn resolve_batch(
     for index in 0..2 {
         let cell = load_canonical_live_cell(rpc, OutPoint::new(fulfil.hash(), index as u32))?;
         ensure!(
-            Some(cell.output) == fulfil.outputs().get(index),
+            Some(cell.output) == fulfil.outputs().get(index)
+                && fulfil
+                    .outputs_data()
+                    .get(index)
+                    .is_some_and(|data| data.raw_data() == cell.data),
             "fulfilled Batch payout differs"
         );
     }
@@ -334,7 +374,11 @@ fn resolve_batch(
     for index in 0..2 {
         let cell = load_canonical_live_cell(rpc, OutPoint::new(refund.hash(), index as u32))?;
         ensure!(
-            Some(cell.output) == refund.outputs().get(index),
+            Some(cell.output) == refund.outputs().get(index)
+                && refund
+                    .outputs_data()
+                    .get(index)
+                    .is_some_and(|data| data.raw_data() == cell.data),
             "refunded Batch payout differs"
         );
     }

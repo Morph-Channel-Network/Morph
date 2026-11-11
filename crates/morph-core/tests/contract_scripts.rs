@@ -205,16 +205,19 @@ fn conditional_batch_resolution_tx(tamper: ConditionalBatchTamper) -> (Context, 
     let sha_preimage = [7u8; 32];
     let blake_preimage = [8u8; 32];
     let batch = ConditionalBatch {
+        asset: morph_core::VaultAsset::Ckb,
         batch_id: [3; 32],
         application_context_commitment: [4; 32],
         participants: [
             ConditionalParticipant {
                 settlement_lock_hash: lock_hashes[0],
                 settled_capacity: CELL_CAPACITY / 2 - 1_000,
+                settled_amount: 0,
             },
             ConditionalParticipant {
                 settlement_lock_hash: lock_hashes[1],
                 settled_capacity: CELL_CAPACITY / 2 - 2_000,
+                settled_amount: 0,
             },
         ],
         transfers: vec![

@@ -514,6 +514,9 @@
     "StoredConditionalBatchPackage": {
       "additionalProperties": false,
       "properties": {
+        "batch_id": {
+          "type": "string"
+        },
         "input_since": {
           "type": "string"
         },
@@ -526,9 +529,9 @@
           },
           "type": "array"
         },
-        "resolved_capacities": {
+        "resolved_values": {
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/StoredConditionalValue"
           },
           "maxItems": 2,
           "minItems": 2,
@@ -544,10 +547,11 @@
       "required": [
         "schema",
         "source_package",
+        "batch_id",
         "resolutions",
         "input_since",
         "resolution_witness_hex",
-        "resolved_capacities"
+        "resolved_values"
       ],
       "type": "object"
     },
@@ -592,6 +596,22 @@
           "type": "object"
         }
       ]
+    },
+    "StoredConditionalValue": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "type": "string"
+        },
+        "capacity": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "capacity",
+        "amount"
+      ],
+      "type": "object"
     },
     "StoredMultiAssetCellDep": {
       "additionalProperties": false,

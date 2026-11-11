@@ -95,19 +95,26 @@ fn capability_review_has_closed_variants_and_preserves_conditional_value() {
             .is_err()
     );
     assert!(serde_json::from_value::<CapabilitySummary>(json!({"kind":"future"})).is_err());
-    let value = json!({"kind":"ckb_conditional","batch_code_hash":"public-code",
-        "batch_hash_type":1,"batch_id":"public-batch","application_context_commitment":"public-context",
-        "pending_ckb":"9007199254740993","batch_lock_hash":"public-lock","settled_capacities":["1","2"],
-        "transfers":[{"transfer_id":"public-transfer","payer_lock_hash":"public-payer","payee_lock_hash":"public-payee",
-            "hash_algorithm":"ckb_blake2b","payment_hash":"public-payment","amount":"9007199254740993","refund_after_block":"100"}]});
+    let value = json!({"kind":"conditional","batch_code_hash":"public-code", "batch_hash_type":1,
+        "batches":[{"asset":{"kind":"xudt","type_hash":"public-type"},"batch_id":"public-batch",
+            "application_context_commitment":"public-context","pending_amount":"18446744073709551738",
+            "batch_lock_hash":"public-lock","settled_capacities":["1","2"],"settled_amounts":["0","340282366920938463463374607431768211455"],
+            "transfers":[{"transfer_id":"public-transfer","payer_lock_hash":"public-payer","payee_lock_hash":"public-payee",
+                "hash_algorithm":"ckb_blake2b","payment_hash":"public-payment","amount":"18446744073709551738","refund_after_block":"100"}]}]});
     let typed: CapabilitySummary = serde_json::from_value(value.clone()).unwrap();
-    assert_eq!(typed.conditional().unwrap().pending_ckb, "9007199254740993");
+    assert_eq!(
+        typed.conditional().unwrap().batches[0].pending_amount,
+        "18446744073709551738"
+    );
     assert_eq!(serde_json::to_value(typed).unwrap(), value);
     let mut invalid = value.clone();
-    invalid["transfers"][0]["hash_algorithm"] = json!("sha1");
+    invalid["batches"][0]["transfers"][0]["hash_algorithm"] = json!("sha1");
     assert!(serde_json::from_value::<CapabilitySummary>(invalid).is_err());
     let mut missing = value;
-    missing.as_object_mut().unwrap().remove("batch_lock_hash");
+    missing["batches"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("batch_lock_hash");
     assert!(serde_json::from_value::<CapabilitySummary>(missing).is_err());
 }
 

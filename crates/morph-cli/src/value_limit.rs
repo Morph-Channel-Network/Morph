@@ -57,7 +57,7 @@ pub fn extract_value_subject(
         multi_asset_packages::MULTI_ASSET_PACKAGE_SCHEMA => {
             multi_asset_packages::read_package(path)?.value_subject()?
         }
-        "morph.conditional_batch_package.v1" => {
+        "morph.conditional_batch_package.v2" => {
             let package = crate::conditional_packages::read_package(path)?;
             package.source_package.value_subject()?
         }

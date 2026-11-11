@@ -53,6 +53,8 @@ use crate::watch_alert::{WatchAlertEvent, WatchAlertSeverity, WatchtowerAlert};
 
 use crate::multi_asset_funding::SECP_TYPE_HASH as DEFAULT_SECP_TYPE_HASH;
 #[cfg(feature = "devnet")]
+pub(crate) mod conditional_batch_operator;
+#[cfg(feature = "devnet")]
 pub mod factory_acceptance;
 #[cfg(feature = "devnet")]
 pub mod factory_child_acceptance;
@@ -84,6 +86,8 @@ pub mod multi_asset_watch;
 pub(crate) mod shadow_observer;
 #[cfg(feature = "devnet")]
 pub(crate) mod shadow_service;
+#[cfg(feature = "devnet")]
+mod typed_conditional_acceptance;
 pub const DEFAULT_SPONSOR_MIN_STATE_NUMBER: u64 = 1;
 pub const DEFAULT_SPONSOR_MAX_STATE_NUMBER: u64 = 1 << 20;
 const CONTRACTS: [(&str, &str); 8] = [

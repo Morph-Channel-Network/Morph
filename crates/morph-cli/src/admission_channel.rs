@@ -102,6 +102,7 @@ fn validate(
     );
     validate_conditions(
         &recovery.settlement,
+        None,
         &envelope,
         current_block,
         blake2b256(&std::fs::read(contracts.join("morph-batch-lock"))?),
@@ -111,21 +112,27 @@ fn validate(
 
 fn validate_conditions(
     settlement: &morph_core::MultiAssetSettlement,
+    previous: Option<&morph_core::MultiAssetSettlement>,
     envelope: &PreproductionEnvelope,
     current_block: Option<u64>,
     expected_batch: Bytes32,
 ) -> Result<()> {
-    if let MultiAssetSettlementCapability::CkbConditional {
+    if let MultiAssetSettlementCapability::Conditional {
         batch_code_hash,
         batch_hash_type,
-        batch,
+        batches,
     } = &settlement.capability
     {
-        batch.validate()?;
+        for batch in batches {
+            batch.validate()?;
+        }
         ensure!(
             envelope.conditional_batch.enabled
-                && envelope.conditional_batch.ckb_only
-                && batch.transfers.len() <= envelope.conditional_batch.max_transfers as usize,
+                && envelope.conditional_batch.asset_scope == "ckb_and_manifest_pinned_devnet_xudt"
+                && !batches.is_empty()
+                && batches.len() <= envelope.conditional_batch.max_batches as usize
+                && batches.iter().all(|batch| batch.transfers.len()
+                    <= envelope.conditional_batch.max_transfers as usize),
             "conditional capability exceeds experiment admission"
         );
         ensure!(
@@ -137,11 +144,19 @@ fn validate_conditions(
                 .checked_add(envelope.conditional_batch.max_refund_block_delta)
                 .context("conditional horizon overflow")?;
             ensure!(
-                batch
-                    .transfers
-                    .iter()
-                    .all(|transfer| transfer.refund_after_block > block
-                        && transfer.refund_after_block <= maximum),
+                batches.iter().all(|batch| {
+                    // An identical, already co-signed Batch is existing
+                    // authority. Its maturity must not block resolving another
+                    // asset. New or edited terms still need a fresh horizon.
+                    let retained = previous.is_some_and(|prior| matches!(
+                        &prior.capability,
+                        MultiAssetSettlementCapability::Conditional {
+                            batch_code_hash: code, batch_hash_type: kind, batches: old
+                        } if code == batch_code_hash && kind == batch_hash_type && old.contains(batch)
+                    ));
+                    retained || batch.transfers.iter().all(|transfer|
+                        transfer.refund_after_block > block && transfer.refund_after_block <= maximum)
+                }),
                 "conditional refund horizon exceeds experiment admission"
             );
         }
@@ -152,6 +167,7 @@ fn validate_conditions(
 /// Public policy for fixed-custody updates, shared by direct and Factory-origin
 /// parties. It needs no parent's private ledger or admission configuration.
 pub(crate) fn validate_conditional_horizon(
+    source: &MultiAssetRecoveryPackage,
     settlement: &morph_core::MultiAssetSettlement,
     current_block: u64,
     contracts: &Path,
@@ -179,7 +195,14 @@ pub(crate) fn validate_conditional_horizon(
         blake2b256(&std::fs::read(contracts.join("morph-batch-lock"))?) == expected,
         "public conditional policy Batch ELF changed"
     );
-    validate_conditions(settlement, &envelope, Some(current_block), expected)
+    source.validate()?;
+    validate_conditions(
+        settlement,
+        Some(&source.settlement),
+        &envelope,
+        Some(current_block),
+        expected,
+    )
 }
 
 pub(crate) fn validate_recovery_shape(
@@ -566,11 +589,13 @@ pub(crate) mod tests {
             let mut settlement = terms.creation(chain, authority).unwrap().settlement;
             settlement.payouts[0].values[0].business_ckb -= 1_000_000_000;
             let batch = ConditionalBatch {
+                asset: morph_core::VaultAsset::Ckb,
                 batch_id: [71; 32],
                 application_context_commitment: [72; 32],
                 participants: std::array::from_fn(|i| ConditionalParticipant {
                     settlement_lock_hash: settlement.participant_lock_hashes[i],
                     settled_capacity: settlement.payouts[0].values[i].capacity().unwrap(),
+                    settled_amount: 0,
                 }),
                 transfers: vec![ConditionalTransferSpec {
                     transfer_id: [73; 32],
@@ -581,10 +606,10 @@ pub(crate) mod tests {
                     refund_after_block,
                 }],
             };
-            settlement.capability = MultiAssetSettlementCapability::CkbConditional {
+            settlement.capability = MultiAssetSettlementCapability::Conditional {
                 batch_code_hash: blake2b256(&artifact("morph-batch-lock")),
                 batch_hash_type: 2,
-                batch: Box::new(batch),
+                batches: vec![batch],
             };
             terms.descriptor_hex =
                 crate::multi_asset_packages::canonical_hex(&settlement.encode().unwrap());
@@ -899,20 +924,23 @@ pub(crate) mod tests {
             .settlement;
         let locks = settlement.participant_lock_hashes;
         let batch_hash = [7; 32];
-        settlement.capability = MultiAssetSettlementCapability::CkbConditional {
+        settlement.capability = MultiAssetSettlementCapability::Conditional {
             batch_code_hash: batch_hash,
             batch_hash_type: 2,
-            batch: Box::new(ConditionalBatch {
+            batches: vec![ConditionalBatch {
+                asset: morph_core::VaultAsset::Ckb,
                 batch_id: [8; 32],
                 application_context_commitment: [9; 32],
                 participants: [
                     ConditionalParticipant {
                         settlement_lock_hash: locks[0],
                         settled_capacity: 1000,
+                        settled_amount: 0,
                     },
                     ConditionalParticipant {
                         settlement_lock_hash: locks[1],
                         settled_capacity: 1000,
+                        settled_amount: 0,
                     },
                 ],
                 transfers: vec![ConditionalTransferSpec {
@@ -923,30 +951,125 @@ pub(crate) mod tests {
                     amount: 1,
                     refund_after_block: 2116,
                 }],
-            }),
+            }],
         };
-        validate_conditions(&settlement, &envelope, Some(100), batch_hash).unwrap();
-        if let MultiAssetSettlementCapability::CkbConditional { batch, .. } =
+        validate_conditions(&settlement, None, &envelope, Some(100), batch_hash).unwrap();
+        if let MultiAssetSettlementCapability::Conditional { batches, .. } =
             &mut settlement.capability
         {
-            batch.transfers[0].refund_after_block = 2117;
+            batches[0].transfers[0].refund_after_block = 2117;
         }
         assert!(
-            validate_conditions(&settlement, &envelope, Some(100), batch_hash)
+            validate_conditions(&settlement, None, &envelope, Some(100), batch_hash)
                 .unwrap_err()
                 .to_string()
                 .contains("refund horizon")
         );
         // A late saved authorization remains valid protocol evidence. Admission
         // is applied only to a new proposal/signature, never package export.
-        if let MultiAssetSettlementCapability::CkbConditional { batch, .. } =
+        if let MultiAssetSettlementCapability::Conditional { batches, .. } =
             &mut settlement.capability
         {
-            batch.transfers[0].refund_after_block = 100;
+            batches[0].transfers[0].refund_after_block = 100;
         }
-        validate_conditions(&settlement, &envelope, None, batch_hash).unwrap();
-        assert!(validate_conditions(&settlement, &envelope, Some(100), batch_hash).is_err());
-        assert!(validate_conditions(&settlement, &envelope, None, [12; 32]).is_err());
+        validate_conditions(&settlement, None, &envelope, None, batch_hash).unwrap();
+        assert!(validate_conditions(&settlement, None, &envelope, Some(100), batch_hash).is_err());
+        assert!(validate_conditions(&settlement, None, &envelope, None, [12; 32]).is_err());
+    }
+
+    #[test]
+    fn conditional_admission_preserves_identical_mature_batches_while_another_asset_resolves() {
+        let envelope: PreproductionEnvelope = serde_json::from_str(include_str!(
+            "../../../release/factory-preproduction/envelope.json"
+        ))
+        .unwrap();
+        let mut prior = crate::conditional_packages::fixture_typed_source_package()
+            .unwrap()
+            .recovery()
+            .unwrap()
+            .settlement;
+        let payout = &mut prior.payouts[1];
+        payout.values[0].amount -= 1;
+        let second = ConditionalBatch {
+            asset: payout.asset.clone(),
+            batch_id: [41; 32],
+            application_context_commitment: [42; 32],
+            participants: std::array::from_fn(|i| ConditionalParticipant {
+                settlement_lock_hash: prior.participant_lock_hashes[i],
+                settled_capacity: payout.values[i].capacity().unwrap(),
+                settled_amount: payout.values[i].amount,
+            }),
+            transfers: vec![ConditionalTransferSpec {
+                transfer_id: [43; 32],
+                payer_lock_hash: prior.participant_lock_hashes[0],
+                hash_algorithm: ConditionalHashAlgorithm::Sha256,
+                payment_hash: derive_conditional_payment_hash(
+                    ConditionalHashAlgorithm::Sha256,
+                    &[44; 32],
+                )
+                .unwrap(),
+                amount: 1,
+                refund_after_block: 500,
+            }],
+        };
+        let MultiAssetSettlementCapability::Conditional {
+            batches,
+            batch_code_hash,
+            ..
+        } = &mut prior.capability
+        else {
+            panic!("typed fixture")
+        };
+        batches.push(second);
+        let expected = *batch_code_hash;
+        prior.encode().unwrap();
+        let mut target = prior.clone();
+        let MultiAssetSettlementCapability::Conditional { batches, .. } = &mut target.capability
+        else {
+            panic!("typed fixture")
+        };
+        let resolved = batches.remove(0);
+        target.payouts[0].values[1].amount += resolved.transfers[0].amount;
+        target.encode().unwrap();
+        validate_conditions(&target, Some(&prior), &envelope, Some(501), expected).unwrap();
+        // A new root/funding context cannot use the retained-state exemption.
+        assert!(validate_conditions(&target, None, &envelope, Some(501), expected).is_err());
+        for mutation in 0..7 {
+            let mut edited = target.clone();
+            let MultiAssetSettlementCapability::Conditional { batches, .. } =
+                &mut edited.capability
+            else {
+                panic!("typed fixture")
+            };
+            let batch = &mut batches[0];
+            match mutation {
+                0 => batch.batch_id = [51; 32],
+                1 => batch.application_context_commitment = [52; 32],
+                2 => batch.asset = VaultAsset::Xudt([53; 32]),
+                3 => batch.participants[0].settled_capacity += 1,
+                4 => batch.participants[0].settled_amount += 1,
+                5 => batch.transfers[0].payment_hash = [54; 32],
+                _ => batch.transfers[0].amount += 1,
+            }
+            assert!(
+                validate_conditions(&edited, Some(&prior), &envelope, Some(501), expected).is_err(),
+                "mutation {mutation}"
+            );
+        }
+        let MultiAssetSettlementCapability::Conditional { batches, .. } = &mut target.capability
+        else {
+            panic!("typed fixture")
+        };
+        batches[0].transfers[0].refund_after_block = 600;
+        validate_conditions(&target, Some(&prior), &envelope, Some(501), expected).unwrap();
+        let MultiAssetSettlementCapability::Conditional { batches, .. } = &mut target.capability
+        else {
+            panic!("typed fixture")
+        };
+        batches[0].transfers[0].refund_after_block = 501 + 2017;
+        assert!(
+            validate_conditions(&target, Some(&prior), &envelope, Some(501), expected).is_err()
+        );
     }
     #[test]
     fn allowlisted_type_still_requires_exact_reviewed_devnet_issuer_and_bounded_actual_fee() {

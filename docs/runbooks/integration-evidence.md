@@ -103,7 +103,7 @@ independent attestation/deployment authorization. It does not copy arbitrary
 reports, paths, commands, exclusion text or logs into a public bundle.
 
 The existing `make qualify-local-candidate` now generates a reviewed-in-source
-`w1-local-no-value` plan through `local-integration-evidence.py`. It wraps
+`current-local-no-value` plan through `local-integration-evidence.py`. It wraps
 actual CI/native/signer/close/fuzz/shadow/package/qualification commands, checks the selected CKB binary
 before and after, and executes the pinned Fiber hook and shadow service. Runtime, Hub/Gateway version,
 event and signer labels are extracted from their actual current source owners;
@@ -131,3 +131,11 @@ real child processes for successful, failing, source-changing and timed-out
 commands. Baseline wiring tests additionally check final assembly, private-marker
 exclusion, changed packages/plan/results, archive allowlists/determinism and replay
 locations. Their synthetic artifact fixtures are not native Morph acceptance.
+
+The current profile additionally requires the `typed-conditions` gate: eight UDT
+Types, eight conditions each, real-node fulfillments, a controlled rollback
+with zero canonical credit, and eight refund/mixed resolutions. Both hash
+algorithms, exact payout data, independent fee inputs and unchanged participant
+journals are checked. `conditional_udt_qualified=true` is emitted only after
+these semantics and the same candidate/artifact identities pass. Earlier W1
+evidence remains historical; the base ordinary five-case matrix is preserved.

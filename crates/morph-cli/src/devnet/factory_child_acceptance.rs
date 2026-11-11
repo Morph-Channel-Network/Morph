@@ -672,11 +672,13 @@ fn run_case(
             updated.payouts[0].values[1].capacity()?,
         ];
         let batch = morph_core::ConditionalBatch {
+            asset: morph_core::VaultAsset::Ckb,
             batch_id: [31; 32],
             application_context_commitment: [32; 32],
             participants: core::array::from_fn(|index| morph_core::ConditionalParticipant {
                 settlement_lock_hash: updated.participant_lock_hashes[index],
                 settled_capacity: capacities[index],
+                settled_amount: 0,
             }),
             transfers: vec![morph_core::ConditionalTransferSpec {
                 transfer_id: [33; 32],
@@ -694,12 +696,12 @@ fn run_case(
                     .ok_or_else(|| anyhow!("refund height overflow"))?,
             }],
         };
-        updated.capability = MultiAssetSettlementCapability::CkbConditional {
+        updated.capability = MultiAssetSettlementCapability::Conditional {
             batch_code_hash: blake2b256(&fs::read(
                 context.options.contracts_dir.join("morph-batch-lock"),
             )?),
             batch_hash_type: 2,
-            batch: Box::new(batch),
+            batches: vec![batch],
         };
     }
     let proposed = bilateral_session(

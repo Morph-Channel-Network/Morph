@@ -74,7 +74,7 @@ impl ChannelCreationTerms {
             &self.descriptor_hex,
             wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
                 + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN
-                + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN,
+                + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_MAX_LEN,
         )?)?;
         let manifest = settlement.custody_manifest(vault_lock.calc_script_hash().unpack())?;
         ensure!(

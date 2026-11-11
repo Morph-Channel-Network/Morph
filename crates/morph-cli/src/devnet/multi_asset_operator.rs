@@ -1654,6 +1654,7 @@ mod conditional_tests {
             outputs[0].0.lock().as_slice(),
             conditional
                 .batch_script(
+                    0,
                     header.channel_id(),
                     &header.funding_context_id().unwrap(),
                     header.state_number()
@@ -1688,7 +1689,8 @@ mod conditional_tests {
                 .capability
                 .conditional()
                 .unwrap()
-                .pending_ckb,
+                .batches[0]
+                .pending_amount,
             "2000000000"
         );
     }

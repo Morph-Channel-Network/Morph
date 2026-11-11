@@ -36,6 +36,7 @@ python3 -B scripts/local-integration-evidence.py ci-receipt --output "$OUT_DIR"
 run_gate native
 run_gate signer-lifecycle
 run_gate cooperative-close
+run_gate typed-conditions
 run_gate fuzz
 run_gate shadow-service
 run_gate contracts-package

@@ -35,18 +35,19 @@ stateDiagram-v2
   Successor --> Active: activate new context
 ```
 
-The sole channel header is 318 bytes, State layout 2, descriptor 5. Direct
+The sole channel header is 318 bytes, State layout 2, descriptor 6. Direct
 StateType args are `anchor || since` (40 bytes); Factory child args are
 `anchor || FactoryTypeHash || since` (72 bytes). One shared parser validates
 both shapes and the canonical relative clock. Unsupported historical headers,
 descriptors and argument orderings are rejected; development state is reset.
 
-Conditional CKB is a descriptor capability. Ordinary assets still use the same
-Vault-set and carrier rules. Pending transfers use CKB business value only;
-disputed finalisation materialises the sole bounded Batch executor with args
-binding channel, exact funding context, state number and terms. Other token
-lanes settle independently in the same transaction. See
-[conditional batches](conditional-batches.md). Typed conditions remain unsupported.
+Conditional CKB and UDT use the same descriptor capability. Each selected asset
+has an independently conserved Batch: CKB consumes business capacity; UDT
+consumes only that Type's u128 quantity and preserves signed capacities.
+Terminal settlement atomically consumes all Vaults, materialises each signed
+Batch and refunds the full carrier. Each Batch then resolves independently.
+See [conditional batches](conditional-batches.md). This does not enable live
+Fiber forwarding or translate Fiber timestamp expiries into block heights.
 
 ## Explicit changes of funded context
 

@@ -5,11 +5,27 @@ coverage ledger, not a new independent audit or release approval. Full CI,
 release/report refresh, independent review and real-asset qualification remain
 separate gates in [mainnet readiness](mainnet-readiness.md).
 
+## Typed-conditions implementation checkpoint (2026-11-11)
+
+Descriptor 6 replaces the unpublished CKB-only conditional encoding with 1–8
+asset-bound Batches, each containing up to eight conditions. Terms are version
+4/957 bytes; public recovery is `morph.conditional_batch_package.v2`. Old W1
+records below remain historical. The rebuilt current VM inventory has **110
+passing tests**, including conditional initial funding/activation/initial exit, typed splice
+creation/recovery/terminal claims, mixed assets, full-u128 resolution and maximum-script
+8-asset/64-condition shapes. A real-node preflight exercised eight fulfillments,
+removed all their confirmation credit by rollback, then exercised eight
+refund/mixed outcomes, without peer re-signing or provider RPC. Its actual-wallet
+terminal transaction measured 25,918,457 cycles/14,455 bytes; claim maxima were
+1,856,085 cycles/2,253 bytes. These preflight results do not replace the required
+clean-candidate `current-local-no-value` qualification. See [ADR 007](adr/007-typed-conditional-settlement.md)
+and [current operator/limits](conditional-batches.md).
+
 ## One custody model, explicit capabilities
 
 Morph now has one current channel State/Vault-set implementation. Plain CKB,
-one token and several tokens use the same 318-byte State and descriptor 5.
-Conditional CKB is an explicit capability of that descriptor. A Factory is a
+one token and several tokens use the same 318-byte State and descriptor 6.
+Conditional CKB/UDT settlement is an explicit capability of that descriptor. A Factory is a
 different authority object: a 306-byte Factory State controls shared custody
 and rights, then creates independently enforceable bilateral children.
 
@@ -24,9 +40,9 @@ flowchart TD
   C --> D["Private initial exits delivered to both child parties"]
   D --> B["Current bilateral State + Vault set"]
   B --> O["Ordinary settlement"]
-  B --> K["Explicit CKB conditional capability"]
+  B --> K["Explicit per-asset conditional capability"]
   O --> E["Complete-set unilateral finalisation"]
-  K --> X["Batch Cell: preimage or absolute-block refund"]
+  K --> X["1–8 Batch cells: preimages or absolute-block refunds"]
   X --> E
 ```
 
@@ -34,8 +50,8 @@ The former 346-byte channel, 302-byte Factory, single-Vault descriptors,
 485/469-byte splice and `MORPHW!!` kinds 1–8 codecs and contract dispatch have
 been removed. Unsupported bytes are rejected; development state must be reset
 as described in [the upgrade runbook](runbooks/upgrade-and-migration.md).
-The shared 828-byte Batch terms, signature primitives and compact Merkle
-algorithms remain because the current capabilities use them.
+The current typed 957-byte Batch terms replace the earlier CKB-only terms.
+Shared signature primitives and compact Merkle algorithms remain in use.
 
 ## Operation mapping
 

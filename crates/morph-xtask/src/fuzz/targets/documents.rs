@@ -64,6 +64,8 @@ pub(super) fn seeds(signatures: bool) -> Result<Vec<Vec<u8>>> {
         package,
         serde_json::to_value(conditional_packages::fixture_source_package()?)?,
         serde_json::to_value(conditional_packages::fixture_package()?)?,
+        serde_json::to_value(conditional_packages::fixture_typed_source_package()?)?,
+        serde_json::to_value(conditional_packages::fixture_typed_package()?)?,
     ] {
         cases.push(Case {
             document,
@@ -123,7 +125,7 @@ fn canonical(document: &Value) -> Result<Value> {
         Some("morph.multi_asset_recovery_package.v1") => {
             typed::<multi_asset_packages::StoredMultiAssetPackage>(document)?
         }
-        Some("morph.conditional_batch_package.v1") => {
+        Some("morph.conditional_batch_package.v2") => {
             typed::<conditional_packages::StoredConditionalBatchPackage>(document)?
         }
         Some("morph.multi_asset_root_draft.v1") => {

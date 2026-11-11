@@ -21,8 +21,8 @@ tradeoffs are recorded in [the architecture analysis](architecture-profile-strat
 | Boundary | Result | Verification |
 | --- | --- | --- |
 | Persistence | One stable sidecar lock and private fsynced atomic/event implementation | Lock contention, incomplete history and immutable-artifact tests |
-| Bilateral custody | State 318, descriptor 5; CKB and one or several tokens share complete-set custody and settlement | Host/SDK parity, authentic-State/OutPoint negatives, real-node lifecycle |
-| Conditional CKB | Explicit descriptor capability; shared 828-byte terms and 104-byte funding-context-bound Batch identity | Fulfill/refund exclusivity, preimages, maturity, occupied reserve and mixed-asset VM cases |
+| Bilateral custody | State 318, descriptor 6; CKB and one or several tokens share complete-set custody and settlement | Host/SDK parity, authentic-State/OutPoint negatives, real-node lifecycle |
+| Conditional CKB/UDT | Explicit descriptor capability; shared 957-byte terms and 104-byte funding-context-bound Batch identity | Fulfill/refund exclusivity, preimages, maturity, occupied reserve and mixed-asset VM cases |
 | Payments | Prepare/commit/cancel and idempotent payment metadata use the sole signing backend | Current payment, cancellation, provider-loss and settlement-evidence tests |
 | Full-consent Factory | State 306; exact-body root, metadata, custody and materialisation; independent participant journals | Native root/wallet/activation/replay and child/terminal lifecycle; VM authority/conservation negatives |
 | Reduced Factory | Sole current rights/release/deposit/child frame; one touched member and localized compact proofs | Host/proof/VM negatives, native withheld-consent escape and public peer-proof refresh |

@@ -177,15 +177,74 @@ pub struct MultiAssetSettlement {
 
 /// A current settlement has one explicit interpretation. Conditions use the
 /// same Vault-set custody and signing engine as ordinary allocations.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MultiAssetSettlementCapability {
     Ordinary,
-    CkbConditional {
+    Conditional {
         batch_code_hash: Bytes32,
         batch_hash_type: u8,
-        batch: Box<crate::ConditionalBatch>,
+        batches: Vec<crate::ConditionalBatch>,
     },
+}
+
+// Read each field directly: Serde's internally tagged Content buffer cannot
+// retain u128 values received through arbitrary-precision JSON. A map visitor
+// also rejects duplicate/unknown fields without changing the sole JSON shape.
+impl<'de> Deserialize<'de> for MultiAssetSettlementCapability {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct CapabilityVisitor;
+        impl<'de> serde::de::Visitor<'de> for CapabilityVisitor {
+            type Value = MultiAssetSettlementCapability;
+            fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                formatter.write_str("the current ordinary or conditional capability")
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<Self::Value, M::Error> {
+                let mut kind = None;
+                let mut code = None;
+                let mut hash_type = None;
+                let mut batches = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "kind" if kind.is_none() => kind = Some(map.next_value::<String>()?),
+                        "batch_code_hash" if code.is_none() => {
+                            code = Some(map.next_value::<Bytes32>()?)
+                        }
+                        "batch_hash_type" if hash_type.is_none() => {
+                            hash_type = Some(map.next_value::<u8>()?)
+                        }
+                        "batches" if batches.is_none() => {
+                            batches = Some(map.next_value::<Vec<crate::ConditionalBatch>>()?)
+                        }
+                        "kind" | "batch_code_hash" | "batch_hash_type" | "batches" => {
+                            return Err(serde::de::Error::custom("duplicate capability field"));
+                        }
+                        _ => return Err(serde::de::Error::custom("unknown capability field")),
+                    }
+                }
+                match (kind.as_deref(), code, hash_type, batches) {
+                    (Some("ordinary"), None, None, None) => Ok(Self::Value::Ordinary),
+                    (
+                        Some("conditional"),
+                        Some(batch_code_hash),
+                        Some(batch_hash_type),
+                        Some(batches),
+                    ) => Ok(Self::Value::Conditional {
+                        batch_code_hash,
+                        batch_hash_type,
+                        batches,
+                    }),
+                    _ => Err(serde::de::Error::custom(
+                        "incomplete or invalid current capability",
+                    )),
+                }
+            }
+        }
+        deserializer.deserialize_map(CapabilityVisitor)
+    }
 }
 
 impl MultiAssetSettlement {
@@ -210,20 +269,25 @@ impl MultiAssetSettlement {
             }
             .encode(&mut raw[offset..offset + wire::MULTI_ASSET_PAYOUT_ENTRY_LEN])?;
         }
-        if let MultiAssetSettlementCapability::CkbConditional {
+        if let MultiAssetSettlementCapability::Conditional {
             batch_code_hash,
             batch_hash_type,
-            batch,
+            batches,
         } = &self.capability
         {
             use morph_script_common::multi_asset_conditional::{
-                MULTI_ASSET_SETTLEMENT_CKB_CONDITIONAL, encode_multi_asset_conditional,
+                MULTI_ASSET_SETTLEMENT_CONDITIONAL, encode_multi_asset_conditional,
             };
-            raw[3] = MULTI_ASSET_SETTLEMENT_CKB_CONDITIONAL;
+            raw[3] = MULTI_ASSET_SETTLEMENT_CONDITIONAL;
+            let encoded = batches
+                .iter()
+                .map(|batch| batch.encode_descriptor())
+                .collect::<Result<Vec<_>, _>>()?;
+            let terms = encoded.iter().map(|raw| raw.as_slice()).collect::<Vec<_>>();
             raw.extend_from_slice(&encode_multi_asset_conditional(
                 batch_code_hash,
                 *batch_hash_type,
-                &batch.encode_descriptor()?,
+                &terms,
             )?);
         }
         wire::MultiAssetSettlementDescriptor::parse(&raw)?;
@@ -256,12 +320,16 @@ impl MultiAssetSettlement {
         Ok(Self {
             capability: match descriptor.conditional()? {
                 None => MultiAssetSettlementCapability::Ordinary,
-                Some(conditional) => MultiAssetSettlementCapability::CkbConditional {
+                Some(conditional) => MultiAssetSettlementCapability::Conditional {
                     batch_code_hash: array32(&conditional.as_bytes()[4..36])?,
                     batch_hash_type: conditional.as_bytes()[3],
-                    batch: Box::new(crate::ConditionalBatch::decode_descriptor(
-                        &conditional.as_bytes()[morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_PREFIX_LEN..],
-                    )?),
+                    batches: (0..conditional.count())
+                        .map(|index| {
+                            Ok(crate::ConditionalBatch::decode_descriptor(
+                                conditional.batch(index)?.raw(),
+                            )?)
+                        })
+                        .collect::<MultiAssetResult<Vec<_>>>()?,
                 },
             },
             participant_lock_hashes: [
@@ -289,24 +357,34 @@ impl MultiAssetSettlement {
     }
 
     /// The sole funding interpretation of a current descriptor. A conditional
-    /// CKB transfer is funded business value awaiting resolution; it never
-    /// consumes payout reserve, State carrier, another asset, or external fees.
+    /// CKB transfer is funded business value; a UDT transfer is funded only in
+    /// its exact Type's token lane. Neither borrows reserve, carrier or fees.
     pub fn custody_manifest(
         &self,
         vault_lock_hash: Bytes32,
     ) -> MultiAssetResult<MultiAssetManifest> {
         let encoded = self.encode()?;
         let descriptor = wire::MultiAssetSettlementDescriptor::parse(&encoded)?;
-        let pending = descriptor
-            .conditional()?
-            .map(|conditional| conditional.pending_capacity())
-            .transpose()?
-            .unwrap_or(0);
+        let conditional = descriptor.conditional()?;
         let vaults = self
             .payouts
             .iter()
             .map(|payout| {
                 let [a, b] = payout.values;
+                let pending = conditional
+                    .map(|value| value.pending_amount(wire_asset(&payout.asset)))
+                    .transpose()?
+                    .unwrap_or(0);
+                let pending_ckb = if payout.asset == VaultAsset::Ckb {
+                    u64::try_from(pending).map_err(|_| ScriptError::ConditionalValueMismatch)?
+                } else {
+                    0
+                };
+                let pending_tokens = if payout.asset == VaultAsset::Ckb {
+                    0
+                } else {
+                    pending
+                };
                 let value = MultiAssetValue {
                     reserve: a
                         .reserve
@@ -315,17 +393,12 @@ impl MultiAssetSettlement {
                     business_ckb: a
                         .business_ckb
                         .checked_add(b.business_ckb)
-                        .and_then(|sum| {
-                            sum.checked_add(if payout.asset == VaultAsset::Ckb {
-                                pending
-                            } else {
-                                0
-                            })
-                        })
+                        .and_then(|sum| sum.checked_add(pending_ckb))
                         .ok_or(ScriptError::MultiAssetCapacityMismatch)?,
                     amount: a
                         .amount
                         .checked_add(b.amount)
+                        .and_then(|sum| sum.checked_add(pending_tokens))
                         .ok_or(ScriptError::MultiAssetConservationMismatch)?,
                 };
                 Ok(MultiAssetVault {

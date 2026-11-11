@@ -60,6 +60,7 @@ fn cooperative_close_preserves_target_batch_after_older_active_source() {
     let old_batch = Script::from_slice(
         &conditional
             .batch_script(
+                0,
                 &fixture.base.package.state.header.channel_id,
                 &fixture.base.package.state.funding_context_id().unwrap(),
                 fixture.base.package.state.header.state_number - 1,
@@ -120,11 +121,13 @@ fn conditional_fixture() -> ConditionalFixture {
     base.package.settlement.payouts[0].values[0].business_ckb -= 2_000_000_000;
     let values = base.package.settlement.payouts[0].values;
     let batch = ConditionalBatch {
+        asset: morph_core::VaultAsset::Ckb,
         batch_id: [31; 32],
         application_context_commitment: [32; 32],
         participants: core::array::from_fn(|index| ConditionalParticipant {
             settlement_lock_hash: base.package.settlement.participant_lock_hashes[index],
             settled_capacity: values[index].capacity().unwrap(),
+            settled_amount: 0,
         }),
         transfers: vec![ConditionalTransferSpec {
             transfer_id: [33; 32],
@@ -139,10 +142,10 @@ fn conditional_fixture() -> ConditionalFixture {
             refund_after_block: 500,
         }],
     };
-    base.package.settlement.capability = MultiAssetSettlementCapability::CkbConditional {
+    base.package.settlement.capability = MultiAssetSettlementCapability::Conditional {
         batch_code_hash: identity.code_hash().unpack(),
         batch_hash_type: identity.hash_type().as_slice()[0],
-        batch: Box::new(batch.clone()),
+        batches: vec![batch.clone()],
     };
     base.package.state.header.state_number += 1;
     base.package.state.header.settlement_descriptor_commitment =
@@ -174,6 +177,7 @@ fn conditional_fixture() -> ConditionalFixture {
     let batch_lock = Script::from_slice(
         &conditional
             .batch_script(
+                0,
                 &base.package.state.header.channel_id,
                 &base.package.state.funding_context_id().unwrap(),
                 base.package.state.header.state_number,
@@ -215,10 +219,12 @@ fn resolve(
     let capacities = match resolution {
         ConditionalResolution::Fulfill { .. } => [
             fixture.batch.participants[0].settled_capacity,
-            fixture.batch.participants[1].settled_capacity + fixture.batch.transfers[0].amount,
+            fixture.batch.participants[1].settled_capacity
+                + u64::try_from(fixture.batch.transfers[0].amount).unwrap(),
         ],
         ConditionalResolution::Refund => [
-            fixture.batch.participants[0].settled_capacity + fixture.batch.transfers[0].amount,
+            fixture.batch.participants[0].settled_capacity
+                + u64::try_from(fixture.batch.transfers[0].amount).unwrap(),
             fixture.batch.participants[1].settled_capacity,
         ],
     };
@@ -421,7 +427,7 @@ fn current_conditional_finalisation_binds_batch_to_exact_state_and_funding_conte
     ] {
         let wrong_lock = Script::from_slice(
             &conditional
-                .batch_script(&channel, &funding, state_number)
+                .batch_script(0, &channel, &funding, state_number)
                 .unwrap(),
         )
         .unwrap();
@@ -452,7 +458,7 @@ fn current_conditional_finalisation_binds_batch_to_exact_state_and_funding_conte
 
 #[test]
 #[ignore = "requires `make build-contracts`"]
-fn current_conditional_batch_spend_requires_exact_plain_unique_payouts() {
+fn current_conditional_batch_spend_requires_exact_canonical_payouts_and_plain_fee_change() {
     let mut fixture = conditional_fixture();
     fixture
         .base
@@ -546,9 +552,9 @@ fn current_conditional_batch_spend_requires_exact_plain_unique_payouts() {
             .build(),
     ));
 
-    // Fund the extra output independently. Its positive control proves that
-    // unrelated wallet value is allowed; only duplicating a participant lock
-    // changes in the negative case, without a capacity imbalance.
+    // The participant can fund fees itself. Its plain fee change may share
+    // its payout address: outputs 0/1 remain exact, externally funded value
+    // cannot be counted a second time toward either canonical allocation.
     let extra_capacity = u64::from(outputs[0].capacity());
     let extra_input = fixture.base.context.create_cell(
         CellOutput::new_builder()
@@ -583,11 +589,21 @@ fn current_conditional_batch_spend_requires_exact_plain_unique_payouts() {
         .as_builder()
         .lock(outputs[0].lock())
         .build();
+    let shared_owner_change = funded_control
+        .clone()
+        .as_advanced_builder()
+        .set_outputs(duplicated_outputs)
+        .build();
+    fixture
+        .base
+        .context
+        .verify_tx(&shared_owner_change, MAX_CYCLES)
+        .expect("externally funded participant fee change must remain usable");
     cases.push((
-        "duplicate participant payout with independent funding",
+        "unfunded extra output",
         funded_control
             .as_advanced_builder()
-            .set_outputs(duplicated_outputs)
+            .set_inputs(valid.inputs().into_iter().collect())
             .build(),
     ));
 

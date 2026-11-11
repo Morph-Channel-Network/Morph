@@ -68,7 +68,7 @@ crates/morph-cli           CLI entry point. Subcommands: print/validate fixtures
 contracts/morph-script-common    Shared no_std parsers, lengths, domains and typed capability frames.
 contracts/morph-state-{lock,type}      State cell boundary.
 contracts/morph-vault-lock            Vault settlement, splice checks.
-contracts/morph-batch-lock            Bounded CKB conditional preimage/refund settlement.
+contracts/morph-batch-lock            Bounded asset-bound CKB/UDT conditional preimage/refund settlement.
 contracts/morph-sponsor-lock          Bounded sponsor budget.
 contracts/morph-factory-{type,vault-lock}  Current Factory authority + Vault-set custody (FS/FM/FR).
 contracts/morph-devnet-xudt           Devnet-only xUDT issuer/conservation script.
@@ -104,10 +104,12 @@ fixtures/                     Minimal current protocol samples, Gateway vector a
 
 ### Current State and witness formats
 
-- Bilateral State uses `multi_asset::MultiAssetStateHeader`: 318 bytes, layout 2 and descriptor 5. One to eight Vaults share a content commitment and exact OutPoint-set commitment. A one-asset channel uses this same implementation.
-- Descriptor 5 requires an explicit `Ordinary` or `CkbConditional` capability. Pending conditions consume CKB business value only; reserves, other assets and the signed State carrier remain independently conserved. The canonical inner Batch terms codec is 828 bytes; that shared primitive is not an older State profile. The Batch lock has 104-byte args binding channel, exact funding context, state number and terms commitment.
+- Bilateral State uses `multi_asset::MultiAssetStateHeader`: 318 bytes, layout 2 and descriptor 6. One to eight Vaults share a content commitment and exact OutPoint-set commitment. A one-asset channel uses this same implementation.
+- Descriptor 6 requires an explicit `Ordinary` or `Conditional` capability. One pinned executor supports 1–8 asset-sorted Batches, each with 1–8 transfers. Pending CKB consumes only its business lane; pending UDT consumes only the exact Type's u128 amount and preserves both signed capacities. Terms are 957 bytes (version 4), trailer version 2 has a 40-byte prefix, resolution version is 2 and package schema is `morph.conditional_batch_package.v2`. The 104-byte Batch args bind channel, exact funding context, state number and complete asset-bearing terms. Input 0 and outputs 0/1 are canonical Batch positions; other inputs/outputs are plain external fees/change. Check future typed payout occupancy even at zero settled tokens. Fiber TLC expiry is milliseconds, Morph refunds are absolute blocks: never directly copy/convert clocks. See `docs/conditional-batches.md`.
 - `MultiAssetStateTypeArgs::parse` is the sole Type-args parser: direct origin is `anchor32 || since8`; Factory child origin is `anchor32 || FactoryTypeHash32 || since8`. Since occupies the final eight bytes. Reject zero Factory origin and noncanonical relative since. Vault args are 116 bytes and bind anchor, since, authentic StateType and StateLock.
 - Factory State is 306 bytes, with 44-byte `MORPHFT!` Type args and 64-byte reserve-lock args. Its custody uses the same bounded manifest and per-Type values. There are no old State/Vault, descriptor1/2, old splice or envelope-kind fallbacks.
+
+- Conditional signing admission compares the target with the actual current co-signed package. Exact unchanged Batches (including executor pin, asset, identity, settled values and all transfers) may be retained past maturity during a fixed-context update. New/edited terms still require fresh bounded refund heights; initial and splice funding retain strict all-new-context admission. Preserve the source-authentication and independent signer checks, so mature retained conditions cannot block another asset's cooperative consolidation.
 
 ### Typed Factory authority and proofs
 

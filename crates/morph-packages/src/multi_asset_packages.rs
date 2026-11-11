@@ -1,6 +1,6 @@
 use crate::capability_summary::{
-    CapabilitySummary, ConditionalCapabilitySummary, ConditionalTransferSummary,
-    HashAlgorithmSummary,
+    CapabilitySummary, ConditionalAssetSummary, ConditionalBatchSummary,
+    ConditionalCapabilitySummary, ConditionalTransferSummary, HashAlgorithmSummary,
 };
 use crate::persistence::sync_recovery_directories;
 use std::fs::File;
@@ -85,47 +85,61 @@ pub fn capability_summary_from_wire(
     let Some(conditional) = descriptor.conditional().map_err(wire_error)? else {
         return Ok(CapabilitySummary::Ordinary {});
     };
-    let batch = conditional.batch();
-    let mut transfers = Vec::new();
-    for index in 0..batch.transfer_count() as usize {
-        let transfer = batch.transfer(index).map_err(wire_error)?;
-        let payer = transfer.payer_index() as usize;
-        transfers.push(ConditionalTransferSummary {
-            transfer_id: canonical_hex(transfer.transfer_id()),
-            payer_lock_hash: canonical_hex(batch.lock_hash(payer)),
-            payee_lock_hash: canonical_hex(batch.lock_hash(1 - payer)),
-            hash_algorithm: if transfer.hash_algorithm()
-                == morph_script_common::CONDITIONAL_HASH_CKB_BLAKE2B
-            {
-                HashAlgorithmSummary::CkbBlake2b
+    let mut batches = Vec::new();
+    for batch_index in 0..conditional.count() {
+        let batch = conditional.batch(batch_index).map_err(wire_error)?;
+        let asset = batch.asset().map_err(wire_error)?;
+        let mut transfers = Vec::new();
+        for index in 0..batch.transfer_count() as usize {
+            let transfer = batch.transfer(index).map_err(wire_error)?;
+            let payer = transfer.payer_index() as usize;
+            transfers.push(ConditionalTransferSummary {
+                transfer_id: canonical_hex(transfer.transfer_id()),
+                payer_lock_hash: canonical_hex(batch.lock_hash(payer)),
+                payee_lock_hash: canonical_hex(batch.lock_hash(1 - payer)),
+                hash_algorithm: if transfer.hash_algorithm()
+                    == morph_script_common::CONDITIONAL_HASH_CKB_BLAKE2B
+                {
+                    HashAlgorithmSummary::CkbBlake2b
+                } else {
+                    HashAlgorithmSummary::Sha256
+                },
+                payment_hash: canonical_hex(transfer.payment_hash()),
+                amount: transfer.amount().to_string(),
+                refund_after_block: transfer.refund_after_since().to_string(),
+            });
+        }
+        batches.push(ConditionalBatchSummary {
+            asset: if asset.kind == 0 {
+                ConditionalAssetSummary::Ckb {}
             } else {
-                HashAlgorithmSummary::Sha256
+                ConditionalAssetSummary::Xudt {
+                    type_hash: canonical_hex(&asset.type_hash),
+                }
             },
-            payment_hash: canonical_hex(transfer.payment_hash()),
-            amount: transfer.amount().to_string(),
-            refund_after_block: transfer.refund_after_since().to_string(),
-        });
-    }
-    Ok(CapabilitySummary::CkbConditional(Box::new(
-        ConditionalCapabilitySummary {
-            batch_code_hash: canonical_hex(conditional.code_hash()),
-            batch_hash_type: conditional.hash_type(),
             batch_id: canonical_hex(batch.batch_id()),
             application_context_commitment: canonical_hex(batch.application_context_commitment()),
-            pending_ckb: conditional
-                .pending_capacity()
+            pending_amount: batch
+                .checked_pending_amount()
                 .map_err(wire_error)?
                 .to_string(),
             batch_lock_hash: canonical_hex(
                 &conditional
-                    .batch_lock_hash(channel_id, funding_context_id, state_number)
+                    .batch_lock_hash(batch_index, channel_id, funding_context_id, state_number)
                     .map_err(wire_error)?,
             ),
-            settled_capacities: [
-                batch.settled_capacity(0).to_string(),
-                batch.settled_capacity(1).to_string(),
-            ],
+            settled_capacities: core::array::from_fn(|index| {
+                batch.settled_capacity(index).to_string()
+            }),
+            settled_amounts: core::array::from_fn(|index| batch.settled_amount(index).to_string()),
             transfers,
+        });
+    }
+    Ok(CapabilitySummary::Conditional(Box::new(
+        ConditionalCapabilitySummary {
+            batch_code_hash: canonical_hex(conditional.code_hash()),
+            batch_hash_type: conditional.hash_type(),
+            batches,
         },
     )))
 }

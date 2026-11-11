@@ -18,7 +18,7 @@ pub fn inspect(document: &Value, base: Option<&Value>) -> Result<Value> {
         "morph.multi_asset_recovery_package.v1" => Ok(serde_json::to_value(
             decode::<StoredMultiAssetPackage>(document)?.validate()?,
         )?),
-        "morph.conditional_batch_package.v1" => Ok(serde_json::to_value(
+        "morph.conditional_batch_package.v2" => Ok(serde_json::to_value(
             decode::<conditional_packages::StoredConditionalBatchPackage>(document)?.validate()?,
         )?),
         "morph.multi_asset_root_draft.v1" => Ok(serde_json::to_value(

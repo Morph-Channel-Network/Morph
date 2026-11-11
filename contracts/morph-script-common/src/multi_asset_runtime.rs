@@ -180,29 +180,33 @@ pub fn verify_multi_asset_settlement_outputs(
 ) -> Result<()> {
     evidence.validate_header(header)?;
     let descriptor = evidence.descriptor();
-    let batch_lock = if let Some(conditional) = descriptor.conditional()? {
+    let conditional = descriptor.conditional()?;
+    let mut batch_locks = [None; crate::multi_asset::MULTI_ASSET_MAX_VAULTS];
+    if let Some(value) = conditional {
         if header.state_number() == 0 {
             return Err(ScriptError::ConditionalBatchLockMismatch);
         }
-        Some(conditional.batch_lock_hash(
-            header.channel_id(),
-            &header.funding_context_id()?,
-            header.state_number(),
-        )?)
-    } else {
-        None
-    };
+        for (index, lock) in batch_locks.iter_mut().enumerate().take(value.count()) {
+            *lock = Some(value.batch_lock_hash(
+                index,
+                header.channel_id(),
+                &header.funding_context_id()?,
+                header.state_number(),
+            )?);
+        }
+    }
     let mut output_index = 0;
     for i in 0..descriptor.count() {
         let payout = descriptor.entry(i)?;
-        if payout.asset == MultiAssetId::CKB
-            && let Some(lock_hash) = batch_lock
+        if let Some(value) = conditional
+            && let Some(batch_index) = value.index_of(payout.asset)?
+            && let Some(lock_hash) = batch_locks[batch_index]
         {
             verify_value(
                 output_index,
                 Source::Output,
                 &lock_hash,
-                MultiAssetId::CKB,
+                payout.asset,
                 evidence.manifest().entry(i)?.allocation,
             )?;
             output_index += 1;
@@ -253,7 +257,7 @@ pub fn verify_multi_asset_settlement_outputs(
                 // allocation and the complete carrier refund. Plain fee
                 // change may share a recipient address without being counted
                 // a second time toward those lanes.
-                if lock == vault_lock || batch_lock == Some(lock) {
+                if lock == vault_lock || batch_locks.contains(&Some(lock)) {
                     return Err(ScriptError::MultiAssetConservationMismatch);
                 }
                 let asset = actual_asset(index, Source::Output)?;

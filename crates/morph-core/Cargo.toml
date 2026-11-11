@@ -21,10 +21,10 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 ckb-jsonrpc-types.workspace = true
 ckb-testtool.workspace = true
 faster-hex = { version = "=0.10.1", default-features = false, features = ["std"] }
 lru = "=0.18.2"
 memmap2 = "=0.9.12"
 proptest.workspace = true
-serde_json.workspace = true

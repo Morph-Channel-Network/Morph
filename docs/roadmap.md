@@ -21,9 +21,9 @@ flowchart LR
 
 | Area | Current implementation | Remaining qualification |
 | --- | --- | --- |
-| Channels | 318-byte layout-2 State, descriptor 5, 1–8 Vaults, exact provenance, complete-set finalisation and independent per-Type accounting. | Independent review and deployment-specific resource/asset qualification. |
+| Channels | 318-byte layout-2 State, descriptor 6, 1–8 Vaults, exact provenance, complete-set finalisation and independent per-Type accounting. | Independent review and deployment-specific resource/asset qualification. |
 | Funding and splice | Independent durable signers, exit-before-creation ceremony, exact-transaction root/splice authorizations, wallet-group funding, keyless replay and canonical same-path handoff. | Current fresh-node report/CI refresh, terminal abort tracking and production recovery rehearsal. |
-| Conditional CKB | Explicit descriptor capability, shared bounded Batch terms/executor, context-bound 104-byte Batch args, cooperative consolidation and script-enforced preimage/refund fallback. | Typed conditions, routing integration and production operational evidence. |
+| Conditional CKB/UDT | Explicit descriptor capability, shared bounded Batch terms/executor, context-bound 104-byte Batch args, cooperative consolidation and script-enforced preimage/refund fallback. | Exact current candidate qualification, routed integration and production operational evidence. |
 | Factory authority | Current 306-byte State; transaction-bound root/update, complete custody activation, full-consent materialisation and funded custody changes. | Current transition/child acceptance and release evidence must be evaluated together; independent review remains open. |
 | Reduced Factory capability | Sole compact locality proof path for rights (up to 10), deposits, releases and children (up to 9 physical claims); actual custody/fee/funding checks. | Proof-data retention/replacement snapshot discipline, independent review and arbitrary-asset/worst-topology resource qualification. |
 | Factory operations | Independent member journals, current request/custody packages, native preparation/wallet signing/keyless submission, private child exits and public delivery attestations. | Complete fresh acceptance/report matrix and independent operator rehearsal. |
@@ -34,7 +34,7 @@ flowchart LR
 The former envelope-kind package commands and separate single-Vault physical
 implementations are removed. Flat, sparse and compact reduced-right operations
 are represented by one current compact frame; they are not parallel roadmap
-profiles. The retained 828-byte Batch terms and generic signature/Merkle
+profiles. The current typed 957-byte Batch terms and generic signature/Merkle
 primitives are used inside the current capabilities.
 
 ## Protocol work still separate from consolidation
@@ -43,7 +43,7 @@ primitives are used inside the current capabilities.
 | --- | --- |
 | Cooperative channel close | A separately authorized zero-challenge close must still preserve exact outputs, Type conservation and carrier refund. Current ordinary closure waits the challenge window. |
 | Member rotation / lost-key governance | Factory membership is committed; replacement must not confiscate another member's entitlement or invalidate their independent proofs. Reduced operations do not retire the last collective carrier/floor. |
-| Conditional xUDT | Define Type-bound executor custody, preimage/refund outputs and occupied-capacity budgets before admission. CKB conditional support does not imply token conditions. |
+| Conditional UDT routing | Type-bound settlement is implemented. A live Fiber bridge still needs explicit millisecond/block timeout policy, routed/MPP and provider-loss acceptance. |
 | Recovery data availability | Retain complete initial rights data; deliver full snapshots for arbitrary all-member root replacement; retain child recovery privately before parent approval. A commitment alone is insufficient. |
 | Asset admission | Qualify actual Type behavior, code identity, value limits and shutdown/recovery operations. A refusing Type script can still block an atomic complete-set spend. |
 | Public-network reliability | Collect at least 1000 fresh latency samples and repeated fee/reorg/delay evidence with independent operating scopes. Local measurements are not substitutes. |

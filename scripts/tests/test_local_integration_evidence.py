@@ -64,8 +64,9 @@ class LocalIntegrationTests(unittest.TestCase):
                                                'size_bytes': 123})
         self.runtime = {'schema': 'morph.local_w1_results.v1', 'scope': M.V.SCOPE,
                         'source_commit': '1' * 40, 'signers': {},
-                        'fuzz': [{'seed': 1}], 'shadow': {'forwarding': False}}
-        for name in ('signer-lifecycle', 'cooperative-close'):
+                        'fuzz': [{'seed': 1}], 'shadow': {'forwarding': False},
+                        'typed_conditions': {'asset_count': 8}}
+        for name in ('signer-lifecycle', 'cooperative-close', 'typed-conditions'):
             directory = self.out / name
             directory.mkdir()
             M.write(directory / 'verification.json', {'roles': {'synthetic': 1}})
@@ -94,7 +95,7 @@ class LocalIntegrationTests(unittest.TestCase):
         for name in ['independent-review', 'public-network', 'live-routing', 'future-clients']:
             self.assertFalse(self.plan['gates'][name]['required'])
             self.assertTrue(self.plan['gates'][name]['exclusion'])
-        for name in ['signer-lifecycle', 'cooperative-close', 'fuzz', 'shadow-service']:
+        for name in ['signer-lifecycle', 'cooperative-close', 'typed-conditions', 'fuzz', 'shadow-service']:
             self.assertTrue(self.plan['gates'][name]['required'])
         self.assertEqual(self.plan['gates']['ci']['command'], ['make', 'ci'])
         self.assertIn('CKB_BIN=/synthetic/ckb', self.plan['gates']['native']['command'])
@@ -102,6 +103,61 @@ class LocalIntegrationTests(unittest.TestCase):
     def test_schema_extraction_rejects_owner_drift_instead_of_reusing_labels(self):
         with patch.object(Path, 'read_text', return_value='pub const VERSION: &str = "unexpected";'):
             with self.assertRaisesRegex(ValueError, 'schema source changed'): M.source_schemas()
+
+    def test_typed_campaign_rejects_false_depth_duplicate_assets_and_leaking_private_fields(self):
+        directory = self.out / 'typed-conditions'
+        terms = {'batch_count': 8, 'conditions_per_batch': 8, 'provider_rpc_used': False,
+                 'all_payouts_verified': True, 'participant_journals_unchanged': True,
+                 'orphaned_fulfillments': [{'depth_reached': False, 'operation': {
+                     'status': {'state': 'reorged'}, 'canonical_confirmations': 0}} for _ in range(8)]}
+        for family, offset in [('fulfilled', 0), ('refunded_or_mixed', 8)]:
+            terms[family] = [{'operation': {'operation_id': format(i + offset, '064x'),
+                'transaction_hash': '0x' + format(i + offset, '064x'), 'status': {'state': 'finalised'},
+                'canonical_confirmations': 4, 'required_depth': 4,
+                'preflight': {'estimated_cycles': 1000, 'tx_size_bytes': 1000}},
+                'summary': {'asset': {'kind': 'xudt', 'type_hash': '0x' + format(i + 1, '064x')},
+                            'resolved_values': [{'capacity': '1000', 'amount': '4', 'private': 'PRIVATE-MARKER'} for _ in range(2)],
+                            'transfer_count': 8, 'total_amount': '8'}, 'canonical_payouts_verified': True,
+                'exact_retry_did_not_rebroadcast': True, 'participant_journals_unchanged': True,
+                'preimage': 'PRIVATE-MARKER', 'operation_store': '/PRIVATE-MARKER'} for i in range(8)]
+        for family in ('fulfilled', 'refunded_or_mixed'):
+            for asset_index, row in enumerate(terms[family]):
+                summary = row['summary']
+                summary['batch_id'] = '0x' + format(asset_index + 1, '064x')
+                summary['input_since'] = '0' if family == 'fulfilled' else '100'
+                summary['source'] = {'capability': {'kind': 'conditional', 'batches': [{
+                    'asset': summary['asset'], 'batch_id': summary['batch_id'],
+                    'settled_amounts': ['0', '0'], 'settled_capacities': ['1000', '1000'],
+                    'transfers': [{'amount': '1', 'payer_lock_hash': str(i % 2),
+                                   'payee_lock_hash': str(1 - i % 2),
+                                   'hash_algorithm': 'sha256' if i % 2 else 'ckb_blake2b',
+                                   'refund_after_block': '100'} for i in range(8)]}]}}
+                if family == 'refunded_or_mixed' and asset_index % 2:
+                    summary['resolved_values'][0]['amount'] = '3'
+                    summary['resolved_values'][1]['amount'] = '5'
+        value = {'asset_count': 8, 'conditional_settlement': terms,
+                 'finalise': {'canonical_confirmed': True, 'status': 'Committed',
+                              'tx_hash': '0x' + 'f' * 64,
+                              'metrics': {'estimated_cycles': 1000, 'tx_size_bytes': 1000}}}
+        path = directory / 'typed.json'
+        path.write_text(json.dumps(value))
+        projection = M.typed_results(directory)
+        self.assertEqual(projection['orphaned_claims_without_canonical_credit'], 8)
+        self.assertNotIn('PRIVATE-MARKER', json.dumps(projection))
+        for mutation in range(7):
+            changed = copy.deepcopy(value)
+            t = changed['conditional_settlement']
+            if mutation == 0: t['provider_rpc_used'] = True
+            elif mutation == 1: t['fulfilled'][0]['operation']['canonical_confirmations'] = 0
+            elif mutation == 2: t['fulfilled'][1]['summary']['asset'] = t['fulfilled'][0]['summary']['asset']
+            elif mutation == 3: t['fulfilled'][0]['summary']['resolved_values'][0]['amount'] = '-1'
+            elif mutation == 4: t['orphaned_fulfillments'][0]['operation']['status']['state'] = 'finalised'
+            elif mutation == 5: t['refunded_or_mixed'].pop()
+            else:
+                t['fulfilled'][0]['summary']['resolved_values'][0]['amount'] = '3'
+                t['fulfilled'][0]['summary']['resolved_values'][1]['amount'] = '5'
+            path.write_text(json.dumps(changed))
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): M.typed_results(directory)
 
     def test_w1_cannot_complete_with_dirty_failed_or_partial_signer_coverage(self):
         path = self.out / 'signer-lifecycle/verification.json'
@@ -152,6 +208,8 @@ class LocalIntegrationTests(unittest.TestCase):
             self.assertNotIn(b'/synthetic/ckb', path.read_bytes())
         index = M.load(directory / 'index.json')
         self.assertTrue(index['full_w1_qualified'])
+        self.assertTrue(index['conditional_udt_qualified'])
+        self.assertEqual(index['profile'], 'current-local-no-value')
         self.assertEqual(index['gates']['native']['replay']['transactions']['report'], 'native/transactions.json')
         M.Q.verify_public(directory)
 

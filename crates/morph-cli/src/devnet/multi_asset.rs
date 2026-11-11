@@ -30,6 +30,7 @@ pub struct MultiAssetSmokeOptions {
     pub splice_transitions: bool,
     pub signer_faults: bool,
     pub cooperative_close: bool,
+    pub conditional_settlement: bool,
     pub shadow_provider_rpc: Option<String>,
     pub fee: u64,
     pub finalise_since: u64,
@@ -218,13 +219,28 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     let vault_code = contract_by_name(&contracts, "morph-vault-lock")?;
     let xudt_code = contract_by_name(&contracts, "morph-devnet-xudt")?;
     let secp = find_secp256k1_cell_dep(rpc)?;
-    let recovery_deps = vec![
+    let mut recovery_deps = vec![
         state_code.cell_dep.clone(),
         lock_code.cell_dep.clone(),
         vault_code.cell_dep.clone(),
         xudt_code.cell_dep.clone(),
         secp.clone(),
     ];
+    if options.conditional_settlement {
+        ensure!(
+            !options.watch_publication
+                && !options.splice_transitions
+                && !options.cooperative_close
+                && !options.funding_reorg
+                && options.shadow_provider_rpc.is_none(),
+            "conditional acceptance is a separate terminal campaign"
+        );
+        recovery_deps.push(
+            contract_by_name(&contracts, "morph-batch-lock")?
+                .cell_dep
+                .clone(),
+        );
+    }
     let seed = zeroize::Zeroizing::new(
         hex::decode(options.private_key.trim_start_matches("0x"))
             .context("invalid devnet funding key")?,
@@ -1000,6 +1016,9 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
                 payout.values[0].amount = 400;
                 payout.values[1].amount = 600;
             }
+            if options.conditional_settlement {
+                super::typed_conditional_acceptance::arm(rpc, &options, &package, &mut settlement)?;
+            }
             let proposal = run(
                 &alice_session,
                 SessionCommand::Propose {
@@ -1577,12 +1596,24 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             "finalised Vault remains live"
         );
     }
+    let conditional_settlement = if options.conditional_settlement {
+        Some(super::typed_conditional_acceptance::resolve(
+            rpc,
+            &options,
+            &package,
+            &recovery_deps,
+            &finalise,
+            [&alice_session, &bob_session],
+        )?)
+    } else {
+        None
+    };
     let shadow_report = shadow_service
         .as_mut()
         .map(|service| service.finish())
         .transpose()?;
     Ok(
-        json!({"shadow_service":shadow_report,"schema": "morph.multi_asset_devnet_acceptance.v1", "channel_id": format!("0x{}", hex::encode(channel_id)),
+        json!({"shadow_service":shadow_report,"conditional_settlement":conditional_settlement,"schema": "morph.multi_asset_devnet_acceptance.v1", "channel_id": format!("0x{}", hex::encode(channel_id)),
         "asset_count": assets.len(), "shared_funding":options.shared_funding, "operator_checks": operator_checks, "watch_passes":watch_passes, "issuance": issuance, "fund": fund, "funding_replay":funding_replay,"activation": activation,
         "publications": publications, "publication_budgets":publication_budgets, "sponsor_funding": sponsor_funding, "finalise": finalise, "recovery_packages": package_paths,
         "pre_funding_recovery_package": pre_funding_recovery.display().to_string(),"root_funding_terms":terms_path,"root_funding_draft":draft_path,

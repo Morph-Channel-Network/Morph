@@ -51,15 +51,16 @@ mod tests {
         assert!(summary.source.capability.conditional().is_some());
         assert_eq!(summary.transfer_count, 1);
         assert_eq!(summary.total_capacity, "50000000000");
-        assert_eq!(summary.resolved_capacities, ["24000000000", "26000000000"]);
+        assert_eq!(
+            summary
+                .resolved_values
+                .each_ref()
+                .map(|v| v.capacity.as_str()),
+            ["24000000000", "26000000000"]
+        );
         assert_eq!(
             summary.batch_lock_hash,
-            summary
-                .source
-                .capability
-                .conditional()
-                .unwrap()
-                .batch_lock_hash
+            summary.source.capability.conditional().unwrap().batches[0].batch_lock_hash
         );
     }
     #[test]
@@ -69,12 +70,23 @@ mod tests {
             transfer_id: canonical_hex(&[33; 32]),
         }];
         assert!(
-            StoredConditionalBatchPackage::from_source(source.clone(), refund.clone(), 499)
-                .is_err()
+            StoredConditionalBatchPackage::from_source(
+                source.clone(),
+                [31; 32],
+                refund.clone(),
+                499
+            )
+            .is_err()
         );
-        let package = StoredConditionalBatchPackage::from_source(source, refund, 500).unwrap();
+        let package =
+            StoredConditionalBatchPackage::from_source(source, [31; 32], refund, 500).unwrap();
         assert_eq!(
-            package.validate().unwrap().resolved_capacities,
+            package
+                .validate()
+                .unwrap()
+                .resolved_values
+                .each_ref()
+                .map(|v| v.capacity.as_str()),
             ["26000000000", "24000000000"]
         );
         let mut tampered = fixture_package().unwrap();
@@ -83,6 +95,7 @@ mod tests {
         assert!(
             StoredConditionalBatchPackage::from_source(
                 fixture_source_package().unwrap(),
+                [31; 32],
                 vec![],
                 0
             )
@@ -93,8 +106,13 @@ mod tests {
             preimage: canonical_hex(&[36; 32]),
         }];
         assert!(
-            StoredConditionalBatchPackage::from_source(fixture_source_package().unwrap(), bad, 0)
-                .is_err()
+            StoredConditionalBatchPackage::from_source(
+                fixture_source_package().unwrap(),
+                [31; 32],
+                bad,
+                0
+            )
+            .is_err()
         );
     }
     #[test]

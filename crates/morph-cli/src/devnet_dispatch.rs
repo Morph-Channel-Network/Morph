@@ -54,6 +54,14 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 )?)?
             );
         }
+        DevnetCommand::ConditionalBatch { command } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&devnet::conditional_batch_operator::run(
+                    &rpc, command
+                )?)?
+            );
+        }
         DevnetCommand::MultiAssetClose { command } => {
             println!(
                 "{}",
@@ -280,6 +288,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             splice_transitions,
             signer_faults,
             cooperative_close,
+            conditional_settlement,
             shadow_provider_rpc,
             fee,
             finalise_since,
@@ -304,6 +313,7 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                     splice_transitions,
                     signer_faults,
                     cooperative_close,
+                    conditional_settlement,
                     shadow_provider_rpc,
                     fee,
                     finalise_since,

@@ -19,7 +19,7 @@
   "channel_id": "0x0202020202020202020202020202020202020202020202020202020202020202",
   "dependency_count": 5,
   "funding_context_id": "0x100deb7a3111e8dfc7eef1ee35edfe49256d9b533c9f30593220cceb066df1bf",
-  "package_id": "0x2772bb16ada09e8ee59ab5222695704f917c6ac61cb7cb5e6aec8c4a38346bf8",
+  "package_id": "0x6f47579cd1ed88adce23f7966d1a9a1e7082c66df20e7c8fd731754e7a612028",
   "phase": "settling",
   "signer_pubkeys": [
     "0x024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Connect the existing local candidate pipeline to current integration receipts.
 
-This profile qualifies the declared local no-value W1 scope.
+This profile requalifies W1 plus current asset-bound conditions on a local no-value node.
 Public export reconstructs approved fields; it never copies raw execution logs.
 """
 import argparse
@@ -75,6 +75,7 @@ def profile(out, node):
                 'deployment-manifest': 'release/factory-preproduction/contracts.json',
                 'envelope': 'release/factory-preproduction/envelope.json',
                 'w1-scope': 'docs/w1-acceptance.md',
+                'conditional-scope': 'docs/conditional-batches.md',
                 'node': rel + '/node-identity.json',
                 'runtime': 'crates/morph-runtime-store/src/lib.rs',
                 'runtime-sql': 'crates/morph-runtime-store/src/schema.sql',
@@ -95,13 +96,14 @@ def profile(out, node):
     gate('ci', ['make', 'ci'], ['cargo-lock', 'rust-toolchain', 'envelope', 'w1-scope'], ['test-results'])
     gate('native', ['env', 'OUT_DIR=' + str(out / 'native'), 'CKB_BIN=' + str(node),
                     'scripts/devnet-current-e2e.sh'], ['node', 'deployment-manifest', 'envelope'], ['transactions', 'assertions'])
-    for name, scenario in [('signer-lifecycle', 'lifecycle'), ('cooperative-close', 'close')]:
+    for name, scenario in [('signer-lifecycle', 'lifecycle'), ('cooperative-close', 'close'), ('typed-conditions', 'typed')]:
         gate(name, ['env', 'OUT_DIR=' + str(out / name), 'CKB_BIN=' + str(node),
                     'FIBER_DIR=' + str(Path(os.environ.get('FIBER_SOURCE', ROOT.parent / 'fiber')).resolve()),
                     'SCENARIO=' + scenario, 'bash', 'scripts/devnet-external-signer-e2e.sh'],
-             ['node', 'deployment-manifest', 'signer'], ['roles'])
+             ['node', 'deployment-manifest', 'signer', 'envelope', 'conditional-scope'], ['roles'])
         gates[name]['faults'] = ['service-unavailable', 'request-expired', 'response-lost',
                                 'caller-restart', 'cached-retry']
+    gates['typed-conditions']['replay'].append('resolutions')
     gate('fuzz', ['python3', '-B', 'scripts/w1-acceptance.py', 'fuzz', '--output', str(out / 'fuzz')],
          ['cargo-lock', 'rust-toolchain'], ['campaigns'])
     gate('shadow-service', ['python3', '-B', 'scripts/w1-acceptance.py', 'shadow', '--output', str(out / 'shadow'),
@@ -175,11 +177,13 @@ def ci_receipt(out):
 def w1_results(out, candidate):
     """Validate actual campaign semantics before promoting their receipts."""
     result = {'schema': 'morph.local_w1_results.v1', 'scope': V.SCOPE,
-              'source_commit': candidate['source_commit'], 'signers': {}, 'fuzz': [], 'shadow': {}}
+              'source_commit': candidate['source_commit'], 'signers': {}, 'fuzz': [], 'shadow': {},
+              'typed_conditions': {}}
     for name, roles in [
         ('signer-lifecycle', {'root_exit': 4, 'root_creation': 4, 'update': 2,
                               'splice_creation': 4, 'splice_recovery': 4, 'splice_bridge': 4}),
         ('cooperative-close', {'root_exit': 4, 'root_creation': 4, 'cooperative_close': 8}),
+        ('typed-conditions', {'root_exit': 2, 'root_creation': 2, 'update': 2}),
     ]:
         v = load(out / name / 'verification.json')
         V.require(v['passed'] is True and v['source_unchanged'] is True
@@ -189,7 +193,7 @@ def w1_results(out, candidate):
                   and v['key_using_processes'] == count * 2
                   and v['verified_fresh_caller_processes'] == count * 2, 'signer process coverage missing')
         expected = {'morph-cli', 'contracts.json', 'source-before.json', 'source-after.json', 'deployment.json'}
-        expected |= {'shared.json', 'splice.json'} if name == 'signer-lifecycle' else {'close-2.json', 'close-8.json'}
+        expected |= {'shared.json', 'splice.json'} if name == 'signer-lifecycle' else {'typed.json'} if name == 'typed-conditions' else {'close-2.json', 'close-8.json'}
         V.require(set(v['sha256']) == expected
                   and v['sha256']['source-before.json'] == v['sha256']['source-after.json']
                   and v['sha256']['contracts.json'] == candidate['bindings']['deployment-manifest'],
@@ -198,7 +202,8 @@ def w1_results(out, candidate):
             V.relative(file)
             V.require(sha_file(out / name / file) == checksum, 'signer artifact changed')
         source = load(out / name / 'source-before.json')
-        V.require(source['head'] == candidate['source_commit'], 'signer candidate mismatch')
+        V.require(source['head'] == candidate['source_commit']
+                  and source['source_tree_sha256'] == candidate['source_tree_sha256'], 'signer candidate mismatch')
         result['signers'][name] = {'roles': roles, 'attempts': count,
                                   'verification_sha256': sha_file(out / name / 'verification.json')}
     names_source = (ROOT / 'crates/morph-xtask/src/fuzz/targets.rs').read_text()
@@ -261,13 +266,137 @@ def w1_results(out, candidate):
                 'unavailable_storage_recovers_only_after_the_real_file_is_accessible_again',
                 'each_resource_has_one_fixed_diagnosis_without_hiding_other_resources',
                 'publication_requires_full_fee_headroom_and_short_fresh_window',
-                'real_supervisor_stop_expires_redacted_observation_without_mutating_evidence']
+                'real_supervisor_stop_expires_redacted_observation_without_mutating_evidence',
+                'typed_conditions_maximum_eight_assets_sixty_four_conditions_and_script_bounds',
+                'typed_batch_vm_resolves_above_u64_without_capacity_or_type_substitution',
+                'current_bridge_excludes_pending_udt_from_its_type_without_reducing_other_assets',
+                'conditional_preimages_match_fiber_hash_algorithm_vectors',
+                'conditional_admission_preserves_identical_mature_batches_while_another_asset_resolves',
+                'typed_conditions_fund_activate_and_exit_from_the_original_initial_recovery',
+                'typed_conditions_splice_creation_recovery_activation_and_terminal_claims']
     log = V.read(out, 'gates/ci/output.private.log').decode()
     for name in required:
         V.require(re.search(r'^test (?:[\w:]+::)?' + re.escape(name) + r' \.\.\. ok$', log, re.M),
                   'required W1 test not executed: ' + name)
+    result['typed_conditions'] = typed_results(out / 'typed-conditions')
     result['required_ci_tests'] = required
     write(out / 'w1-results.json', result)
+
+
+
+
+def typed_expected(summary, family, asset_index):
+    """Independent public-terms oracle; no wire parser or Core resolver here."""
+    capability = summary['source']['capability']
+    V.require(capability['kind'] == 'conditional', 'typed source lost conditional authority')
+    selected = [b for b in capability['batches'] if b['batch_id'] == summary['batch_id']]
+    V.require(len(selected) == 1 and selected[0]['asset'] == summary['asset'], 'typed source Batch mismatch')
+    batch = selected[0]
+    transfers = batch['transfers']
+    V.require(len(transfers) == 8
+              and {t['hash_algorithm'] for t in transfers} == {'ckb_blake2b', 'sha256'},
+              'typed source misses algorithm/condition coverage')
+    locks = sorted({transfers[0]['payer_lock_hash'], transfers[0]['payee_lock_hash']})
+    V.require(len(locks) == 2, 'typed transfer has one party')
+    amounts = [int(v) for v in batch['settled_amounts']]
+    V.require(len(amounts) == 2 and len(batch['settled_capacities']) == 2, 'typed settlement shape')
+    fulfills = 0
+    for index, transfer in enumerate(transfers):
+        V.require({transfer['payer_lock_hash'], transfer['payee_lock_hash']} == set(locks),
+                  'typed transfer changes parties')
+        quantity = int(transfer['amount'])
+        V.require(0 < quantity < 2**128, 'typed transfer quantity')
+        fulfill = family == 'fulfilled' or (asset_index % 2 == 1 and index % 3 == 0)
+        fulfills += int(fulfill)
+        recipient = transfer['payee_lock_hash'] if fulfill else transfer['payer_lock_hash']
+        amounts[locks.index(recipient)] += quantity
+    since = int(summary['input_since'])
+    V.require((family == 'fulfilled' and since == 0) or
+              (family == 'refunded_or_mixed' and since >= max(int(t['refund_after_block']) for t in transfers)),
+              'typed branch clock does not authorize its decisions')
+    expected = [{'capacity': capacity, 'amount': str(amount)}
+                for capacity, amount in zip(batch['settled_capacities'], amounts)]
+    actual = [{key: v[key] for key in ('capacity', 'amount')} for v in summary['resolved_values']]
+    V.require(actual == expected, 'typed branch payouts differ from independent fulfill/refund oracle')
+    return {'fulfill': fulfills, 'refund': 8 - fulfills}
+
+
+def typed_results(directory):
+    """Project verified quantities/status/resources; no preimages or private paths."""
+    raw = load(directory / 'typed.json')
+    terms = raw['conditional_settlement']
+    V.require(raw['asset_count'] == terms['batch_count'] == 8
+              and terms['conditions_per_batch'] == 8 and terms['provider_rpc_used'] is False
+              and terms['all_payouts_verified'] is True
+              and terms['participant_journals_unchanged'] is True, 'incomplete typed dimensions')
+    result = {'asset_count': 8, 'conditions_per_asset': 8, 'provider_rpc_used': False,
+              'participant_journals_unchanged': True, 'branches': {}}
+    terminal = raw['finalise']
+    metrics = terminal['metrics']
+    V.require(terminal['canonical_confirmed'] is True and terminal['status'] == 'Committed'
+              and re.fullmatch(r'0x[0-9a-f]{64}', terminal['tx_hash'])
+              and type(metrics['estimated_cycles']) is int and 0 < metrics['estimated_cycles'] <= 70000000
+              and type(metrics['tx_size_bytes']) is int and 0 < metrics['tx_size_bytes'] <= 500000,
+              'typed terminal transaction is unqualified')
+    result['terminal'] = {'transaction_hash': terminal['tx_hash'],
+                          'estimated_cycles': metrics['estimated_cycles'],
+                          'tx_size_bytes': metrics['tx_size_bytes']}
+    identities = []
+    for name in ('fulfilled', 'refunded_or_mixed'):
+        rows = terms[name]
+        V.require(type(rows) is list and len(rows) == 8, 'missing typed resolutions')
+        projected = []
+        assets = []
+        for asset_index, row in enumerate(rows):
+            op, summary = row['operation'], row['summary']
+            V.require(op['status']['state'] == 'finalised' and op['canonical_confirmations'] >= 4
+                      and op['required_depth'] == 4
+                      and row['canonical_payouts_verified'] is True
+                      and row['exact_retry_did_not_rebroadcast'] is True
+                      and row['participant_journals_unchanged'] is True,
+                      'typed resolution lacks canonical evidence')
+            V.require(summary['asset']['kind'] == 'xudt' and summary['transfer_count'] == 8
+                      and len(summary['resolved_values']) == 2,
+                      'missing typed payout values')
+            asset = summary['asset']['type_hash']
+            V.require(re.fullmatch(r'0x[0-9a-f]{64}', asset), 'invalid typed identity')
+            assets.append(asset)
+            values = summary['resolved_values']
+            for value in values:
+                for key in ('capacity', 'amount'):
+                    V.require(type(value[key]) is str and re.fullmatch(r'0|[1-9][0-9]*', value[key]),
+                              'noncanonical typed quantity')
+                V.require(0 < int(value['capacity']) < 2**64 and 0 <= int(value['amount']) < 2**128,
+                          'typed payout overflow')
+            V.require(sum(int(v['amount']) for v in values) == int(summary['total_amount']),
+                      'typed payout conservation mismatch')
+            V.require(re.fullmatch(r'0x[0-9a-f]{64}', op['transaction_hash'])
+                      and re.fullmatch(r'[0-9a-f]{64}', op['operation_id']), 'invalid typed operation identity')
+            cost = op['preflight']
+            V.require(type(cost['estimated_cycles']) is int and type(cost['tx_size_bytes']) is int
+                      and 0 < cost['estimated_cycles'] <= 70000000 and 0 < cost['tx_size_bytes'] <= 500000,
+                      'typed resolution resource envelope exceeded')
+            decisions = typed_expected(summary, name, asset_index)
+            projected.append({'transaction_hash': op['transaction_hash'], 'asset_type_hash': asset,
+                              'decisions': decisions,
+                              'canonical_confirmations': op['canonical_confirmations'],
+                              'payouts': [{key: value[key] for key in ('capacity', 'amount')} for value in values],
+                              'estimated_cycles': cost['estimated_cycles'],
+                              'tx_size_bytes': cost['tx_size_bytes']})
+            identities.append(op['operation_id'])
+        V.require(len(set(assets)) == 8, 'duplicate typed batch')
+        result['branches'][name] = projected
+    V.require([row['asset_type_hash'] for row in result['branches']['fulfilled']]
+              == [row['asset_type_hash'] for row in result['branches']['refunded_or_mixed']],
+              'replacement branch changes asset identities')
+    orphaned = terms['orphaned_fulfillments']
+    V.require(len(orphaned) == 8 and len(set(identities)) == 16, 'missing independent typed claims')
+    for row in orphaned:
+        V.require(row['operation']['status']['state'] == 'reorged'
+                  and row['operation']['canonical_confirmations'] == 0
+                  and row['depth_reached'] is False, 'orphaned claim retained confirmation credit')
+    result['orphaned_claims_without_canonical_credit'] = 8
+    return result
 
 
 def assemble(plan, candidate, out):
@@ -282,6 +411,8 @@ def assemble(plan, candidate, out):
         'qualification': {'qualified-artifacts': {'report': 'qualification.json', 'pointer': '/counts'}},
         'signer-lifecycle': {'roles': {'report': 'signer-lifecycle/verification.json', 'pointer': '/roles'}},
         'cooperative-close': {'roles': {'report': 'cooperative-close/verification.json', 'pointer': '/roles'}},
+        'typed-conditions': {'roles': {'report': 'typed-conditions/verification.json', 'pointer': '/roles'},
+                             'resolutions': {'report': 'w1-results.json', 'pointer': '/typed_conditions'}},
         'fuzz': {'campaigns': {'report': 'w1-results.json', 'pointer': '/fuzz'}},
         'shadow-service': {'shadow': {'report': 'w1-results.json', 'pointer': '/shadow'}},
     }
@@ -360,14 +491,14 @@ def export_index(plan, candidate, manifest, result, out):
         for family, reference in row['replay'].items():
             source = reference['report']
             projected = source == 'qualification.json'
-            runtime = source == 'w1-results.json' or name in ('signer-lifecycle', 'cooperative-close')
+            runtime = source == 'w1-results.json' or name in ('signer-lifecycle', 'cooperative-close', 'typed-conditions')
             public_path = ('integration/runtime-results.json' if runtime else
                            'integration/artifact-results.json' if projected else 'native/' + Path(source).name)
-            public_pointer = ('/signers/' + name + '/roles') if name in ('signer-lifecycle', 'cooperative-close') else reference['pointer']
+            public_pointer = ('/signers/' + name + '/roles') if family == 'roles' else reference['pointer']
             gates[name]['replay'][family] = {'report': public_path, 'pointer': public_pointer,
                                            'source_report_sha256': row['reports'][source], 'projected': projected or runtime}
-    value = {'schema': 'morph.public_integration_index.v1', 'profile': 'w1-local-no-value',
-             'scope': V.SCOPE, 'full_w1_qualified': True, 'source_commit': candidate['source_commit'],
+    value = {'schema': 'morph.public_integration_index.v1', 'profile': 'current-local-no-value',
+             'scope': V.SCOPE, 'full_w1_qualified': True, 'conditional_udt_qualified': True, 'source_commit': candidate['source_commit'],
              'source_tree_sha256': candidate['source_tree_sha256'], 'bindings': candidate['bindings'],
              'schemas': candidate['schemas'], 'gates': gates, 'validation': result}
     write(directory / 'index.json', value)

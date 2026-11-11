@@ -82,9 +82,6 @@
         {
           "additionalProperties": false,
           "properties": {
-            "application_context_commitment": {
-              "type": "string"
-            },
             "batch_code_hash": {
               "type": "string"
             },
@@ -94,46 +91,22 @@
               "minimum": 0,
               "type": "integer"
             },
-            "batch_id": {
-              "type": "string"
-            },
-            "batch_lock_hash": {
-              "type": "string"
+            "batches": {
+              "items": {
+                "$ref": "#/$defs/ConditionalBatchSummary"
+              },
+              "type": "array"
             },
             "kind": {
-              "const": "ckb_conditional",
+              "const": "conditional",
               "type": "string"
-            },
-            "pending_ckb": {
-              "description": "CKB shannons, canonical decimal.",
-              "type": "string"
-            },
-            "settled_capacities": {
-              "description": "CKB shannons for participants 0 and 1.",
-              "items": {
-                "type": "string"
-              },
-              "maxItems": 2,
-              "minItems": 2,
-              "type": "array"
-            },
-            "transfers": {
-              "items": {
-                "$ref": "#/$defs/ConditionalTransferSummary"
-              },
-              "type": "array"
             }
           },
           "required": [
             "kind",
             "batch_code_hash",
             "batch_hash_type",
-            "batch_id",
-            "application_context_commitment",
-            "pending_ckb",
-            "batch_lock_hash",
-            "settled_capacities",
-            "transfers"
+            "batches"
           ],
           "type": "object"
         }
@@ -216,11 +189,99 @@
       ],
       "type": "object"
     },
+    "ConditionalAssetSummary": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ckb",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "xudt",
+              "type": "string"
+            },
+            "type_hash": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "type_hash"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ConditionalBatchSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "application_context_commitment": {
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/ConditionalAssetSummary"
+        },
+        "batch_id": {
+          "type": "string"
+        },
+        "batch_lock_hash": {
+          "type": "string"
+        },
+        "pending_amount": {
+          "description": "Shannons for CKB, base token units for UDT, canonical unsigned decimal.",
+          "type": "string"
+        },
+        "settled_amounts": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "settled_capacities": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "transfers": {
+          "items": {
+            "$ref": "#/$defs/ConditionalTransferSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "asset",
+        "batch_id",
+        "application_context_commitment",
+        "pending_amount",
+        "batch_lock_hash",
+        "settled_capacities",
+        "settled_amounts",
+        "transfers"
+      ],
+      "type": "object"
+    },
     "ConditionalTransferSummary": {
       "additionalProperties": false,
       "properties": {
         "amount": {
-          "description": "CKB shannons, canonical decimal.",
+          "description": "Units of this Batch's exact asset, canonical unsigned decimal.",
           "type": "string"
         },
         "hash_algorithm": {
@@ -236,7 +297,6 @@
           "type": "string"
         },
         "refund_after_block": {
-          "description": "Canonical decimal absolute block height.",
           "type": "string"
         },
         "transfer_id": {
@@ -987,6 +1047,9 @@
     "StoredConditionalBatchPackage": {
       "additionalProperties": false,
       "properties": {
+        "batch_id": {
+          "type": "string"
+        },
         "input_since": {
           "type": "string"
         },
@@ -999,9 +1062,9 @@
           },
           "type": "array"
         },
-        "resolved_capacities": {
+        "resolved_values": {
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/StoredConditionalValue"
           },
           "maxItems": 2,
           "minItems": 2,
@@ -1017,10 +1080,11 @@
       "required": [
         "schema",
         "source_package",
+        "batch_id",
         "resolutions",
         "input_since",
         "resolution_witness_hex",
-        "resolved_capacities"
+        "resolved_values"
       ],
       "type": "object"
     },
@@ -1065,6 +1129,22 @@
           "type": "object"
         }
       ]
+    },
+    "StoredConditionalValue": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "type": "string"
+        },
+        "capacity": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "capacity",
+        "amount"
+      ],
+      "type": "object"
     },
     "StoredMultiAssetCellDep": {
       "additionalProperties": false,

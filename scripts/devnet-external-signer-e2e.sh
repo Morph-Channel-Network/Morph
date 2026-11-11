@@ -13,7 +13,7 @@ OUT_DIR="${OUT_DIR:-target/participant-signer-e2e/$(date -u +%Y%m%dT%H%M%S)-$$}"
 FIBER_DIR="${FIBER_DIR:-$ROOT_DIR/../fiber}"
 CONTRACTS_DIR="${CONTRACTS_DIR:-target/riscv64imac-unknown-none-elf/release}"
 SCENARIO="${SCENARIO:-lifecycle}"
-case "$SCENARIO" in lifecycle|close|factory-close) ;; *) printf 'SCENARIO must be lifecycle, close or factory-close\n' >&2; exit 1 ;; esac
+case "$SCENARIO" in lifecycle|close|factory-close|typed) ;; *) printf 'SCENARIO must be lifecycle, close, factory-close or typed\n' >&2; exit 1 ;; esac
 export SCENARIO
 NODE_PID=""
 cleanup() {
@@ -29,11 +29,14 @@ mkdir -m 700 "$OUT_DIR/logs" "$OUT_DIR/contracts"
 export OUT_DIR
 fingerprint() {
   python3 - "$ROOT_DIR" <<'PY'
-import hashlib,json,pathlib,subprocess,sys
+import hashlib,importlib.util,json,pathlib,subprocess,sys
 root=pathlib.Path(sys.argv[1])
 names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=root).decode().split('\0')
 files={name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in sorted(set(names)) if name and (root/name).is_file()}
-print(json.dumps({'head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=root)), 'files':files},sort_keys=True,indent=2))
+spec=importlib.util.spec_from_file_location('signer_source_inventory',root/'scripts/current-stateful-ledger.py')
+ledger=importlib.util.module_from_spec(spec);spec.loader.exec_module(ledger)
+dirty=bool(ledger.git('status','--porcelain','--untracked-files=no') or ledger.git('ls-files','--others','--exclude-standard','--',*ledger.IMPLEMENTATION_PATHS))
+print(json.dumps({'head':ledger.git('rev-parse','HEAD'),'dirty':dirty,'source_tree_sha256':ledger.source_digest(),'files':files},sort_keys=True,indent=2))
 PY
 }
 fingerprint >"$OUT_DIR/source-before.json"
@@ -72,6 +75,9 @@ if [ "$SCENARIO" = close ]; then
     "$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" multi-asset-smoke --signer-faults --cooperative-close --asset-count "$assets" --finalise-since 64 --fee 100000 \
       --contracts-dir "$OUT_DIR/contracts" --store-dir "$OUT_DIR/close-$assets-packages" --json >"$OUT_DIR/close-$assets.json" 2>"$OUT_DIR/logs/close-$assets.log"
   done
+elif [ "$SCENARIO" = typed ]; then
+  "$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" multi-asset-smoke --signer-faults --shared-funding --conditional-settlement --asset-count 8 --fee 100000 \
+    --contracts-dir "$OUT_DIR/contracts" --store-dir "$OUT_DIR/typed-packages" --json >"$OUT_DIR/typed.json" 2>"$OUT_DIR/logs/typed.log"
 elif [ "$SCENARIO" = factory-close ]; then
   "$CLI_BIN" devnet --devnet-only --rpc-url "$RPC_URL" factory smoke --reorg \
     --contracts-dir "$OUT_DIR/contracts" --store-dir "$OUT_DIR/factory-packages" >"$OUT_DIR/factory-close.json" 2>"$OUT_DIR/logs/factory-close.log"
@@ -92,6 +98,8 @@ scenario=os.environ['SCENARIO']
 expected={'root_exit':4,'root_creation':4,'update':2,'splice_creation':4,'splice_recovery':4,'splice_bridge':4}
 if scenario=='close':
     expected={'root_exit':4,'root_creation':4,'cooperative_close':8}
+if scenario=='typed':
+    expected={'root_exit':2,'root_creation':2,'update':2}
 if scenario=='factory-close':
     expected={'cooperative_close':6}
 actual=dict(collections.Counter(row['target'] for row in rows))
@@ -111,9 +119,9 @@ assert len(set(callers))==2*len(rows)
 assert not set(callers)&set(processes)
 assert all(row['caller_pid']!=row['harness_pid'] and row['cached_caller_pid']!=row['harness_pid'] for row in rows)
 assert len({r['genesis'] for r in rows})==1
-assert len({r['channel_id'] for r in rows})==(3 if scenario=='factory-close' else 2)
+assert len({r['channel_id'] for r in rows})==(3 if scenario=='factory-close' else 1 if scenario=='typed' else 2)
 files=['morph-cli','contracts.json','source-before.json','source-after.json','deployment.json']
-files += ['close-2.json','close-8.json'] if scenario=='close' else ['factory-close.json'] if scenario=='factory-close' else ['shared.json','splice.json']
+files += ['close-2.json','close-8.json'] if scenario=='close' else ['factory-close.json'] if scenario=='factory-close' else ['typed.json'] if scenario=='typed' else ['shared.json','splice.json']
 if scenario=='close':
     for assets in [2,8]:
         report=json.loads((root/f'close-{assets}.json').read_text())
@@ -157,6 +165,20 @@ if scenario=='factory-close':
             assert close['batch']['canonical_payouts_verified'] is True
         else:
             assert close['batch'] is None
+if scenario=='typed':
+    report=json.loads((root/'typed.json').read_text())
+    typed=report['conditional_settlement']
+    assert report['asset_count']==typed['batch_count']==8
+    assert typed['conditions_per_batch']==8 and typed['provider_rpc_used'] is False
+    assert typed['all_payouts_verified'] is True and typed['participant_journals_unchanged'] is True
+    for family in ['fulfilled','refunded_or_mixed']:
+        assert len(typed[family])==8
+        for row in typed[family]:
+            assert row['operation']['status']['state']=='finalised' and row['operation']['canonical_confirmations']>=4
+            assert row['canonical_payouts_verified'] and row['exact_retry_did_not_rebroadcast'] and row['participant_journals_unchanged']
+            assert row['summary']['asset']['kind']=='xudt' and len(row['summary']['resolved_values'])==2
+    assert len(typed['orphaned_fulfillments'])==8
+    assert all(row['operation']['status']['state']=='reorged' for row in typed['orphaned_fulfillments'])
 evidence={'schema':'morph.external_signer_native_evidence.v1','passed':True,'scenario':scenario,'roles':actual,'isolated_service_processes':len(processes),'key_using_processes':2*len(rows),'completed_role_attempts':len(rows),'verified_fresh_caller_processes':len(callers),'source_unchanged':True,'source_dirty':json.loads((root/'source-before.json').read_text())['dirty'],'sha256':{name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in files},'boundaries':['controlled devnet; no real assets','existing manifest-matched ELFs, not a clean contract rebuild','full CI and remaining W1 qualification not run by this script','hostile same-UID and whole-store rollback remain excluded','selected roles: unavailable service, expired request, lost signed response, restart and cached retry; malformed/deadline IPC tests are separate']}
 (root/'verification.json').write_text(json.dumps(evidence,indent=2)+'\n')
 print(json.dumps({'passed':True,'isolated_service_processes':len(processes),'key_using_processes':2*len(rows),'completed_role_attempts':len(rows),'verified_fresh_caller_processes':len(callers),'roles':actual}))

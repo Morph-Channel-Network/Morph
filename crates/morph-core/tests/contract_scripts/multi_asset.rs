@@ -101,6 +101,16 @@ fn build_profile(
     plain: bool,
     maximum_scripts: bool,
 ) -> Fixture {
+    build_initial_profile(typed_count, one_sided, plain, maximum_scripts, false)
+}
+
+fn build_initial_profile(
+    typed_count: usize,
+    one_sided: bool,
+    plain: bool,
+    maximum_scripts: bool,
+    conditional: bool,
+) -> Fixture {
     let reserve = if maximum_scripts {
         240_000_000_000u64
     } else {
@@ -171,7 +181,7 @@ fn build_profile(
             })
             .collect(),
     };
-    let settlement = MultiAssetSettlement {
+    let mut settlement = MultiAssetSettlement {
         capability: morph_core::MultiAssetSettlementCapability::Ordinary,
         participant_lock_hashes: locks
             .each_ref()
@@ -201,6 +211,15 @@ fn build_profile(
             })
             .collect(),
     };
+    if conditional {
+        let executor = deploy_contract(&mut context, "morph-batch-lock", vec![]);
+        let batches = typed_conditional::arm_all_assets(&mut settlement, 2);
+        settlement.capability = morph_core::MultiAssetSettlementCapability::Conditional {
+            batch_code_hash: executor.code_hash().unpack(),
+            batch_hash_type: executor.hash_type().as_slice()[0],
+            batches,
+        };
+    }
     let content = manifest.commitment().unwrap();
     let mut package = MultiAssetRecoveryPackage {
         state: MultiAssetState {
@@ -369,7 +388,7 @@ fn build_profile(
     eprintln!("multi-asset publication vaults={count} cycles={cycles}");
     materialise(&mut context, &publication);
     package.state.header.state_number = 2;
-    if !one_sided {
+    if !one_sided && !conditional {
         for payout in &mut package.settlement.payouts {
             if matches!(payout.asset, VaultAsset::Xudt(_)) {
                 payout.values[0].amount = 400;
@@ -874,6 +893,26 @@ fn splice_transaction(
     change_kind: SpliceChange,
     maximum_scripts: bool,
 ) -> SpliceFixture {
+    splice_transaction_with_conditions(
+        typed_count,
+        plain,
+        weak_admission,
+        active,
+        change_kind,
+        maximum_scripts,
+        false,
+    )
+}
+
+fn splice_transaction_with_conditions(
+    typed_count: usize,
+    plain: bool,
+    weak_admission: bool,
+    active: bool,
+    change_kind: SpliceChange,
+    maximum_scripts: bool,
+    conditional: bool,
+) -> SpliceFixture {
     use morph_core::{
         MultiAssetSpliceFlow, MultiAssetSpliceProposal, multi_asset_splice_funding_anchor,
     };
@@ -1032,6 +1071,15 @@ fn splice_transaction(
             ],
         })
         .collect();
+    if conditional {
+        let executor = deploy_contract(&mut base.context, "morph-batch-lock", vec![]);
+        let batches = typed_conditional::arm_all_assets(&mut next.settlement, 2);
+        next.settlement.capability = morph_core::MultiAssetSettlementCapability::Conditional {
+            batch_code_hash: executor.code_hash().unpack(),
+            batch_hash_type: executor.hash_type().as_slice()[0],
+            batches,
+        };
+    }
     next.state.header.funding_epoch += 1;
     next.state.header.funding_anchor = anchor;
     next.state.header.phase = Phase::Active;
@@ -1637,3 +1685,6 @@ mod close_costs;
 
 #[path = "multi_asset_close.rs"]
 mod close;
+
+#[path = "typed_conditional.rs"]
+mod typed_conditional;

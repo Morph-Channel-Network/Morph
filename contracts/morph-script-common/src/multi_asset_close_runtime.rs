@@ -87,11 +87,16 @@ pub fn verify_close(raw: &[u8]) -> Result<()> {
     }
     verify_multi_asset_settlement_outputs(evidence, 0, Source::Input, frame.target())?;
     let descriptor = evidence.descriptor();
-    let conditional = descriptor.conditional()?.is_some();
+    let conditional = descriptor.conditional()?;
     let mut terminal_outputs = 1usize; // Entire State carrier refund.
     for index in 0..descriptor.count() {
         let payout = descriptor.entry(index)?;
-        if conditional && payout.asset == crate::multi_asset::MultiAssetId::CKB {
+        if conditional
+            .map(|value| value.index_of(payout.asset))
+            .transpose()?
+            .flatten()
+            .is_some()
+        {
             terminal_outputs += 1;
         } else {
             for allocation in payout.allocations {

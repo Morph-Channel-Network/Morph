@@ -55,7 +55,7 @@ fn main() -> Result<()> {
     if u64::from_le_bytes(state_number_bytes) == 0 {
         return Err(ScriptError::ConditionalBatchLockMismatch);
     }
-    require_single_plain_leading_group_input()?;
+    require_single_leading_group_input()?;
 
     let witness_args = load_witness_args(0, Source::GroupInput)
         .map_err(|_| ScriptError::ConditionalResolutionEncoding)?;
@@ -77,13 +77,31 @@ fn main() -> Result<()> {
     }
     let input = load_input(0, Source::GroupInput).map_err(|_| ScriptError::Encoding)?;
     let input_since: u64 = input.since().unpack();
-    let capacities = witness.resolved_capacities(input_since)?;
-    verify_exact_plain_output(descriptor.lock_hash(0), capacities[0])?;
-    verify_exact_plain_output(descriptor.lock_hash(1), capacities[1])
+    let asset = descriptor.asset()?;
+    let input_type =
+        load_cell_type_hash(0, Source::GroupInput).map_err(|_| ScriptError::Encoding)?;
+    let input_data = load_cell_data(0, Source::GroupInput).map_err(|_| ScriptError::Encoding)?;
+    let expected_type = if asset.kind == 1 {
+        Some(asset.type_hash)
+    } else {
+        None
+    };
+    let valid_data = if asset.kind == 1 {
+        input_data.as_slice() == descriptor.checked_total_amount()?.to_le_bytes()
+    } else {
+        input_data.is_empty()
+    };
+    if input_type != expected_type || !valid_data {
+        return Err(ScriptError::ConditionalBatchLockMismatch);
+    }
+    let values = witness.resolved_values(input_since)?;
+    verify_exact_output(0, descriptor.lock_hash(0), values[0], asset)?;
+    verify_exact_output(1, descriptor.lock_hash(1), values[1], asset)?;
+    verify_plain_fee_change()
 }
 
 #[cfg(target_arch = "riscv64")]
-fn require_single_plain_leading_group_input() -> Result<()> {
+fn require_single_leading_group_input() -> Result<()> {
     // Payouts are matched transaction-wide. Reserve input zero for this Batch so
     // another Batch group cannot reuse them, even through a different code hash
     // or hash type. Independent fee inputs may follow the Batch input.
@@ -97,47 +115,120 @@ fn require_single_plain_leading_group_input() -> Result<()> {
         Err(_) => return Err(ScriptError::Encoding),
         Ok(_) => return Err(ScriptError::WrongGroupShape),
     }
-    let type_hash =
-        load_cell_type_hash(0, Source::GroupInput).map_err(|_| ScriptError::Encoding)?;
-    let data = load_cell_data(0, Source::GroupInput).map_err(|_| ScriptError::Encoding)?;
-    if type_hash.is_some() || !data.is_empty() {
-        return Err(ScriptError::ConditionalBatchLockMismatch);
+    let mut ended = false;
+    for index in 1..64 {
+        match load_cell_capacity(index, Source::Input) {
+            Ok(_) => {
+                if load_cell_type_hash(index, Source::Input)
+                    .map_err(|_| ScriptError::Encoding)?
+                    .is_some()
+                    || !load_cell_data(index, Source::Input)
+                        .map_err(|_| ScriptError::Encoding)?
+                        .is_empty()
+                {
+                    return Err(ScriptError::ConditionalBatchLockMismatch);
+                }
+            }
+            Err(SysError::IndexOutOfBound) | Err(SysError::ItemMissing) => {
+                ended = true;
+                break;
+            }
+            Err(_) => return Err(ScriptError::Encoding),
+        }
+    }
+    if !ended {
+        return Err(ScriptError::WrongGroupShape);
     }
     Ok(())
 }
 
 #[cfg(target_arch = "riscv64")]
-fn verify_exact_plain_output(expected_lock: &[u8], expected_capacity: u64) -> Result<()> {
-    let mut matches = 0u8;
-    let mut index = 0;
-    loop {
-        match load_cell_lock_hash(index, Source::Output) {
-            Ok(lock_hash) => {
-                if lock_hash.as_slice() == expected_lock {
-                    matches = matches
-                        .checked_add(1)
-                        .ok_or(ScriptError::ConditionalBatchOutputMismatch)?;
-                    if matches != 1
-                        || load_cell_capacity(index, Source::Output)
-                            .map_err(|_| ScriptError::Encoding)?
-                            != expected_capacity
-                        || load_cell_type_hash(index, Source::Output)
-                            .map_err(|_| ScriptError::Encoding)?
-                            .is_some()
-                        || !load_cell_data(index, Source::Output)
-                            .map_err(|_| ScriptError::Encoding)?
-                            .is_empty()
-                    {
-                        return Err(ScriptError::ConditionalBatchOutputMismatch);
-                    }
-                }
-                index += 1;
+fn verify_exact_output(
+    index: usize,
+    expected_lock: &[u8],
+    expected: morph_script_common::ConditionalValue,
+    asset: morph_script_common::multi_asset::MultiAssetId,
+) -> Result<()> {
+    let output_type = if asset.kind == 1 && expected.amount > 0 {
+        Some(asset.type_hash)
+    } else {
+        None
+    };
+    let data = load_cell_data(index, Source::Output)
+        .map_err(|_| ScriptError::ConditionalBatchOutputMismatch)?;
+    let valid_data = if output_type.is_some() {
+        data.as_slice() == expected.amount.to_le_bytes()
+    } else {
+        data.is_empty()
+    };
+    if load_cell_lock_hash(index, Source::Output)
+        .map_err(|_| ScriptError::ConditionalBatchOutputMismatch)?
+        .as_slice()
+        != expected_lock
+        || load_cell_capacity(index, Source::Output)
+            .map_err(|_| ScriptError::ConditionalBatchOutputMismatch)?
+            != expected.capacity
+        || load_cell_type_hash(index, Source::Output)
+            .map_err(|_| ScriptError::ConditionalBatchOutputMismatch)?
+            != output_type
+        || !valid_data
+    {
+        return Err(ScriptError::ConditionalBatchOutputMismatch);
+    }
+    Ok(())
+}
+
+#[cfg(target_arch = "riscv64")]
+fn verify_plain_fee_change() -> Result<()> {
+    // Payouts are exactly outputs 0 and 1. Plain external fee change may use a
+    // participant's own address; a second Batch cannot reuse these positions
+    // because every Batch must independently be transaction input zero.
+    let mut input_capacity = 0u64;
+    let mut input_end = false;
+    for index in 0..64 {
+        match load_cell_capacity(index, Source::Input) {
+            Ok(value) => {
+                input_capacity = input_capacity
+                    .checked_add(value)
+                    .ok_or(ScriptError::ConditionalValueMismatch)?
             }
-            Err(SysError::IndexOutOfBound) | Err(SysError::ItemMissing) => break,
+            Err(SysError::IndexOutOfBound) | Err(SysError::ItemMissing) => {
+                input_end = true;
+                break;
+            }
             Err(_) => return Err(ScriptError::Encoding),
         }
     }
-    if matches != 1 {
+    let mut output_capacity = 0u64;
+    let mut output_end = false;
+    for index in 0..64 {
+        match load_cell_capacity(index, Source::Output) {
+            Ok(value) => {
+                output_capacity = output_capacity
+                    .checked_add(value)
+                    .ok_or(ScriptError::ConditionalValueMismatch)?;
+                if index >= 2
+                    && (load_cell_type_hash(index, Source::Output)
+                        .map_err(|_| ScriptError::Encoding)?
+                        .is_some()
+                        || !load_cell_data(index, Source::Output)
+                            .map_err(|_| ScriptError::Encoding)?
+                            .is_empty())
+                {
+                    return Err(ScriptError::ConditionalBatchOutputMismatch);
+                }
+            }
+            Err(SysError::IndexOutOfBound) | Err(SysError::ItemMissing) => {
+                output_end = true;
+                break;
+            }
+            Err(_) => return Err(ScriptError::Encoding),
+        }
+    }
+    if !input_end || !output_end {
+        return Err(ScriptError::WrongGroupShape);
+    }
+    if output_capacity > input_capacity {
         return Err(ScriptError::ConditionalBatchOutputMismatch);
     }
     Ok(())

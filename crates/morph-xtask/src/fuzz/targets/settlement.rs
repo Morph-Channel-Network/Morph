@@ -11,13 +11,20 @@ fn error(e: script::ScriptError) -> anyhow::Error {
 
 pub(super) fn resolution_seeds() -> Result<Vec<Vec<u8>>> {
     let mut seeds = vec![];
-    for count in [1, 8] {
+    for (typed, count) in [(false, 1), (false, 8), (true, 1), (true, 8)] {
+        let large = u64::MAX as u128 + 123;
         let batch = ConditionalBatch {
+            asset: if typed {
+                morph_core::VaultAsset::Xudt([10; 32])
+            } else {
+                morph_core::VaultAsset::Ckb
+            },
             batch_id: [11; 32],
             application_context_commitment: [12; 32],
             participants: [1, 2].map(|tag| ConditionalParticipant {
                 settlement_lock_hash: [tag; 32],
                 settled_capacity: 100_000_000_000,
+                settled_amount: if typed { large } else { 0 },
             }),
             transfers: (0..count)
                 .map(|i| {
@@ -36,7 +43,7 @@ pub(super) fn resolution_seeds() -> Result<Vec<Vec<u8>>> {
                         },
                         payment_hash: script::conditional_payment_hash(algorithm, &[40 + i; 32])
                             .map_err(error)?,
-                        amount: 1_000_000_000,
+                        amount: if typed { large } else { 1_000_000_000 },
                         refund_after_block: 500 + u64::from(i),
                     })
                 })
@@ -75,9 +82,8 @@ pub(super) fn resolution(bytes: &[u8]) -> Result<bool> {
         return Ok(false);
     };
     // Decode via the host codec as well; reconstruct each actual resolution.
-    let batch = ConditionalBatch::decode_descriptor(
-        &raw[4..4 + script::BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN],
-    )?;
+    let batch =
+        ConditionalBatch::decode_descriptor(&raw[4..4 + script::CONDITIONAL_BATCH_DESCRIPTOR_LEN])?;
     let mut resolutions = BTreeMap::new();
     for (i, transfer) in batch.transfers.iter().enumerate() {
         let item = witness.resolution(i).map_err(error)?;
@@ -96,7 +102,7 @@ pub(super) fn resolution(bytes: &[u8]) -> Result<bool> {
         batch.encode_resolution_witness(&resolutions)?.as_slice() == raw,
         "resolution canonical roundtrip differs"
     );
-    let script = witness.resolved_capacities(since);
+    let script = witness.resolved_values(since);
     let host = batch.resolve(&resolutions, since);
     ensure!(
         script.is_ok() == host.is_ok(),
@@ -105,9 +111,13 @@ pub(super) fn resolution(bytes: &[u8]) -> Result<bool> {
     let Ok(actual) = script else {
         return Ok(false);
     };
-    ensure!(host? == actual, "host/script payouts differ");
+    ensure!(
+        host? == actual.map(morph_core::ConditionalValue::from),
+        "host/script payouts differ"
+    );
     // Independent recipient/accounting oracle; no resolve() call to compute it.
-    let mut expected = batch.participants.each_ref().map(|p| p.settled_capacity);
+    let mut capacities = batch.participants.each_ref().map(|p| p.settled_capacity);
+    let mut amounts = batch.participants.each_ref().map(|p| p.settled_amount);
     for transfer in &batch.transfers {
         let payer =
             usize::from(transfer.payer_lock_hash != batch.participants[0].settlement_lock_hash);
@@ -119,12 +129,21 @@ pub(super) fn resolution(bytes: &[u8]) -> Result<bool> {
         } else {
             1 - payer
         };
-        expected[recipient] = expected[recipient]
-            .checked_add(transfer.amount)
-            .ok_or_else(|| anyhow::anyhow!("accepted resolution overflows recipient"))?;
+        if batch.asset == morph_core::VaultAsset::Ckb {
+            capacities[recipient] = capacities[recipient]
+                .checked_add(u64::try_from(transfer.amount)?)
+                .ok_or_else(|| anyhow::anyhow!("accepted CKB resolution overflows"))?;
+        } else {
+            amounts[recipient] = amounts[recipient]
+                .checked_add(transfer.amount)
+                .ok_or_else(|| anyhow::anyhow!("accepted UDT resolution overflows"))?;
+        }
     }
     ensure!(
-        actual == expected && actual[0].checked_add(actual[1]) == Some(batch.total_capacity()?),
+        actual.map(|v| v.capacity) == capacities
+            && actual.map(|v| v.amount) == amounts
+            && capacities[0].checked_add(capacities[1]) == Some(batch.total_capacity()?)
+            && amounts[0].checked_add(amounts[1]) == Some(batch.total_amount()?),
         "resolution payment conservation differs"
     );
     Ok(true)
@@ -228,7 +247,7 @@ mod tests {
             ensure!(resolution(seed)?, "resolution seed rejected");
         }
         let mut preimage = seeds[0].clone();
-        preimage[8 + 4 + script::BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN + 1] ^= 1;
+        preimage[8 + 4 + script::CONDITIONAL_BATCH_DESCRIPTOR_LEN + 1] ^= 1;
         ensure!(!resolution(&preimage)?, "wrong preimage accepted");
         let mut immature = seeds[1].clone();
         immature[..8].copy_from_slice(&499u64.to_le_bytes());

@@ -609,6 +609,71 @@ fn current_bridge_excludes_conditional_pending_ckb_from_every_advertised_edge() 
 }
 
 #[test]
+fn current_bridge_excludes_pending_udt_from_its_type_without_reducing_other_assets() {
+    let mut recovery = fixture(2);
+    let before = recovery.settlement.payouts.clone();
+    let asset = before[0].asset.clone();
+    let VaultAsset::Xudt(type_script_hash) = asset else {
+        panic!("typed fixture");
+    };
+    recovery.settlement.payouts[0].values[0].amount -= 20;
+    let values = recovery.settlement.payouts[0].values;
+    let batch = ConditionalBatch {
+        asset,
+        batch_id: [81; 32],
+        application_context_commitment: [82; 32],
+        participants: core::array::from_fn(|i| ConditionalParticipant {
+            settlement_lock_hash: recovery.settlement.participant_lock_hashes[i],
+            settled_capacity: values[i].capacity().unwrap(),
+            settled_amount: values[i].amount,
+        }),
+        transfers: vec![ConditionalTransferSpec {
+            transfer_id: [83; 32],
+            payer_lock_hash: recovery.settlement.participant_lock_hashes[0],
+            hash_algorithm: ConditionalHashAlgorithm::Sha256,
+            payment_hash: derive_conditional_payment_hash(
+                ConditionalHashAlgorithm::Sha256,
+                &[84; 32],
+            )
+            .unwrap(),
+            amount: 20,
+            refund_after_block: 200,
+        }],
+    };
+    recovery.settlement.capability = MultiAssetSettlementCapability::Conditional {
+        batch_code_hash: [31; 32],
+        batch_hash_type: 2,
+        batches: vec![batch],
+    };
+    recovery.state.header.state_number += 1;
+    recovery.state.header.settlement_descriptor_commitment =
+        recovery.settlement.commitment().unwrap();
+    sign(&mut recovery);
+    let mut materialized = evidence_from_recovery(recovery, None);
+    materialized.asset = GatewayAsset::Xudt {
+        ckb_genesis_hash: [1; 32],
+        type_script_hash,
+    };
+    let mut registry = SovereignEdgeRegistry::default();
+    let edge = registry
+        .activate(materialized.clone(), &deployment(), 6, 101)
+        .unwrap();
+    assert_eq!(edge.directional_liquidity, values.map(|v| v.amount));
+    assert_eq!(
+        edge.directional_liquidity[0] + 20,
+        before[0].values[0].amount
+    );
+    select_token(&mut materialized, 1);
+    let other = registry
+        .activate(materialized, &deployment(), 6, 101)
+        .unwrap();
+    assert_eq!(
+        other.directional_liquidity,
+        before[1].values.map(|v| v.amount)
+    );
+}
+
+#[test]
 fn current_bridge_requires_all_asset_edges_to_drain_before_new_context_activation() {
     let mut registry = SovereignEdgeRegistry::default();
     let mut materialized = evidence(false);
