@@ -10,8 +10,11 @@ separate gates in [mainnet readiness](mainnet-readiness.md).
 Descriptor 7 uses counted terms/resolutions, canonical Script dictionaries and
 authenticated close/splice delegation, preserving the typed-condition semantics.
 The rebuilt VM inventory has **114 passing tests** with explicit byte/cycle
-regression bounds. Exact new candidate qualification is pending; the previous
-receipt below cannot be promoted to these ELFs. See [costs and evidence](model-resource-optimization.md)
+regression bounds. Signed implementation `991f7e3` passed all ten clean-candidate gates with unchanged
+source; see [the exact record](evidence/model-cost-991f7e3/README.md). Its native
+matrix has 88 transactions, 10 scenarios and 145 assertions; 780,000 bounded
+mutations and native signer/close/typed/reorg/shadow checks also passed. The prior
+receipt below remains historical and cannot be promoted to these ELFs. See [costs and evidence](model-resource-optimization.md)
 and [ADR 008](adr/008-bounded-cost-and-current-encoding.md).
 
 ## Previous exact-candidate result: descriptor 6 (2026-11-11)

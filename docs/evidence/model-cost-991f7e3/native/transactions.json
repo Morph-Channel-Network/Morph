@@ -1,0 +1,879 @@
+{
+  "schema": "morph.public_transaction_evidence.v1",
+  "source_commit": "991f7e30ab2f1225afbccd72862f60784a154196",
+  "status_scope": "Statuses observed during a controlled development run, including controlled reorg branches; not public-network finality.",
+  "resource_groups": [
+    {
+      "name": "bilateral_shared",
+      "kind": "bilateral_shared",
+      "totals": {
+        "transaction_count": 9,
+        "committed_count": 9,
+        "pending_count": 0,
+        "total_estimated_cycles": 34350390,
+        "max_estimated_cycles": 10053587,
+        "total_tx_size_bytes": 16684,
+        "max_tx_size_bytes": 3515
+      }
+    },
+    {
+      "name": "bilateral_splice",
+      "kind": "splice",
+      "totals": {
+        "transaction_count": 8,
+        "committed_count": 8,
+        "pending_count": 0,
+        "total_estimated_cycles": 47380377,
+        "max_estimated_cycles": 12904831,
+        "total_tx_size_bytes": 24758,
+        "max_tx_size_bytes": 4392
+      }
+    },
+    {
+      "name": "factory_custody_and_children",
+      "kind": "factory",
+      "totals": {
+        "transaction_count": 29,
+        "committed_count": 29,
+        "pending_count": 0,
+        "total_estimated_cycles": 211952261,
+        "max_estimated_cycles": 45055584,
+        "total_tx_size_bytes": 78991,
+        "max_tx_size_bytes": 6514
+      }
+    },
+    {
+      "name": "watch_service_reorg",
+      "kind": "watch_service",
+      "totals": {
+        "transaction_count": 13,
+        "committed_count": 13,
+        "pending_count": 0,
+        "total_estimated_cycles": 40827544,
+        "max_estimated_cycles": 9941931,
+        "total_tx_size_bytes": 20981,
+        "max_tx_size_bytes": 3515
+      }
+    },
+    {
+      "name": "maximum_asset_lifecycle",
+      "kind": "bilateral_max_assets",
+      "totals": {
+        "transaction_count": 21,
+        "committed_count": 21,
+        "pending_count": 0,
+        "total_estimated_cycles": 56453324,
+        "max_estimated_cycles": 10487595,
+        "total_tx_size_bytes": 38476,
+        "max_tx_size_bytes": 7724
+      }
+    },
+    {
+      "name": "deployment",
+      "kind": "deployment",
+      "totals": {
+        "transaction_count": 8,
+        "committed_count": 8,
+        "pending_count": 0,
+        "total_estimated_cycles": 13148215,
+        "max_estimated_cycles": 1657834,
+        "total_tx_size_bytes": 746600,
+        "max_tx_size_bytes": 242300
+      }
+    }
+  ],
+  "transactions": [
+    {
+      "check": "bilateral_splice",
+      "path": "$.fund",
+      "tx_hash": "0x00dcfc45cd351d9ad687690e78ae35ce9fa63b77f419706530d75503c56f77a2",
+      "status": "Committed",
+      "block_number": 99,
+      "estimated_cycles": 6655962,
+      "tx_size_bytes": 3241
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[4].fund",
+      "tx_hash": "0x019eef5e064971d3de7bc7428909033806adaa6b02168a26cdcf97455e358e39",
+      "status": "Committed",
+      "block_number": 572,
+      "estimated_cycles": 1626011,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.cooperative_close.submitted",
+      "tx_hash": "0x01edf470b0ab898f2c1b7e288c4991b992e2fad47aa7d999bee4aaef12a4c9d7",
+      "status": "Committed",
+      "block_number": 282,
+      "estimated_cycles": 7009337,
+      "tx_size_bytes": 2648
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.activation",
+      "tx_hash": "0x0670551c95b589adaf5005bd399e6c75937e02dd99b1c1744021eadc9897ec5c",
+      "status": "Committed",
+      "block_number": 275,
+      "estimated_cycles": 1884444,
+      "tx_size_bytes": 2306
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.deposit.report",
+      "tx_hash": "0x098c21780bd4275d95e572a75058ebae81457f0cf3d68a1b653440b29478e9a3",
+      "status": "Committed",
+      "block_number": 180,
+      "estimated_cycles": 8832624,
+      "tx_size_bytes": 3065
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.finalise",
+      "tx_hash": "0x0a0943f8f22862db586fd5c2dad3d656f6ee780dd244e264ae2bb4f0352f17e1",
+      "status": "Committed",
+      "block_number": 627,
+      "estimated_cycles": 3629428,
+      "tx_size_bytes": 7724
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[5].fund",
+      "tx_hash": "0x0aacbbd731caa1e65eb4848f7d646cade64787b5cf8255fab16dfeb70b633d10",
+      "status": "Committed",
+      "block_number": 580,
+      "estimated_cycles": 1641812,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[2].mint",
+      "tx_hash": "0x0c576e2c94f2faee44bd360a1154c0a7d4367df855c3da947655eacad33ab3f4",
+      "status": "Committed",
+      "block_number": 560,
+      "estimated_cycles": 1659069,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.issuance[1].fund",
+      "tx_hash": "0x0f4947dc8fca0222410105b73856506502424563cb62a26278160f69ea07b29f",
+      "status": "Committed",
+      "block_number": 48,
+      "estimated_cycles": 1650905,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.cooperative_close.batch.refunded",
+      "tx_hash": "0x13ddfcb2ed15d36460a0861e935576f74b6998f8360e4933a7c3947d7762be8f",
+      "status": "Committed",
+      "block_number": 421,
+      "estimated_cycles": 1706064,
+      "tx_size_bytes": 1255
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.issuance[1].mint",
+      "tx_hash": "0x14948b48722e9fbd4af07674ed9f245648d190fd427a9ad8a04de199df3e1379",
+      "status": "Committed",
+      "block_number": 52,
+      "estimated_cycles": 1647958,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[1].report",
+      "tx_hash": "0x1674e3cfc8fa2000dcfc0520285cdfcc308077d63f7e131bb48fe540443f4742",
+      "status": "Committed",
+      "block_number": 164,
+      "estimated_cycles": 20735303,
+      "tx_size_bytes": 4010
+    },
+    {
+      "check": "bilateral_splice",
+      "path": "$.transitions.terminal[0]",
+      "tx_hash": "0x1797f5d09319a1bf93425fbf764f37c43b0389c570be57407a9f16b419faf2fa",
+      "status": "Committed",
+      "block_number": 132,
+      "estimated_cycles": 6575409,
+      "tx_size_bytes": 2665
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.publications[0]",
+      "tx_hash": "0x28c1bb54f97bd114c8fea693727fe01dc93133ded0fefd4f45d58c92fe9244fe",
+      "status": "Committed",
+      "block_number": 452,
+      "estimated_cycles": 4930606,
+      "tx_size_bytes": 2633
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.watch_passes[2].publication",
+      "tx_hash": "0x2aae096d27dbd3d6df9cea2c39ec3168738026a7e25b2f60342227616d14bb5e",
+      "status": "Committed",
+      "block_number": 468,
+      "estimated_cycles": 5011854,
+      "tx_size_bytes": 2633
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.finalise",
+      "tx_hash": "0x3080ea949fff280d16bba66290da29831aebe9af019e1e9f7beade136b440dbc",
+      "status": "Committed",
+      "block_number": 417,
+      "estimated_cycles": 2688239,
+      "tx_size_bytes": 2412
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.escape.report",
+      "tx_hash": "0x37ee0bc8177f4059f24bbb0aa61a4a79e95630b39b0da1392adb47bfd0936a25",
+      "status": "Committed",
+      "block_number": 172,
+      "estimated_cycles": 8894016,
+      "tx_size_bytes": 3318
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.old_publication",
+      "tx_hash": "0x391c1e1c82030abd3d5ba58b0745c3f6b9d1d7db820be94dd1e9219433a24813",
+      "status": "Committed",
+      "block_number": 357,
+      "estimated_cycles": 6537039,
+      "tx_size_bytes": 2471
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[2].fund",
+      "tx_hash": "0x40a169a623ac3128a2ff078e14736402272c160031c7e1f8d475c5733c5056bb",
+      "status": "Committed",
+      "block_number": 556,
+      "estimated_cycles": 1621371,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[0].mint",
+      "tx_hash": "0x4672ed7a8a49b11f2e74a361507c8c0dd822775bd070cfad1c452bc16593556f",
+      "status": "Committed",
+      "block_number": 544,
+      "estimated_cycles": 1662328,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.old_publication",
+      "tx_hash": "0x46ed160ff8361dcdb811597dd660771211ee48d06b33c9f801268d21b7f0095d",
+      "status": "Committed",
+      "block_number": 203,
+      "estimated_cycles": 6577118,
+      "tx_size_bytes": 2471
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[3].fund",
+      "tx_hash": "0x4998701386862776a77f9bef0fdb198b13b1e6c5679ff1a41ad7e4a3cb95e288",
+      "status": "Committed",
+      "block_number": 564,
+      "estimated_cycles": 1635440,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.latest_package_watch.publication",
+      "tx_hash": "0x4a7caab9b63caea2c2f5d14c6f4ecc4518d13664c46af4bec9e6c92886fc5735",
+      "status": "Committed",
+      "block_number": 286,
+      "estimated_cycles": 6548967,
+      "tx_size_bytes": 2471
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.parent.canonical_reorg_replay.original.report",
+      "tx_hash": "0x50617938f0269c6d4ac4d134b555ba989d203f8e1eb7b23049c085e5b7d61b8a",
+      "status": "Committed",
+      "block_number": 346,
+      "estimated_cycles": 7408079,
+      "tx_size_bytes": 3785
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.parent.report",
+      "tx_hash": "0x561cca688fb6b25e84b382599d8a5d439133e3ccd5d9bd4a19074d838a5cc255",
+      "status": "Committed",
+      "block_number": 267,
+      "estimated_cycles": 7558743,
+      "tx_size_bytes": 4454
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[1].mint",
+      "tx_hash": "0x58b198e22a5eb2b11ffe2f5f39a5433991d72b5261634be7c48b1db88d4411d0",
+      "status": "Committed",
+      "block_number": 552,
+      "estimated_cycles": 1650030,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.activation",
+      "tx_hash": "0x5c54ae93bed0e6f6d7667cb5668e4eddef986bbe9b4737166efd4ee388039b69",
+      "status": "Committed",
+      "block_number": 441,
+      "estimated_cycles": 1970396,
+      "tx_size_bytes": 2537
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.finalise",
+      "tx_hash": "0x5cdfc4d6cd0d3fb710964185ba76f13ad4d724a243964578b9141888e12d172a",
+      "status": "Committed",
+      "block_number": 342,
+      "estimated_cycles": 2254652,
+      "tx_size_bytes": 2084
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.publications[0]",
+      "tx_hash": "0x601cccef9864759f4c4eae52fceb6a1fee96d40c4ca81c822785559b1f66172e",
+      "status": "Committed",
+      "block_number": 615,
+      "estimated_cycles": 6871995,
+      "tx_size_bytes": 4573
+    },
+    {
+      "check": "deployment",
+      "path": "$.transactions[1]",
+      "tx_hash": "0x667499e1ee84f4647d764f0a15cca1662720d5d19c89c1163b1d0c012fa0b2f6",
+      "status": "Committed",
+      "block_number": 12,
+      "estimated_cycles": 1651062,
+      "tx_size_bytes": 200948
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.funded",
+      "tx_hash": "0x69382256a44de9a31364f867994346a41a00b42e669f32b8aeb8ddb717e23e01",
+      "status": "Committed",
+      "block_number": null,
+      "estimated_cycles": 1616260,
+      "tx_size_bytes": 569
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.sponsor_funding[1]",
+      "tx_hash": "0x69a42ce2124e61b18c8e61da860d6fc836998861d1362c8776253daccc776d61",
+      "status": "Committed",
+      "block_number": 460,
+      "estimated_cycles": 1642044,
+      "tx_size_bytes": 576
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.cooperative_close.submitted",
+      "tx_hash": "0x6b2b63c19f1775ea891e243d761fb007c3f88e9ca99947e9d59c9da7289af025",
+      "status": "Committed",
+      "block_number": 357,
+      "estimated_cycles": 7299158,
+      "tx_size_bytes": 2976
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.full_consent_metadata.report",
+      "tx_hash": "0x6b8f2e96cd74b25d98ea60f8b5fb46c2371d58627c48cb4db52c9682f096c629",
+      "status": "Committed",
+      "block_number": 156,
+      "estimated_cycles": 6448803,
+      "tx_size_bytes": 1666
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[6].fund",
+      "tx_hash": "0x6ec17ba60b533b97bf5278cdd00882cbd2a241b28a4c69c4b964a83cedb3f956",
+      "status": "Committed",
+      "block_number": 588,
+      "estimated_cycles": 1657915,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "bilateral_splice",
+      "path": "$.transitions.operations[1].activation",
+      "tx_hash": "0x704238647d73f46afcc67bf41e2c7d95e82cd6b67a3f4e326ce31c8d692f897a",
+      "status": "Committed",
+      "block_number": 125,
+      "estimated_cycles": 1971064,
+      "tx_size_bytes": 2537
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.finalise",
+      "tx_hash": "0x7059a36c5b61cc6f768d4d5c13c2a988bc8329b43f88ecf1e9c059da056aaa77",
+      "status": "Committed",
+      "block_number": 263,
+      "estimated_cycles": 2292060,
+      "tx_size_bytes": 2084
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.publications[1]",
+      "tx_hash": "0x70604e89b7885724324d5042b872b5dc2c183c888065fb31fa292605ffdd9a0d",
+      "status": "Committed",
+      "block_number": 71,
+      "estimated_cycles": 6599759,
+      "tx_size_bytes": 2665
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.latest_package_watch.publication",
+      "tx_hash": "0x789e28f2bc8bb7a487fbd44ea23445e122b6d1c23b3073ecf62c9e4b9ce6d113",
+      "status": "Committed",
+      "block_number": 207,
+      "estimated_cycles": 6522433,
+      "tx_size_bytes": 2471
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.activation",
+      "tx_hash": "0x794d8806e6f3504daa5cdc824413cca8986ba4178b8d7447c5cb984619930a3c",
+      "status": "Committed",
+      "block_number": 608,
+      "estimated_cycles": 2274172,
+      "tx_size_bytes": 4667
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.issuance[1].fund",
+      "tx_hash": "0x7d1792f6881abedd517217bc2ae122c3291f3b310067bcd531954b91c6708ecc",
+      "status": "Committed",
+      "block_number": 429,
+      "estimated_cycles": 1651709,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[1].fund",
+      "tx_hash": "0x7d53ee613519954a68fafff5c8ff081173e6c12d5486ae87d8035812eb3f81bf",
+      "status": "Committed",
+      "block_number": 548,
+      "estimated_cycles": 1657829,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "bilateral_splice",
+      "path": "$.transitions.terminal[1]",
+      "tx_hash": "0x7d67fdfe9171d790cfb11b6da1152b8220f7e02188964ae9c67240916ceb5089",
+      "status": "Committed",
+      "block_number": 140,
+      "estimated_cycles": 2450770,
+      "tx_size_bytes": 2984
+    },
+    {
+      "check": "deployment",
+      "path": "$.transactions[3]",
+      "tx_hash": "0x82c606410b12a551fc0d5ac224f6228a73d4985a4f6a43eff7113f640206cab9",
+      "status": "Committed",
+      "block_number": 20,
+      "estimated_cycles": 1641146,
+      "tx_size_bytes": 105804
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.publications[1]",
+      "tx_hash": "0x832700d26fa41dea4c7951b5a84e72a7fa096165e717c1b808e3e618d04177f7",
+      "status": "Committed",
+      "block_number": 619,
+      "estimated_cycles": 6826650,
+      "tx_size_bytes": 4573
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.fund",
+      "tx_hash": "0x86288a780435bef42c994520932206b18fc29ec779b619d837ce13dbbed1002f",
+      "status": "Committed",
+      "block_number": 56,
+      "estimated_cycles": 10053587,
+      "tx_size_bytes": 3515
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.publications[1]",
+      "tx_hash": "0x89e63f9ed09e0cf343baa81dc9d08a6abef3bbbe8dc5d929d5e44b22cb16cab0",
+      "status": "Committed",
+      "block_number": 464,
+      "estimated_cycles": 5011854,
+      "tx_size_bytes": 2633
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.watch_passes[2].service.last_pass.channels[1].report.sponsor_top_up",
+      "tx_hash": "0x8b2d348f737be51de28458579a940ffa8cc04914a766282236c78755b7a76222",
+      "status": "Committed",
+      "block_number": 464,
+      "estimated_cycles": 1647656,
+      "tx_size_bytes": 576
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[6].mint",
+      "tx_hash": "0x8ba9f7d90fcb34afafebe425d23d7df07c7952add7e29c64daf3b6ee4826af94",
+      "status": "Committed",
+      "block_number": 592,
+      "estimated_cycles": 1651873,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.finalise",
+      "tx_hash": "0x8c9cab3bcabbf7dbd94e1fb21af088cb4958328ed27088776ad338d2e7d27ec1",
+      "status": "Committed",
+      "block_number": 536,
+      "estimated_cycles": 2470067,
+      "tx_size_bytes": 2984
+    },
+    {
+      "check": "deployment",
+      "path": "$.transactions[4]",
+      "tx_hash": "0x8d91ef793773079ace472adbc28eb373d022baa7571bfb6e512ec1a38225c11c",
+      "status": "Committed",
+      "block_number": 24,
+      "estimated_cycles": 1641623,
+      "tx_size_bytes": 101500
+    },
+    {
+      "check": "bilateral_splice",
+      "path": "$.activation",
+      "tx_hash": "0x920fa36de8b41099623c2ee29c27b376c8b52d965255322ffa2228dcf15f7ad1",
+      "status": "Committed",
+      "block_number": 103,
+      "estimated_cycles": 2007600,
+      "tx_size_bytes": 2537
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.cooperative_close.batch.fulfilled",
+      "tx_hash": "0xa76bf0c72728ae78f1cbcfb66f1f4c1874162cf0e115aee1deb0279aecc247ea",
+      "status": "Committed",
+      "block_number": 364,
+      "estimated_cycles": 1710662,
+      "tx_size_bytes": 1287
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.parent.report",
+      "tx_hash": "0xa9badf1eddec064f1dcf00cd2c2a17094b6be87539816c0c9eeb36fd210160f4",
+      "status": "Committed",
+      "block_number": 188,
+      "estimated_cycles": 9700448,
+      "tx_size_bytes": 5789
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[5].mint",
+      "tx_hash": "0xae93e9b7f434d1f7ac2f01e619c05a7c57e7db3b23e08e0ddf8fc865f81a7d53",
+      "status": "Committed",
+      "block_number": 584,
+      "estimated_cycles": 1652744,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "deployment",
+      "path": "$.transactions[0]",
+      "tx_hash": "0xaede44609dcf585bf3d2596fd28a29f90150f15f796cd2bcdcc9fa527dcef52a",
+      "status": "Committed",
+      "block_number": 8,
+      "estimated_cycles": 1657834,
+      "tx_size_bytes": 13420
+    },
+    {
+      "check": "bilateral_splice",
+      "path": "$.transitions.operations[1].submission",
+      "tx_hash": "0xb0014708f67fe767ccc09c551d0d5296b6ce7dfb08cf4eb6a5aeac3e95955753",
+      "status": "Committed",
+      "block_number": 121,
+      "estimated_cycles": 12904831,
+      "tx_size_bytes": 4392
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[2].report",
+      "tx_hash": "0xb0a84fe0311207a25eea4831f9c9373bbb6b6add391a4454fbe689212481bb29",
+      "status": "Committed",
+      "block_number": 168,
+      "estimated_cycles": 45055584,
+      "tx_size_bytes": 6514
+    },
+    {
+      "check": "deployment",
+      "path": "$.transactions[5]",
+      "tx_hash": "0xb0e20f6c263a9a0e8cbba6acb63c72bb7d3e3d3b96ad6aa8aec92f09ac51b8b0",
+      "status": "Committed",
+      "block_number": 28,
+      "estimated_cycles": 1651625,
+      "tx_size_bytes": 51532
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[4].mint",
+      "tx_hash": "0xb355309375187526dff5d38581e9f26f6d6d0e34cea74db5ba9d9619108f0a59",
+      "status": "Committed",
+      "block_number": 576,
+      "estimated_cycles": 1649103,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.cooperative_close.submitted",
+      "tx_hash": "0xb73a6648c6b2e5974b131463b4b98221ff7a41710f43b59f6151bfa4f4219719",
+      "status": "Committed",
+      "block_number": 203,
+      "estimated_cycles": 6991230,
+      "tx_size_bytes": 2648
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.activation",
+      "tx_hash": "0xb76328116cbd486d046fd244ff8865aa4a8f33242ba71376061ceda0a6259067",
+      "status": "Committed",
+      "block_number": 60,
+      "estimated_cycles": 1982691,
+      "tx_size_bytes": 2537
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.issuance[0].fund",
+      "tx_hash": "0xb8a32b88e62c5d1f52f91c7c1e484d4625dc82743e8def44d2ab029ecae44b3d",
+      "status": "Committed",
+      "block_number": 40,
+      "estimated_cycles": 1631621,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.finalise",
+      "tx_hash": "0xbbf785688fa0b2e0a9ff92d6a51bb43c84850cf7171cfb036f12d607a78d4bea",
+      "status": "Committed",
+      "block_number": 79,
+      "estimated_cycles": 2462939,
+      "tx_size_bytes": 2984
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.issuance[0].mint",
+      "tx_hash": "0xbcb3312c6f59672d896d13bda675b8b651749b02518e344be48fa6272b0e3bef",
+      "status": "Committed",
+      "block_number": 425,
+      "estimated_cycles": 1654792,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.activation",
+      "tx_hash": "0xc83e83690ef4482ebb6471c3dbf1faeecb182785ae210fec3bf298d42fe11448",
+      "status": "Committed",
+      "block_number": 350,
+      "estimated_cycles": 1908774,
+      "tx_size_bytes": 2306
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.fund",
+      "tx_hash": "0xc940a08592811eb748fdf531fb83de0614a0974f823846785959474089c57944",
+      "status": "Committed",
+      "block_number": 437,
+      "estimated_cycles": 9941931,
+      "tx_size_bytes": 3515
+    },
+    {
+      "check": "deployment",
+      "path": "$.transactions[2]",
+      "tx_hash": "0xc9698cb03b5a46bfd3188d2e58f5689a6298495e16f94f20a178b1a7ff674a02",
+      "status": "Committed",
+      "block_number": 16,
+      "estimated_cycles": 1624931,
+      "tx_size_bytes": 242300
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.rights_updates.operations[0].canonical_reorg_replay.original.report",
+      "tx_hash": "0xc9b7b83ebe61326553f5e0209290856218fbea6a1e143055ab151162c5869b27",
+      "status": "Committed",
+      "block_number": 160,
+      "estimated_cycles": 8662360,
+      "tx_size_bytes": 2928
+    },
+    {
+      "check": "bilateral_splice",
+      "path": "$.transitions.operations[0].submission",
+      "tx_hash": "0xca299650271bd631ee5cfbf34cba76235ad07ab84ca64d7d80f184e75fb961a0",
+      "status": "Committed",
+      "block_number": 110,
+      "estimated_cycles": 12878590,
+      "tx_size_bytes": 4220
+    },
+    {
+      "check": "deployment",
+      "path": "$.transactions[6]",
+      "tx_hash": "0xd6a93fb230f7a486850ad5bf1f82f2653fd0db083f9d718ccbfdefd18d9e940b",
+      "status": "Committed",
+      "block_number": 32,
+      "estimated_cycles": 1641199,
+      "tx_size_bytes": 17052
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.issuance[0].fund",
+      "tx_hash": "0xd6e62e8731318c3fcb928236f19eaa7a43704310bf00ebb712748d0e8c198e9a",
+      "status": "Committed",
+      "block_number": 421,
+      "estimated_cycles": 1618807,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.root.report",
+      "tx_hash": "0xd74540a951c7ad014438e09a91e4c8ffbeb5357047853f5a2832613159028cbe",
+      "status": "Committed",
+      "block_number": 148,
+      "estimated_cycles": 8115130,
+      "tx_size_bytes": 1961
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.fund",
+      "tx_hash": "0xd8c73ec62288e15c11f0fdaf0ea94a045ef56a239bd2878c06755a2e90e55d4a",
+      "status": "Committed",
+      "block_number": 604,
+      "estimated_cycles": 10487595,
+      "tx_size_bytes": 7667
+    },
+    {
+      "check": "bilateral_splice",
+      "path": "$.transitions.operations[0].activation",
+      "tx_hash": "0xdb7f17f8eef8999e6ab7434c0ecabeaf721e34a6175d9d739f26c17fc3528e2f",
+      "status": "Committed",
+      "block_number": 114,
+      "estimated_cycles": 1936151,
+      "tx_size_bytes": 2182
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.issuance[1].mint",
+      "tx_hash": "0xe36df9e75a7f6baee78da1cf516c9999031f21307781ec458ec4ed3d64aa72fe",
+      "status": "Committed",
+      "block_number": 433,
+      "estimated_cycles": 1660485,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.issuance[0].mint",
+      "tx_hash": "0xe41eb1bc6358cfa50d84f34bcdae09f846641f3fa9fe58e74d5fd263dbc4a47f",
+      "status": "Committed",
+      "block_number": 44,
+      "estimated_cycles": 1660588,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[7].mint",
+      "tx_hash": "0xe42086d1eb214a923aaf2ebb8beba1a7bb09ccb429d78a02936043cd08ee2905",
+      "status": "Committed",
+      "block_number": 600,
+      "estimated_cycles": 1654316,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[3].mint",
+      "tx_hash": "0xe732764379dd48ea17e49df119a199844f7c72d99dc229c4ca99dfb57b390019",
+      "status": "Committed",
+      "block_number": 568,
+      "estimated_cycles": 1659213,
+      "tx_size_bytes": 699
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.reduced.activation",
+      "tx_hash": "0xe91fdf92c4b00118c918479d5bc3c0044e37e59c2a59847bf562989251e12e1c",
+      "status": "Committed",
+      "block_number": 196,
+      "estimated_cycles": 1888440,
+      "tx_size_bytes": 2306
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[0].fund",
+      "tx_hash": "0xec9c965797628ce6a2a42874de4d737c32967c7c328dcb8efa9e3d13c342302d",
+      "status": "Committed",
+      "block_number": 540,
+      "estimated_cycles": 1646420,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.activation.report",
+      "tx_hash": "0xecd7c50e9f7f9dd4ff1b1de1a5847f43fb175f55eeea03c7c530899951caad50",
+      "status": "Committed",
+      "block_number": 152,
+      "estimated_cycles": 1899411,
+      "tx_size_bytes": 1441
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.retained.old_publication",
+      "tx_hash": "0xf778c40cb9c1781aa261823f9211987a75c5c68c74bcbf2d1fbc1bec67e6a158",
+      "status": "Committed",
+      "block_number": 282,
+      "estimated_cycles": 6604239,
+      "tx_size_bytes": 2471
+    },
+    {
+      "check": "bilateral_shared",
+      "path": "$.publications[0]",
+      "tx_hash": "0xf8658f8e73ee1e992021d00b5d1f957daef6b275ddd0439a5d4cf4fc78b1e26b",
+      "status": "Committed",
+      "block_number": 67,
+      "estimated_cycles": 6660342,
+      "tx_size_bytes": 2665
+    },
+    {
+      "check": "maximum_asset_lifecycle",
+      "path": "$.issuance[7].fund",
+      "tx_hash": "0xf9d1385febdcbebaf2ecf6b655abd1f79bb67ac87fb4d396663dade255a382d1",
+      "status": "Committed",
+      "block_number": 596,
+      "estimated_cycles": 1638010,
+      "tx_size_bytes": 460
+    },
+    {
+      "check": "deployment",
+      "path": "$",
+      "tx_hash": "0xfb2aecbbc649401373893cfa911d719260edef34d6b4862b76fac83907939973",
+      "status": "Committed",
+      "block_number": 36,
+      "estimated_cycles": 1638795,
+      "tx_size_bytes": 14044
+    },
+    {
+      "check": "watch_service_reorg",
+      "path": "$.sponsor_funding[0]",
+      "tx_hash": "0xfb7d34ff3d104c21d9873f2e2c1017194a6e42a50bea06e4a3aac1c001d87583",
+      "status": "Committed",
+      "block_number": 448,
+      "estimated_cycles": 1615343,
+      "tx_size_bytes": 576
+    },
+    {
+      "check": "factory_custody_and_children",
+      "path": "$.transitions.child.terminal.latest_package_watch.publication",
+      "tx_hash": "0xfd232e41652fbbafaab27b3b1ad234310048432e3404fb42ade2cc2d639d9d0b",
+      "status": "Committed",
+      "block_number": 361,
+      "estimated_cycles": 6602644,
+      "tx_size_bytes": 2824
+    }
+  ]
+}

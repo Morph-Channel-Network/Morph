@@ -1,0 +1,45 @@
+{
+  "cargo_lock_sha256": "179b0b9c561f4074efd1e157e261275291cc7e067f038f328c35f922cdf77d02",
+  "ci_receipt_sha256": "c013a4cfe98c14640030ff84ae2647521258a531c30bf3b8cac5275b33603f4e",
+  "contract_bundle_sha256": "a07af25b9663ff224849542d83048f3d94cc284ecf36649d20932b2075e4cc33",
+  "contract_manifest_sha256": "787b9f45bbd51940affc6236783b709efe5a3f76484639de2cf8794fabd07103",
+  "contract_vm_tests": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 114
+  },
+  "counts": {
+    "audit_families": 11,
+    "deployment_transactions": 8,
+    "evidence_assertions": 145,
+    "native_cases": 5,
+    "stateful_scenarios": 10,
+    "transaction_observations": 98,
+    "unique_transactions": 88
+  },
+  "envelope_sha256": "c937dc2ef81d0028cb3f45dba0aca709ce8877b6281748529690ae734f4a636e",
+  "genesis_hash": "0x01136fcdff73015cccd5ff6aa8cbbb819c20214872d6dce5088f5228835c07e6",
+  "independent_attestation_required": false,
+  "native_desktop": {
+    "archive_files": 4281,
+    "binary_sha256": "4f7e6d5e7e717736db516b1a85cb6587ed88c8a6c97abf966536f7bcd85da0cc",
+    "bundle_sha256": "517a958945be12863e041129720c2ef8e86151f8607bcd51b53ca92910e3475a",
+    "dependency_records": 771,
+    "mpl_source_archives": 2,
+    "registry_source_archives": 736,
+    "schema": "morph.native_desktop_qualification.v1",
+    "status": "passed"
+  },
+  "policy_review_by_unix": 1796399999,
+  "public_evidence_index_sha256": "ec29622c90c3a1bcf02250aa85b01f4fd581e6679bf3f957def216ad482f7fe6",
+  "real_assets_allowed": false,
+  "release_admitted": false,
+  "release_published": false,
+  "schema": "morph.local_candidate_qualification.v1",
+  "scope": "controlled_devnet_local_only",
+  "source_commit": "991f7e30ab2f1225afbccd72862f60784a154196",
+  "source_tree_sha256": "8ca5807393ff3d161678b2055b31dc2e122f69f55fa4c5dc46e8c5edc9175777",
+  "status": "passed",
+  "toolchain_sha256": "e3a213e0d222e94d213cafbc20932eb3f76c643b4dd63756acf95192df2aa310",
+  "verified_at_unix": 1794415142
+}

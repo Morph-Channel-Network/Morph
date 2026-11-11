@@ -1,0 +1,19 @@
+{
+  "source_commit": "991f7e30ab2f1225afbccd72862f60784a154196",
+  "terminal": {
+    "estimated_cycles": 8911564,
+    "tx_size_bytes": 14449
+  },
+  "batch_count": 8,
+  "conditions_per_batch": 8,
+  "all_payouts_verified": true,
+  "participant_journals_unchanged": true,
+  "provider_rpc_used": false,
+  "claim_count": 16,
+  "claim_max_cycles": 1831294,
+  "claim_max_bytes": 2253,
+  "claimed_branches": {
+    "fulfill": 8,
+    "refund_or_mixed": 8
+  }
+}

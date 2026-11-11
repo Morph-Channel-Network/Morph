@@ -68,4 +68,22 @@ The remaining long sparse paths, mandatory independent signatures, full-u128 val
 
 ## Qualification status
 
-Implementation VM matrix: 114 passed, including mandatory-verifier/global-witness controls and mutable authority rejection. Host tests cover canonical dictionaries, out-of-range/unused/order/truncation/scope errors, exact assets and shared identity. An actual-node lifecycle preflight passed all six participant signing roles and fault recovery; its descriptor-7 public splice trace is the current parser vector. It is not final candidate qualification. Full `make ci` passed (114 VM cases), as did all 46 Python tool tests and eight-ELF release-readiness verification. The same-source ten-gate controlled-devnet qualification must still be recorded before closing #63. No release or main merge is requested.
+Signed implementation `991f7e3` passed all ten clean-candidate controlled-devnet
+gates with unchanged source. VM: **114/0**; independent Python tool checks:
+**46/0**. The native matrix exports **88 unique transactions, 10 stateful
+scenarios, 145 assertions and 11 audit families**. Three fixed seeds exercised
+780,000 bounded host/parser/SDK/store mutations; they are not VM executions or
+a coverage-guided proof. Private initial exits, signer faults, conditional
+fulfill/refund/reorg and nonforwarding shadow service are included.
+
+The real-wallet eight-asset / 64-condition native preflight reports **8,911,564
+cycles / 14,449 bytes** for terminal settlement, versus the earlier checkpoint's
+roughly **25.92M / 14,455**. Claim preflight maxima across sixteen outcomes are
+**1,831,294 cycles / 2,253 bytes**. All payouts and canonical retry/reorg behavior
+were checked, participant journals stayed unchanged and no provider RPC was
+used. This shape saves mainly computation, with only six terminal bytes saved.
+
+See the [exact source/artifact qualification record](evidence/model-cost-991f7e3/README.md).
+The later reporting commit is documentation/evidence only, not another qualified
+candidate. Research boundaries and real-asset restrictions remain. No release,
+tag or main merge was performed.

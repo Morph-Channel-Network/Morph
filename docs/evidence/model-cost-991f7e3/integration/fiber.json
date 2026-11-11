@@ -1,0 +1,6 @@
+{
+  "patch_sha256": "39af376d9455449743a7a13da07639ff920df2ae969be063934065d0b82eeda1",
+  "revision": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+  "runtime_campaign_executed": true,
+  "schema": "morph.public_fiber_pin.v1"
+}

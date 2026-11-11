@@ -1,0 +1,279 @@
+{
+  "schema": "morph.public_budget_evidence.v1",
+  "source_commit": "991f7e30ab2f1225afbccd72862f60784a154196",
+  "source_profile": "docs/devnet-stateful-budget.example.json",
+  "source_profile_sha256": "3d6b6132873b55bf00b5ab592b93191711591bf3e68ccff3b0315d29c28150cd",
+  "scope": "Source-commit default node profile; 70M joint-dimension VM fixture ceilings are separate measurements, not this run's native transaction budget.",
+  "limits": {
+    "max_total_cycles": 1000000000,
+    "max_tx_cycles": 55000000,
+    "max_total_bytes": 2000000,
+    "max_tx_bytes": 300000,
+    "cases": [
+      {
+        "name": "bilateral_shared",
+        "max_cycles": 100000000,
+        "max_bytes": 100000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "bilateral_splice",
+        "max_cycles": 130000000,
+        "max_bytes": 100000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "factory_custody_and_children",
+        "max_cycles": 400000000,
+        "max_bytes": 300000,
+        "max_tx_cycles": 55000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "watch_service_reorg",
+        "max_cycles": 100000000,
+        "max_bytes": 100000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "maximum_asset_lifecycle",
+        "max_cycles": 200000000,
+        "max_bytes": 150000,
+        "max_tx_cycles": 40000000,
+        "max_tx_bytes": 100000
+      },
+      {
+        "name": "deployment",
+        "max_cycles": 20000000,
+        "max_bytes": 1000000,
+        "max_tx_cycles": 2000000,
+        "max_tx_bytes": 300000
+      }
+    ],
+    "transactions": [
+      {
+        "check": "bilateral_splice",
+        "path": "$.transitions.operations[0].submission",
+        "max_cycles": 40000000,
+        "max_bytes": 16384
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.root.report",
+        "max_cycles": 15000000,
+        "max_bytes": 8192
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.reduced.finalise",
+        "max_cycles": 10000000,
+        "max_bytes": 16384
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.terminal.finalise",
+        "max_cycles": 10000000,
+        "max_bytes": 16384
+      },
+      {
+        "check": "watch_service_reorg",
+        "path": "$.finalise",
+        "max_cycles": 10000000,
+        "max_bytes": 16384
+      },
+      {
+        "check": "maximum_asset_lifecycle",
+        "path": "$.finalise",
+        "max_cycles": 20000000,
+        "max_bytes": 32768
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.retained.finalise",
+        "max_cycles": 10000000,
+        "max_bytes": 16384
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.funded",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.deposit.report",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.rights_updates.operations[2].report",
+        "max_cycles": 55000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.rights_updates.operations[0].canonical_reorg_replay.original.report",
+        "max_cycles": 15000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.terminal.latest_package_watch.publication",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.rights_updates.operations[1].report",
+        "max_cycles": 30000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.retained.activation",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.activation.report",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.terminal.old_publication",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.retained.latest_package_watch.publication",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.rights_updates.full_consent_metadata.report",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.reduced.latest_package_watch.publication",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.reduced.old_publication",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.terminal.parent.report",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.retained.parent.report",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.terminal.activation",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.retained.old_publication",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.reduced.parent.report",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.child.reduced.activation",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "path": "$.transitions.escape.report",
+        "max_cycles": 40000000,
+        "max_bytes": 100000
+      }
+    ],
+    "proof_profiles": [
+      {
+        "check": "factory_custody_and_children",
+        "operation": "root_funding",
+        "max_witness_len": 8192,
+        "max_proof_siblings": 0,
+        "max_cycles": 15000000,
+        "max_bytes": 32768
+      },
+      {
+        "check": "factory_custody_and_children",
+        "operation": "ReducedRelease",
+        "max_witness_len": 8192,
+        "max_proof_siblings": 8,
+        "max_cycles": 40000000,
+        "max_bytes": 32768
+      },
+      {
+        "check": "factory_custody_and_children",
+        "operation": "ReducedDeposit",
+        "max_witness_len": 8192,
+        "max_proof_siblings": 8,
+        "max_cycles": 40000000,
+        "max_bytes": 32768
+      },
+      {
+        "check": "factory_custody_and_children",
+        "operation": "ReducedChild",
+        "max_witness_len": 16384,
+        "max_proof_siblings": 8,
+        "max_cycles": 40000000,
+        "max_bytes": 32768
+      },
+      {
+        "check": "factory_custody_and_children",
+        "operation": "materialisation",
+        "max_witness_len": 16384,
+        "max_proof_siblings": 0,
+        "max_cycles": 40000000,
+        "max_bytes": 32768
+      },
+      {
+        "check": "factory_custody_and_children",
+        "operation": "ReducedRights",
+        "max_witness_len": 8192,
+        "max_proof_siblings": 96,
+        "max_cycles": 55000000,
+        "max_bytes": 10000
+      },
+      {
+        "check": "factory_custody_and_children",
+        "operation": "metadata_update",
+        "max_witness_len": 1024,
+        "max_proof_siblings": 0,
+        "max_cycles": 15000000,
+        "max_bytes": 4096
+      }
+    ]
+  }
+}

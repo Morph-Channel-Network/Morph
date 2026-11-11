@@ -1,0 +1,310 @@
+{
+  "bindings": {
+    "cargo-lock": "179b0b9c561f4074efd1e157e261275291cc7e067f038f328c35f922cdf77d02",
+    "conditional-scope": "614e486db609c07910f17ea12e8441b748e72ef523bdb1b8938310c9f46172e1",
+    "deployment-manifest": "787b9f45bbd51940affc6236783b709efe5a3f76484639de2cf8794fabd07103",
+    "elf-morph-batch-lock": "6561e92560767f33bd6c273f142c255a48efde171504df5864571fba2929260c",
+    "elf-morph-devnet-xudt": "6dfce05c6e5d355778f316de2d656b1399eb702b3d147e88ff8d32c50c9725b4",
+    "elf-morph-factory-type": "e67febcb25cfaa365a23ab5ad2f43aa03da17397fe01b2f4379857c50e63d842",
+    "elf-morph-factory-vault-lock": "555c192bbcdb03b5cfeccc96828fee19d2929f6af3997611c98d34b80021bfe7",
+    "elf-morph-sponsor-lock": "09553dc7147c2d4425af229bd1a65ce09ace5a4fdfac3c1eeb87ebbfa5074d54",
+    "elf-morph-state-lock": "543522adf198697281aec7a748e4554a971f8d4d955a0c2101624ddbd93951ed",
+    "elf-morph-state-type": "5f21998a2a11a3b394ad91154b6958e600b8e39dee7a1b07a0463dabcfeb95b3",
+    "elf-morph-vault-lock": "1af2325880134f035f0b7dafb8fcba7423bdcf621146f39154fcae83c4757894",
+    "envelope": "c937dc2ef81d0028cb3f45dba0aca709ce8877b6281748529690ae734f4a636e",
+    "events": "0dc15fc55b6f11fc3fe8ede6f706c81ea04dbff9fc1acc50b479bea221b291d3",
+    "fiber-patch": "39af376d9455449743a7a13da07639ff920df2ae969be063934065d0b82eeda1",
+    "fiber-pin": "5499cbad404226c3159ddc345860ff4db5d5546123f012b0a6b0251b7f9e8843",
+    "gateway-api": "9393a270790815dec73c5c189cfbd671a97074b82760f0134065aaf929e2a3de",
+    "gateway-version": "ab39b77ab35652c6a26e9c14934ed8c47060b96c6a0ca8387b72fbe3a7d1afb8",
+    "hub-api": "12de8f377bc971815a44a041289d36e1fea9697764101ae309a2b86756d3aa16",
+    "hub-version": "13b425778ac994b77b36045bc1ccc0c2cc8ad6602c03a8a014d5294cb9e906cc",
+    "node": "de85611732b2347782f60171520dc5319b2437b5d0449a8ccbeddb939b61e252",
+    "runtime": "14e396b62f5f7aa4fbd7afd8f27cc18b1340fbd6635b065d51d353e5bf7a0b2b",
+    "runtime-sql": "7d03bc9badefe851ff135d917bc87f902ed802e83c531db3cfe2cce3a433e962",
+    "rust-toolchain": "e3a213e0d222e94d213cafbc20932eb3f76c643b4dd63756acf95192df2aa310",
+    "signer": "4a6b1c915753277c013b0571d3a591968c535162ad4c52924d4b5306da0f1479",
+    "w1-scope": "9a3751f889fa4ee361ea8f4b6d2c04d5dab6b33abbf5f719917742e07a3b7378"
+  },
+  "conditional_udt_qualified": true,
+  "full_w1_qualified": true,
+  "gates": {
+    "ci": {
+      "command_sha256": "2870fe9d41a576f5e2a73d8952eaea58af3e440d5ef2f1304be28c3674caa8fc",
+      "execution_sha256": "b2e44664f4881b9258cd06cfa5f46eabdd1a2a403943c826cdca3446278cb2c3",
+      "exit_code": 0,
+      "finished_at": 1794412589,
+      "replay": {
+        "test-results": {
+          "pointer": "/result_lines",
+          "projected": false,
+          "report": "native/ci-results.json",
+          "source_report_sha256": "59e4f99d128b6df41bfc0a54764055f38c8734b2424e942690596438c696ee9d"
+        }
+      },
+      "report_sha256": [
+        "59e4f99d128b6df41bfc0a54764055f38c8734b2424e942690596438c696ee9d",
+        "b2e44664f4881b9258cd06cfa5f46eabdd1a2a403943c826cdca3446278cb2c3"
+      ],
+      "started_at": 1794412252,
+      "status": "pass"
+    },
+    "contracts-package": {
+      "command_sha256": "47f007c7e60c04d257a8d6ea73f25dcf7063439caa108e90615bd2b19940eab0",
+      "execution_sha256": "c0169930b112b8ca293663024e81c5004144205f363a4249d8bc6ba3a87877cc",
+      "exit_code": 0,
+      "finished_at": 1794415012,
+      "replay": {},
+      "report_sha256": [
+        "c0169930b112b8ca293663024e81c5004144205f363a4249d8bc6ba3a87877cc"
+      ],
+      "started_at": 1794415004,
+      "status": "pass"
+    },
+    "cooperative-close": {
+      "command_sha256": "064c798bf924b1ed1b4b73a1189124eb8bcb848df31be889c8fd56714954affc",
+      "execution_sha256": "863e57e43a2958f287d80fcce273254e821288e6a20425f7d5aea22ca5d78f9f",
+      "exit_code": 0,
+      "finished_at": 1794413308,
+      "replay": {
+        "roles": {
+          "pointer": "/signers/cooperative-close/roles",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "15ff5fd7bdd6b35c78d1498d2a70cfad2bd368992f06f1509a3057649f69ae3c"
+        }
+      },
+      "report_sha256": [
+        "15ff5fd7bdd6b35c78d1498d2a70cfad2bd368992f06f1509a3057649f69ae3c",
+        "863e57e43a2958f287d80fcce273254e821288e6a20425f7d5aea22ca5d78f9f"
+      ],
+      "started_at": 1794413191,
+      "status": "pass"
+    },
+    "desktop-package": {
+      "command_sha256": "3a492dd9fc7014860bf0351e0b1bfde2125519bd8e8bbb624a7602ef3efa6b0e",
+      "execution_sha256": "d358e5f687009b37760b5dd00cfb441502226420816cbb6a69169bbe9696ce6e",
+      "exit_code": 0,
+      "finished_at": 1794415140,
+      "replay": {},
+      "report_sha256": [
+        "d358e5f687009b37760b5dd00cfb441502226420816cbb6a69169bbe9696ce6e"
+      ],
+      "started_at": 1794415013,
+      "status": "pass"
+    },
+    "future-clients": {
+      "command_sha256": "959d0a5d518d3123e28518c67e1d3b8bca6dc0be88f2ee7e219b3aee4b2e8867",
+      "execution_sha256": null,
+      "exit_code": null,
+      "finished_at": 1794412252,
+      "replay": {},
+      "report_sha256": [],
+      "started_at": 1794412252,
+      "status": "deferred"
+    },
+    "fuzz": {
+      "command_sha256": "031cd41629b90dd5c4a2b809c7b74f701ab2c0b78653e13f7bfe4ec83b739b39",
+      "execution_sha256": "ba3a673f83df802648a448489f05d6de4c1092dc2cfcd2daab521dd6d2e8fb08",
+      "exit_code": 0,
+      "finished_at": 1794414358,
+      "replay": {
+        "campaigns": {
+          "pointer": "/fuzz",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "86daa2a7c11497bef620c26df95051828f1ea632b918692fb913cc574f3bbde0"
+        }
+      },
+      "report_sha256": [
+        "86daa2a7c11497bef620c26df95051828f1ea632b918692fb913cc574f3bbde0",
+        "ba3a673f83df802648a448489f05d6de4c1092dc2cfcd2daab521dd6d2e8fb08"
+      ],
+      "started_at": 1794413382,
+      "status": "pass"
+    },
+    "independent-review": {
+      "command_sha256": "2a98b4b5e89c473d8332a2428a3bad9a541e81b7ec344dccf680c05d69f90ae1",
+      "execution_sha256": null,
+      "exit_code": null,
+      "finished_at": 1794412252,
+      "replay": {},
+      "report_sha256": [],
+      "started_at": 1794412252,
+      "status": "deferred"
+    },
+    "live-routing": {
+      "command_sha256": "b14c6a7fc51009bd6d555ca018d95b1a551089b14c106c8660116b138396f2d5",
+      "execution_sha256": null,
+      "exit_code": null,
+      "finished_at": 1794412252,
+      "replay": {},
+      "report_sha256": [],
+      "started_at": 1794412252,
+      "status": "deferred"
+    },
+    "native": {
+      "command_sha256": "84a50cd8ca749a95163c8b034c79dc9fdc8fd723cf327b3e0db30c963611a756",
+      "execution_sha256": "8192acd7924c69cade27913cf0a8007f24a8ea7b216d05919ae775f5f327bcb6",
+      "exit_code": 0,
+      "finished_at": 1794413068,
+      "replay": {
+        "assertions": {
+          "pointer": "/scenarios",
+          "projected": false,
+          "report": "native/acceptance.json",
+          "source_report_sha256": "d515d006576220fcc62748933be4030659b8781670c43913144e92a88518a20c"
+        },
+        "transactions": {
+          "pointer": "/transactions",
+          "projected": false,
+          "report": "native/transactions.json",
+          "source_report_sha256": "0b0102d709776efb40aac365b05cad2a3d0de9a8deae327f23305918e66561e3"
+        }
+      },
+      "report_sha256": [
+        "0b0102d709776efb40aac365b05cad2a3d0de9a8deae327f23305918e66561e3",
+        "8192acd7924c69cade27913cf0a8007f24a8ea7b216d05919ae775f5f327bcb6",
+        "d515d006576220fcc62748933be4030659b8781670c43913144e92a88518a20c"
+      ],
+      "started_at": 1794412590,
+      "status": "pass"
+    },
+    "public-network": {
+      "command_sha256": "eae1a06e4497f28a3b6a24ddefbb37dc7f2f58566f776f8a4d20a97b7d306db0",
+      "execution_sha256": null,
+      "exit_code": null,
+      "finished_at": 1794412252,
+      "replay": {},
+      "report_sha256": [],
+      "started_at": 1794412252,
+      "status": "deferred"
+    },
+    "qualification": {
+      "command_sha256": "4e55041ff49fe11ccb8c779b2dba3c2153df6d7aa1f31b7202da2a9eefb1b0db",
+      "execution_sha256": "85de0edb9bbebf8bd63c9a67d877b44c0fc7a7d97184a9ad8ef61009ec5fa9bc",
+      "exit_code": 0,
+      "finished_at": 1794415142,
+      "replay": {
+        "qualified-artifacts": {
+          "pointer": "/counts",
+          "projected": true,
+          "report": "integration/artifact-results.json",
+          "source_report_sha256": "df13b339d2cbd3a35d081175fcb0e66392770bab0028389b5b7ae5c8d820ad82"
+        }
+      },
+      "report_sha256": [
+        "85de0edb9bbebf8bd63c9a67d877b44c0fc7a7d97184a9ad8ef61009ec5fa9bc",
+        "df13b339d2cbd3a35d081175fcb0e66392770bab0028389b5b7ae5c8d820ad82"
+      ],
+      "started_at": 1794415141,
+      "status": "pass"
+    },
+    "shadow-service": {
+      "command_sha256": "76d5efc6d54780da6d0f23a01726af459cb7192d2696673d4ac12233345afb10",
+      "execution_sha256": "b06eab1c13413c72c42f6ada3682dbdbdbd1766aa8978fdbbedf3df304fd428d",
+      "exit_code": 0,
+      "finished_at": 1794415004,
+      "replay": {
+        "shadow": {
+          "pointer": "/shadow",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "86daa2a7c11497bef620c26df95051828f1ea632b918692fb913cc574f3bbde0"
+        }
+      },
+      "report_sha256": [
+        "86daa2a7c11497bef620c26df95051828f1ea632b918692fb913cc574f3bbde0",
+        "b06eab1c13413c72c42f6ada3682dbdbdbd1766aa8978fdbbedf3df304fd428d"
+      ],
+      "started_at": 1794414359,
+      "status": "pass"
+    },
+    "signer-lifecycle": {
+      "command_sha256": "80772a926fd61b6564940de0d35c0281f6c63c8639cf30e4f0eef050c9ceb67c",
+      "execution_sha256": "c4f7e16b3bfe395f8245fa0c06c2fc0d16ba567b404aa86107a90237febf57fc",
+      "exit_code": 0,
+      "finished_at": 1794413190,
+      "replay": {
+        "roles": {
+          "pointer": "/signers/signer-lifecycle/roles",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "ce3a2ab54ca789e45b3762976191cef5e5da0d70c982e42da36effef77e91ed4"
+        }
+      },
+      "report_sha256": [
+        "c4f7e16b3bfe395f8245fa0c06c2fc0d16ba567b404aa86107a90237febf57fc",
+        "ce3a2ab54ca789e45b3762976191cef5e5da0d70c982e42da36effef77e91ed4"
+      ],
+      "started_at": 1794413069,
+      "status": "pass"
+    },
+    "typed-conditions": {
+      "command_sha256": "6b33b17ec6b8690c349940129042e95cecffeafa0e19639133c01415206251d6",
+      "execution_sha256": "527646a463b8151aef12ef1090cd7359c6344ac291c8686bc65c1b64fd5c4edd",
+      "exit_code": 0,
+      "finished_at": 1794413381,
+      "replay": {
+        "resolutions": {
+          "pointer": "/typed_conditions",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "86daa2a7c11497bef620c26df95051828f1ea632b918692fb913cc574f3bbde0"
+        },
+        "roles": {
+          "pointer": "/signers/typed-conditions/roles",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "73fe3741b82a6edfc26ac5ea00ccc44632def95fee12eeec364a62f39342dc21"
+        }
+      },
+      "report_sha256": [
+        "527646a463b8151aef12ef1090cd7359c6344ac291c8686bc65c1b64fd5c4edd",
+        "73fe3741b82a6edfc26ac5ea00ccc44632def95fee12eeec364a62f39342dc21",
+        "86daa2a7c11497bef620c26df95051828f1ea632b918692fb913cc574f3bbde0"
+      ],
+      "started_at": 1794413309,
+      "status": "pass"
+    }
+  },
+  "profile": "current-local-no-value",
+  "schema": "morph.public_integration_index.v1",
+  "schemas": {
+    "events": "morph.event.v1",
+    "gateway-version": "morph.gateway-api.v1",
+    "hub-version": "morph.hub-api.v1",
+    "runtime": "morph.runtime-store.v1",
+    "signer": "morph.participant_signer.v1"
+  },
+  "scope": "controlled-devnet-no-real-assets",
+  "source_commit": "991f7e30ab2f1225afbccd72862f60784a154196",
+  "source_tree_sha256": "8ca5807393ff3d161678b2055b31dc2e122f69f55fa4c5dc46e8c5edc9175777",
+  "validation": {
+    "artifact_count": 18,
+    "candidate_sha256": "283ffc2c5c269a8956bb403f8710a1f270b845e84f16edac3a55c09dd8932fff",
+    "deployment_authorized": false,
+    "gate_status": {
+      "ci": "pass",
+      "contracts-package": "pass",
+      "cooperative-close": "pass",
+      "desktop-package": "pass",
+      "future-clients": "deferred",
+      "fuzz": "pass",
+      "independent-review": "deferred",
+      "live-routing": "deferred",
+      "native": "pass",
+      "public-network": "deferred",
+      "qualification": "pass",
+      "shadow-service": "pass",
+      "signer-lifecycle": "pass",
+      "typed-conditions": "pass"
+    },
+    "independent_attestation": false,
+    "manifest_sha256": "ac5525ebf42a53634409f27a9d6b96ccded9e892956c78b5dadb529a675d068f",
+    "plan_sha256": "33126b9adcc765fdf24ba7fd85a80d052ea25b9c522a6ca2c568a9333eb7aa26",
+    "qualified_declared_plan": true,
+    "schema": "morph.integration_validation.v1",
+    "scope": "controlled-devnet-no-real-assets"
+  }
+}

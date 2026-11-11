@@ -1,6 +1,6 @@
 # ADR 008: Bounded parsing, compact evidence and authenticated verification
 
-Status: implemented; 114 VM cases passed, exact-candidate qualification pending. Tracks [#63](https://github.com/Morph-Channel-Network/Morph/issues/63).
+Status: implemented; signed `991f7e3` passed 114 VM cases and all ten exact-candidate controlled-devnet gates. See [the qualification record](../evidence/model-cost-991f7e3/README.md). Tracks [#63](https://github.com/Morph-Channel-Network/Morph/issues/63).
 
 The byte/cycle audit of `bc4be3ff` found repeated full conditional parsing,
 duplicated close/splice execution, fixed unused conditional slots and repeated
