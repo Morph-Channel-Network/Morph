@@ -19,13 +19,21 @@ The caller supplies its runtime secret through its own protected input path;
 there is no implicit environment, configuration, URL token or command-line
 secret loader. The Hub applies scopes to the configured secret. The client's
 Debug output is redacted; requests have bounded size/time, no redirects and no
-automatic mutation retry. `HubClientError::OutcomeUnknown` means reconcile before
-issuing another write. It does not authorize a cancellation or signer reset.
+automatic mutation retry. `HubClientError::OutcomeUnknown { mutation }` retains
+its original key/revision for an explicit identical retry. It does not authorize
+a cancellation or signer reset. Bind interactive writes to the reviewed
+`HubView.revision` with `with_expected_revision`; use `with_mutation` only to
+repeat the same request. See [the v1 mutation contract](../../docs/hub-api-mutations.md).
 
 `morph_sdk::api` exposes owned public Hub requests/views. Private persisted Hub
 state and monotonic signer journals remain server/operator implementation
-objects. Public quantities are decimal strings/canonical hex; dynamic state-file
-exports preserve u128 integers without conversion to floating point.
+objects. Amount strings and revisions are canonical decimal, identifiers canonical hex;
+all Hub-owned u64 fields use the same decimal-string contract. Generated
+[type schemas](../../docs/api/README.md) are checked by CI. Administrative export/preview/restore use `StateArchive` and
+`RestoreArchiveRequest`, separate from the private runtime snapshot. Archive
+amounts preserve the full u128 range as decimal strings; old raw-snapshot shapes
+are rejected. [Generated Hub endpoints](../../docs/api/hub-endpoints.md) and
+[OpenAPI](../../docs/api/hub-openapi.json) share the server's route registry.
 
 `morph_sdk::inspection::{inspect, inspect_signature}` review public documents via
 canonical package/Core validation. `morph_sdk::packages::construction` exposes

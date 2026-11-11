@@ -1,0 +1,114 @@
+{
+  "schema": "morph.factory_child_close_checkpoint.v1",
+  "scope": "controlled-devnet-no-real-assets",
+  "source_report_sha256": "d3f6802342c30ebcff5e2a971ea15b3d9dc0862150b6c4efee46308dee5d0d23",
+  "source_dirty": true,
+  "source_unchanged_during_native_run": true,
+  "observations_on_controlled_forks": true,
+  "final_branch": "unilateral fallback; terminal conditional claim remains in Batch",
+  "children": {
+    "reduced": {
+      "close": {
+        "transaction_hash": "0x520e5283318f0e2acf26101b301d877553cde7dcb8b4843f688fbf24a3dcdad7",
+        "status": "finalised",
+        "confirmation_depth": 4,
+        "fee_shannons": "100000",
+        "metrics": {
+          "estimated_cycles": 11788922,
+          "tx_size_bytes": 2646
+        }
+      },
+      "invariants": {
+        "zero_since": true,
+        "all_payouts_verified": true,
+        "parent_journals_unchanged": true,
+        "child_journals_unchanged_after_rollback": true
+      },
+      "branch": "cooperative_branch_orphaned_before_existing_unilateral_acceptance",
+      "retained_branch_unilateral_finalise": {
+        "tx_hash": "0xa8fbb5e974b10453fad13a711338bde032bcb4bbcfa600e77d85d287f53b7486",
+        "status": "Committed",
+        "metrics": {
+          "estimated_cycles": 2292367,
+          "tx_size_bytes": 2082
+        }
+      },
+      "batch": null
+    },
+    "retained": {
+      "close": {
+        "transaction_hash": "0x504434f9d802e486165ac0382bd381338622a6e68eb3b0348b2e82b16f9b97a8",
+        "status": "finalised",
+        "confirmation_depth": 4,
+        "fee_shannons": "100000",
+        "metrics": {
+          "estimated_cycles": 11853862,
+          "tx_size_bytes": 2646
+        }
+      },
+      "invariants": {
+        "zero_since": true,
+        "all_payouts_verified": true,
+        "parent_journals_unchanged": true,
+        "child_journals_unchanged_after_rollback": true
+      },
+      "branch": "cooperative_branch_orphaned_before_existing_unilateral_acceptance",
+      "retained_branch_unilateral_finalise": {
+        "tx_hash": "0x58774902bdb9e44b701201adee87e43b1d7b6c80d46c305bd08cc6d41ba3db64",
+        "status": "Committed",
+        "metrics": {
+          "estimated_cycles": 2294808,
+          "tx_size_bytes": 2082
+        }
+      },
+      "batch": null
+    },
+    "terminal": {
+      "close": {
+        "transaction_hash": "0xae8d5b1de1d1f21360bbb9298cad9d783250c3dafb71ce08c0982795f01d521e",
+        "status": "finalised",
+        "confirmation_depth": 4,
+        "fee_shannons": "100000",
+        "metrics": {
+          "estimated_cycles": 12699544,
+          "tx_size_bytes": 3485
+        }
+      },
+      "invariants": {
+        "zero_since": true,
+        "all_payouts_verified": true,
+        "parent_journals_unchanged": true,
+        "child_journals_unchanged_after_rollback": true
+      },
+      "branch": "cooperative_branch_orphaned_before_existing_unilateral_acceptance",
+      "retained_branch_unilateral_finalise": {
+        "tx_hash": "0x50de2663189365eaeea8704139a66d9b22370a6791fdc4532ecd84028301690f",
+        "status": "Committed",
+        "metrics": {
+          "estimated_cycles": 2957204,
+          "tx_size_bytes": 2921
+        }
+      },
+      "batch": {
+        "fulfilled": {
+          "tx_hash": "0x97a098499475c34d2a71dee6d4c07db7c10bdc57079bd9da624e0f3436a243d0",
+          "status": "Committed",
+          "metrics": {
+            "estimated_cycles": 1716783,
+            "tx_size_bytes": 2033
+          }
+        },
+        "refunded": {
+          "tx_hash": "0xafb2556d2dc3c5cabd7a27b933d04500762fe2347f4b80767cafe01c8948447b",
+          "status": "Committed",
+          "metrics": {
+            "estimated_cycles": 1723640,
+            "tx_size_bytes": 2033
+          }
+        },
+        "canonical_payouts_verified": true,
+        "branches": "fulfilment_orphaned_then_refund_before_outer_close_rollback"
+      }
+    }
+  }
+}

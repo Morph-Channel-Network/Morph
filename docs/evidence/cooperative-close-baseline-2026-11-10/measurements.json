@@ -1,0 +1,251 @@
+{
+  "schema": "morph.cooperative_close_baseline.v1",
+  "date": "2026-11-10",
+  "head": "07a3fa04ba7c556a8af7a4cfd61c21ba39d4e09b",
+  "dirty_worktree": true,
+  "scope": "Current verifier baseline only; proposed close not implemented or measured",
+  "command": "cargo test --locked -p morph-core --test contract_scripts current_close_geometry -- --ignored --nocapture --test-threads=1",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2",
+  "test_binary_sha256": "6e835f8249278ecd9841035886c9321092d0e0b014172778973b7835715d4e79",
+  "test_binary_path": "target/debug/deps/contract_scripts-ee607657e7130c6d",
+  "tests_passed": 2,
+  "clippy_passed": true,
+  "conditional_consolidation_host_test_passed": true,
+  "elf_manifest_matches": true,
+  "elfs": [
+    {
+      "name": "morph-state-lock",
+      "ckb_data_hash": "0xec66a96655a9bda524e2a55a6da2b90e9982f3b57088186134438a20a2ae45b4",
+      "size_bytes": 12960
+    },
+    {
+      "name": "morph-state-type",
+      "ckb_data_hash": "0x20525c1fbb3a7b56ac6e8e79ee2a6399f8b5c8b46badc7404a42327119065bbb",
+      "size_bytes": 184144
+    },
+    {
+      "name": "morph-factory-type",
+      "ckb_data_hash": "0x73f77e4980a6127b03353eac1961c3aa5bdc35fc71d2faf6658fbf85cf9f8799",
+      "size_bytes": 224224
+    },
+    {
+      "name": "morph-factory-vault-lock",
+      "ckb_data_hash": "0x91e6104edf5b1474687acbe7ef1ec9f52e51e3bc10c9f51033e7dd182ad9dba4",
+      "size_bytes": 94872
+    },
+    {
+      "name": "morph-vault-lock",
+      "ckb_data_hash": "0x793dcfd7b55ae4221837a7c2c25cdc29810b03bb83182545a3f07f34e984f6fa",
+      "size_bytes": 165272
+    },
+    {
+      "name": "morph-batch-lock",
+      "ckb_data_hash": "0xb565ee1f9518a90aa2908e99418dbe9b8d563701349dd20bce33558a85145bf5",
+      "size_bytes": 44160
+    },
+    {
+      "name": "morph-sponsor-lock",
+      "ckb_data_hash": "0x016cea922778eae65dcda0279b5e33f6aa76b965a6eac59b03d7918c3e2f5aa6",
+      "size_bytes": 16592
+    },
+    {
+      "name": "morph-devnet-xudt",
+      "ckb_data_hash": "0x0aa0aefe66ef0eda5121d7c12b0856d0bff08fc204a8119c0afb192a3416cc05",
+      "size_bytes": 13584
+    }
+  ],
+  "file_hash_capture": "After run; not a clean-source build attestation",
+  "files_sha256": {
+    "Cargo.lock": "9bbb801e6eb0810ebe514b0718340f7f7dcbd0ece402328e017a1052486a53f8",
+    "Cargo.toml": "90249a5545406f98a310bf903322bec8e8c1e1c004ed6f8d142306f12e392419",
+    "rust-toolchain.toml": "e3a213e0d222e94d213cafbc20932eb3f76c643b4dd63756acf95192df2aa310",
+    "release/factory-preproduction/contracts.json": "634fc40ef5e72ede1e779265111860e9c1d3af26566a8e5dc86ee5d793c77a44",
+    "crates/morph-core/tests/contract_scripts/current_boundaries.rs": "9619124f3a14a5898f46de6494a3779cddd53e0c8a53e730d408f19188c4aaef",
+    "crates/morph-core/tests/contract_scripts/factory_multi_asset.rs": "37ea71fcdce9df369db0c206563cb273ebcdda792201281374cb56c851982816",
+    "crates/morph-core/tests/contract_scripts/factory_multi_asset_delegation.rs": "42d15ea1db016ae796a65a2ab0b633a40a3cbbe3d0fe006d9572acd4b9d7ccc7",
+    "crates/morph-core/tests/contract_scripts/factory_multi_asset_reduced.rs": "9206563ba1ce86d84f3f3b56871b3bb1acf4c57f48aae4479fa853e22fe896c4",
+    "crates/morph-core/tests/contract_scripts/multi_asset.rs": "b92dab3bddd2a560e7a6c5210239cae61d8df12095bb6cc4fe3bd2efedae97bd",
+    "crates/morph-core/tests/contract_scripts/multi_asset_close_costs.rs": "4b145422ad1e277c71d4db5965cf086c0285e7debf14a63daccd08bc8a307361",
+    "crates/morph-core/tests/contract_scripts/multi_asset_conditional.rs": "b56f003ace6cf2220a7bf98f54a2d4ad02eee2f5b6f01f76c12ebaa494300959",
+    "crates/morph-core/tests/contract_scripts.rs": "7f398f608ad90c5d89d114d567c7ca8161674e2f4429ee91622ec7f65da0e901",
+    "crates/morph-core/tests/multi_asset_cases/conditional_backend.rs": "3093392461ea4920b5010bad2447607958ccc52d35f6dd102c4b86ec309e5ecc",
+    "contracts/morph-batch-lock/src/main.rs": "5377aeb1299eac18a375d3c91111a21c259b47a40e453929a308edf938ec91bf",
+    "contracts/morph-devnet-xudt/src/main.rs": "0bc7be60e286d40fe33eb5e6009fae3d7d08ec2796c92aced11ea2d31ba191e9",
+    "contracts/morph-factory-type/src/main.rs": "af5b4734d19818f30237b8dd5947e75450c8e5b8a68347611da4adde8a3608ad",
+    "contracts/morph-factory-vault-lock/src/main.rs": "ef562268e421535410eb7dc73f7dbd9e7aac9559f129e403ed9aaf1693a788e2",
+    "contracts/morph-script-common/src/crypto_vectors.rs": "fa9e16f172df0728aa1ba25db1edbe353117123cc57ed45fd5411090fe6049dd",
+    "contracts/morph-script-common/src/factory_multi_asset/materialisation.rs": "1e55dc2d18bade7541f78da5b6d31fbb14ce9897b825505ef8b6032a79fec0f8",
+    "contracts/morph-script-common/src/factory_multi_asset/reduced.rs": "be34ce79ebc6996a2ba414a6f4d7092d79b040e3f70a2980900c9a1bf464896c",
+    "contracts/morph-script-common/src/factory_multi_asset/state.rs": "7665390c887617e4c5415ba47aea1e7b34e3342ed557dc8c662ee46e79558ab9",
+    "contracts/morph-script-common/src/factory_multi_asset.rs": "677dfd6b8809a3593e023165dc1a849696f5f2eb213106b85bd28055c1985d82",
+    "contracts/morph-script-common/src/factory_multi_asset_runtime.rs": "22010d3fcde7fadf7fbc5d1edbb045d6c7b7de404389cf2ff3c36061cedf1552",
+    "contracts/morph-script-common/src/lib.rs": "3df4948e206285e6612b9321cab0648b464a38da9eccabccef2f3e5167c8772b",
+    "contracts/morph-script-common/src/multi_asset.rs": "ceabf4da1ae073e458fd04c843b49a5ddda69248d32104b41cfc8580e7f161e3",
+    "contracts/morph-script-common/src/multi_asset_conditional.rs": "4fe103b875ebe43e73bff217483b024ca473c8467c9e7b22b6fb645df527be6f",
+    "contracts/morph-script-common/src/multi_asset_runtime.rs": "2a249ab74fd6c0984272ec33e83cc90c2d0b353ded83a3c8f261cb148702e6e0",
+    "contracts/morph-script-common/src/multi_asset_splice.rs": "50ad8a77a39384cce731ca56295733dbe69ab4598c5f2d99a0bbe0820f346587",
+    "contracts/morph-script-common/src/multi_asset_splice_runtime.rs": "343a2cc091a8b4b81281a5c5a24b555a754337fba691baaad3530779658674d3",
+    "contracts/morph-sponsor-lock/src/main.rs": "c7fb8593ab7fea0000bfe725c43718f0c13019cada0558527f684e8ffa1ed9a6",
+    "contracts/morph-state-lock/src/main.rs": "5cff294f280e539e6638f41e6c522dbc0034e3094abe6db34a5c61a81fc05dc8",
+    "contracts/morph-state-type/src/main.rs": "e2b9e048aa2af71bc1f27c7f3dc14f7afc30c10e05e060cc4d9cf3b842607f2c",
+    "contracts/morph-state-type/src/multi_asset.rs": "4f27b573664ecbeca7cf2368a168874e65ce5ceb41ac0aae2dbd269193b7aff1",
+    "contracts/morph-vault-lock/src/main.rs": "4f0c81c00db8bfbd58dd732042dfbe5494b366957583b59f793f27aa5574ba3d",
+    "contracts/morph-vault-lock/src/multi_asset.rs": "7197d8a6e75a3384df157ac2a9f6d7069974744fb1d32167bea029fe79d2fb4d"
+  },
+  "transactions": [
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 2,
+      "cycles": 4809675,
+      "input_capacity_shannons": 100000000000,
+      "inputs": 1,
+      "label": "publish-0-tokens-plain-true",
+      "output_occupied_shannons": 46400000000,
+      "outputs": 1,
+      "serialized_bytes": 1843
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 3,
+      "cycles": 545983,
+      "input_capacity_shannons": 150000000000,
+      "inputs": 2,
+      "label": "finalise-0-tokens-plain-true",
+      "output_occupied_shannons": 12600000000,
+      "outputs": 3,
+      "serialized_bytes": 1460
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 2,
+      "cycles": 4811609,
+      "input_capacity_shannons": 100000000000,
+      "inputs": 1,
+      "label": "publish-1-tokens-plain-false",
+      "output_occupied_shannons": 46400000000,
+      "outputs": 1,
+      "serialized_bytes": 1932
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 4,
+      "cycles": 579504,
+      "input_capacity_shannons": 150000000000,
+      "inputs": 2,
+      "label": "finalise-1-tokens-plain-false",
+      "output_occupied_shannons": 28800000000,
+      "outputs": 3,
+      "serialized_bytes": 1788
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 2,
+      "cycles": 4928692,
+      "input_capacity_shannons": 100000000000,
+      "inputs": 1,
+      "label": "publish-4-tokens-plain-false",
+      "output_occupied_shannons": 46400000000,
+      "outputs": 1,
+      "serialized_bytes": 2889
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 4,
+      "cycles": 1113730,
+      "input_capacity_shannons": 300000000000,
+      "inputs": 5,
+      "label": "finalise-4-tokens-plain-false",
+      "output_occupied_shannons": 102600000000,
+      "outputs": 9,
+      "serialized_bytes": 4023
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 2,
+      "cycles": 5193697,
+      "input_capacity_shannons": 100000000000,
+      "inputs": 1,
+      "label": "publish-8-tokens-plain-false",
+      "output_occupied_shannons": 46400000000,
+      "outputs": 1,
+      "serialized_bytes": 4165
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 4,
+      "cycles": 1903054,
+      "input_capacity_shannons": 500000000000,
+      "inputs": 9,
+      "label": "finalise-8-tokens-plain-false",
+      "output_occupied_shannons": 201000000000,
+      "outputs": 17,
+      "serialized_bytes": 7003
+    },
+    {
+      "actual_fee_shannons": 10000,
+      "cell_deps": 5,
+      "cycles": 20204712,
+      "input_capacity_shannons": 300000000000,
+      "inputs": 4,
+      "label": "splice-replace-all-1-tokens",
+      "output_occupied_shannons": 86700000000,
+      "outputs": 4,
+      "serialized_bytes": 3863
+    },
+    {
+      "actual_fee_shannons": 10000,
+      "cell_deps": 5,
+      "cycles": 21928525,
+      "input_capacity_shannons": 600000000000,
+      "inputs": 10,
+      "label": "splice-replace-all-4-tokens",
+      "output_occupied_shannons": 195000000000,
+      "outputs": 10,
+      "serialized_bytes": 7448
+    },
+    {
+      "actual_fee_shannons": 10000,
+      "cell_deps": 5,
+      "cycles": 24972900,
+      "input_capacity_shannons": 1000000000000,
+      "inputs": 18,
+      "label": "splice-replace-all-8-tokens",
+      "output_occupied_shannons": 339400000000,
+      "outputs": 18,
+      "serialized_bytes": 12228
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 2,
+      "cycles": 4996318,
+      "input_capacity_shannons": 100000000000,
+      "inputs": 1,
+      "label": "conditional-publication-ckb-plus-token",
+      "output_occupied_shannons": 46400000000,
+      "outputs": 1,
+      "serialized_bytes": 3026
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 4,
+      "cycles": 1131456,
+      "input_capacity_shannons": 200000000000,
+      "inputs": 3,
+      "label": "conditional-finalise-ckb-plus-token",
+      "output_occupied_shannons": 43300000000,
+      "outputs": 4,
+      "serialized_bytes": 3119
+    },
+    {
+      "actual_fee_shannons": 0,
+      "cell_deps": 1,
+      "cycles": 98215,
+      "input_capacity_shannons": 50000000000,
+      "inputs": 1,
+      "label": "conditional-batch-fulfill",
+      "output_occupied_shannons": 8400000000,
+      "outputs": 2,
+      "serialized_bytes": 1453
+    }
+  ]
+}

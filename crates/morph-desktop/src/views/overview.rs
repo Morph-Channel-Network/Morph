@@ -36,52 +36,6 @@ impl Desktop {
                         })),
                 ),
         );
-        view = view.child(
-            d::panel()
-                .p_4()
-                .bg(linear_gradient(
-                    115.,
-                    linear_color_stop(rgb(0x201a3d), 0.),
-                    linear_color_stop(rgb(0x13192b), 1.),
-                ))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .flex_wrap()
-                        .gap_3()
-                        .child(
-                            div()
-                                .flex_1()
-                                .child(d::caption(self.t(Text::FlowCaption)))
-                                .child(
-                                    div()
-                                        .text_lg()
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .child(self.t(Text::FlowNote)),
-                                ),
-                        )
-                        .child(
-                            Button::new("replay-flow")
-                                .ghost()
-                                .small()
-                                .icon(IconName::Play)
-                                .label(self.t(Text::FlowReplay))
-                                .disabled(!self.motion_enabled(window, cx))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.motion_generation = this.motion_generation.wrapping_add(1);
-                                    cx.notify();
-                                })),
-                        ),
-                )
-                .child(
-                    div().w_full().h(px(112. * self.scale())).child(
-                        self.flux
-                            .clone()
-                            .cached(gpui_kit::StyleRefinement::default().size_full()),
-                    ),
-                ),
-        );
         if !self.connected {
             return view
                 .child(
@@ -98,7 +52,7 @@ impl Desktop {
                         .gap_6()
                         .child(
                             img("branding/morph-logo.png")
-                                .size(px(104.))
+                                .size(px(132. * self.scale()))
                                 .rounded(px(24.)),
                         )
                         .child(
@@ -124,8 +78,16 @@ impl Desktop {
                                 .flex_wrap()
                                 .gap_3()
                                 .child(
-                                    Button::new("welcome-connect")
+                                    Button::new("welcome-wallet")
                                         .primary()
+                                        .icon(IconName::Wallet)
+                                        .label(self.t(Text::OpenLocalWallet))
+                                        .on_click(cx.listener(|this, _, w, cx| {
+                                            this.navigate(Page::Wallet, w, cx)
+                                        })),
+                                )
+                                .child(
+                                    Button::new("welcome-connect")
                                         .icon(IconName::Plug)
                                         .label(self.t(Text::ConnectToHub))
                                         .on_click(cx.listener(|this, _, window, cx| {
@@ -147,76 +109,152 @@ impl Desktop {
                 .child(self.render_recent_tasks(window, cx));
         }
         if let Some(s) = &self.state {
-            let cards = vec![
-                (
-                    self.t(Text::CKBRPC).to_owned(),
-                    s.rpc
-                        .tip_height
-                        .map_or(self.t(Text::NotObserved).into(), |h| format!("#{h}")),
-                    self.t(Text::ANodeObservationNotChannelConfirmation).into(),
-                    if s.rpc.tip_height.is_some() {
-                        Tone::Info
-                    } else {
-                        Tone::Neutral
-                    },
-                ),
-                (
-                    self.t(Text::WatchEvidence).into(),
-                    if s.watchtower.last_error.is_some() {
-                        self.t(Text::NeedsAttention).into()
-                    } else if s.watchtower.configured && s.watchtower.file_exists {
-                        self.t(Text::Available).into()
-                    } else {
-                        self.t(Text::NotConfigured).into()
-                    },
-                    format!(
-                        "{} {}",
-                        s.watchtower.alerts.len(),
-                        self.t(Text::AlertsServiceHealthSeparate)
-                    ),
-                    if s.watchtower.last_error.is_some() {
-                        Tone::Warning
-                    } else {
-                        Tone::Neutral
-                    },
-                ),
-                (
-                    self.t(Text::ChannelRecords).into(),
-                    s.channels.len().to_string(),
-                    self.t(Text::LocalHubProjection).into(),
-                    Tone::Neutral,
-                ),
-                (
-                    self.t(Text::RecoveryPackages).into(),
-                    s.multi_asset_package_count.to_string(),
-                    self.t(Text::SavedSignedEvidence).into(),
-                    Tone::Good,
-                ),
-            ];
-            let mut metrics = div().flex().flex_col().gap_4();
-            for chunk in cards.chunks(if wide { 4 } else { 2 }) {
-                let mut row = div().flex().gap_4();
-                for (label, value, note, tone) in chunk {
-                    let card = d::metric(label.clone(), value.clone(), note.clone(), *tone)
-                        .hover(|style| style.border_color(rgb(d::ACCENT)));
-                    if self.motion_enabled(window, cx) {
-                        use gpui_kit::AnimationExt;
-                        row = row.child(
-                            card.with_animation(
-                                gpui_kit::ElementId::Name(format!("metric-{label}-{value}").into()),
-                                gpui_kit::Animation::new(crate::motion::ENTER_DURATION)
-                                    .with_max_fps(60.),
-                                |e, t| e.opacity(0.85 + 0.15 * t),
-                            ),
-                        );
-                    } else {
-                        row = row.child(card);
-                    }
-                }
-                metrics = metrics.child(row)
+            let balance = p::local_ckb_total(
+                s.channels
+                    .iter()
+                    .map(|c| (c.channel_id.as_str(), c.balances.as_slice())),
+            )
+            .map(|value| p::amount(&value.to_string(), true, self.language))
+            .unwrap_or_else(|| self.t(Text::BalanceUnavailable).into());
+            let mut stats = div().flex().flex_wrap().gap_6();
+            for (label, count) in [
+                (Text::Channels2, s.channels.len()),
+                (Text::Factory, s.factories.len()),
+                (Text::RecoveryPackages, s.multi_asset_package_count),
+            ] {
+                stats = stats.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_xl()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(count.to_string()),
+                        )
+                        .child(d::caption(self.t(label))),
+                );
             }
-            view = view.child(metrics);
+            let hero = d::panel()
+                .p_5()
+                .bg(linear_gradient(
+                    120.,
+                    linear_color_stop(rgb(0x26213e), 0.),
+                    linear_color_stop(rgb(0x142035), 1.),
+                ))
+                .flex()
+                .flex_col()
+                .gap_3()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .child(
+                            d::caption(self.t(Text::LocalChannelBalance))
+                                .flex_1()
+                                .text_color(rgb(0xc5bfe8)),
+                        )
+                        .child(d::badge(self.t(Text::LocalHubProjection), Tone::Neutral)),
+                )
+                .child(
+                    div()
+                        .id("overview-ckb-total")
+                        .overflow_x_scroll()
+                        .whitespace_nowrap()
+                        .text_size(gpui_kit::rems(if balance.len() > 24 { 1.6 } else { 2.8 }))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(balance),
+                )
+                .child(d::caption(self.t(Text::RecordedCKBOnly)))
+                .child(div().h(px(1.)).bg(rgb(0x3a3654)))
+                .child(
+                    div()
+                        .flex()
+                        .items_end()
+                        .flex_wrap()
+                        .gap_4()
+                        .child(stats.flex_1())
+                        .child(
+                            Button::new("balance-channels")
+                                .ghost()
+                                .icon(IconName::ArrowUpRight)
+                                .label(self.t(Text::ViewChannels))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.navigate(Page::Channels, window, cx)
+                                })),
+                        ),
+                );
+            view = view.child(hero);
         }
+        let animated = self.motion_enabled(window, cx);
+        let mut shortcuts = div().flex().gap_3();
+        for (i, (op, icon, note)) in [
+            (
+                HubOperation::ImportRoot,
+                IconName::ArrowLeftRight,
+                Text::FundingCeremony,
+            ),
+            (
+                HubOperation::CreateInvoice,
+                IconName::Wallet,
+                Text::RequestPaymentNote,
+            ),
+            (
+                HubOperation::ImportRecovery,
+                IconName::FolderOpen,
+                Text::KeepRecoveryNote,
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let button = Button::new(("quick-action", i))
+                .ghost()
+                .h_auto()
+                .py_4()
+                .px_4()
+                .flex_1()
+                .min_w_0()
+                .rounded(px(14.))
+                .accessibility_label(operation_title(op, self.language))
+                .child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .whitespace_normal()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .child(d::icon_tile(icon))
+                                .child(Icon::new(IconName::ArrowUpRight).text_color(rgb(d::DIM))),
+                        )
+                        .child(
+                            div()
+                                .text_base()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(operation_title(op, self.language)),
+                        )
+                        .child(d::caption(self.t(note))),
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.start_task(op, String::new(), window, cx)
+                }));
+            shortcuts = shortcuts.child(crate::motion::interactive(
+                button,
+                ("quick-action", i),
+                animated,
+                window,
+                cx,
+            ));
+        }
+        view = view.child(shortcuts);
         let pending_roots = self
             .state
             .as_ref()
@@ -280,7 +318,17 @@ impl Desktop {
                             .flex_1()
                             .min_w_0()
                             .child(d::badge(self.t(Text::ObserverWarningRecord), Tone::Warning))
-                            .child(d::caption(alert.message.clone())),
+                            .child(d::caption(
+                                watch_label(
+                                    serde_json::to_value(&alert.event)
+                                        .ok()
+                                        .and_then(|v| v.as_str().map(str::to_owned))
+                                        .as_deref()
+                                        .unwrap_or(""),
+                                    self.language,
+                                )
+                                .to_owned(),
+                            )),
                     )
                     .child(
                         Button::new(("review-warning", i))
@@ -292,10 +340,8 @@ impl Desktop {
                     ),
             );
         }
-        if pending_roots.is_empty() {
-            todo = todo.child(d::caption(
-                self.t(Text::NoIncompleteFundingCeremoniesImportA),
-            ));
+        if pending_roots.is_empty() && alerts.is_empty() {
+            todo = todo.child(d::caption(self.t(Text::NoPendingActions)));
         }
         for (i, root) in pending_roots.iter().take(3).enumerate() {
             let id = root.root.transaction_hash.clone();
@@ -360,7 +406,10 @@ impl Desktop {
                     self.t(Text::Connection),
                     self.connected_endpoint.clone(),
                 ))
-                .child(d::key_value(self.t(Text::Network), state.network.clone()))
+                .child(d::key_value(
+                    self.t(Text::Network),
+                    p::network_name(&state.network, self.language),
+                ))
                 .child(d::key_value(
                     self.t(Text::Permissions),
                     if state.security.auth_required {
@@ -382,11 +431,30 @@ impl Desktop {
         );
         view = view
             .child(if wide {
-                div().flex().gap_5().child(todo).child(safety)
+                div()
+                    .flex()
+                    .items_start()
+                    .gap_5()
+                    .child(self.render_asset_overview(window, cx).flex_1().min_w_0())
+                    .child(
+                        div()
+                            .w(px(300. * self.scale()))
+                            .flex_shrink_0()
+                            .flex()
+                            .flex_col()
+                            .gap_5()
+                            .child(todo)
+                            .child(safety),
+                    )
             } else {
-                div().flex().flex_col().gap_5().child(todo).child(safety)
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_5()
+                    .child(todo)
+                    .child(self.render_asset_overview(window, cx))
+                    .child(safety)
             })
-            .child(self.render_asset_overview())
             .child(self.render_recent_tasks(window, cx));
         view
     }
@@ -408,16 +476,33 @@ impl Desktop {
         }
     }
 
-    pub(super) fn render_asset_overview(&self) -> Div {
+    pub(super) fn render_asset_overview(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let animated = self.motion_enabled(window, cx);
         let mut card = d::panel()
             .flex()
             .flex_col()
-            .gap_4()
+            .gap_5()
             .child(
                 div()
-                    .text_lg()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(self.t(Text::RecordedBalances)),
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .flex_1()
+                            .child(self.t(Text::ChannelDistribution)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_4()
+                            .child(allocation_label(self.t(Text::Local), 0x9f87ff))
+                            .child(allocation_label(self.t(Text::Remote), 0x5878ad))
+                            .child(allocation_label(self.t(Text::Pending), d::WARNING)),
+                    ),
             )
             .child(d::caption(self.t(Text::PerChannelAndAssetLocalProjection)));
         let Some(s) = &self.state else { return card };
@@ -425,43 +510,110 @@ impl Desktop {
             return card.child(d::caption(self.t(Text::NoChannelBalancesRecordedYet)));
         }
         for (i, c) in s.channels.iter().take(6).enumerate() {
+            let peer = s
+                .peers
+                .iter()
+                .find(|p| p.pubkey == c.counterparty_pubkey)
+                .map(|p| p.alias.as_str())
+                .filter(|alias| !alias.trim().is_empty())
+                .unwrap_or(self.t(Text::Channel));
+            let id = c.channel_id.clone();
+            let mut group = div().flex().flex_col().gap_4().child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(d::icon_tile(IconName::ArrowLeftRight))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(div().font_weight(FontWeight::MEDIUM).child(peer.to_owned()))
+                            .child(d::caption(p::short(&c.channel_id))),
+                    )
+                    .child(d::badge(
+                        p::human_state(&c.phase, self.language),
+                        Tone::Neutral,
+                    ))
+                    .child(
+                        Button::new(("overview-channel", i))
+                            .ghost()
+                            .icon(IconName::ArrowUpRight)
+                            .tooltip(self.t(Text::Open))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.navigate(Page::Channels, window, cx);
+                                this.select_record_by_id(Page::Channels, &id, window, cx)
+                            })),
+                    ),
+            );
             for (j, b) in c.balances.iter().take(8).enumerate() {
                 let ckb = matches!(b.asset, morph_sdk::api::AssetView::Ckb);
-                card = card.child(d::rule()).child(
-                    div()
-                        .id(("balance", i * 8 + j))
-                        .flex()
-                        .gap_4()
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .child(p::asset_name(&b.asset))
-                                .child(d::caption(p::short(&c.channel_id))),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .child(d::caption(self.t(Text::Local)))
-                                .child(p::amount(&b.local, ckb, self.language)),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .child(d::caption(self.t(Text::Remote)))
-                                .child(p::amount(&b.remote, ckb, self.language)),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .child(d::caption(self.t(Text::Pending)))
-                                .child(p::amount(&b.pending, ckb, self.language)),
+                let mut amounts = div().flex().flex_wrap().gap_4();
+                for (lane, (label, value, color)) in [
+                    (Text::Local, &b.local, d::TEXT),
+                    (Text::Remote, &b.remote, d::MUTED),
+                    (Text::Pending, &b.pending, d::MUTED),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    amounts = amounts.child(
+                        div()
+                            .flex_1()
+                            .min_w(px(105. * self.scale()))
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(d::caption(self.t(label)))
+                            .child(
+                                div()
+                                    .id(("allocation-value", i * 24 + j * 3 + lane))
+                                    .min_w_0()
+                                    .overflow_x_scroll()
+                                    .whitespace_nowrap()
+                                    .text_color(rgb(color))
+                                    .child(p::amount(value, ckb, self.language)),
+                            ),
+                    );
+                }
+                let mut track = div()
+                    .w_full()
+                    .h(px(5. * self.scale()))
+                    .rounded_full()
+                    .bg(rgb(d::BORDER));
+                if let Some(shares) = p::allocation_shares(&b.local, &b.remote, &b.pending) {
+                    let bar = window.use_keyed_state(
+                        gpui_kit::ElementId::Name(
+                            format!("allocation-{}-{j}", c.channel_id).into(),
                         ),
+                        cx,
+                        |_, cx| cx.new(|_| crate::motion::Distribution::new(shares, animated)),
+                    );
+                    let bar = bar.read(cx).clone();
+                    bar.update(cx, |bar, cx| bar.configure(shares, animated, cx));
+                    track =
+                        track.child(bar.cached(gpui_kit::StyleRefinement::default().size_full()));
+                }
+                group = group.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(d::caption(p::asset_name(&b.asset)).text_color(rgb(d::ACCENT)))
+                        .child(amounts)
+                        .child(track),
                 );
             }
+            if i > 0 {
+                card = card.child(d::rule());
+            }
+            card = card.child(group);
+        }
+        if s.channels.len() > 6 {
+            card = card.child(d::caption(self.t(Text::ChannelsPreviewLimit)));
         }
         card
     }
@@ -509,4 +661,13 @@ impl Desktop {
                     })),
             )
     }
+}
+
+fn allocation_label(label: &'static str, color: u32) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(div().size(px(6.)).rounded_full().bg(rgb(color)))
+        .child(d::caption(label))
 }

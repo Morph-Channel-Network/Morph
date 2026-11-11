@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "Check": {
+      "additionalProperties": false,
+      "properties": {
+        "checked_at_ms": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dependency": {
+          "$ref": "#/$defs/Dependency"
+        },
+        "reason": {
+          "$ref": "#/$defs/Reason"
+        },
+        "valid_until_ms": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "dependency",
+        "reason",
+        "checked_at_ms",
+        "valid_until_ms"
+      ],
+      "type": "object"
+    },
+    "Dependency": {
+      "enum": [
+        "store",
+        "chain_identity",
+        "deployment",
+        "signer_policy",
+        "supervision",
+        "outbox",
+        "publication_budget",
+        "worker",
+        "delivery_policy",
+        "provider_identity",
+        "capacity"
+      ],
+      "type": "string"
+    },
+    "Reason": {
+      "enum": [
+        "verified",
+        "not_configured",
+        "not_implemented",
+        "unverified",
+        "busy",
+        "unavailable",
+        "stale",
+        "wrong_network",
+        "wrong_deployment",
+        "store_inconsistent",
+        "unsupported_schema",
+        "outbox_blocked",
+        "revision_changed",
+        "clock_invalid",
+        "worker_stopped",
+        "dead_letters",
+        "backlog_aged",
+        "archive_required",
+        "consumer_sealed",
+        "policy_denied",
+        "provider_mismatch",
+        "capacity_exhausted"
+      ],
+      "type": "string"
+    },
+    "Scope": {
+      "enum": [
+        "local_registry",
+        "invoice_issuance",
+        "channel_signing",
+        "payment_submission",
+        "chain_publication",
+        "event_dispatch",
+        "authority_supervision"
+      ],
+      "type": "string"
+    },
+    "ScopeReadiness": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "maxItems": 11,
+          "type": "array"
+        },
+        "configured": {
+          "description": "Implemented and configured in this service. Unsupported scopes never\ncontribute to an affirmative global readiness claim.",
+          "type": "boolean"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        }
+      },
+      "required": [
+        "scope",
+        "configured",
+        "ready",
+        "checks"
+      ],
+      "type": "object"
+    },
+    "Service": {
+      "enum": [
+        "hub",
+        "gateway",
+        "watch",
+        "signer",
+        "bridge",
+        "event_consumer",
+        "signer_supervisor"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "generated_at_ms": {
+      "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+      "maxLength": 20,
+      "minLength": 1,
+      "not": {
+        "pattern": "[^0-9]"
+      },
+      "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+      "type": "string"
+    },
+    "ready": {
+      "description": "Only the explicitly configured scopes below contribute to this summary.",
+      "type": "boolean"
+    },
+    "scopes": {
+      "items": {
+        "$ref": "#/$defs/ScopeReadiness"
+      },
+      "maxItems": 7,
+      "type": "array"
+    },
+    "service": {
+      "$ref": "#/$defs/Service"
+    }
+  },
+  "required": [
+    "service",
+    "ready",
+    "generated_at_ms",
+    "scopes"
+  ],
+  "title": "Readiness",
+  "type": "object"
+}

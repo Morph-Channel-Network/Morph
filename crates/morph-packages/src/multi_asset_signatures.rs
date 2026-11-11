@@ -6,7 +6,7 @@ use k256::ecdsa::{Signature, SigningKey, VerifyingKey, signature::hazmat::Prehas
 use morph_core::{Bytes32, ParticipantSignature};
 use serde::{Deserialize, Serialize};
 pub const SIGNATURE_SCHEMA: &str = "morph.multi_asset_signature.v1";
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SignatureMessage {
     pub schema: String,

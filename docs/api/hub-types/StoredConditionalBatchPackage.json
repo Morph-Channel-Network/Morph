@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "StoredConditionalResolution": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "fulfill",
+              "type": "string"
+            },
+            "preimage": {
+              "type": "string"
+            },
+            "transfer_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "transfer_id",
+            "preimage"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "refund",
+              "type": "string"
+            },
+            "transfer_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "transfer_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "StoredMultiAssetCellDep": {
+      "additionalProperties": false,
+      "properties": {
+        "dep_type": {
+          "type": "string"
+        },
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tx_hash",
+        "index",
+        "dep_type"
+      ],
+      "type": "object"
+    },
+    "StoredMultiAssetPackage": {
+      "additionalProperties": false,
+      "description": "Binary evidence is canonical hex. Every u64/u128 exposed in this public package is\na decimal string; JSON number rounding must never change signed value.",
+      "properties": {
+        "cell_deps": {
+          "items": {
+            "$ref": "#/$defs/StoredMultiAssetCellDep"
+          },
+          "type": "array"
+        },
+        "header_hex": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "signature_witness_hex": {
+          "type": "string"
+        },
+        "state_carrier_capacity": {
+          "type": "string"
+        },
+        "witness_hex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "header_hex",
+        "witness_hex",
+        "signature_witness_hex",
+        "state_carrier_capacity",
+        "cell_deps"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "input_since": {
+      "type": "string"
+    },
+    "resolution_witness_hex": {
+      "type": "string"
+    },
+    "resolutions": {
+      "items": {
+        "$ref": "#/$defs/StoredConditionalResolution"
+      },
+      "type": "array"
+    },
+    "resolved_capacities": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "source_package": {
+      "$ref": "#/$defs/StoredMultiAssetPackage"
+    }
+  },
+  "required": [
+    "schema",
+    "source_package",
+    "resolutions",
+    "input_since",
+    "resolution_witness_hex",
+    "resolved_capacities"
+  ],
+  "title": "StoredConditionalBatchPackage",
+  "type": "object"
+}

@@ -4,6 +4,18 @@
 controlled-devnet candidate with no real assets. Selecting the shared-foundation
 architecture does not approve a mainnet release.
 
+November 10 worktree checkpoint: `contracts.json` now pins the rebuilt
+StateType/Vault-lock cooperative-close verifier (`MORPHMC!`). The other six ELF
+identities are unchanged. Full VM regression and focused close tests are recorded
+in `docs/evidence/cooperative-close-verifier-2026-11-10/`. The monotonic close
+journal, external signer role, native transaction flow and final local candidate
+qualification are still pending. The following Core snapshot checkpoint shares
+the source/target predicate with the host and refreshes the same two ELF hashes
+again (sizes unchanged), with all 100 VM tests passing. Its evidence is in
+`docs/evidence/cooperative-close-journal-2026-11-10/`; this is not native close
+qualification. This manifest refresh does not admit a new
+operational close flow or reuse the preceding candidate's native evidence.
+
 Bilateral custody and Factory custody use distinct authority objects on the same
 bounded asset, Vault-set, persistence, signing and recovery foundation:
 

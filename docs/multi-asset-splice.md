@@ -185,11 +185,11 @@ canonical handoff; assembly neither spends inputs nor broadcasts.
 ```sh
 morph-cli multi-asset-session --session alice.json prepare-splice --draft splice.json \
   --admission-config /srv/morph/admission.json --contracts-dir /srv/morph/contracts
-morph-cli multi-asset-session --session alice.json sign --target splice-creation > alice-creation.json
+morph-cli multi-asset-session --session alice.json sign --target splice-creation --signer-config /srv/morph/alice/signer.json > alice-creation.json
 morph-cli multi-asset-session --session alice.json add-signature --target splice-creation --signature bob-creation.json
-morph-cli multi-asset-session --session alice.json sign --target splice-recovery > alice-recovery.json
+morph-cli multi-asset-session --session alice.json sign --target splice-recovery --signer-config /srv/morph/alice/signer.json > alice-recovery.json
 morph-cli multi-asset-session --session alice.json add-signature --target splice-recovery --signature bob-recovery.json
-morph-cli multi-asset-session --session alice.json sign --target splice-bridge > alice-bridge.json
+morph-cli multi-asset-session --session alice.json sign --target splice-bridge --signer-config /srv/morph/alice/signer.json > alice-bridge.json
 morph-cli multi-asset-session --session alice.json add-signature --target splice-bridge --signature bob-bridge.json
 morph-cli multi-asset-session --session alice.json export-splice --store-dir recovery
 ```
@@ -206,7 +206,7 @@ or token quantities fail before key use. The ledger charges the channel's peak
 reserved custody across splice alternatives and never refunds a cancellation.
 Complete saved exit exports and ordinary recovery publication remain independent
 of admission policy availability.
-`MORPH_CHANNEL_PRIVATE_KEY_FILE` supplies the protected file path for the local signer key; see [key input](runbooks/key-input.md). The snapshot
+`--signer-config` selects the isolated participant service; its key stays outside the ceremony process. Explicit `sign-local` remains development-only; see [external signing](runbooks/external-participant-signer.md). The snapshot
 retains the exact transaction before any signature is produced. Export durably
 writes the full future unilateral recovery package before returning a binary
 packed `.tx` with the complete Morph witness, preserving other input witnesses.

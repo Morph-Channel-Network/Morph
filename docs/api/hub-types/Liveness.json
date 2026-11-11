@@ -1,0 +1,32 @@
+{
+  "$defs": {
+    "Service": {
+      "enum": [
+        "hub",
+        "gateway",
+        "watch",
+        "signer",
+        "bridge",
+        "event_consumer",
+        "signer_supervisor"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "alive": {
+      "type": "boolean"
+    },
+    "service": {
+      "$ref": "#/$defs/Service"
+    }
+  },
+  "required": [
+    "service",
+    "alive"
+  ],
+  "title": "Liveness",
+  "type": "object"
+}

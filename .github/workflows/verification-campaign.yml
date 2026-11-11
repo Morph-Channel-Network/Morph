@@ -1,0 +1,50 @@
+name: Bounded verification campaign
+on:
+  schedule:
+    - cron: '23 3 * * 2,5'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verification-campaign-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  mutation-and-crash:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [1, 17, 332043276360]
+    env:
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Bounded mutation campaign
+        run: cargo run --locked -p morph-xtask --bin morph-fuzz -- --output target/fuzz-campaign --seed ${{ matrix.seed }} --cases 10000 --seconds 180
+      - name: Signer and durable runtime crash regressions
+        if: always()
+        run: |
+          mkdir -p target/crash-campaign
+          set -o pipefail
+          cargo test --locked -p morph-cli --all-features fault_tests 2>&1 | tee target/crash-campaign/signer.log
+          cargo test --locked -p morph-signer 2>&1 | tee target/crash-campaign/signer-transport.log
+          cargo test --locked -p morph-cli --all-features --test participant_signer_readiness 2>&1 | tee target/crash-campaign/signer-readiness.log
+          cargo test --locked -p morph-cli --all-features operation_runtime::tests 2>&1 | tee target/crash-campaign/operations.log
+          cargo test --locked -p morph-fiber-adapter --all-features 2>&1 | tee target/crash-campaign/shadow.log
+          cargo test --locked -p morph-runtime-store -p morph-events --all-features 2>&1 | tee target/crash-campaign/runtime.log
+          cargo test --locked -p morph-payment-gateway --all-features 2>&1 | tee target/crash-campaign/payments.log
+      - name: Retain results, corpus and failed input
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bounded-verification-${{ github.sha }}-${{ matrix.seed }}
+          path: |
+            target/fuzz-campaign/
+            target/crash-campaign/
+          if-no-files-found: warn
+          retention-days: 30

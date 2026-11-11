@@ -1,3 +1,7 @@
+use crate::capability_summary::{
+    CapabilitySummary, ConditionalCapabilitySummary, ConditionalTransferSummary,
+    HashAlgorithmSummary,
+};
 use crate::persistence::sync_recovery_directories;
 use std::fs::File;
 use std::io::Read;
@@ -19,9 +23,9 @@ use serde::{Deserialize, Serialize};
 pub const MULTI_ASSET_PACKAGE_SCHEMA: &str = "morph.multi_asset_recovery_package.v1";
 pub const MAX_PACKAGE_JSON_BYTES: usize = 128 * 1024;
 
-/// Binary evidence is canonical hex. Every u64/u128 exposed to JavaScript is
+/// Binary evidence is canonical hex. Every u64/u128 exposed in this public package is
 /// a decimal string; JSON number rounding must never change signed value.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StoredMultiAssetPackage {
     pub schema: String,
@@ -32,7 +36,7 @@ pub struct StoredMultiAssetPackage {
     pub cell_deps: Vec<StoredMultiAssetCellDep>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StoredMultiAssetCellDep {
     pub tx_hash: String,
@@ -40,7 +44,7 @@ pub struct StoredMultiAssetCellDep {
     pub dep_type: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MultiAssetPackageSummary {
     pub package_id: String,
     pub channel_id: String,
@@ -53,7 +57,7 @@ pub struct MultiAssetPackageSummary {
     pub dependency_count: usize,
     pub state_carrier_capacity: String,
     pub signer_pubkeys: [String; 2],
-    pub capability: serde_json::Value,
+    pub capability: CapabilitySummary,
     pub assets: Vec<MultiAssetPackageBalance>,
 }
 
@@ -61,7 +65,7 @@ pub struct MultiAssetPackageSummary {
 pub fn capability_summary(
     settlement: &MultiAssetSettlement,
     state: &MultiAssetState,
-) -> Result<serde_json::Value> {
+) -> Result<CapabilitySummary> {
     let encoded = settlement.encode()?;
     let descriptor = wire::MultiAssetSettlementDescriptor::parse(&encoded).map_err(wire_error)?;
     capability_summary_from_wire(
@@ -77,39 +81,56 @@ pub fn capability_summary_from_wire(
     channel_id: &[u8],
     funding_context_id: &[u8],
     state_number: u64,
-) -> Result<serde_json::Value> {
+) -> Result<CapabilitySummary> {
     let Some(conditional) = descriptor.conditional().map_err(wire_error)? else {
-        return Ok(serde_json::json!({"kind":"ordinary"}));
+        return Ok(CapabilitySummary::Ordinary {});
     };
     let batch = conditional.batch();
     let mut transfers = Vec::new();
     for index in 0..batch.transfer_count() as usize {
         let transfer = batch.transfer(index).map_err(wire_error)?;
         let payer = transfer.payer_index() as usize;
-        transfers.push(serde_json::json!({
-            "transfer_id": canonical_hex(transfer.transfer_id()),
-            "payer_lock_hash": canonical_hex(batch.lock_hash(payer)),
-            "payee_lock_hash": canonical_hex(batch.lock_hash(1 - payer)),
-            "hash_algorithm": if transfer.hash_algorithm() == morph_script_common::CONDITIONAL_HASH_CKB_BLAKE2B {"ckb_blake2b"} else {"sha256"},
-            "payment_hash": canonical_hex(transfer.payment_hash()),
-            "amount": transfer.amount().to_string(),
-            "refund_after_block": transfer.refund_after_since().to_string(),
-        }));
+        transfers.push(ConditionalTransferSummary {
+            transfer_id: canonical_hex(transfer.transfer_id()),
+            payer_lock_hash: canonical_hex(batch.lock_hash(payer)),
+            payee_lock_hash: canonical_hex(batch.lock_hash(1 - payer)),
+            hash_algorithm: if transfer.hash_algorithm()
+                == morph_script_common::CONDITIONAL_HASH_CKB_BLAKE2B
+            {
+                HashAlgorithmSummary::CkbBlake2b
+            } else {
+                HashAlgorithmSummary::Sha256
+            },
+            payment_hash: canonical_hex(transfer.payment_hash()),
+            amount: transfer.amount().to_string(),
+            refund_after_block: transfer.refund_after_since().to_string(),
+        });
     }
-    Ok(serde_json::json!({
-        "kind":"ckb_conditional",
-        "batch_code_hash":canonical_hex(conditional.code_hash()),
-        "batch_hash_type":conditional.hash_type(),
-        "batch_id":canonical_hex(batch.batch_id()),
-        "application_context_commitment":canonical_hex(batch.application_context_commitment()),
-        "pending_ckb":conditional.pending_capacity().map_err(wire_error)?.to_string(),
-        "batch_lock_hash":canonical_hex(&conditional.batch_lock_hash(channel_id,funding_context_id,state_number).map_err(wire_error)?),
-        "settled_capacities":[batch.settled_capacity(0).to_string(),batch.settled_capacity(1).to_string()],
-        "transfers":transfers,
-    }))
+    Ok(CapabilitySummary::CkbConditional(Box::new(
+        ConditionalCapabilitySummary {
+            batch_code_hash: canonical_hex(conditional.code_hash()),
+            batch_hash_type: conditional.hash_type(),
+            batch_id: canonical_hex(batch.batch_id()),
+            application_context_commitment: canonical_hex(batch.application_context_commitment()),
+            pending_ckb: conditional
+                .pending_capacity()
+                .map_err(wire_error)?
+                .to_string(),
+            batch_lock_hash: canonical_hex(
+                &conditional
+                    .batch_lock_hash(channel_id, funding_context_id, state_number)
+                    .map_err(wire_error)?,
+            ),
+            settled_capacities: [
+                batch.settled_capacity(0).to_string(),
+                batch.settled_capacity(1).to_string(),
+            ],
+            transfers,
+        },
+    )))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MultiAssetPackageBalance {
     pub type_hash: Option<String>,
     pub reserve: String,

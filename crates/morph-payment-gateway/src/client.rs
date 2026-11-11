@@ -7,9 +7,9 @@ use thiserror::Error;
 
 use crate::http_safety::{is_secure_service_url, read_response_limited};
 use crate::{
-    CredentialVerifyRequest, FairExchangeClaim, FairExchangeClaimRequest, FairExchangeEnvelope,
-    FairExchangeOfferRequest, PayRequest, PayResponse, PaymentRequirements, SettleRequest,
-    SettleResponse, VerifyRequest, VerifyResponse,
+    CredentialVerifyRequest, CredentialVerifyResponse, FairExchangeClaim, FairExchangeClaimRequest,
+    FairExchangeEnvelope, FairExchangeOfferRequest, PayRequest, PayResponse, PaymentRequirements,
+    SettleRequest, SettleResponse, VerifyRequest, VerifyResponse,
 };
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
@@ -23,7 +23,12 @@ pub enum PaymentGatewayClientError {
     #[error("Morph Payment Gateway transport failed: {0}")]
     Transport(String),
     #[error("Morph Payment Gateway returned HTTP {status}: {message}")]
-    Http { status: u16, message: String },
+    Http {
+        status: u16,
+        message: String,
+        code: Option<crate::api::GatewayErrorCode>,
+        request_id: Option<String>,
+    },
     #[error("Morph Payment Gateway returned an invalid or oversized response")]
     InvalidResponse,
 }
@@ -76,13 +81,77 @@ impl PaymentGatewayClient {
         Ok(self)
     }
 
-    pub async fn supported(&self) -> Result<Value, PaymentGatewayClientError> {
+    /// HTTP 503 is a valid negative observation, not an opaque transport error.
+    pub async fn readiness(&self) -> Result<crate::Readiness, PaymentGatewayClientError> {
+        let response = self.observation_request("ready").await?;
+        let status = response.status();
+        if status != reqwest::StatusCode::OK && status != reqwest::StatusCode::SERVICE_UNAVAILABLE {
+            let _: Value = decode_response(response).await?;
+            return Err(PaymentGatewayClientError::InvalidResponse);
+        }
+        let bytes = read_response_limited(response, MAX_RESPONSE_BYTES)
+            .await
+            .map_err(|_| PaymentGatewayClientError::InvalidResponse)?
+            .ok_or(PaymentGatewayClientError::InvalidResponse)?;
+        let report: crate::Readiness = serde_json::from_slice(&bytes)
+            .map_err(|_| PaymentGatewayClientError::InvalidResponse)?;
+        if !report.consistent()
+            || report.service != morph_observability::Service::Gateway
+            || report.ready != (status == reqwest::StatusCode::OK)
+        {
+            return Err(PaymentGatewayClientError::InvalidResponse);
+        }
+        Ok(report)
+    }
+
+    pub async fn metrics(&self) -> Result<String, PaymentGatewayClientError> {
+        let response = self.observation_request("metrics").await?;
+        if response.status() != reqwest::StatusCode::OK {
+            let _: Value = decode_response(response).await?;
+            return Err(PaymentGatewayClientError::InvalidResponse);
+        }
+        if !response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|h| h.to_str().ok())
+            .is_some_and(|h| h.starts_with("text/plain"))
+        {
+            return Err(PaymentGatewayClientError::InvalidResponse);
+        }
+        let bytes = read_response_limited(response, morph_observability::metrics::MAX_EXPORT_BYTES)
+            .await
+            .map_err(|_| PaymentGatewayClientError::InvalidResponse)?
+            .ok_or(PaymentGatewayClientError::InvalidResponse)?;
+        String::from_utf8(bytes).map_err(|_| PaymentGatewayClientError::InvalidResponse)
+    }
+
+    async fn observation_request(
+        &self,
+        path: &str,
+    ) -> Result<reqwest::Response, PaymentGatewayClientError> {
+        let url = self
+            .base_url
+            .join(path)
+            .map_err(|_| PaymentGatewayClientError::InvalidUrl)?;
+        let mut request = self.client.get(url);
+        if let Some(token) = &self.bearer_token {
+            request = request.bearer_auth(token);
+        }
+        request
+            .send()
+            .await
+            .map_err(|_| PaymentGatewayClientError::Transport("observation request failed".into()))
+    }
+
+    pub async fn supported(
+        &self,
+    ) -> Result<crate::api::SupportedResponse, PaymentGatewayClientError> {
         self.get("v1/supported").await
     }
 
-    pub async fn create_challenge<T: Serialize + ?Sized>(
+    pub async fn create_challenge(
         &self,
-        request: &T,
+        request: &crate::api::CreateChallengeRequest,
     ) -> Result<PaymentRequirements, PaymentGatewayClientError> {
         self.post("v1/challenges", request).await
     }
@@ -111,7 +180,7 @@ impl PaymentGatewayClient {
     pub async fn verify_credential(
         &self,
         request: &CredentialVerifyRequest,
-    ) -> Result<Value, PaymentGatewayClientError> {
+    ) -> Result<CredentialVerifyResponse, PaymentGatewayClientError> {
         self.post("v1/credentials/verify", request).await
     }
 
@@ -129,7 +198,21 @@ impl PaymentGatewayClient {
         self.post("v1/fair-exchange/claims", request).await
     }
 
-    pub async fn payments(&self, limit: usize) -> Result<Value, PaymentGatewayClientError> {
+    pub async fn events(
+        &self,
+        query: &crate::api::EventPageRequest,
+    ) -> Result<crate::api::EventPage, PaymentGatewayClientError> {
+        let page: crate::api::EventPage = self.post("v1/events", query).await?;
+        if !page.valid_for(query) {
+            return Err(PaymentGatewayClientError::InvalidResponse);
+        }
+        Ok(page)
+    }
+
+    pub async fn payments(
+        &self,
+        limit: usize,
+    ) -> Result<crate::api::PaymentListResponse, PaymentGatewayClientError> {
         self.get(&format!("v1/payments?limit={limit}")).await
     }
 
@@ -179,18 +262,17 @@ async fn decode_response<T: DeserializeOwned>(
         .map_err(|error| PaymentGatewayClientError::Transport(error.to_string()))?
         .ok_or(PaymentGatewayClientError::InvalidResponse)?;
     if !status.is_success() {
-        let message = serde_json::from_slice::<Value>(&bytes)
+        let error = serde_json::from_slice::<crate::api::GatewayErrorBody>(&bytes)
             .ok()
-            .and_then(|value| {
-                value
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            })
-            .unwrap_or_else(|| "request failed".to_string());
+            .filter(|e| e.api_version == crate::api::API_VERSION);
         return Err(PaymentGatewayClientError::Http {
             status: status.as_u16(),
-            message,
+            message: error
+                .as_ref()
+                .map(|e| e.error.clone())
+                .unwrap_or_else(|| "request failed".into()),
+            code: error.as_ref().map(|e| e.code),
+            request_id: error.map(|e| e.request_id),
         });
     }
     serde_json::from_slice(&bytes).map_err(|_| PaymentGatewayClientError::InvalidResponse)
@@ -216,9 +298,15 @@ impl PaymentGatewayClient {
             .await
             .map_err(|_| PaymentGatewayClientError::Transport("challenge request failed".into()))?;
         if response.status() != reqwest::StatusCode::PAYMENT_REQUIRED {
+            let status = response.status().as_u16();
+            // Preserve the same typed service error as the normal JSON API.
+            // A successful response is still invalid for the x402 challenge flow.
+            let _: Value = decode_response(response).await?;
             return Err(PaymentGatewayClientError::Http {
-                status: response.status().as_u16(),
+                status,
                 message: "expected x402 challenge".into(),
+                code: None,
+                request_id: None,
             });
         }
         let header = response
@@ -313,6 +401,8 @@ impl PaymentGatewayClient {
             return Err(PaymentGatewayClientError::Http {
                 status: response.status().as_u16(),
                 message: "paid resource rejected request".into(),
+                code: None,
+                request_id: None,
             });
         }
         let receipt: crate::PaymentReceipt = crate::decode_x402_header(

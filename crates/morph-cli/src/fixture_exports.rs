@@ -24,6 +24,7 @@ fn factory_signer_fixture_matches_native_current_root_constructor() {
     );
 }
 
+#[cfg(feature = "devnet")]
 pub(crate) fn conditional_package() -> multi_asset_packages::StoredMultiAssetPackage {
     crate::conditional_packages::fixture_source_package().unwrap()
 }

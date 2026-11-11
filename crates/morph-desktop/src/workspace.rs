@@ -31,6 +31,8 @@ pub struct FileInfo {
     pub view_hash: u64,
 }
 pub struct Draft {
+    pub scroll: gpui_kit::ScrollHandle,
+    pub anchors: std::collections::BTreeMap<&'static str, gpui_kit::ScrollAnchor>,
     pub id: Entity<InputState>,
     pub asset: Entity<InputState>,
     pub fields: Vec<(&'static str, Entity<InputState>)>,
@@ -38,6 +40,7 @@ pub struct Draft {
     pub files: [Option<FileInfo>; 1],
     pub ckb_units: bool,
     pub advanced_id: bool,
+    pub advanced_fields: bool,
     pub target_search: Entity<InputState>,
     pub target_page: usize,
     pub discard_pending: bool,
@@ -59,7 +62,7 @@ impl Draft {
     ) -> Self {
         let form = crate::forms::FORMS[key.form];
         let id = Desktop::input(&key.resource, "0x…", window, cx);
-        let asset = Desktop::input("", "0x + 64 hex", window, cx);
+        let asset = Desktop::input("", language.t(Text::AssetHashPlaceholder), window, cx);
         let target_search = Desktop::input("", language.t(Text::SearchObjects), window, cx);
         let fields = form
             .fields
@@ -115,7 +118,15 @@ impl Draft {
                 }),
             );
         }
+        let scroll = gpui_kit::ScrollHandle::new();
+        let anchors = ["resource", "asset"]
+            .into_iter()
+            .chain(form.fields.iter().map(|f| f.key))
+            .map(|name| (name, gpui_kit::ScrollAnchor::for_handle(scroll.clone())))
+            .collect();
         Self {
+            scroll,
+            anchors,
             id,
             asset,
             fields,
@@ -123,6 +134,7 @@ impl Draft {
             files: std::array::from_fn(|_| None),
             ckb_units: true,
             advanced_id: false,
+            advanced_fields: false,
             target_search,
             target_page: 0,
             discard_pending: false,
@@ -265,6 +277,7 @@ pub enum DocumentTarget {
     Draft(DraftKey, usize),
 }
 pub struct Prepared {
+    pub revision: u64,
     pub operation: HubOperation,
     pub id: String,
     pub body: Value,
@@ -275,8 +288,6 @@ pub struct Prepared {
 }
 #[derive(Clone, Copy)]
 pub enum Domain {
-    Channels,
-    Factories,
     Payments,
     Evidence,
     Funding,
@@ -284,9 +295,7 @@ pub enum Domain {
     Peers,
 }
 impl Domain {
-    pub const ALL: [Self; 7] = [
-        Self::Channels,
-        Self::Factories,
+    pub const ALL: [Self; 5] = [
         Self::Payments,
         Self::Evidence,
         Self::Funding,
@@ -295,8 +304,6 @@ impl Domain {
     ];
     pub fn label(self, l: Language) -> &'static str {
         match self {
-            Self::Channels => l.t(Text::Channels),
-            Self::Factories => l.t(Text::Factories),
             Self::Payments => l.t(Text::PaymentsInvoices),
             Self::Evidence => l.t(Text::EvidenceRecovery),
             Self::Funding => l.t(Text::FundingCeremony),
@@ -307,11 +314,6 @@ impl Domain {
     pub fn contains(self, op: HubOperation) -> bool {
         use HubOperation::*;
         match self {
-            Self::Channels => matches!(
-                op,
-                OpenChannel | SpliceChannel | PublishChannel | FinaliseChannel
-            ),
-            Self::Factories => matches!(op, OpenFactory | AdvanceFactory | MaterialiseChild),
             Self::Payments => matches!(
                 op,
                 CreateInvoice | DecodeInvoice | SettleInvoice | ReceiveInvoice
@@ -321,7 +323,19 @@ impl Domain {
                 op,
                 ImportRoot | InspectRoot | RootExitSignature | RootCreationSignature | ExportRoot
             ),
-            Self::Workspace => matches!(op, ExportState | PreviewRestore | Restore),
+            Self::Workspace => matches!(
+                op,
+                ExportState
+                    | PreviewRestore
+                    | Restore
+                    | OpenChannel
+                    | SpliceChannel
+                    | PublishChannel
+                    | FinaliseChannel
+                    | OpenFactory
+                    | AdvanceFactory
+                    | MaterialiseChild
+            ),
             Self::Peers => op == Peer,
         }
     }

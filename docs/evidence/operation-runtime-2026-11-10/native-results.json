@@ -1,0 +1,270 @@
+[
+  {
+    "asset_count": 2,
+    "operation_id": "c473d416b860b28ede6ac893195e474a02318499ce633e4cc1dc6130da1ce1c9",
+    "database": {
+      "sha256_after_run": "ba6c1075f160bbe7ccfed776d8a3c30ca8502d0b1a44a7d36442c9fe1ca1a37b",
+      "validation": {
+        "schema_version": 1,
+        "revision": 22,
+        "encrypted": false,
+        "records": 1,
+        "intents": 22,
+        "events": 22,
+        "attempts": 22,
+        "payload_bytes": 46882
+      },
+      "offline_export_did_not_change_database": true
+    },
+    "offline_export": {
+      "signed_bytes_sha256": "d51e8addbd5da571984dbcc0b9eebfd91182ba3003111fc80c087bc2b1090259",
+      "matches_original": true,
+      "canonical_confirmation_checked": false
+    },
+    "checks": {
+      "all_custody_consumed": true,
+      "confirmed_retry_no_broadcast": true,
+      "journals_unchanged_after_reorg_and_fallback": true,
+      "missing_fee_preflight_rejected": true,
+      "old_approval_exportable": true,
+      "required_depth_enforced": true,
+      "source_race_rejected": true,
+      "unilateral_package_retained": true,
+      "wrong_fee_owner_rejected": true
+    },
+    "final_branch": "ordinary_unilateral_fallback_after_two_controlled_rollbacks",
+    "submitted": {
+      "transaction_hash": "0x66e6631f92cf1d7ce56e70fe2c565b99a0cea5211bce96a4a66df02896964627",
+      "status": {
+        "block_hash": "0x98bd10c7e102fd86e4280adb2cfed63e045ac5cb1540cc4bac6fd033bebd810c",
+        "block_number": 67,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 1,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794306742072,
+        "operation_id": "c473d416b860b28ede6ac893195e474a02318499ce633e4cc1dc6130da1ce1c9",
+        "preflight": {
+          "estimated_cycles": 12263518,
+          "fee": 200000,
+          "tx_size_bytes": 3548
+        },
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x98bd10c7e102fd86e4280adb2cfed63e045ac5cb1540cc4bac6fd033bebd810c",
+          "block_number": 67,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0x20c371be447047b34377b9b04e645cbb50e04542baa88a37a95b897b9aea612e",
+        "transaction_hash": "0x66e6631f92cf1d7ce56e70fe2c565b99a0cea5211bce96a4a66df02896964627"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 12263518,
+        "tx_size_bytes": 3548
+      }
+    },
+    "reorg_replay": {
+      "transaction_hash": "0x66e6631f92cf1d7ce56e70fe2c565b99a0cea5211bce96a4a66df02896964627",
+      "status": {
+        "block_hash": "0x009f0ccfc1ee5aab02556e16345233099145954c732c5063c2140657533fd946",
+        "block_number": 67,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794306743460,
+        "operation_id": "c473d416b860b28ede6ac893195e474a02318499ce633e4cc1dc6130da1ce1c9",
+        "preflight": {
+          "estimated_cycles": 12263518,
+          "fee": 200000,
+          "tx_size_bytes": 3548
+        },
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x009f0ccfc1ee5aab02556e16345233099145954c732c5063c2140657533fd946",
+          "block_number": 67,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0x54fb3914d370c2fb5ae633334f65a45f214bc09155230238a71f1a2cd957b192",
+        "transaction_hash": "0x66e6631f92cf1d7ce56e70fe2c565b99a0cea5211bce96a4a66df02896964627"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 12263518,
+        "tx_size_bytes": 3548
+      }
+    },
+    "lost_race_operation": {
+      "transaction_hash": "0x66e6631f92cf1d7ce56e70fe2c565b99a0cea5211bce96a4a66df02896964627",
+      "status": {
+        "state": "operator_action"
+      },
+      "canonical_confirmations": 0,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794306744014,
+        "operation_id": "c473d416b860b28ede6ac893195e474a02318499ce633e4cc1dc6130da1ce1c9",
+        "preflight": {
+          "estimated_cycles": 12263518,
+          "fee": 200000,
+          "tx_size_bytes": 3548
+        },
+        "required_depth": 4,
+        "status": {
+          "state": "operator_action"
+        },
+        "tip_hash": "0x088585b6314056537ae48c707f7a667e91656a96dc9ed769e445830f426205e1",
+        "transaction_hash": "0x66e6631f92cf1d7ce56e70fe2c565b99a0cea5211bce96a4a66df02896964627"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 12263518,
+        "tx_size_bytes": 3548
+      }
+    }
+  },
+  {
+    "asset_count": 8,
+    "operation_id": "2a959e20f6f40261450633ef74464559a9a8675f3194eb384fb9dc6615816631",
+    "database": {
+      "sha256_after_run": "dd6cee1aac969737f3148e3e30fa53376b03f9891e0b50291b16f52dda36e440",
+      "validation": {
+        "schema_version": 1,
+        "revision": 22,
+        "encrypted": false,
+        "records": 1,
+        "intents": 22,
+        "events": 22,
+        "attempts": 22,
+        "payload_bytes": 65882
+      },
+      "offline_export_did_not_change_database": true
+    },
+    "offline_export": {
+      "signed_bytes_sha256": "1e790f3759b19d756af45a292c2e99e06e586832d7be24328ad6c657c192b30e",
+      "matches_original": true,
+      "canonical_confirmation_checked": false
+    },
+    "checks": {
+      "all_custody_consumed": true,
+      "confirmed_retry_no_broadcast": true,
+      "journals_unchanged_after_reorg_and_fallback": true,
+      "missing_fee_preflight_rejected": true,
+      "old_approval_exportable": true,
+      "required_depth_enforced": true,
+      "source_race_rejected": true,
+      "unilateral_package_retained": true,
+      "wrong_fee_owner_rejected": true
+    },
+    "final_branch": "ordinary_unilateral_fallback_after_two_controlled_rollbacks",
+    "submitted": {
+      "transaction_hash": "0xb6e370e2ff5fa122c2b52f0b0a860421dedf3f181521d5ac958e02eddc6b0402",
+      "status": {
+        "block_hash": "0x781f2416c4d32169a9a13a65de759d6f87fec36de314bbab9f7fec3dfa0e2b47",
+        "block_number": 214,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 1,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794306781192,
+        "operation_id": "2a959e20f6f40261450633ef74464559a9a8675f3194eb384fb9dc6615816631",
+        "preflight": {
+          "estimated_cycles": 13875104,
+          "fee": 200000,
+          "tx_size_bytes": 8294
+        },
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x781f2416c4d32169a9a13a65de759d6f87fec36de314bbab9f7fec3dfa0e2b47",
+          "block_number": 214,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0xdee953cc6f405f63328dfaf42a666c887a6489e517ae01b5ef9eeb470d39a441",
+        "transaction_hash": "0xb6e370e2ff5fa122c2b52f0b0a860421dedf3f181521d5ac958e02eddc6b0402"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 13875104,
+        "tx_size_bytes": 8294
+      }
+    },
+    "reorg_replay": {
+      "transaction_hash": "0xb6e370e2ff5fa122c2b52f0b0a860421dedf3f181521d5ac958e02eddc6b0402",
+      "status": {
+        "block_hash": "0x423406d62316a6d2e4e7d318461f5632a229c2c53390d3b2c051b27f8efc6959",
+        "block_number": 214,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794306782683,
+        "operation_id": "2a959e20f6f40261450633ef74464559a9a8675f3194eb384fb9dc6615816631",
+        "preflight": {
+          "estimated_cycles": 13875104,
+          "fee": 200000,
+          "tx_size_bytes": 8294
+        },
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x423406d62316a6d2e4e7d318461f5632a229c2c53390d3b2c051b27f8efc6959",
+          "block_number": 214,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0xa0f9bbdc68bf723837f95972ce7e524bfe19544ffc940a3e07862c7fe8ea7f13",
+        "transaction_hash": "0xb6e370e2ff5fa122c2b52f0b0a860421dedf3f181521d5ac958e02eddc6b0402"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 13875104,
+        "tx_size_bytes": 8294
+      }
+    },
+    "lost_race_operation": {
+      "transaction_hash": "0xb6e370e2ff5fa122c2b52f0b0a860421dedf3f181521d5ac958e02eddc6b0402",
+      "status": {
+        "state": "operator_action"
+      },
+      "canonical_confirmations": 0,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794306783480,
+        "operation_id": "2a959e20f6f40261450633ef74464559a9a8675f3194eb384fb9dc6615816631",
+        "preflight": {
+          "estimated_cycles": 13875104,
+          "fee": 200000,
+          "tx_size_bytes": 8294
+        },
+        "required_depth": 4,
+        "status": {
+          "state": "operator_action"
+        },
+        "tip_hash": "0x2baa9253387df927739afb6f529b2e29c376891981b43df564fcbd853952f983",
+        "transaction_hash": "0xb6e370e2ff5fa122c2b52f0b0a860421dedf3f181521d5ac958e02eddc6b0402"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 13875104,
+        "tx_size_bytes": 8294
+      }
+    }
+  }
+]

@@ -1,0 +1,41 @@
+{
+  "schema": "morph.watch_readiness_native.v1",
+  "services": [
+    {
+      "channel_count": 2,
+      "failed_count": 1,
+      "published_count": 1,
+      "observations": [
+        {
+          "caught_up": false,
+          "channel_id": "0xfefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefe",
+          "completed": false,
+          "publication_confirmed": false,
+          "reorg_reset": false,
+          "started": {
+            "boot_id": "bb02187f-78a7-4a68-bde6-bb831d33c2f6",
+            "boot_ms": 131962103,
+            "wall_ms": 1794315315663
+          }
+        },
+        {
+          "caught_up": false,
+          "channel_id": "0xd13704a33c7700cbeca378ba3bcce663b250438e15aa5c1e3ceb675bea904d28",
+          "completed": true,
+          "publication_confirmed": true,
+          "reorg_reset": false,
+          "started": {
+            "boot_id": "bb02187f-78a7-4a68-bde6-bb831d33c2f6",
+            "boot_ms": 131962130,
+            "wall_ms": 1794315315690
+          }
+        }
+      ],
+      "publication_tx_hash": "0xdfdee8c11cc24a19eb98e4211b80b600acea44379d4d61f08669d4650555e931",
+      "canonical_confirmed": true,
+      "stopped_reason": "publication"
+    }
+  ],
+  "source_unchanged": true,
+  "protection_ready": false
+}

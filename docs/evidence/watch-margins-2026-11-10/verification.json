@@ -1,0 +1,13 @@
+{
+  "schema": "morph.watch_margins_checkpoint.v1",
+  "passed": true,
+  "watch_tests": 23,
+  "fixed_series": 26,
+  "unknown_margin_series_when_no_quotes": 4,
+  "public_schema": "morph.watchtower_readiness.v3",
+  "health_schema": "morph.watchtower_health.v3",
+  "new_native_acceptance": false,
+  "release_qualified": false,
+  "issues_closed": false,
+  "cli_binary_sha256": "c30d0f2e03a1837bc1c4e396b89ff79bbbc349c06218a521a114538e87934c17"
+}

@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, anyhow, ensure};
+use morph_observability::clock::{BootClock, read as boot_clock};
 use serde::{Deserialize, Serialize};
+mod readiness;
+pub use readiness::run as readiness;
 
 use crate::multi_asset_packages::canonical_hex;
 use crate::persistence::{
@@ -16,7 +19,7 @@ use crate::persistence::{
 use crate::watch_alert::WatchAlertSeverity;
 
 const CONFIG_SCHEMA: &str = "morph.multi_asset_supervision.v1";
-const HEALTH_SCHEMA: &str = "morph.multi_asset_supervision_health.v1";
+const HEALTH_SCHEMA: &str = "morph.multi_asset_supervision_health.v2";
 const ALERT_SCHEMA: &str = "morph.multi_asset_supervision_alert.v1";
 const MAX_BYTES: u64 = 256 * 1024;
 const MAX_SESSIONS: usize = 32;
@@ -89,6 +92,11 @@ pub struct SessionHealth {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
+    pub boot_id: String,
+    pub started_unix_ms: u64,
+    pub started_boot_ms: u64,
+    pub completed_boot_ms: u64,
+    pub expires_boot_ms: u64,
     pub schema: String,
     pub config_digest: String,
     pub cycle: u64,
@@ -129,6 +137,10 @@ fn now_ms() -> Result<u64> {
         .try_into()?)
 }
 fn read_bounded(path: &Path) -> Result<Vec<u8>> {
+    ensure!(
+        std::fs::symlink_metadata(path)?.file_type().is_file(),
+        "supervision input must be a regular file"
+    );
     let mut bytes = Vec::new();
     File::open(path)?
         .take(MAX_BYTES + 1)
@@ -189,6 +201,7 @@ fn load_snapshot(path: &Path) -> Result<Snapshot> {
     for session in &snapshot.sessions {
         ensure!(
             paths.insert(&session.session)
+                && snapshot.started_unix_ms <= session.started_unix_ms
                 && session.started_unix_ms <= session.checked_unix_ms
                 && session.checked_unix_ms <= snapshot.completed_unix_ms,
             "invalid supervision health history"
@@ -219,6 +232,9 @@ fn load_snapshot(path: &Path) -> Result<Snapshot> {
     Ok(snapshot)
 }
 fn evaluate(snapshot: Snapshot, config: &Config, at: u64) -> Result<Health> {
+    evaluate_at(snapshot, config, at, &boot_clock()?)
+}
+fn evaluate_at(snapshot: Snapshot, config: &Config, at: u64, boot: &BootClock) -> Result<Health> {
     ensure!(
         snapshot.config_digest == digest(config)?,
         "health belongs to another supervision configuration"
@@ -231,17 +247,28 @@ fn evaluate(snapshot: Snapshot, config: &Config, at: u64) -> Result<Health> {
             .eq(config.sessions.iter()),
         "health session set differs from configured authority paths"
     );
-    let oldest = snapshot
-        .sessions
-        .iter()
-        .map(|entry| entry.checked_unix_ms)
-        .min()
-        .ok_or_else(|| anyhow!("no supervision results"))?;
     ensure!(
-        oldest.checked_add(config.stale_after_ms) == Some(snapshot.expires_unix_ms),
+        snapshot.started_unix_ms <= snapshot.completed_unix_ms
+            && snapshot.started_boot_ms <= snapshot.completed_boot_ms
+            && snapshot
+                .sessions
+                .iter()
+                .all(|s| snapshot.started_unix_ms <= s.started_unix_ms
+                    && s.checked_unix_ms <= snapshot.completed_unix_ms),
+        "invalid supervision clock history"
+    );
+    ensure!(
+        snapshot.started_unix_ms.checked_add(config.stale_after_ms)
+            == Some(snapshot.expires_unix_ms)
+            && snapshot.started_boot_ms.checked_add(config.stale_after_ms)
+                == Some(snapshot.expires_boot_ms),
         "health expiry differs from configured freshness policy"
     );
-    let stale = at < snapshot.completed_unix_ms || at >= snapshot.expires_unix_ms;
+    let stale = at < snapshot.completed_unix_ms
+        || at >= snapshot.expires_unix_ms
+        || snapshot.boot_id != boot.id
+        || boot.ms < snapshot.completed_boot_ms
+        || boot.ms >= snapshot.expires_boot_ms;
     let healthy = !stale
         && snapshot
             .sessions
@@ -417,6 +444,8 @@ pub fn run(
     };
     let mut count = 0u64;
     loop {
+        let started_unix_ms = now_ms()?;
+        let boot_start = boot_clock()?;
         let mut sessions = Vec::new();
         for chunk in config.sessions.chunks(WORKERS) {
             let mut workers = Vec::new();
@@ -445,14 +474,20 @@ pub fn run(
                 .is_none_or(|snapshot| completed >= snapshot.completed_unix_ms),
             "wall clock moved backwards since last supervision cycle"
         );
-        let oldest = sessions
-            .iter()
-            .map(|entry| entry.checked_unix_ms)
-            .min()
-            .ok_or_else(|| anyhow!("no supervision results"))?;
-        let expires = oldest
+        let boot_end = boot_clock()?;
+        ensure!(
+            boot_start.id == boot_end.id
+                && boot_start.ms <= boot_end.ms
+                && started_unix_ms <= completed,
+            "supervision clock changed during cycle"
+        );
+        let expires = started_unix_ms
             .checked_add(config.stale_after_ms)
             .ok_or_else(|| anyhow!("health expiry overflow"))?;
+        let expires_boot_ms = boot_start
+            .ms
+            .checked_add(config.stale_after_ms)
+            .ok_or_else(|| anyhow!("boot expiry overflow"))?;
         let previous_by_path: BTreeMap<_, _> = previous
             .as_ref()
             .map(|snapshot| {
@@ -498,6 +533,11 @@ pub fn run(
                 .ok_or_else(|| anyhow!("supervision cycle overflow"))
         })?;
         let snapshot = Snapshot {
+            boot_id: boot_start.id,
+            started_unix_ms,
+            started_boot_ms: boot_start.ms,
+            completed_boot_ms: boot_end.ms,
+            expires_boot_ms,
             schema: HEALTH_SCHEMA.to_string(),
             config_digest: config_digest.clone(),
             cycle,
@@ -536,7 +576,7 @@ mod tests {
         std::fs::create_dir_all(&path).unwrap();
         path
     }
-    fn profile(paths: Vec<PathBuf>) -> Config {
+    pub(super) fn profile(paths: Vec<PathBuf>) -> Config {
         Config {
             schema: CONFIG_SCHEMA.to_string(),
             sessions: paths,
@@ -566,13 +606,18 @@ mod tests {
             }),
         }
     }
-    fn snapshot(config: &Config) -> Snapshot {
+    pub(super) fn snapshot(config: &Config) -> Snapshot {
         Snapshot {
+            boot_id: "test-boot".into(),
+            started_unix_ms: 10,
+            started_boot_ms: 100,
+            completed_boot_ms: 110,
+            expires_boot_ms: 100 + config.stale_after_ms,
             schema: HEALTH_SCHEMA.to_string(),
             config_digest: digest(config).unwrap(),
             cycle: 1,
             completed_unix_ms: 20,
-            expires_unix_ms: 20 + config.stale_after_ms,
+            expires_unix_ms: 10 + config.stale_after_ms,
             sessions: config
                 .sessions
                 .iter()
@@ -581,16 +626,122 @@ mod tests {
         }
     }
     #[test]
-    fn freshness_is_bound_to_exact_configuration_and_oldest_completed_check() {
+    fn freshness_is_bound_to_exact_configuration_and_cycle_start_and_both_clocks() {
         let config = profile(vec![PathBuf::from("/tmp/authority.json")]);
-        assert!(evaluate(snapshot(&config), &config, 21).unwrap().healthy);
-        assert!(evaluate(snapshot(&config), &config, 1020).unwrap().stale);
-        assert!(evaluate(snapshot(&config), &config, 19).unwrap().stale);
+        assert!(
+            evaluate_at(
+                snapshot(&config),
+                &config,
+                21,
+                &BootClock {
+                    id: "test-boot".into(),
+                    ms: 111
+                }
+            )
+            .unwrap()
+            .healthy
+        );
+        assert!(
+            evaluate_at(
+                snapshot(&config),
+                &config,
+                1010,
+                &BootClock {
+                    id: "test-boot".into(),
+                    ms: 111
+                }
+            )
+            .unwrap()
+            .stale
+        );
+        assert!(
+            evaluate_at(
+                snapshot(&config),
+                &config,
+                19,
+                &BootClock {
+                    id: "test-boot".into(),
+                    ms: 111
+                }
+            )
+            .unwrap()
+            .stale
+        );
         let mut tampered = snapshot(&config);
         tampered.expires_unix_ms += 1;
-        assert!(evaluate(tampered, &config, 21).is_err());
+        assert!(
+            evaluate_at(
+                tampered,
+                &config,
+                21,
+                &BootClock {
+                    id: "test-boot".into(),
+                    ms: 111
+                }
+            )
+            .is_err()
+        );
         let other = profile(vec![PathBuf::from("/tmp/another-authority.json")]);
-        assert!(evaluate(snapshot(&config), &other, 21).is_err());
+        assert!(
+            evaluate_at(
+                snapshot(&config),
+                &other,
+                21,
+                &BootClock {
+                    id: "test-boot".into(),
+                    ms: 111
+                }
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn boot_expiry_restart_and_partial_wall_rollback_cannot_revalidate_a_snapshot() {
+        let config = profile(vec![PathBuf::from("/tmp/authority.json")]);
+        for (id, ms, wall) in [
+            ("test-boot", 1100, 21),
+            ("next-boot", 111, 21),
+            ("test-boot", 109, 21),
+            ("test-boot", 111, 19),
+        ] {
+            assert!(
+                evaluate_at(
+                    snapshot(&config),
+                    &config,
+                    wall,
+                    &BootClock { id: id.into(), ms }
+                )
+                .unwrap()
+                .stale
+            );
+        }
+        let mut slow = snapshot(&config);
+        slow.completed_boot_ms = 1200;
+        slow.completed_unix_ms = 1100;
+        assert!(
+            evaluate_at(
+                slow,
+                &config,
+                1100,
+                &BootClock {
+                    id: "test-boot".into(),
+                    ms: 1200
+                }
+            )
+            .unwrap()
+            .stale
+        );
+        let dir = directory();
+        let path = dir.join("health.json");
+        let mut old = serde_json::to_value(snapshot(&config)).unwrap();
+        old["schema"] = "morph.multi_asset_supervision_health.v1".into();
+        std::fs::write(&path, serde_json::to_vec(&old).unwrap()).unwrap();
+        assert!(load_snapshot(&path).is_err());
+        old["schema"] = HEALTH_SCHEMA.into();
+        old.as_object_mut().unwrap().remove("expires_boot_ms");
+        std::fs::write(&path, serde_json::to_vec(&old).unwrap()).unwrap();
+        assert!(load_snapshot(&path).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn busy_checks_preserve_failure_deduplication_and_later_recovery() {

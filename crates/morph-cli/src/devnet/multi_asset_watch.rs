@@ -4,7 +4,7 @@ use super::*;
 use crate::multi_asset_packages::{
     self as packages, MultiAssetPackageSummary, StoredMultiAssetPackage,
 };
-use crate::persistence::lock_private_path;
+use crate::persistence::try_lock_private_path;
 use morph_script_common::multi_asset as wire;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -36,7 +36,6 @@ pub struct Options {
     pub max_fee: u64,
     pub mine_blocks: u64,
     pub watch_policy: Option<PathBuf>,
-    pub alert_webhook_url: Option<String>,
     pub auto_fund_sponsor: Option<AutoSponsorFunding>,
 }
 
@@ -48,6 +47,50 @@ struct Record {
 }
 
 type Records = BTreeMap<(String, u64), Record>;
+
+fn budget_quote(
+    rpc: &CkbRpcClient,
+    options: &Options,
+    cursor: &WatchCursor,
+    saved: &Records,
+) -> crate::publication::PublicationBudget {
+    use crate::publication::{BudgetReason, PublicationBudget};
+    let unavailable = |reason| PublicationBudget::NotPrepared { reason };
+    if options.auto_fund_sponsor.is_some() {
+        return unavailable(BudgetReason::FundingNotPrepared);
+    }
+    let (Some(point), Some(context)) = (
+        &cursor.last_observed_out_point,
+        &cursor.current_funding_context_id,
+    ) else {
+        return unavailable(BudgetReason::SourceNotObserved);
+    };
+    let Some(selected) = latest(saved, context) else {
+        return unavailable(BudgetReason::RecoveryNotAvailable);
+    };
+    let quote = super::multi_asset_operator::transact(
+        rpc,
+        super::multi_asset_operator::Options {
+            operation: super::multi_asset_operator::Operation::Publish,
+            package: selected.path.clone(),
+            state_out_point: point.clone(),
+            fee_out_point: options.fee_out_point.clone(),
+            fee_authorization: options.fee_authorization.clone(),
+            contracts_dir: options.contracts_dir.clone(),
+            store_dir: options.store_dir.clone(),
+            fee: options.max_fee,
+            max_fee: options.max_fee,
+            mine_blocks: 0,
+            publication_profile: Some(options.publication_profile.clone()),
+            attempt_log: Some(options.attempt_log.clone()),
+            dry_run: true,
+        },
+    );
+    quote
+        .ok()
+        .and_then(|v| serde_json::from_value(v["publication_budget"].clone()).ok())
+        .unwrap_or_else(|| unavailable(BudgetReason::PreflightUnavailable))
+}
 
 fn invalid(error: ScriptError) -> anyhow::Error {
     anyhow!("invalid multi-asset recovery evidence: {error:?}")
@@ -146,6 +189,44 @@ fn latest<'a>(records: &'a Records, context: &str) -> Option<&'a Record> {
         .map(|(_, record)| record)
 }
 
+fn validate_scan_identity(
+    rpc: &CkbRpcClient,
+    records: &Records,
+    targets: &[ContractTarget],
+) -> Result<()> {
+    let genesis = rpc
+        .genesis_block_hash()?
+        .context("watch genesis unavailable")?;
+    let identities = [
+        contract_target_hash_by_name(targets, "morph-state-type")?,
+        contract_target_hash_by_name(targets, "morph-state-lock")?,
+        contract_target_hash_by_name(targets, "morph-vault-lock")?,
+    ];
+    for record in records.values() {
+        let recovery = record.package.recovery()?;
+        ensure!(
+            recovery.state.header.chain_id == genesis.0,
+            "watch package network mismatch"
+        );
+        for (bytes, expected) in [
+            &recovery.scripts.state_type,
+            &recovery.scripts.state_lock,
+            &recovery.scripts.vault_lock,
+        ]
+        .into_iter()
+        .zip(&identities)
+        {
+            let script = Script::from_slice(bytes)?;
+            ensure!(
+                script.code_hash().as_slice() == expected.as_bytes()
+                    && script.hash_type().as_slice() == [2],
+                "watch package deployment mismatch"
+            );
+        }
+    }
+    Ok(())
+}
+
 fn validate_scan_origin(rpc: &CkbRpcClient, records: &Records, from_block: u64) -> Result<()> {
     let mut checked = BTreeSet::new();
     for record in records.values() {
@@ -208,6 +289,7 @@ fn alert(
 ) -> Result<()> {
     emit_alert(
         options,
+        cursor,
         &alert_record(event, severity, message, cursor, selected, observed)?,
     )
 }
@@ -244,15 +326,42 @@ fn alert_record(
     Ok(alert)
 }
 
-fn emit_alert(options: &Options, alert: &WatchtowerAlert) -> Result<()> {
-    append_watchtower_alert(&options.alert_file, alert)?;
-    if let Some(url) = &options.alert_webhook_url {
-        let secret = std::env::var("MORPH_WATCHTOWER_WEBHOOK_SECRET").ok();
-        crate::watch_alert::post_watchtower_alert_webhook_with_secret(
-            url,
-            alert,
-            secret.as_deref(),
-        )?;
+fn delivery_allowed(options: &Options) -> Result<bool> {
+    options
+        .watch_policy
+        .as_deref()
+        .map(crate::watch_policy::read_watchtower_policy)
+        .transpose()
+        .map(|policy| policy.is_some_and(|p| p.allow_webhook_alerts))
+}
+
+fn checkpoint(options: &Options, cursor: &WatchCursor) -> Result<()> {
+    crate::watch_runtime::commit(
+        &options.cursor_file,
+        cursor,
+        None,
+        delivery_allowed(options)?,
+        None,
+    )
+}
+
+fn emit_alert(options: &Options, cursor: &WatchCursor, alert: &WatchtowerAlert) -> Result<()> {
+    let evidence = alert
+        .publication_tx_hash
+        .as_deref()
+        .map(|hash| crate::watch_runtime::attempt_digest(&options.attempt_log, hash))
+        .transpose()?;
+    crate::watch_runtime::commit(
+        &options.cursor_file,
+        cursor,
+        Some(alert),
+        delivery_allowed(options)?,
+        evidence,
+    )?;
+    // This local display can be rebuilt from committed intents on restart. It is
+    // never an HTTP delivery acknowledgement or the authoritative scan cursor.
+    if append_watchtower_alert(&options.alert_file, alert).is_err() {
+        eprintln!("watch local display unavailable; committed alert retained in runtime store");
     }
     Ok(())
 }
@@ -282,19 +391,18 @@ fn recover_scan(
     recovery: &mut Option<WatchReorgRecoveryReport>,
     report: WatchReorgRecoveryReport,
 ) -> Result<()> {
-    emit_alert(
-        options,
-        &reorg_alert(
-            &cursor.channel_id,
-            0,
-            &report,
-            "multi-asset watch canonical chain changed",
-        )?,
+    let event = reorg_alert(
+        &cursor.channel_id,
+        0,
+        &report,
+        "multi-asset watch canonical chain changed",
     )?;
-    *cursor = reset_cursor(&cursor.channel_id, options.from_block)?;
+    let reset = reset_cursor(&cursor.channel_id, options.from_block)?;
+    emit_alert(options, &reset, &event)?;
+    *cursor = reset;
     *observed = None;
     *recovery = Some(report);
-    write_watch_cursor(&options.cursor_file, cursor)
+    Ok(())
 }
 
 pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
@@ -317,7 +425,8 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
         "watch max_fee exceeds publication profile cap"
     );
     validate_funding_and_policy(&options)?;
-    let _cursor_lock = lock_private_path(&options.cursor_file)?;
+    let _cursor_lock =
+        try_lock_private_path(&options.cursor_file)?.ok_or_else(|| anyhow!("watch cursor busy"))?;
     let reconciliation = reconcile_publication_attempts(rpc, &options.attempt_log, &profile)?;
     let loaded = read_watch_cursor(&options.cursor_file)?;
     if let Some(cursor) = &loaded {
@@ -330,12 +439,16 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
             "watch cursor belongs to another channel"
         );
     }
+    if crate::watch_runtime::export_alerts(&options.cursor_file, &options.alert_file).is_err() {
+        eprintln!("watch local display rebuild unavailable; durable source retained");
+    }
     let mut check_checkpoint = loaded.is_some();
     let mut cursor = loaded.unwrap_or(reset_cursor(&channel, options.from_block)?);
     let mut recovery = None;
     let mut retry_rescan = false;
     let mut last_observed = None;
     let filter = state_cell_detection_filter(&options.contracts_dir)?;
+    let targets = load_contract_targets(&options.contracts_dir)?;
     let fee_lock = options.fee_authorization.change_lock()?;
     let started = Instant::now();
     let timeout = Duration::from_secs(options.timeout_secs);
@@ -367,7 +480,9 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                 return Err(error);
             }
         };
-        if let Err(error) = validate_scan_origin(rpc, &saved, options.from_block) {
+        if let Err(error) = validate_scan_identity(rpc, &saved, &targets)
+            .and_then(|_| validate_scan_origin(rpc, &saved, options.from_block))
+        {
             alert(
                 &options,
                 WatchAlertEvent::RecoveryDataInvalid,
@@ -480,7 +595,6 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                     Some(&observed),
                     None,
                 )?;
-                write_watch_cursor(&options.cursor_file, &cursor)?;
                 let Some(selected) = latest(&saved, &observed.funding_context_id) else {
                     alert(
                         &options,
@@ -623,13 +737,15 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                                 Some(selected.summary.funding_context_id.clone()),
                                 Some(observed.funding_context_id.clone()),
                             );
-                            emit_alert(&options, &submitted)?;
+                            emit_alert(&options, &cursor, &submitted)?;
                             return Ok(
                                 json!({"schema":"morph.multi_asset_watch_pass.v1", "channel_id":channel,
                                 "operator_id":profile.operator_id, "cursor_file":options.cursor_file, "reorg_recovery":recovery,
                                 "retry_rescan":retry_rescan, "publication_reconciliation":reconciliation,
                                 "scanned_to_block":cursor.scanned_to_block,"next_from_block":cursor.next_block,
                                 "sponsor_top_up":sponsor_top_up,
+                                "publication_budget":crate::publication::PublicationBudget::NotPrepared {
+                                    reason: crate::publication::BudgetReason::SourceConsumed },
                                 "selected":selected.summary, "observed":observed_json(Some(&observed))?, "publication":publication}),
                             );
                         }
@@ -658,7 +774,7 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                 last_observed.as_ref(),
                 Some(&cursor),
             )?;
-            write_watch_cursor(&options.cursor_file, &cursor)?;
+            checkpoint(&options, &cursor)?;
             check_checkpoint = true;
             if started.elapsed() >= timeout {
                 break;
@@ -674,12 +790,14 @@ pub fn watch(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
                 0,
                 last_observed.as_ref(),
             )?;
+            let budget = budget_quote(rpc, &options, &cursor, &saved);
             return Ok(
                 json!({"schema":"morph.multi_asset_watch_pass.v1", "channel_id":channel,
                 "operator_id":profile.operator_id, "cursor_file":options.cursor_file, "reorg_recovery":recovery,
                 "retry_rescan":retry_rescan, "publication_reconciliation":reconciliation,
                 "scanned_to_block":cursor.scanned_to_block, "next_from_block":cursor.next_block,
                 "caught_up":mature_tip.is_none_or(|height| cursor.next_block > height),
+                "publication_budget":budget,
                 "observed":observed_json(last_observed.as_ref())?,"publication":Value::Null}),
             );
         }
@@ -737,7 +855,6 @@ fn validate_funding_and_policy(options: &Options) -> Result<()> {
                     .auto_fund_sponsor
                     .as_ref()
                     .map_or(0, |funding| funding.capacity),
-                alert_webhook_present: options.alert_webhook_url.is_some(),
             },
         )?;
     }
@@ -792,6 +909,51 @@ mod tests {
     static NEXT: AtomicU64 = AtomicU64::new(0);
 
     #[test]
+    fn scan_identity_checks_saved_network_and_all_three_script_identities() {
+        let package = packages::fixture_package().unwrap();
+        let recovery = package.recovery().unwrap();
+        let summary = package.validate().unwrap();
+        let mut saved = Records::new();
+        saved.insert(
+            (summary.funding_context_id.clone(), 1),
+            Record {
+                path: PathBuf::from("synthetic.json"),
+                package,
+                summary,
+            },
+        );
+        let mut targets = ["morph-state-type", "morph-state-lock", "morph-vault-lock"]
+            .into_iter()
+            .zip([
+                &recovery.scripts.state_type,
+                &recovery.scripts.state_lock,
+                &recovery.scripts.vault_lock,
+            ])
+            .map(|(name, bytes)| ContractTarget {
+                name: name.into(),
+                data_hash: Script::from_slice(bytes).unwrap().code_hash().unpack(),
+                type_hash: None,
+            })
+            .collect::<Vec<_>>();
+        let rpc =
+            crate::admission_channel::tests::MockRpc::start(recovery.state.header.chain_id, 10);
+        let client = CkbRpcClient::new_health_check(&rpc.url).unwrap();
+        validate_scan_identity(&client, &saved, &targets).unwrap();
+        for i in 0..targets.len() {
+            let original = targets[i].data_hash.clone();
+            targets[i].data_hash = H256([99; 32]);
+            assert!(validate_scan_identity(&client, &saved, &targets).is_err());
+            targets[i].data_hash = original;
+        }
+        rpc.respond(
+            "get_block_hash",
+            json!(["0x0"]),
+            json!(format!("0x{}", hex::encode([99; 32]))),
+        );
+        assert!(validate_scan_identity(&client, &saved, &targets).is_err());
+    }
+
+    #[test]
     fn service_policy_checks_actual_sponsor_budget_and_webhook_before_rpc() {
         let path = std::env::temp_dir().join(format!(
             "morph-current-watch-policy-{}-{}.json",
@@ -815,7 +977,7 @@ mod tests {
             store_dir: PathBuf::from("packages"),
             channel_id: format!("0x{}", "01".repeat(32)),
             from_block: 0,
-            cursor_file: PathBuf::from("cursor.json"),
+            cursor_file: PathBuf::from("cursor.db"),
             alert_file: PathBuf::from("alerts.jsonl"),
             publication_profile: PathBuf::from("profile.json"),
             attempt_log: PathBuf::from("attempts.jsonl"),
@@ -825,7 +987,6 @@ mod tests {
             max_fee: policy.max_fee,
             mine_blocks: 4,
             watch_policy: Some(path.clone()),
-            alert_webhook_url: None,
             auto_fund_sponsor: Some(AutoSponsorFunding {
                 private_key: hex::encode([1; 32]).into(),
                 capacity: policy.max_auto_sponsor_capacity,
@@ -833,14 +994,6 @@ mod tests {
             }),
         };
         validate_funding_and_policy(&options).unwrap();
-        options.alert_webhook_url = Some("http://127.0.0.1:1/alerts".to_string());
-        assert!(
-            validate_funding_and_policy(&options)
-                .unwrap_err()
-                .to_string()
-                .contains("webhook")
-        );
-        options.alert_webhook_url = None;
         options.auto_fund_sponsor.as_mut().unwrap().funding_fee = options.max_fee + 1;
         assert!(
             validate_funding_and_policy(&options)

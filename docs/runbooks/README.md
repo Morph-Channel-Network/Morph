@@ -6,6 +6,9 @@ mainnet operations claim.
 
 Read and rehearse all of the following before activation:
 
+- [`external-participant-signer.md`](external-participant-signer.md): fixed-journal key service, role-bound requests and six-role native loss/retry evidence (combined crash qualification pending);
+
+- [`gateway-payment-retries.md`](gateway-payment-retries.md): durable outgoing submission identity, exact retry and unknown-outcome recovery;
 - [`operations.md`](operations.md): release verification, keys, package
   retention, watchtower startup, health, and routine shutdown;
 - [`incident-response.md`](incident-response.md): alert triage, emergency stop,
@@ -24,6 +27,19 @@ Read and rehearse all of the following before activation:
   local CI, node execution, policy and bundle to one clean candidate;
 - [`rehearsal-2026-08-15.md`](rehearsal-2026-08-15.md): historical evidence for
   the retired candidate; it does not qualify the current ELFs.
+
+The optional [Fiber shadow hook](../../integrations/fiber-shadow/README.md) has a
+separate pinned-patch check procedure. Its diagnostic tests do not activate
+canonical Morph routing or widen the candidate envelope.
+
+The [service readiness guide](service-readiness.md) explains the current Hub
+monitoring endpoints and their limited scope. A ready local registry is not
+channel protection or chain-publication readiness.
+
+The [event delivery guide](event-delivery.md) covers durable Hub event pagination,
+the independent webhook consumer and authenticated receiver deduplication. Hub and
+Gateway producers are integrated; watch event migration and production retention
+remain unfinished.
 
 ## Roles
 
@@ -56,3 +72,5 @@ Activation is allowed only when all items are true:
 If any item is false, the decision is no-go.
 
 - [Protected private-key file input](key-input.md): Linux safe-open, ownership/permission and bounded-format checks; file paths replace private-key argv and environment values.
+
+- [Bounded verification campaigns](verification-campaigns.md): current parser mutation targets, process limits, reproduction and CI tiers.

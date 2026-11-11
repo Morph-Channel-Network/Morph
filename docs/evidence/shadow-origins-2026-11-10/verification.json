@@ -1,0 +1,38 @@
+{
+  "schema": "morph.shadow_origins_checkpoint.v1",
+  "head": "07a3fa04ba7c556a8af7a4cfd61c21ba39d4e09b",
+  "dirty": true,
+  "source_files": 4134,
+  "source_unchanged": true,
+  "source_manifest_sha256": "dc5c788e6c2ee3377bb52d1339a1243d6e051a022d4bf0407ba0eebbb03f028a",
+  "cli_sha256": "0157478100fd3bbb9154cfcfcb437a8937363a867108c5e5292f711ed389ff3f",
+  "private_originals": "/tmp/morph-shadow-origins-20261110-qualified",
+  "boundaries": [
+    "no-value native Factory children and root-origin splices",
+    "no provider mutation or durable Morph registry",
+    "Factory-child splice and external-child provider admission not exercised",
+    "prebuilt manifest-matched ELFs; not full CI or release qualification"
+  ],
+  "tests": {
+    "cli_all_features": 333,
+    "core_multi_asset": 75,
+    "adapter": 23,
+    "all_features_all_targets_clippy": "passed",
+    "default_cli_clippy": "passed",
+    "fmt": "passed",
+    "diff_whitespace": "passed"
+  },
+  "sha256": {
+    "README.md": "491470614ef4b49010b0e18fe993ad85d44aecd334f3face6538e755b596cf26",
+    "adapter-tests.log": "8f56308fd6a745a4b473791c56a701c0c4726664ba8680a9c48cc10db2e0b3ac",
+    "cli-tests.log": "7e999e6da137f9fad3862bb070040c42364c038ebe0edfd72b2219806db67a5f",
+    "clippy.log": "8e69cb16c497d5fa0e51efe44e03ce7cb6bf893845b565c472224560de0d7415",
+    "contracts.json": "47060e4f7f5c79ad26a6051aaf22bf7eed4ae34dd75217147b20542e34bdf067",
+    "core-tests.log": "bba62c04b56db5c978c9ef2080afa0980a7328717f6e303753093dd487519e90",
+    "default-clippy.log": "a872c4ef2355bd83ffc976970a50bcd77252f26e17406b27f0b7d37eab3bcc47",
+    "factory-checks.json": "33654acfaf6156a2eadab737562e5af15e1cd2569c0c44704261286af5a1efcd",
+    "fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-verification.json": "e1306a217e61f81c765306ffc2df60e7164d8b99d7d16ecd9935038f1ae948b6",
+    "public-observations.json": "0970498e584277f0bfd7c49a1866483973050d3bbe6061bdf1a7494e0b2d7de7"
+  }
+}

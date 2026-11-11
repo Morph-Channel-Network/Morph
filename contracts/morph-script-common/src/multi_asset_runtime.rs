@@ -176,12 +176,11 @@ pub fn verify_multi_asset_settlement_outputs(
     evidence: &MultiAssetWitness,
     state_input_index: usize,
     state_source: Source,
+    header: &crate::multi_asset::MultiAssetStateHeader,
 ) -> Result<()> {
+    evidence.validate_header(header)?;
     let descriptor = evidence.descriptor();
     let batch_lock = if let Some(conditional) = descriptor.conditional()? {
-        let raw =
-            load_cell_data(state_input_index, state_source).map_err(|_| ScriptError::Encoding)?;
-        let header = crate::multi_asset::MultiAssetStateHeader::parse(&raw)?;
         if header.state_number() == 0 {
             return Err(ScriptError::ConditionalBatchLockMismatch);
         }

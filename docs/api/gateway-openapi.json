@@ -1,0 +1,959 @@
+{
+  "components": {
+    "securitySchemes": {
+      "operatorBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "paidCredential": {
+        "description": "Stored resource/method-bound Biscuit credential, not an operator token.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "paymentSignature": {
+        "description": "Base64url SettleRequest JSON with signed payer authorization. Must not accompany a paid credential.",
+        "in": "header",
+        "name": "PAYMENT-SIGNATURE",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "Current public Gateway HTTP contracts; core signing encodings remain separate. No generic durable idempotency or expected-revision header is implemented here yet. Payer signatures are in bodies, not an operator bearer token.",
+    "title": "Morph Payment Gateway API",
+    "version": "1"
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "openapi": "3.1.0",
+  "paths": {
+    "/gateway/{path}": {
+      "delete": {
+        "description": "Exact resource and method authorization. Upstream may mutate even if its response is lost; never infer retry safety from a Gateway timeout.",
+        "operationId": "Proxy_delete",
+        "parameters": [
+          {
+            "description": "Nonempty captured path, may contain slashes. Reject dot segments, backslashes, authorities and leading slash. Exact method and raw query form the authorized resource.",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "default": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Upstream status/body and selected headers, or a typed GatewayErrorBody before forwarding. Upstream status is not recast as a Gateway error.",
+            "x-gateway-error-schema": {
+              "$ref": "gateway-types/GatewayErrorBody.json"
+            }
+          }
+        },
+        "security": [
+          {
+            "paidCredential": []
+          },
+          {
+            "paymentSignature": []
+          }
+        ],
+        "x-morph-authority": "paid_credential_or_payment_signature"
+      },
+      "get": {
+        "description": "Exact resource and method authorization. Upstream may mutate even if its response is lost; never infer retry safety from a Gateway timeout.",
+        "operationId": "Proxy_get",
+        "parameters": [
+          {
+            "description": "Nonempty captured path, may contain slashes. Reject dot segments, backslashes, authorities and leading slash. Exact method and raw query form the authorized resource.",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "default": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Upstream status/body and selected headers, or a typed GatewayErrorBody before forwarding. Upstream status is not recast as a Gateway error.",
+            "x-gateway-error-schema": {
+              "$ref": "gateway-types/GatewayErrorBody.json"
+            }
+          }
+        },
+        "security": [
+          {
+            "paidCredential": []
+          },
+          {
+            "paymentSignature": []
+          }
+        ],
+        "x-morph-authority": "paid_credential_or_payment_signature"
+      },
+      "head": {
+        "description": "Exact resource and method authorization. Upstream may mutate even if its response is lost; never infer retry safety from a Gateway timeout.",
+        "operationId": "Proxy_head",
+        "parameters": [
+          {
+            "description": "Nonempty captured path, may contain slashes. Reject dot segments, backslashes, authorities and leading slash. Exact method and raw query form the authorized resource.",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "default": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Upstream status/body and selected headers, or a typed GatewayErrorBody before forwarding. Upstream status is not recast as a Gateway error.",
+            "x-gateway-error-schema": {
+              "$ref": "gateway-types/GatewayErrorBody.json"
+            }
+          }
+        },
+        "security": [
+          {
+            "paidCredential": []
+          },
+          {
+            "paymentSignature": []
+          }
+        ],
+        "x-morph-authority": "paid_credential_or_payment_signature"
+      },
+      "patch": {
+        "description": "Exact resource and method authorization. Upstream may mutate even if its response is lost; never infer retry safety from a Gateway timeout.",
+        "operationId": "Proxy_patch",
+        "parameters": [
+          {
+            "description": "Nonempty captured path, may contain slashes. Reject dot segments, backslashes, authorities and leading slash. Exact method and raw query form the authorized resource.",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "default": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Upstream status/body and selected headers, or a typed GatewayErrorBody before forwarding. Upstream status is not recast as a Gateway error.",
+            "x-gateway-error-schema": {
+              "$ref": "gateway-types/GatewayErrorBody.json"
+            }
+          }
+        },
+        "security": [
+          {
+            "paidCredential": []
+          },
+          {
+            "paymentSignature": []
+          }
+        ],
+        "x-morph-authority": "paid_credential_or_payment_signature"
+      },
+      "post": {
+        "description": "Exact resource and method authorization. Upstream may mutate even if its response is lost; never infer retry safety from a Gateway timeout.",
+        "operationId": "Proxy_post",
+        "parameters": [
+          {
+            "description": "Nonempty captured path, may contain slashes. Reject dot segments, backslashes, authorities and leading slash. Exact method and raw query form the authorized resource.",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "default": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Upstream status/body and selected headers, or a typed GatewayErrorBody before forwarding. Upstream status is not recast as a Gateway error.",
+            "x-gateway-error-schema": {
+              "$ref": "gateway-types/GatewayErrorBody.json"
+            }
+          }
+        },
+        "security": [
+          {
+            "paidCredential": []
+          },
+          {
+            "paymentSignature": []
+          }
+        ],
+        "x-morph-authority": "paid_credential_or_payment_signature"
+      },
+      "put": {
+        "description": "Exact resource and method authorization. Upstream may mutate even if its response is lost; never infer retry safety from a Gateway timeout.",
+        "operationId": "Proxy_put",
+        "parameters": [
+          {
+            "description": "Nonempty captured path, may contain slashes. Reject dot segments, backslashes, authorities and leading slash. Exact method and raw query form the authorized resource.",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "default": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Upstream status/body and selected headers, or a typed GatewayErrorBody before forwarding. Upstream status is not recast as a Gateway error.",
+            "x-gateway-error-schema": {
+              "$ref": "gateway-types/GatewayErrorBody.json"
+            }
+          }
+        },
+        "security": [
+          {
+            "paidCredential": []
+          },
+          {
+            "paymentSignature": []
+          }
+        ],
+        "x-morph-authority": "paid_credential_or_payment_signature"
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Read-only liveness; not readiness.",
+        "operationId": "Health_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/HealthResponse.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [],
+        "x-morph-authority": "public"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "description": "Fixed bounded Prometheus series. Unobserved store values are NaN. Read-only; never retries payments.",
+        "operationId": "Metrics_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Fixed Prometheus exposition"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [
+          {
+            "operatorBearer": []
+          }
+        ],
+        "x-morph-authority": "operator_bearer"
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Read-only expiring prerequisites. HTTP 503 carries the same Readiness body. No payment authorization, route liquidity or independent chain confirmation is implied.",
+        "operationId": "Readiness_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/Readiness.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/Readiness.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [
+          {
+            "operatorBearer": []
+          }
+        ],
+        "x-morph-authority": "operator_bearer"
+      }
+    },
+    "/v1/challenges": {
+      "post": {
+        "description": "Creates a fresh challenge. Lost response is ambiguous; no idempotency-key replay contract yet.",
+        "operationId": "Challenge_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/CreateChallengeRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/PaymentRequirements.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [
+          {
+            "operatorBearer": []
+          }
+        ],
+        "x-morph-authority": "operator_bearer"
+      }
+    },
+    "/v1/credentials/verify": {
+      "post": {
+        "description": "Read-only validation of the stored receipt, credential and exact resource.",
+        "operationId": "CredentialVerify_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/CredentialVerifyRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/CredentialVerifyResponse.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [],
+        "x-morph-authority": "stored_credential_and_receipt"
+      }
+    },
+    "/v1/events": {
+      "post": {
+        "description": "Read-only durable source-bound pagination. Resume with the exact next cursor; never use these local records as independent chain confirmation.",
+        "operationId": "Events_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/EventPageRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/EventPage.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [
+          {
+            "operatorBearer": []
+          }
+        ],
+        "x-morph-authority": "operator_bearer"
+      }
+    },
+    "/v1/fair-exchange/claims": {
+      "post": {
+        "description": "Requires the offer's payer authorization and paid settlement before returning the key. Stored-receipt rules apply.",
+        "operationId": "FairClaim_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/FairExchangeClaimRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/FairExchangeClaim.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [],
+        "x-morph-authority": "signed_payer_terms"
+      }
+    },
+    "/v1/fair-exchange/offers": {
+      "post": {
+        "description": "Creates a fresh encrypted offer and challenge; lost response is ambiguous. No automatic retry.",
+        "operationId": "FairOffer_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/FairExchangeOfferRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/FairExchangeEnvelope.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [
+          {
+            "operatorBearer": []
+          }
+        ],
+        "x-morph-authority": "operator_bearer"
+      }
+    },
+    "/v1/pay": {
+      "post": {
+        "description": "Payment hash binds the exact typed request and configured Fiber endpoint. Only the first durable reservation sends; exact retries query that payment or return its immutable terminal result, including after expiry. Conflicting contents return 409 request_conflict. Unknown outcomes never authorize resubmission. Full provider-neutral/MPP orchestration remains #36.",
+        "operationId": "Pay_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/PayRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/PayResponse.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [],
+        "x-morph-authority": "signed_payer_terms"
+      }
+    },
+    "/v1/payment-gateway/authorize": {
+      "post": {
+        "description": "Same settlement authority and stored-receipt rules as x402 settle.",
+        "operationId": "Authorize_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/SettleRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/SettleResponse.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [],
+        "x-morph-authority": "signed_payer_terms"
+      }
+    },
+    "/v1/payments": {
+      "get": {
+        "description": "Read-only bounded latest entries; not a cursor or complete historical pagination.",
+        "operationId": "Payments_get",
+        "parameters": [
+          {
+            "description": "Canonical decimal 1..1000, default 100. Duplicate and unknown parameters are rejected.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "$ref": "gateway-types/PaymentListQuery.json#/properties/limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/PaymentListResponse.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [
+          {
+            "operatorBearer": []
+          }
+        ],
+        "x-morph-authority": "operator_bearer"
+      }
+    },
+    "/v1/supported": {
+      "get": {
+        "description": "Read-only.",
+        "operationId": "Supported_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/SupportedResponse.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [],
+        "x-morph-authority": "public"
+      }
+    },
+    "/v1/x402/challenge": {
+      "post": {
+        "description": "402 is the successful challenge, also encoded in PAYMENT-REQUIRED. Creates fresh state; no automatic retry.",
+        "operationId": "X402Challenge_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/CreateChallengeRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/PaymentRequirements.json"
+                }
+              }
+            },
+            "description": "Normal payment-required challenge, not a Gateway error. A rejected request can also return GatewayErrorBody with its documented failure status.",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "Base64url without padding of the same PaymentRequirements JSON.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [
+          {
+            "operatorBearer": []
+          }
+        ],
+        "x-morph-authority": "operator_bearer"
+      }
+    },
+    "/v1/x402/settle": {
+      "post": {
+        "description": "Validates exact stored terms/payer proof and returns the stored receipt when present. No new outgoing payment; this is not a generic key/body replay contract.",
+        "operationId": "Settle_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/SettleRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/SettleResponse.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [],
+        "x-morph-authority": "signed_payer_terms"
+      }
+    },
+    "/v1/x402/verify": {
+      "post": {
+        "description": "Queries Fiber and persists an observation. Does not initiate an outgoing payment.",
+        "operationId": "Verify_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "gateway-types/VerifyRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/VerifyResponse.json"
+                }
+              }
+            },
+            "description": "Successful result"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "gateway-types/GatewayErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed Gateway failure, not an upstream response."
+          }
+        },
+        "security": [],
+        "x-morph-authority": "signed_payer_terms"
+      }
+    }
+  }
+}

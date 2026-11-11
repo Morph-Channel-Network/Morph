@@ -5,15 +5,21 @@
 //! API access. It talks to an unmodified Fiber node through JSON-RPC, following
 //! the integration described in Fiber issue #1255.
 
+pub mod api;
+pub mod api_schema;
 pub mod client;
 pub mod credential;
 pub mod crypto;
+pub mod endpoints;
 pub mod fiber_rpc;
+mod http_api;
 mod http_safety;
 pub mod protocol;
 pub mod service;
 pub mod store;
+pub mod wire;
 
+pub use api::*;
 pub use client::*;
 pub use credential::*;
 pub use crypto::*;

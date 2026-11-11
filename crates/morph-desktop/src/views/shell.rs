@@ -1,4 +1,5 @@
 use super::*;
+use gpui_kit::TestSupportExt;
 
 impl Desktop {
     pub(crate) fn render_workspace(
@@ -6,6 +7,11 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        if self.page != Page::Wallet
+            && let Some(wallet) = &self.wallet
+        {
+            wallet.read(cx).set_visible(false);
+        }
         let width = window.viewport_size().width;
         let scale = self.scale();
         let compact = width < px(1050. * scale);
@@ -22,6 +28,20 @@ impl Desktop {
             self.render_record_detail(window, cx).into_any_element()
         } else {
             match self.page {
+                Page::Wallet => {
+                    let wallet = self
+                        .wallet
+                        .get_or_insert_with(|| {
+                            cx.new(|cx| crate::wallet::WalletPane::new(self.language, window, cx))
+                        })
+                        .clone();
+                    wallet.update(cx, |view, cx| {
+                        view.language(self.language, window, cx);
+                        view.set_motion(!self.reduced_motion, cx);
+                        view.set_visible(window.is_visible() && window.is_window_active());
+                    });
+                    wallet.into_any_element()
+                }
                 Page::Overview => self.render_overview(window, cx, wide).into_any_element(),
                 Page::Actions => self.render_tasks(window, cx, wide).into_any_element(),
                 Page::Model => self.render_settings(window, cx).into_any_element(),
@@ -33,85 +53,76 @@ impl Desktop {
             }
         };
         let enabled = self.motion_enabled(window, cx);
-        self.flux.update(cx, |flux, cx| {
-            flux.configure(
-                self.motion_generation,
-                !enabled || self.page != Page::Overview,
-                cx,
-            )
+        self.task_signal.update(cx, |signal, cx| {
+            signal.configure(self.foreground_busy(), enabled, cx)
         });
-        let body = if enabled {
+        let page_surface = div()
+            .id("page-surface")
+            .test_support()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .child(body);
+        let body = if enabled && self.page_enter_started.elapsed() < crate::motion::ENTER_DURATION {
             use gpui_kit::AnimationExt;
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .flex_col()
-                .child(body)
+            page_surface
                 .with_animation(
                     ("page-enter", self.motion_generation),
                     gpui_kit::Animation::new(crate::motion::ENTER_DURATION).with_max_fps(60.),
-                    |element, t| element.opacity(0.88 + 0.12 * (1. - (1. - t).powi(3))),
+                    |element, t| {
+                        let eased = 1. - (1. - t).powi(3);
+                        element.opacity(0.82 + 0.18 * eased)
+                    },
                 )
                 .into_any_element()
         } else {
-            body
+            page_surface.into_any_element()
         };
+        self.aurora
+            .update(cx, |view, cx| view.configure(enabled, cx));
         let mut main = div()
+            .relative()
             .flex_1()
             .min_w_0()
             .h_full()
             .flex()
             .flex_col()
-            .child(self.render_header(compact, window, cx));
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .h(px(320.))
+                    .overflow_hidden()
+                    .child(
+                        self.aurora
+                            .clone()
+                            .cached(gpui_kit::StyleRefinement::default().size_full()),
+                    ),
+            )
+            .child(self.render_header(compact, window, cx))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_6()
+                    .w(px(96.))
+                    .h(px(2.))
+                    .flex_shrink_0()
+                    .child(
+                        self.task_signal
+                            .clone()
+                            .cached(gpui_kit::StyleRefinement::default().size_full()),
+                    ),
+            );
         if self.unknown_context.is_some() {
             main = main.child(self.render_reconciliation(cx));
         }
-        if let Some(n) = &self.notice {
-            let tone = n.tone;
-            let title = crate::i18n::stored_copy(&n.title, self.language);
-            let detail = crate::i18n::stored_copy(&n.detail, self.language);
-            main = main.child(
-                div()
-                    .mx_6()
-                    .mt_3()
-                    .px_4()
-                    .py_3()
-                    .rounded_md()
-                    .bg(rgb(tone.background()))
-                    .flex()
-                    .gap_3()
-                    .items_start()
-                    .child(
-                        Icon::new(if tone == Tone::Danger {
-                            IconName::CircleAlert
-                        } else {
-                            IconName::Info
-                        })
-                        .text_color(rgb(tone.color())),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
-                            .child(d::caption(detail)),
-                    )
-                    .child(
-                        Button::new("dismiss-notice")
-                            .icon(IconName::X)
-                            .ghost()
-                            .small()
-                            .tooltip(self.t(Text::Dismiss))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.notice = None;
-                                cx.notify()
-                            })),
-                    ),
-            );
+        if self.notice.as_ref().is_some_and(|n| n.tone != Tone::Good) {
+            main = main.child(div().mx_6().mt_3().child(self.render_notice(window, cx)));
         }
         main = main.child(
             div()
@@ -122,6 +133,18 @@ impl Desktop {
                 .p(if compact { px(20.) } else { px(28.) })
                 .child(body),
         );
+        if self.notice.as_ref().is_some_and(|n| n.tone == Tone::Good) {
+            main = main.child(
+                div()
+                    .absolute()
+                    .bottom_4()
+                    .right_4()
+                    .w(px(400. * scale))
+                    .max_w(gpui_kit::relative(0.9))
+                    .shadow_lg()
+                    .child(self.render_notice(window, cx)),
+            );
+        }
         let mut shell =
             div()
                 .id("morph-workspace")
@@ -135,7 +158,7 @@ impl Desktop {
                     linear_color_stop(rgb(0x101020), 1.),
                 ))
                 .text_color(rgb(d::TEXT))
-                .text_sm()
+                .text_base()
                 .child(self.render_navigation(compact, window, cx))
                 .child(main)
                 .on_action(cx.listener(|this, _: &IncreaseText, window, cx| {
@@ -163,7 +186,8 @@ impl Desktop {
                 .on_action(cx.listener(|this, _: &RefreshWorkspace, _, cx| this.refresh(true, cx)))
                 .on_action(cx.listener(|this, _: &OpenTasks, window, cx| {
                     this.active = None;
-                    this.navigate(Page::Actions, window, cx)
+                    this.navigate(Page::Actions, window, cx);
+                    window.focus(&this.task_search.read(cx).focus_handle(cx), cx);
                 }))
                 .on_action(cx.listener(|this, _: &CloseDetails, _, cx| {
                     this.selected = None;
@@ -181,6 +205,67 @@ impl Desktop {
             );
         }
         shell
+    }
+
+    fn render_notice(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let Some(n) = &self.notice else {
+            return div();
+        };
+        let tone = n.tone;
+        div()
+            .px_4()
+            .py_3()
+            .rounded(px(12.))
+            .border_1()
+            .border_color(rgb(d::BORDER))
+            .bg(rgb(if tone == Tone::Good {
+                0x1b2130
+            } else {
+                tone.background()
+            }))
+            .flex()
+            .gap_3()
+            .items_start()
+            .child(
+                Icon::new(if tone == Tone::Good {
+                    IconName::Check
+                } else {
+                    IconName::CircleAlert
+                })
+                .text_color(rgb(tone.color())),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(crate::i18n::stored_copy(&n.title, self.language)),
+                    )
+                    .child(if tone == Tone::Good {
+                        div().child(d::caption(crate::i18n::stored_copy(
+                            &n.detail,
+                            self.language,
+                        )))
+                    } else {
+                        self.diagnostic("notice-error", n.detail.clone(), window, cx)
+                    }),
+            )
+            .child(
+                Button::new("dismiss-notice")
+                    .icon(IconName::X)
+                    .ghost()
+                    .small()
+                    .tooltip(self.t(Text::Dismiss))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.notice = None;
+                        cx.notify()
+                    })),
+            )
     }
 
     pub(super) fn render_navigation(
@@ -202,15 +287,23 @@ impl Desktop {
             .flex_col()
             .gap_2();
         let mut brand = div()
-            .h(px(72. * scale))
-            .px_2()
+            .h(px(84. * scale))
+            .flex_shrink_0()
+            .px_1()
             .flex()
             .gap_3()
             .items_center()
             .child(
-                img("branding/morph-logo.png")
-                    .size(px(40.))
-                    .rounded(px(11.)),
+                div()
+                    .id("brand-mark")
+                    .test_support()
+                    .size(px(if compact { 48. } else { 56. }) * scale)
+                    .flex_shrink_0()
+                    .child(
+                        img("branding/morph-logo.png")
+                            .size_full()
+                            .rounded(px(14. * scale)),
+                    ),
             );
         if !compact {
             brand = brand.child(
@@ -221,44 +314,11 @@ impl Desktop {
             );
         }
         sidebar = sidebar.child(brand);
-        if !compact {
-            sidebar = sidebar.child(d::caption(self.t(Text::OPERATORWORKSPACE)).px_2().pb_3());
-        }
-        let target = match self.page {
-            Page::Overview => 0.,
-            Page::Channels => 1.,
-            Page::Factories => 2.,
-            Page::Invoices => 3.,
-            Page::Recovery => 4.,
-            Page::Events => 5.,
-            _ => -1.,
-        };
-        let marker = if self.motion_enabled(window, cx) {
-            gpui_kit::base::motion::transition(
-                "nav-indicator",
-                target,
-                gpui_kit::base::motion::Transition::new(Duration::from_millis(160)),
-                window,
-                cx,
-            )
-        } else {
-            target
-        };
-        let mut nav = div().relative().flex_shrink_0().flex().flex_col().gap_2();
-        if target >= 0. {
-            nav = nav.child(
-                div()
-                    .absolute()
-                    .left_0()
-                    .top(px(marker.max(0.) * 49. * scale + 12. * scale))
-                    .w(px(3.))
-                    .h(px(18. * scale))
-                    .rounded_md()
-                    .bg(rgb(d::ACCENT)),
-            );
-        }
+        let animated = self.motion_enabled(window, cx);
+        let mut buttons = Vec::new();
         for (i, page) in [
             Page::Overview,
+            Page::Wallet,
             Page::Channels,
             Page::Factories,
             Page::Invoices,
@@ -278,23 +338,29 @@ impl Desktop {
             if !compact {
                 content = content.child(label);
             }
-            nav = nav.child(
-                Button::new(("nav", i))
-                    .ghost()
-                    .selected(selected)
-                    .tooltip(label)
-                    .accessibility_label(label)
-                    .w_full()
-                    .flex_shrink_0()
-                    .h(px(42. * self.scale()))
-                    .child(content)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.hub_activity = false;
-                        this.navigate(page, window, cx)
-                    })),
-            );
+            let button = Button::new(("nav", i))
+                .ghost()
+                .selected(selected)
+                .tooltip(label)
+                .accessibility_label(label)
+                .w_full()
+                .flex_shrink_0()
+                .h(px(42. * self.scale()))
+                .child(content)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.hub_activity = false;
+                    this.navigate(page, window, cx)
+                }));
+            buttons.push((button, selected));
         }
-        sidebar = sidebar.child(nav);
+        sidebar = sidebar.child(crate::motion::rail(
+            "primary-navigation",
+            buttons,
+            true,
+            animated,
+            window,
+            cx,
+        ));
         sidebar = sidebar.child(div().flex_1()).child(d::rule());
         for (i, page) in [Page::Watch, Page::Model, Page::Inspector]
             .into_iter()
@@ -310,20 +376,24 @@ impl Desktop {
             if !compact {
                 content = content.child(label);
             }
-            sidebar = sidebar.child(
-                Button::new(("nav-bottom", i))
-                    .ghost()
-                    .selected(selected)
-                    .tooltip(label)
-                    .accessibility_label(label)
-                    .w_full()
-                    .flex_shrink_0()
-                    .h(px(42. * self.scale()))
-                    .child(content)
-                    .on_click(
-                        cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)),
-                    ),
-            );
+            let button = Button::new(("nav-bottom", i))
+                .ghost()
+                .selected(selected)
+                .tooltip(label)
+                .accessibility_label(label)
+                .w_full()
+                .flex_shrink_0()
+                .h(px(42. * self.scale()))
+                .child(content)
+                .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)));
+            sidebar = sidebar.child(crate::motion::selection(
+                button,
+                ("nav-bottom", i),
+                selected,
+                animated,
+                window,
+                cx,
+            ));
         }
 
         if !compact {
@@ -333,7 +403,10 @@ impl Desktop {
                     .pt_3(),
             );
         }
-        sidebar.id("navigation-scroll").overflow_y_scroll()
+        sidebar
+            .id("navigation-scroll")
+            .test_support()
+            .overflow_y_scroll()
     }
 
     pub(super) fn render_header(
@@ -345,49 +418,43 @@ impl Desktop {
         let fresh = self
             .last_checked
             .is_some_and(|v| v.elapsed() < Duration::from_secs(15));
-        let label = if self.connected && fresh {
-            self.t(Text::HubConnected)
+        let label = if self.page == Page::Wallet {
+            self.t(Text::WalletLocal)
+        } else if self.connected && fresh {
+            if compact {
+                self.t(Text::Online)
+            } else {
+                self.t(Text::HubConnected)
+            }
         } else if self.connected {
             self.t(Text::HubDataStale)
         } else {
             self.t(Text::Offline)
         };
-        let tone = if self.connected && fresh {
+        let tone = if self.page != Page::Wallet && self.connected && fresh {
             Tone::Good
         } else {
             Tone::Neutral
         };
         let mut header = div()
-            .h(px(60. * self.scale()))
+            .h(px(48. * self.scale()))
             .flex_shrink_0()
             .px_6()
             .border_b_1()
             .border_color(rgb(d::BORDER))
             .flex()
             .items_center()
-            .gap_3()
-            .child(d::caption(format!(
-                "{} / {}",
-                if compact {
-                    "Morph"
-                } else {
-                    self.t(Text::Workspace)
-                },
-                page_name(self.page, self.language)
-            )))
+            .gap_2()
+            .child(d::status(label, tone))
             .child(div().flex_1());
-        if !compact && let Some(s) = &self.state {
-            header = header.child(d::badge(s.network.clone(), Tone::Neutral));
-        }
-        header = header.child(d::badge(label, tone));
-        if !compact {
-            if let Some(t) = self.last_checked {
-                header = header.child(d::caption(format!(
-                    "{} {}",
-                    t.elapsed().as_secs(),
-                    self.t(Text::Seconds)
-                )));
-            }
+        if self.page != Page::Wallet
+            && !compact
+            && let Some(s) = &self.state
+        {
+            header = header.child(d::badge(
+                p::network_name(&s.network, self.language),
+                Tone::Neutral,
+            ));
         }
         header = header.child(
             Button::new("workspace-appearance")
@@ -421,6 +488,9 @@ impl Desktop {
                     this.set_language(next, window, cx);
                 })),
         );
+        if self.page == Page::Wallet {
+            return header;
+        }
         header = header
             .child(
                 Button::new("workspace-search")
@@ -441,13 +511,15 @@ impl Desktop {
                     .on_click(cx.listener(|this, _, _, cx| this.refresh(true, cx))),
             )
             .child(
-                Button::new("workspace-settings")
-                    .icon(IconName::Settings)
+                Button::new("workspace-tasks")
+                    .icon(IconName::Plus)
                     .ghost()
-                    .tooltip(self.t(Text::ConnectionSettings))
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.navigate(Page::Model, window, cx)),
-                    ),
+                    .tooltip(self.t(Text::NewTask))
+                    .accessibility_label(self.t(Text::NewTask))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.active = None;
+                        this.navigate(Page::Actions, window, cx)
+                    })),
             );
         header
     }

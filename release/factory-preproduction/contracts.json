@@ -17,8 +17,8 @@
       "name": "morph-state-type",
       "file": "morph-state-type",
       "deployment_scope": "controlled_devnet",
-      "size_bytes": 184144,
-      "ckb_data_hash": "0x20525c1fbb3a7b56ac6e8e79ee2a6399f8b5c8b46badc7404a42327119065bbb"
+      "size_bytes": 190856,
+      "ckb_data_hash": "0x8ca45c9bf6cfbae187fd6bd7c59e9e3a77a0ad0fb6a57766015f5210b4f47e14"
     },
     {
       "name": "morph-factory-type",
@@ -38,8 +38,8 @@
       "name": "morph-vault-lock",
       "file": "morph-vault-lock",
       "deployment_scope": "controlled_devnet",
-      "size_bytes": 165272,
-      "ckb_data_hash": "0x793dcfd7b55ae4221837a7c2c25cdc29810b03bb83182545a3f07f34e984f6fa"
+      "size_bytes": 172360,
+      "ckb_data_hash": "0x202b85e0e47824bb25604de075146d45c7eddcd7ea03da5bfcbb2ca860543e19"
     },
     {
       "name": "morph-batch-lock",

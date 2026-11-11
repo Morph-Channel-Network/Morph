@@ -64,6 +64,18 @@ jobs:
       - name: Run workspace tests
         run: make test
 
+      - name: Run bounded parser mutation campaign
+        run: make fuzz-smoke
+
+      - name: Retain parser mutation reports and failing inputs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: morph-parser-smoke-${{ github.event.pull_request.head.sha || github.sha }}
+          path: target/fuzz-campaigns/
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Run fixture checks
         run: make fixture-checks
 

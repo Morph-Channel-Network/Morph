@@ -1,4 +1,5 @@
 {
+  "revision": "1",
   "pubkey": "024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
   "node_id": "0x54d043fc84623f7a9f7383e1a332c524f0def68608446fc420316c30dfc00f01",
   "network": "devnet",
@@ -22,7 +23,7 @@
     "max_concurrent_mutations": 4,
     "max_concurrent_event_streams": 8,
     "mutation_rate_limit_per_minute": 120,
-    "max_invoice_expiry_secs": 604800
+    "max_invoice_expiry_secs": "604800"
   },
   "model": {
     "profile": "morph-current-custody",

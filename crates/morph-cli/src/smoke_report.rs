@@ -135,6 +135,9 @@ pub struct WatchtowerServiceSummary {
     pub error_count: u64,
     pub consecutive_errors: u64,
     pub health_file: Option<String>,
+    pub resource_count: usize,
+    pub failed_resources: usize,
+    pub confirmed_resources: usize,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct SponsorPolicySummary {
@@ -511,12 +514,60 @@ fn schema_current(value: &Value) -> Result<()> {
                     | "morph.factory_splice_package"
                     | "morph.factory_reduced_splice_package"
                     | "morph.factory_multi_asset_materialisation.v1"
+                    | "morph.watchtower_health"
             ),
             "retired wire artifact in current matrix: {schema}"
         );
     }
     Ok(())
 }
+fn child_close_transaction(value: &Value, check: &str, path: &str) -> Result<TransactionSummary> {
+    // This is the current operation-runtime receipt, not a second transaction
+    // format. Account for its cost while retaining the scenario's fork label.
+    let status = &value["status"];
+    ensure!(
+        value["dry_run"] == false
+            && status["state"] == "finalised"
+            && status["depth"].as_u64().is_some_and(|depth| depth >= 4)
+            && value["canonical_confirmations"] == status["depth"]
+            && value["operation"]["status"] == *status
+            && value["operation"]["transaction_hash"] == value["transaction_hash"],
+        "child close lacks matching canonical operation evidence"
+    );
+    hash_string(
+        status["block_hash"]
+            .as_str()
+            .context("close block hash missing")?,
+    )?;
+    let metrics = &value["metrics"];
+    ensure!(
+        metrics["estimated_cycles"] == value["operation"]["preflight"]["estimated_cycles"]
+            && metrics["tx_size_bytes"] == value["operation"]["preflight"]["tx_size_bytes"],
+        "close metrics differ from operation preflight"
+    );
+    Ok(TransactionSummary {
+        check: check.to_owned(),
+        path: path.to_owned(),
+        tx_hash: hash_string(
+            value["transaction_hash"]
+                .as_str()
+                .context("close hash missing")?,
+        )?,
+        // Observed committed on this controlled fork; the ledger separately
+        // records that this branch is later orphaned, as with existing replays.
+        status: Some("Committed".to_owned()),
+        block_number: Some(
+            status["block_number"]
+                .as_u64()
+                .context("close block number missing")?,
+        ),
+        estimated_cycles: metrics["estimated_cycles"]
+            .as_u64()
+            .context("close cycles missing")?,
+        tx_size_bytes: usize_value(&metrics["tx_size_bytes"]).context("close size missing")?,
+    })
+}
+
 fn collect(
     value: &Value,
     check: &str,
@@ -529,6 +580,11 @@ fn collect(
     ensure!(*nodes <= 200_000 && depth <= 64, "report node/depth bound");
     schema_current(value)?;
     if let Value::Object(map) = value {
+        if path.ends_with(".cooperative_close.submitted") {
+            summary
+                .transaction_observations
+                .push(child_close_transaction(value, check, path)?);
+        }
         if let (Some(tx_hash), Some(metrics)) = (
             value.get("tx_hash").and_then(Value::as_str),
             value.get("metrics"),
@@ -636,8 +692,45 @@ fn collect(
         }
         if matches!(
             schema,
-            "morph.watchtower_config_service" | "morph.watchtower_health"
+            "morph.watchtower_config_service" | crate::watch_config::WATCH_CONFIG_HEALTH_SCHEMA
         ) {
+            let resources: Vec<&Value> = if schema == "morph.watchtower_config_service" {
+                value["last_pass"]["channels"]
+                    .as_array()
+                    .context("service resource observations missing")?
+                    .iter()
+                    .map(|channel| &channel["observation"])
+                    .collect()
+            } else {
+                value["channels"]
+                    .as_array()
+                    .context("health resource observations missing")?
+                    .iter()
+                    .collect()
+            };
+            let mut ids = BTreeSet::new();
+            let mut failed_resources = 0;
+            let mut confirmed_resources = 0;
+            for resource in &resources {
+                let id = hash_string(
+                    resource["channel_id"]
+                        .as_str()
+                        .context("resource identity missing")?,
+                )?;
+                ensure!(ids.insert(id), "duplicated service resource observation");
+                let completed = resource["completed"]
+                    .as_bool()
+                    .context("resource completion missing")?;
+                let confirmed = resource["publication_confirmed"]
+                    .as_bool()
+                    .context("resource confirmation missing")?;
+                ensure!(
+                    !confirmed || completed,
+                    "failed resource claims confirmed publication"
+                );
+                failed_resources += usize::from(!completed);
+                confirmed_resources += usize::from(confirmed);
+            }
             summary.watchtower_services.push(WatchtowerServiceSummary {
                 check: check.to_string(),
                 path: path.to_string(),
@@ -655,6 +748,9 @@ fn collect(
                 consecutive_errors: number(&value["consecutive_errors"])
                     .context("service error streak missing")?,
                 health_file: string(value, "health_file"),
+                resource_count: resources.len(),
+                failed_resources,
+                confirmed_resources,
             });
         }
         if schema == "morph.publication_attempt" {
@@ -1177,7 +1273,7 @@ pub fn summarize_devnet_smoke(dir: &Path) -> Result<DevnetSmokeSummary> {
                         let packet:crate::factory_transition_packages::StoredFactoryTransitionPackage=serde_json::from_value(value)?;
                         frames.push((label, packet.validate()?));
                     }
-                    Some("morph.watchtower_health") => {
+                    Some(crate::watch_config::WATCH_CONFIG_HEALTH_SCHEMA) => {
                         let owner = summary
                             .cases
                             .iter()
@@ -1364,19 +1460,27 @@ pub fn assert_devnet_smoke_summary(summary: &DevnetSmokeSummary) -> Result<()> {
                 && service.schema == "morph.watchtower_config_service"
                 && service.completed_passes > 0
                 && service.published_count > 0
-                && service.error_count == 0
+                && service.error_count == 1
+                && service.consecutive_errors == 0
+                && service.resource_count == 2
+                && service.failed_resources == 1
+                && service.confirmed_resources == 1
                 && service.stopped_reason.as_deref() == Some("publication")),
-        "watch service lacks healthy canonically confirmed publication"
+        "watch service lacks confirmed publication with exactly one isolated failed resource"
     );
     ensure!(
         summary
             .watchtower_services
             .iter()
             .any(|service| service.check == watch.name
-                && service.schema == "morph.watchtower_health"
+                && service.schema == crate::watch_config::WATCH_CONFIG_HEALTH_SCHEMA
                 && service.status.as_deref() == Some("stopped")
                 && service.completed_passes > 0
-                && service.error_count == 0),
+                && service.error_count == 1
+                && service.consecutive_errors == 0
+                && service.resource_count == 2
+                && service.failed_resources == 1
+                && service.confirmed_resources == 1),
         "watch service lacks terminal health snapshot"
     );
     ensure!(
@@ -1954,7 +2058,79 @@ mod tests {
     use serde_json::json;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    #[test]
+    fn child_close_costs_require_matching_actual_operation_receipts() {
+        let status = json!({"state":"finalised", "depth":4, "block_number":12,
+            "block_hash": canonical_hex(&[2;32])});
+        let metrics = json!({"estimated_cycles":12_000_000, "tx_size_bytes":3485});
+        let value = json!({"dry_run":false,"canonical_confirmations":4,
+            "transaction_hash":canonical_hex(&[1;32]),"status":status,"metrics":metrics,
+            "operation":{"status":status,"transaction_hash":canonical_hex(&[1;32]),"preflight":metrics}});
+        let path = "$.transitions.child.terminal.cooperative_close.submitted";
+        let result = child_close_transaction(&value, "factory_custody_and_children", path).unwrap();
+        assert_eq!(result.status.as_deref(), Some("Committed"));
+        assert_eq!(result.estimated_cycles, 12_000_000);
+        assert_eq!(result.tx_size_bytes, 3485);
+        for (pointer, replacement) in [
+            ("/dry_run", json!(true)),
+            ("/status/state", json!("pending")),
+            ("/status/depth", json!(3)),
+            ("/canonical_confirmations", json!(3)),
+            (
+                "/operation/transaction_hash",
+                json!(canonical_hex(&[3; 32])),
+            ),
+            (
+                "/operation/status/block_hash",
+                json!(canonical_hex(&[3; 32])),
+            ),
+            ("/metrics/estimated_cycles", json!(1)),
+            ("/metrics/tx_size_bytes", json!(1)),
+        ] {
+            let mut changed = value.clone();
+            *changed.pointer_mut(pointer).unwrap() = replacement;
+            assert!(
+                child_close_transaction(&changed, "factory_custody_and_children", path).is_err()
+            );
+        }
+    }
+
     static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn current_health_rejects_retired_duplicate_and_contradictory_resource_evidence() {
+        for case in ["retired", "missing", "duplicate", "contradiction"] {
+            let run = matrix_fixture();
+            let mut health = run.read("health.json");
+            let expected = match case {
+                "retired" => {
+                    health["schema"] = json!("morph.watchtower_health");
+                    "retired wire artifact"
+                }
+                "missing" => {
+                    health.as_object_mut().unwrap().remove("channels");
+                    "resource observations missing"
+                }
+                "duplicate" => {
+                    health["channels"][1] = health["channels"][0].clone();
+                    "duplicated service resource"
+                }
+                _ => {
+                    health["channels"][0]["publication_confirmed"] = json!(true);
+                    "failed resource claims confirmed"
+                }
+            };
+            run.write("health.json", &health);
+            assert!(
+                summarize_devnet_smoke(&run.0)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(expected),
+                "{case}"
+            );
+        }
+    }
+
     struct Run(PathBuf);
     impl Run {
         fn new() -> Self {
@@ -2041,9 +2217,12 @@ mod tests {
         watched["operator_checks"] = json!(watch_checks());
         watched["sponsor_policy"] = json!({"min_state_number":"2","max_state_number":"2","max_fee_per_tx":"1000","max_total_fee":"2000"});
         watched["publication_reconciliation"] = json!({"inspected":1,"confirmed":0,"committed":0,"rejected":0,"pending":0,"proposed":0,"unknown":1});
-        watched["service"] = json!({"schema":"morph.watchtower_config_service","completed_passes":1,"published_count":1,"idle_count":0,"error_count":0,"consecutive_errors":0,"stopped_reason":"publication"});
+        let failed = json!({"channel_id":canonical_hex(&[0xfe;32]),"completed":false,"publication_confirmed":false});
+        let confirmed = json!({"channel_id":canonical_hex(&[2;32]),"completed":true,"publication_confirmed":true});
+        watched["service"] = json!({"schema":"morph.watchtower_config_service","completed_passes":1,"published_count":1,"idle_count":0,"error_count":1,"consecutive_errors":0,"stopped_reason":"publication",
+            "last_pass":{"channels":[{"observation":failed},{"observation":confirmed}]}});
         run.write("watch.json", &watched);
-        run.write("health.json", &json!({"schema":"morph.watchtower_health","status":"stopped","completed_passes":1,"published_count":1,"idle_count":0,"error_count":0,"consecutive_errors":0}));
+        run.write("health.json", &json!({"schema":crate::watch_config::WATCH_CONFIG_HEALTH_SCHEMA,"status":"stopped","completed_passes":1,"published_count":1,"idle_count":0,"error_count":1,"consecutive_errors":0,"channels":[failed,confirmed]}));
         let scripts = SCRIPTS.iter().enumerate().map(|(index,name)| {
             let bytes = format!("synthetic current report fixture {name}").into_bytes();
             fs::write(run.0.join("contracts").join(name), &bytes).unwrap();

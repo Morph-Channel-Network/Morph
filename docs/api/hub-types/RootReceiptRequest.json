@@ -1,0 +1,52 @@
+{
+  "$defs": {
+    "RootFundingTarget": {
+      "enum": [
+        "exit",
+        "creation"
+      ],
+      "type": "string"
+    },
+    "SignatureMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "pubkey": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "signing_digest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "signing_digest",
+        "pubkey",
+        "signature"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Public participant receipt; this DTO never carries a private signing key.",
+  "properties": {
+    "receipt": {
+      "$ref": "#/$defs/SignatureMessage"
+    },
+    "target": {
+      "$ref": "#/$defs/RootFundingTarget"
+    }
+  },
+  "required": [
+    "target",
+    "receipt"
+  ],
+  "title": "RootReceiptRequest",
+  "type": "object"
+}

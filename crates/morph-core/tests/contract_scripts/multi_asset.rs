@@ -1631,3 +1631,9 @@ mod conditional;
 
 #[path = "current_boundaries.rs"]
 mod boundaries;
+
+#[path = "multi_asset_close_costs.rs"]
+mod close_costs;
+
+#[path = "multi_asset_close.rs"]
+mod close;

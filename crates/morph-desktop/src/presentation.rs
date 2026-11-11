@@ -197,7 +197,97 @@ pub fn event_name(value: &str, l: Language) -> String {
         "multi_asset_recovery_imported" => l.t(Text::RecoveryEvidenceImported),
         "conditional_batch_imported" => l.t(Text::ConditionalEvidenceImported),
         "state_restored" => l.t(Text::WorkspaceRestored),
-        _ => return value.to_owned(),
+        _ => return format!("{} · {value}", l.t(Text::ServiceEvent)),
     };
     known.into()
+}
+
+/// A projection sum, not wallet liquidity. Never add unlike assets or duplicate records.
+pub fn local_ckb_total<'a>(
+    channels: impl IntoIterator<Item = (&'a str, &'a [morph_sdk::api::BalanceView])>,
+) -> Option<u128> {
+    let mut seen = std::collections::HashSet::new();
+    let mut total = 0_u128;
+    for (id, balances) in channels {
+        if !seen.insert(id) {
+            return None;
+        }
+        let mut ckb = balances
+            .iter()
+            .filter(|b| matches!(b.asset, AssetView::Ckb));
+        if let Some(balance) = ckb.next() {
+            if ckb.next().is_some() {
+                return None;
+            }
+            total = total.checked_add(balance.local.parse::<u128>().ok()?)?;
+        }
+    }
+    Some(total)
+}
+/// Approximate geometry only. Exact quantities are always rendered separately.
+pub fn allocation_shares(local: &str, remote: &str, pending: &str) -> Option<[f32; 3]> {
+    let values = [local, remote, pending].map(str::parse::<u128>);
+    let [Ok(local), Ok(remote), Ok(pending)] = values else {
+        return None;
+    };
+    let total = local.checked_add(remote)?.checked_add(pending)?;
+    if total == 0 {
+        return None;
+    }
+    Some([local, remote, pending].map(|value| (value as f64 / total as f64) as f32))
+}
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+    use morph_sdk::api::BalanceView;
+    fn balance(asset: AssetView, local: &str) -> BalanceView {
+        BalanceView {
+            asset,
+            local: local.into(),
+            remote: "0".into(),
+            pending: "0".into(),
+        }
+    }
+    #[test]
+    fn projection_never_sums_tokens_duplicates_or_overflows() {
+        let valid = vec![
+            balance(AssetView::Ckb, "123456789"),
+            balance(
+                AssetView::Xudt {
+                    type_hash: "token".into(),
+                },
+                "999",
+            ),
+        ];
+        assert_eq!(local_ckb_total([("a", valid.as_slice())]), Some(123456789));
+        assert_eq!(
+            local_ckb_total([("a", valid.as_slice()), ("a", valid.as_slice())]),
+            None
+        );
+        let duplicate = vec![balance(AssetView::Ckb, "1"), balance(AssetView::Ckb, "1")];
+        assert_eq!(local_ckb_total([("a", duplicate.as_slice())]), None);
+        let huge = vec![balance(AssetView::Ckb, &u128::MAX.to_string())];
+        assert_eq!(
+            local_ckb_total([("a", huge.as_slice()), ("b", valid.as_slice())]),
+            None
+        );
+        let bad = vec![balance(AssetView::Ckb, "invalid")];
+        assert_eq!(local_ckb_total([("a", bad.as_slice())]), None);
+    }
+    #[test]
+    fn distribution_handles_zero_invalid_and_overflow_without_fictitious_shares() {
+        assert_eq!(allocation_shares("0", "0", "0"), None);
+        assert_eq!(allocation_shares("invalid", "0", "0"), None);
+        assert_eq!(allocation_shares(&u128::MAX.to_string(), "1", "0"), None);
+        assert_eq!(allocation_shares("2", "1", "1"), Some([0.5, 0.25, 0.25]));
+    }
+}
+
+pub fn network_name(value: &str, l: Language) -> String {
+    match value.to_ascii_lowercase().as_str() {
+        "devnet" => l.t(Text::NetworkDevnet).into(),
+        "testnet" => l.t(Text::NetworkTestnet).into(),
+        "mainnet" => l.t(Text::NetworkMainnet).into(),
+        _ => value.into(),
+    }
 }

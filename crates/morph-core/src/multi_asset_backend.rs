@@ -6,6 +6,9 @@ use morph_script_common::multi_asset::MultiAssetStateHeader;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod close;
+pub use close::{MULTI_ASSET_CLOSE_MAX_APPROVALS, MultiAssetCloseAttempt};
+
 use crate::{
     Bytes32, MultiAssetError, MultiAssetRecoveryPackage, MultiAssetSettlement,
     MultiAssetSpliceProposal, MultiAssetState, ParticipantSignature, Phase, StateAuthorization,
@@ -39,6 +42,10 @@ pub enum MultiAssetBackendError {
     SpliceFrozen,
     #[error("splice preparation requires complete recovery of every reserved old-context vote")]
     UnsettledVotes,
+    #[error("funding context is frozen by a prepared or reserved cooperative close")]
+    CloseFrozen,
+    #[error("cooperative close approval history is full; use saved recovery")]
+    CloseHistoryFull,
 }
 
 type Result<T> = std::result::Result<T, MultiAssetBackendError>;
@@ -98,6 +105,8 @@ struct BackendSnapshot {
     pending: Option<PendingUpdate>,
     #[serde(deserialize_with = "required_option")]
     splice: Option<PendingSplice>,
+    #[serde(deserialize_with = "required_option")]
+    close: Option<Vec<MultiAssetCloseAttempt>>,
 }
 
 fn required_option<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
@@ -141,6 +150,7 @@ impl MultiAssetChannelBackend {
             reservation,
             pending: None,
             splice: None,
+            close: None,
         })
     }
 
@@ -244,6 +254,7 @@ impl MultiAssetChannelBackend {
         {
             return Err(MultiAssetBackendError::ConflictingVote);
         }
+        self.validate_close()?;
         if let Some(splice) = &self.snapshot.splice {
             splice.proposal.validate_contents(self.current())?;
             self.validate_splice_funding(splice)?;
@@ -439,6 +450,7 @@ impl MultiAssetChannelBackend {
     }
 
     fn require_no_splice(&self) -> Result<()> {
+        self.require_no_close()?;
         if self.snapshot.splice.is_some() {
             return Err(MultiAssetBackendError::SpliceFrozen);
         }
@@ -618,6 +630,7 @@ impl MultiAssetChannelBackend {
             .map_or(&[], |splice| splice.signatures.as_slice())
     }
     pub fn prepare_splice(&mut self, proposal: MultiAssetSpliceProposal) -> Result<Bytes32> {
+        self.require_no_close()?;
         proposal.validate_contents(self.current())?;
         self.require_settled_votes()?;
         if self.snapshot.pending.is_some() {

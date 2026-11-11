@@ -1,0 +1,71 @@
+{
+  "$defs": {
+    "AssetRequest": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ckb",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "xudt",
+              "type": "string"
+            },
+            "type_hash": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "type_hash"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "asset": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AssetRequest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "factory_id": {
+      "type": "string"
+    },
+    "participant_pubkeys": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "reserve": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "factory_id",
+    "participant_pubkeys",
+    "reserve"
+  ],
+  "title": "OpenFactoryRequest",
+  "type": "object"
+}

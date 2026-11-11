@@ -56,8 +56,11 @@ across all requests in that check; transport/status retries are disabled.
 `stale_after_ms` must cover at least
 `ceil(session_count / 4) * rpc_budget_ms + poll_ms`, up to 3,600,000 ms. Allow
 margin for local file and signature validation. The health expiry is measured
-from the oldest completed check, so a slow cycle cannot renew earlier results
-as if they had just been verified. A busy signer lock is sampled without waiting
+from cycle start, before any check begins, so a slow cycle cannot renew earlier results
+as if they had just been verified. Current v2 snapshots also bind the Linux boot
+ID and CLOCK_BOOTTIME start/completion/expiry, including time spent suspended.
+Reboot, clock reversal or expiry on either clock makes evidence stale. This is
+observation freshness, not whole-store rollback protection. A busy signer lock is sampled without waiting
 for the signing operation to finish.
 
 Use distinct configuration, session, health and alert paths. Existing health
@@ -134,3 +137,39 @@ recovery, process-stop expiry and final settlement. It produced two reorg alerts
 two recovery alerts and two closure alerts, while leaving signer journals
 unchanged except for the explicit refresh commands. Evidence:
 `target/multi-asset-devnet/splice-supervision/supervision-report.json`.
+
+
+## Redacted scoped observations
+
+```sh
+morph-cli multi-asset-supervision-readiness \
+  --config /srv/morph/supervision.json \
+  --health-file /srv/morph/monitor/health.json
+
+# Same command and paths, with --metrics for fixed Prometheus text.
+```
+
+This emits the shared `Readiness` DTO for service `signer_supervisor` and scope
+`authority_supervision`. The existing detailed health command remains the private
+operator diagnostic. The new report exports no journal paths, public keys,
+funding-context IDs or raw errors. Its sole configured scope reflects all
+registered contexts: fresh verified entries pass; busy, unmanaged, blocked,
+unreadable or duplicate authority entries fail. `channel_signing` is explicitly
+unsupported in this report. A recent successful chain guard does not prove that
+the external key process is running, has approved a request or will sign.
+
+The command observes only saved current evidence and returns nonzero when unready;
+it never refreshes or initializes a signer journal, sends a signing request or
+changes the supervisor snapshot. Reads have a 2-second observation budget. It
+checks freshness again at response construction so time spent reading cannot
+renew a lease. Files must be bounded regular files; symlinks and named pipes are
+rejected. Eight fixed metric series show readiness, observation availability and
+six status counts. Stale/missing status counts are `NaN`, never a fabricated zero.
+
+`morph.multi_asset_supervision_health.v2` is the sole current snapshot shape;
+boot-clock fields are mandatory and v1 is rejected. During this predeployment
+update, stop the supervisor, retain the old health/alert evidence separately, and
+start a new health output path. Do not delete or restore participant journals.
+Old observation data is never converted into signing authority. A finite
+`--cycles` run produces expiring observations, not a continuously live worker
+claim; after SIGKILL the existing evidence expires without needing a clean stop.

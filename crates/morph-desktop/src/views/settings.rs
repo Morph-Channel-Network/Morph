@@ -4,7 +4,7 @@ use gpui_kit::TestSupportExt;
 impl Desktop {
     pub(super) fn render_settings(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let mut view = div()
@@ -28,32 +28,26 @@ impl Desktop {
                     self.t(Text::ConnectionCredentialsStayInMemoryChannel)
                 },
             ));
-        view = view.child(
-            div()
-                .flex()
-                .gap_3()
-                .child(
-                    Button::new("settings-connection")
-                        .label(self.t(Text::Connection))
-                        .selected(!self.appearance_settings)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.appearance_settings = false;
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("settings-appearance")
-                        .label(self.t(Text::Appearance))
-                        .selected(self.appearance_settings)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.appearance_settings = true;
-                            cx.notify();
-                        })),
-                ),
-        );
+        view = view.child(self.segments(
+            "settings-tabs",
+            vec![
+                self.t(Text::Connection).into(),
+                self.t(Text::Appearance).into(),
+            ],
+            usize::from(self.appearance_settings),
+            |this, index, _, cx| {
+                this.appearance_settings = index == 1;
+                cx.notify();
+            },
+            window,
+            cx,
+        ));
         if self.appearance_settings {
             view = view.child(
                 d::panel()
+                    .w_full()
+                    .max_w(px(760. * self.scale()))
+                    .self_center()
                     .flex()
                     .items_center()
                     .flex_wrap()
@@ -90,6 +84,9 @@ impl Desktop {
             );
             view = view.child(
                 d::panel()
+                    .w_full()
+                    .max_w(px(760. * self.scale()))
+                    .self_center()
                     .flex()
                     .flex_col()
                     .gap_4()
@@ -99,7 +96,6 @@ impl Desktop {
                             .font_weight(FontWeight::MEDIUM)
                             .child(self.t(Text::Appearance)),
                     )
-                    .child(d::caption(self.t(Text::ScaleHelp)))
                     .child(
                         div()
                             .flex()
@@ -110,8 +106,8 @@ impl Desktop {
                             .child(
                                 Button::new("smaller-text")
                                     .label("A−")
-                                    .tooltip(self.t(Text::SmallerText))
-                                    .accessibility_label(self.t(Text::SmallerText))
+                                    .tooltip(self.t(Text::SmallerType))
+                                    .accessibility_label(self.t(Text::SmallerType))
                                     .disabled(self.scale_percent <= 90)
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.change_scale(-10, window, cx)
@@ -121,8 +117,8 @@ impl Desktop {
                             .child(
                                 Button::new("larger-text")
                                     .label("A+")
-                                    .tooltip(self.t(Text::LargerText))
-                                    .accessibility_label(self.t(Text::LargerText))
+                                    .tooltip(self.t(Text::LargerType))
+                                    .accessibility_label(self.t(Text::LargerType))
                                     .disabled(self.scale_percent >= 150)
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.change_scale(10, window, cx)
@@ -171,6 +167,9 @@ impl Desktop {
             return view;
         }
         let mut connection = d::panel()
+            .w_full()
+            .max_w(px(760. * self.scale()))
+            .self_center()
             .flex()
             .flex_col()
             .gap_4()
@@ -189,7 +188,7 @@ impl Desktop {
             .child(
                 div()
                     .child(d::caption(self.t(Text::BearerTokenMemoryOnly)))
-                    .child(Input::new(&self.token).id("hub-token")),
+                    .child(Input::new(&self.token).id("hub-token").mask_toggle()),
             );
         if self.connected {
             connection = connection.child(d::key_value(
@@ -198,7 +197,8 @@ impl Desktop {
             ));
         }
         if let Some(error) = &self.connection_error {
-            connection = connection.child(div().text_color(rgb(d::WARNING)).child(error.clone()));
+            connection =
+                connection.child(self.diagnostic("connection-error", error.clone(), window, cx));
         }
         connection = connection.child(
             div()
@@ -234,6 +234,9 @@ impl Desktop {
                 .collect::<Vec<_>>()
                 .join(" · ");
             let capabilities = d::panel()
+                .w_full()
+                .max_w(px(760. * self.scale()))
+                .self_center()
                 .flex()
                 .flex_col()
                 .gap_3()
@@ -273,6 +276,9 @@ impl Desktop {
         }
         view = view.child(
             d::panel()
+                .w_full()
+                .max_w(px(760. * self.scale()))
+                .self_center()
                 .flex()
                 .flex_col()
                 .gap_3()
@@ -291,6 +297,9 @@ impl Desktop {
         let restore_reason = self.block_reason(HubOperation::PreviewRestore);
         view = view.child(
             d::panel()
+                .w_full()
+                .max_w(px(760. * self.scale()))
+                .self_center()
                 .border_color(rgb(0x5b3b39))
                 .flex()
                 .flex_col()
@@ -340,6 +349,9 @@ impl Desktop {
         );
         view.child(
             d::panel()
+                .w_full()
+                .max_w(px(760. * self.scale()))
+                .self_center()
                 .flex()
                 .flex_col()
                 .gap_3()

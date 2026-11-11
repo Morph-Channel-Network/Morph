@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "encoded_invoice": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "encoded_invoice"
+  ],
+  "title": "DecodeInvoiceRequest",
+  "type": "object"
+}

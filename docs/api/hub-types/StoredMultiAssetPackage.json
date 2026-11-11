@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "StoredMultiAssetCellDep": {
+      "additionalProperties": false,
+      "properties": {
+        "dep_type": {
+          "type": "string"
+        },
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tx_hash",
+        "index",
+        "dep_type"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Binary evidence is canonical hex. Every u64/u128 exposed in this public package is\na decimal string; JSON number rounding must never change signed value.",
+  "properties": {
+    "cell_deps": {
+      "items": {
+        "$ref": "#/$defs/StoredMultiAssetCellDep"
+      },
+      "type": "array"
+    },
+    "header_hex": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "signature_witness_hex": {
+      "type": "string"
+    },
+    "state_carrier_capacity": {
+      "type": "string"
+    },
+    "witness_hex": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "header_hex",
+    "witness_hex",
+    "signature_witness_hex",
+    "state_carrier_capacity",
+    "cell_deps"
+  ],
+  "title": "StoredMultiAssetPackage",
+  "type": "object"
+}

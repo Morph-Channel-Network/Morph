@@ -16,7 +16,7 @@ AUDIT_IGNORE ?= --ignore RUSTSEC-2026-0097
 
 .PHONY: native-build-env desktop desktop-build package-desktop ci full-test test lint fmt fmt-check source-hygiene vendor-check audit deny supply-chain smoke fixture-checks rust-client-check desktop-check build-contracts contract-tests verify-contract-manifest preproduction-envelope-check runbook-check release-readiness package-contract-release devnet-smoke devnet-e2e devnet-stateful-e2e fiber-morph-devnet-preflight fiber-morph-devnet-acceptance fiber-morph-devnet-acceptance-full fiber-morph-devnet-audit smoke-report smoke-assert smoke-assert-budget devnet-stateful-report devnet-stateful-assert
 
-ci: fmt-check lint source-hygiene supply-chain test fixture-checks desktop-build contract-tests release-readiness
+ci: fmt-check lint source-hygiene supply-chain test fuzz-smoke fixture-checks desktop-build contract-tests release-readiness
 
 .PHONY: qualify-local-candidate
 qualify-local-candidate:
@@ -160,3 +160,9 @@ devnet-stateful-report:
 
 devnet-stateful-assert:
 	$(CARGO) run -p morph-cli -- devnet-stateful-assert --audit-profile docs/devnet-audit-profile.example.json --budget-profile docs/devnet-stateful-budget.example.json
+
+# Fresh output preserves earlier failures instead of overwriting reproducers.
+.PHONY: fuzz-smoke
+fuzz-smoke:
+	mkdir -p target/fuzz-campaigns
+	$(CARGO) run --locked -p morph-xtask --bin morph-fuzz -- --output "$$(mktemp -u target/fuzz-campaigns/smoke.XXXXXXXX)" --cases 1000 --seconds 30

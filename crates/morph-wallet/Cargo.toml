@@ -1,0 +1,27 @@
+[package]
+name = "morph-wallet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Local CKB wallet custody, exact transaction preparation, and bounded chain observation"
+
+[dependencies]
+anyhow.workspace = true
+aes-gcm.workspace = true
+argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "zeroize"] }
+bech32 = "=0.12.0"
+ckb-types.workspace = true
+ckb-jsonrpc-types.workspace = true
+ckb-crypto.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+morph-core = { path = "../morph-core" }
+morph-packages = { path = "../morph-packages" }
+morph-key-input = { path = "../morph-key-input" }
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+rustix = { version = "1", features = ["fs", "process"] }

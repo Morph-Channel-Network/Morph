@@ -1,0 +1,15 @@
+{
+  "schema": "morph.shadow_service_checkpoint.v1",
+  "passed": true,
+  "morph_tests": 420,
+  "fiber_hook_tests": 2,
+  "native_service": true,
+  "native_reorg": true,
+  "forwarding": false,
+  "morph_source_entries": 4157,
+  "fiber_source_entries": 1183,
+  "events": 27,
+  "post_native_code_changes": "CLI help comment only (reconstructed source hash verified)",
+  "final_release_qualified": false,
+  "issues_closed": false
+}

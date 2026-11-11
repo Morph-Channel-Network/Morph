@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "revision": 29,
+  "encrypted": false,
+  "records": 1,
+  "intents": 29,
+  "events": 27,
+  "attempts": 27,
+  "payload_bytes": 56161
+}

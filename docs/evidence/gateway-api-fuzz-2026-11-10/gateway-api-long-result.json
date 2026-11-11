@@ -1,0 +1,146 @@
+{
+  "accepted": 2020,
+  "cases": 10000,
+  "corpus": [
+    {
+      "bytes": 26,
+      "ckb_blake2b256": "a0d980d3bcb9e93c53b5c6621eae0c5b63e1d729d21023d5b056c337cbe390db",
+      "file": "seed-0.bin"
+    },
+    {
+      "bytes": 153,
+      "ckb_blake2b256": "a267555d6606765f7ea1e654e37f1d75c037d3ef67c4cc60596d057f4c576519",
+      "file": "seed-1.bin"
+    },
+    {
+      "bytes": 149,
+      "ckb_blake2b256": "b859827cae9c26b209abeb7eae46573474e2445c048dcc5df1b26f8b65ba2727",
+      "file": "seed-2.bin"
+    },
+    {
+      "bytes": 72,
+      "ckb_blake2b256": "f86efff27e11ed467cfc0dcd4ee03cf6e284c6fbd826d62493e019ee8b3e86cf",
+      "file": "seed-3.bin"
+    },
+    {
+      "bytes": 16,
+      "ckb_blake2b256": "ddfd3331b1974d928548017204d7c841faf42155fe28b19c40a2c7fdbd0525c4",
+      "file": "seed-4.bin"
+    },
+    {
+      "bytes": 418,
+      "ckb_blake2b256": "b062a1295c17064ecf9646c7d01531f6f2fce5e8ed06534933a77ec4f358e72d",
+      "file": "seed-5.bin"
+    },
+    {
+      "bytes": 365,
+      "ckb_blake2b256": "e75282d4c1032ad284f39e49a10b8cef17b3cd925476374a800c1a0d21d9d538",
+      "file": "seed-6.bin"
+    },
+    {
+      "bytes": 730,
+      "ckb_blake2b256": "41aac8aa95d3261e91af44651d2d4e2f4f1c620b2637a20959391e68b3eab350",
+      "file": "seed-7.bin"
+    },
+    {
+      "bytes": 1292,
+      "ckb_blake2b256": "ba2124b37143961fd474734781e58f3f37bf6ea5957cd2152a110ea6e0fc4c51",
+      "file": "seed-8.bin"
+    },
+    {
+      "bytes": 1293,
+      "ckb_blake2b256": "20caa8ad8f89e727fb9dd9559ce5c1f2512b8fe3f5dded34a2875bad019e3add",
+      "file": "seed-9.bin"
+    },
+    {
+      "bytes": 223,
+      "ckb_blake2b256": "808d51ed477d159b2a6e8d29d2b8f7a2ec66dd713da0518b5756b08c0d432a44",
+      "file": "seed-10.bin"
+    },
+    {
+      "bytes": 223,
+      "ckb_blake2b256": "3d537063832ec58bca0d0c3a0b97d4e22db8012de202949f81664e2f9a9319be",
+      "file": "seed-11.bin"
+    },
+    {
+      "bytes": 1248,
+      "ckb_blake2b256": "4b024c7edeeae9fd37e898ae6927a86427fc9dbf1ee74d4c1d2814805a2e3dcd",
+      "file": "seed-12.bin"
+    },
+    {
+      "bytes": 121,
+      "ckb_blake2b256": "2f4e44380c3fe4e791b7e30b68cd32d7a36e780e6e25bc7dd9588cf0aaa0be3f",
+      "file": "seed-13.bin"
+    },
+    {
+      "bytes": 1279,
+      "ckb_blake2b256": "d506e28322ce81044173ac0caf7ad09827bc28af49d3188b66fbac451950c852",
+      "file": "seed-14.bin"
+    },
+    {
+      "bytes": 2346,
+      "ckb_blake2b256": "ac655c55830737ad500695164365d13fdb8ab9f681d2640c2cad4288163d0b98",
+      "file": "seed-15.bin"
+    },
+    {
+      "bytes": 2322,
+      "ckb_blake2b256": "0caf1177f2870dd1fa151578dac69de1ae9ab7ef0cfb7ee50249b920442a22a3",
+      "file": "seed-16.bin"
+    },
+    {
+      "bytes": 21,
+      "ckb_blake2b256": "66747e0f014323bd87037ff446b4a93fe60ed5f4013a3bd394c53ce96c7b53e8",
+      "file": "seed-17.bin"
+    },
+    {
+      "bytes": 374,
+      "ckb_blake2b256": "41cf998f7cc52332a2da6cccdca299aff3315e0b9563977491143723bd1526e8",
+      "file": "seed-18.bin"
+    },
+    {
+      "bytes": 954,
+      "ckb_blake2b256": "1b681b3a3756bc41866e50d6103ef4edfad70576b22fc66dcca1780d2dc69857",
+      "file": "seed-19.bin"
+    },
+    {
+      "bytes": 614,
+      "ckb_blake2b256": "eee7559990c6e6d7c32ba83c48a95a4fe72927d89723bd0bcfc9e8b938e42f1f",
+      "file": "seed-20.bin"
+    },
+    {
+      "bytes": 2424,
+      "ckb_blake2b256": "7a58c1cf262a75350fb9ee7eaa6be9f170904a536b824f9d5c0392deaa44b853",
+      "file": "seed-21.bin"
+    },
+    {
+      "bytes": 3,
+      "ckb_blake2b256": "835f52e78b059783dfeb46a1d9cf7a4cffce01b1b3fcb37f4739260c34c9681b",
+      "file": "seed-22.bin"
+    },
+    {
+      "bytes": 14,
+      "ckb_blake2b256": "b3a641b4460f07924efa135d1e12f10f898457efb7610abfa03fd6be54fcd4bc",
+      "file": "seed-23.bin"
+    },
+    {
+      "bytes": 17,
+      "ckb_blake2b256": "b0b6b9d0ef2a3930cda8cdd519de96a438c47a8d69691d7397a045f15a46e1d2",
+      "file": "seed-24.bin"
+    },
+    {
+      "bytes": 290,
+      "ckb_blake2b256": "e991b69190cd603c7532bf299c1ae11935caaa1203c15a2784225abff6964d9a",
+      "file": "seed-25.bin"
+    },
+    {
+      "bytes": 117,
+      "ckb_blake2b256": "315b4affdfa5893c3ac0a9656673753fe02c7c52d411d9c8686f6f5e98262afa",
+      "file": "seed-26.bin"
+    }
+  ],
+  "elapsed_ms": 1896,
+  "rejected": 7980,
+  "seed": 332043276360,
+  "status": "pass",
+  "target": "gateway-api"
+}

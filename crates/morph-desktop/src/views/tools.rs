@@ -3,7 +3,7 @@ use super::*;
 impl Desktop {
     pub(super) fn render_inspector(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let mut view = div()
@@ -110,12 +110,42 @@ impl Desktop {
                     self.t(Text::Bytes)
                 )));
             }
-            card = card.child(
-                Textarea::new(&input)
-                    .font_family("monospace")
-                    .text_size(gpui_kit::rems(13. / 14.))
-                    .h(px(if i == 0 { 220. } else { 140. })),
+            let editing = window.use_keyed_state(
+                (gpui_kit::ElementId::Integer(i as u64), "evidence-editor"),
+                cx,
+                |_, _| false,
             );
+            let shown = *editing.read(cx);
+            card = card.child(
+                Button::new(("edit-inspector-json", i))
+                    .ghost()
+                    .small()
+                    .self_start()
+                    .icon(if shown {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .label(self.t(if shown {
+                        Text::HideEditor
+                    } else {
+                        Text::PasteEditJSON
+                    }))
+                    .on_click(move |_, _, cx| {
+                        editing.update(cx, |v, cx| {
+                            *v = !*v;
+                            cx.notify();
+                        })
+                    }),
+            );
+            if shown {
+                card = card.child(
+                    Textarea::new(&input)
+                        .font_family("monospace")
+                        .text_size(gpui_kit::rems(13. / 14.))
+                        .h(px(if i == 0 { 220. } else { 140. })),
+                );
+            }
             if !empty {
                 card = card.child(
                     Button::new(("clear-inspector", i))
@@ -134,9 +164,9 @@ impl Desktop {
                         })),
                 );
             }
-            view = view.child(card);
+            view = view.child(d::workbench(card, 860. * self.scale()));
             if i == 0 {
-                view = view.child(
+                view = view.child(d::workbench(
                     Button::new("toggle-inspector-extras")
                         .ghost()
                         .icon(if self.inspector_advanced {
@@ -144,6 +174,7 @@ impl Desktop {
                         } else {
                             IconName::ChevronRight
                         })
+                        .self_start()
                         .label(if self.inspector_advanced {
                             self.t(Text::CollapseSupportingDocuments).to_owned()
                         } else {
@@ -161,7 +192,8 @@ impl Desktop {
                             this.inspector_advanced = !this.inspector_advanced;
                             cx.notify();
                         })),
-                );
+                    860. * self.scale(),
+                ));
                 if !self.inspector_advanced && extras > 0 {
                     view = view.child(d::caption(
                         self.t(Text::LoadedSupportingDocumentsAreIncludedIn),
@@ -173,11 +205,10 @@ impl Desktop {
             view = view.child(
                 d::panel()
                     .border_color(rgb(d::DANGER))
-                    .child(d::caption(self.t(Text::CheckTheEvidence)))
-                    .child(div().mt_2().text_color(rgb(d::DANGER)).child(error.clone())),
+                    .child(self.diagnostic("inspector-error", error.clone(), window, cx)),
             );
         }
-        view = view.child(
+        view = view.child(d::workbench(
             div()
                 .flex()
                 .flex_wrap()
@@ -198,7 +229,8 @@ impl Desktop {
                 .child(d::caption(
                     self.t(Text::OfflineContentCheckNoChainObservation),
                 )),
-        );
+            860. * self.scale(),
+        ));
         view
     }
 
@@ -245,7 +277,10 @@ impl Desktop {
             )
             .child(d::caption(
                 if matches!(self.result_target, ResultTarget::Record(..)) {
-                    self.result_title.clone()
+                    self.selected
+                        .as_ref()
+                        .map(|r| record_title(r, self.language))
+                        .unwrap_or_else(|| self.result_title.clone())
                 } else {
                     crate::i18n::stored_copy(&self.result_title, self.language)
                 },
@@ -286,6 +321,7 @@ impl Desktop {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .gap_3()
                     .child(
                         Button::new("copy-result")
@@ -298,10 +334,16 @@ impl Desktop {
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let mut value = this.result.clone().unwrap_or(Value::Null);
                                 if !this.raw_details {
-                                    crate::redact(&mut value)
+                                    crate::redact(&mut value, this.language)
                                 }
                                 if let Ok(text) = serde_json::to_string_pretty(&value) {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(text))
+                                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                    this.inform(
+                                        Tone::Good,
+                                        this.t(Text::Copied),
+                                        this.t(Text::Copied),
+                                        cx,
+                                    );
                                 }
                             })),
                     )

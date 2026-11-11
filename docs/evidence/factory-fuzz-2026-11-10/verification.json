@@ -1,0 +1,20 @@
+{
+  "schema": "morph.factory_fuzz_checkpoint.v1",
+  "passed": true,
+  "source_head": "07a3fa04ba7c556a8af7a4cfd61c21ba39d4e09b",
+  "git_dirty": true,
+  "binary_ckb_blake2b256": "260498b6ea522fdb252b4c6578c2f0d8c3259c79a6007c5707b2240ff6c54393",
+  "targets": 13,
+  "smoke_inputs": 13000,
+  "long_inputs": 130000,
+  "tool_tests": 10,
+  "core_multi_asset_tests": 76,
+  "operation_tests": 15,
+  "adapter_tests": 37,
+  "clippy": true,
+  "new_vm_run": false,
+  "new_native_run": false,
+  "github_workflow_executed": false,
+  "release_qualified": false,
+  "issues_closed": false
+}

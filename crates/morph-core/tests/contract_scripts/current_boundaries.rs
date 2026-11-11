@@ -381,3 +381,50 @@ fn current_contracts_reject_retired_state_vault_and_factory_shapes() {
         &[ScriptError::FactoryMultiAssetPartitionMismatch as i8],
     );
 }
+
+#[test]
+#[ignore = "requires built current ELFs"]
+fn current_inline_factory_and_batch_args_reject_malformed_shapes_before_witness_access() {
+    let mut fixture = build_with_plain(0, false, true);
+    let mut cases = vec![];
+    for (name, size) in [("morph-factory-vault-lock", 64), ("morph-batch-lock", 104)] {
+        for length in [0, size - 1, size + 1, 256] {
+            cases.push((name, vec![1; length], ScriptError::WrongArgsLength));
+        }
+    }
+    for lane in [0..32, 32..64] {
+        let mut args = vec![1; 104];
+        args[lane].fill(0);
+        cases.push(("morph-batch-lock", args, ScriptError::WrongArgsLength));
+    }
+    let mut args = vec![1; 104];
+    args[64..72].fill(0);
+    cases.push((
+        "morph-batch-lock",
+        args,
+        ScriptError::ConditionalBatchLockMismatch,
+    ));
+    for (name, args, code) in cases {
+        let lock = deploy_contract(&mut fixture.context, name, args);
+        let source = fixture.context.create_cell(
+            CellOutput::new_builder()
+                .capacity(CELL_CAPACITY)
+                .lock(lock)
+                .build(),
+            Bytes::new(),
+        );
+        let tx = fixture.context.complete_tx(
+            TransactionBuilder::default()
+                .input(CellInput::new(source, 0))
+                .output(
+                    CellOutput::new_builder()
+                        .capacity(CELL_CAPACITY)
+                        .lock(fixture.locks[0].clone())
+                        .build(),
+                )
+                .output_data(Bytes::new().pack())
+                .build(),
+        );
+        rejects(&fixture.context, &tx, &[code as i8]);
+    }
+}

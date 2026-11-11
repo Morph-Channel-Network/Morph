@@ -27,7 +27,8 @@ impl Desktop {
             let value = input.read(cx).value();
             let value = value.trim();
             let optional = matches!(meta.kind, forms::Kind::Optional)
-                || (*name == "payment_preimage" && form.operation == HubOperation::CreateInvoice);
+                || (matches!(*name, "payment_preimage" | "description")
+                    && form.operation == HubOperation::CreateInvoice);
             let issue = if value.is_empty() {
                 (!optional).then_some(self.t(Text::ThisFieldIsRequired))
             } else if workspace::amount_field(name) {
@@ -70,7 +71,7 @@ impl Desktop {
                     .find(|(k, _)| *k == name)
                     .is_some_and(|(_, e)| !e.read(cx).value().trim().is_empty())
             };
-            if supplied("payment_preimage") == supplied("payment_hash") {
+            if !supplied("payment_preimage") && !supplied("payment_hash") {
                 let message = self.t(Text::SupplyExactlyOnePaymentPreimageOr);
                 issues.insert("payment_preimage", message.into());
                 issues.insert("payment_hash", message.into());

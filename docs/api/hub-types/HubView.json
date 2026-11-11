@@ -1,0 +1,1477 @@
+{
+  "$defs": {
+    "AssetView": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "ckb",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "xudt",
+              "type": "string"
+            },
+            "type_hash": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "type_hash"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AuthScope": {
+      "enum": [
+        "read",
+        "write",
+        "restore",
+        "sign"
+      ],
+      "type": "string"
+    },
+    "BalanceView": {
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/AssetView"
+        },
+        "local": {
+          "type": "string"
+        },
+        "pending": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset",
+        "local",
+        "remote",
+        "pending"
+      ],
+      "type": "object"
+    },
+    "CapabilitySummary": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ordinary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "application_context_commitment": {
+              "type": "string"
+            },
+            "batch_code_hash": {
+              "type": "string"
+            },
+            "batch_hash_type": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "batch_id": {
+              "type": "string"
+            },
+            "batch_lock_hash": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "ckb_conditional",
+              "type": "string"
+            },
+            "pending_ckb": {
+              "description": "CKB shannons, canonical decimal.",
+              "type": "string"
+            },
+            "settled_capacities": {
+              "description": "CKB shannons for participants 0 and 1.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "transfers": {
+              "items": {
+                "$ref": "#/$defs/ConditionalTransferSummary"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "batch_code_hash",
+            "batch_hash_type",
+            "batch_id",
+            "application_context_commitment",
+            "pending_ckb",
+            "batch_lock_hash",
+            "settled_capacities",
+            "transfers"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ChannelView": {
+      "properties": {
+        "balances": {
+          "items": {
+            "$ref": "#/$defs/BalanceView"
+          },
+          "type": "array"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "counterparty_node_id": {
+          "type": "string"
+        },
+        "counterparty_pubkey": {
+          "type": "string"
+        },
+        "factory_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "funding_context_id": {
+          "type": "string"
+        },
+        "funding_epoch": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/RecordProvenanceView"
+        },
+        "sponsor_budget": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "state_number": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel_id",
+        "counterparty_pubkey",
+        "counterparty_node_id",
+        "funding_epoch",
+        "funding_context_id",
+        "state_number",
+        "phase",
+        "balances",
+        "sponsor_budget",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "ConditionalTransferSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "CKB shannons, canonical decimal.",
+          "type": "string"
+        },
+        "hash_algorithm": {
+          "$ref": "#/$defs/HashAlgorithmSummary"
+        },
+        "payee_lock_hash": {
+          "type": "string"
+        },
+        "payer_lock_hash": {
+          "type": "string"
+        },
+        "payment_hash": {
+          "type": "string"
+        },
+        "refund_after_block": {
+          "description": "Canonical decimal absolute block height.",
+          "type": "string"
+        },
+        "transfer_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "payer_lock_hash",
+        "payee_lock_hash",
+        "hash_algorithm",
+        "payment_hash",
+        "amount",
+        "refund_after_block"
+      ],
+      "type": "object"
+    },
+    "EventSeverity": {
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "type": "string"
+    },
+    "EventView": {
+      "properties": {
+        "created_at_unix": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "id": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/RecordProvenanceView"
+        },
+        "severity": {
+          "$ref": "#/$defs/EventSeverity"
+        },
+        "subject_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "severity",
+        "event",
+        "message",
+        "created_at_unix",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "FactoryView": {
+      "properties": {
+        "factory_id": {
+          "type": "string"
+        },
+        "materialised_child_channels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "participant_node_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "participant_pubkeys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "provenance": {
+          "$ref": "#/$defs/RecordProvenanceView"
+        },
+        "reserve_balances": {
+          "items": {
+            "$ref": "#/$defs/BalanceView"
+          },
+          "type": "array"
+        },
+        "update_number": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "factory_id",
+        "participant_pubkeys",
+        "participant_node_ids",
+        "update_number",
+        "reserve_balances",
+        "materialised_child_channels",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "HashAlgorithmSummary": {
+      "enum": [
+        "ckb_blake2b",
+        "sha256"
+      ],
+      "type": "string"
+    },
+    "HubModelView": {
+      "properties": {
+        "chain_actions_enabled": {
+          "type": "boolean"
+        },
+        "channel_authority": {
+          "type": "string"
+        },
+        "factory_authority": {
+          "type": "string"
+        },
+        "factory_max_participants": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "factory_min_participants": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "factory_rights_exposed": {
+          "type": "boolean"
+        },
+        "hub_role": {
+          "type": "string"
+        },
+        "payment_gateway_receipts_exposed": {
+          "type": "boolean"
+        },
+        "payment_gateway_role": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "provider_edges_exposed": {
+          "type": "boolean"
+        },
+        "rgbpp_evidence_exposed": {
+          "type": "boolean"
+        },
+        "routing_role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "hub_role",
+        "factory_authority",
+        "channel_authority",
+        "routing_role",
+        "payment_gateway_role",
+        "factory_min_participants",
+        "factory_max_participants",
+        "chain_actions_enabled",
+        "factory_rights_exposed",
+        "provider_edges_exposed",
+        "rgbpp_evidence_exposed",
+        "payment_gateway_receipts_exposed"
+      ],
+      "type": "object"
+    },
+    "HubSecurityView": {
+      "properties": {
+        "auth_mode": {
+          "type": "string"
+        },
+        "auth_required": {
+          "type": "boolean"
+        },
+        "auth_scopes": {
+          "items": {
+            "$ref": "#/$defs/AuthScope"
+          },
+          "type": "array"
+        },
+        "cors_origin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "invoice_signing_enabled": {
+          "type": "boolean"
+        },
+        "max_concurrent_connections": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_concurrent_event_streams": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_concurrent_mutations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_invoice_expiry_secs": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "mutation_rate_limit_per_minute": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "single_operator": {
+          "type": "boolean"
+        },
+        "state_restore_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "auth_required",
+        "auth_mode",
+        "auth_scopes",
+        "single_operator",
+        "state_restore_enabled",
+        "invoice_signing_enabled",
+        "max_concurrent_connections",
+        "max_concurrent_mutations",
+        "max_concurrent_event_streams",
+        "mutation_rate_limit_per_minute",
+        "max_invoice_expiry_secs"
+      ],
+      "type": "object"
+    },
+    "InvoiceView": {
+      "properties": {
+        "amount": {
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/AssetView"
+        },
+        "cancelled_at_unix": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "channel_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at_unix": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "encoded_invoice": {
+          "type": "string"
+        },
+        "expires_at_unix": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "invoice_id": {
+          "type": "string"
+        },
+        "network": {
+          "type": "string"
+        },
+        "paid_at_unix": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payee_node_id": {
+          "type": "string"
+        },
+        "payee_pubkey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payment_hash": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/RecordProvenanceView"
+        },
+        "received_at_unix": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "invoice_id",
+        "encoded_invoice",
+        "status",
+        "network",
+        "payee_node_id",
+        "asset",
+        "amount",
+        "created_at_unix",
+        "expires_at_unix",
+        "payment_hash",
+        "description",
+        "received_at_unix",
+        "paid_at_unix",
+        "cancelled_at_unix",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "MultiAssetPackageBalance": {
+      "properties": {
+        "amount": {
+          "type": "string"
+        },
+        "business_ckb": {
+          "type": "string"
+        },
+        "reserve": {
+          "type": "string"
+        },
+        "type_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "reserve",
+        "business_ckb",
+        "amount"
+      ],
+      "type": "object"
+    },
+    "MultiAssetPackageSummary": {
+      "properties": {
+        "assets": {
+          "items": {
+            "$ref": "#/$defs/MultiAssetPackageBalance"
+          },
+          "type": "array"
+        },
+        "capability": {
+          "$ref": "#/$defs/CapabilitySummary"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "dependency_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "funding_context_id": {
+          "type": "string"
+        },
+        "package_id": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "signer_pubkeys": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "state_carrier_capacity": {
+          "type": "string"
+        },
+        "state_number": {
+          "type": "string"
+        },
+        "vault_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vaults_bound": {
+          "type": "boolean"
+        },
+        "witness_bytes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "package_id",
+        "channel_id",
+        "funding_context_id",
+        "state_number",
+        "phase",
+        "vaults_bound",
+        "vault_count",
+        "witness_bytes",
+        "dependency_count",
+        "state_carrier_capacity",
+        "signer_pubkeys",
+        "capability",
+        "assets"
+      ],
+      "type": "object"
+    },
+    "PayoutSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "allocations": {
+          "items": {
+            "$ref": "#/$defs/ValueSummary"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "type_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "allocations"
+      ],
+      "type": "object"
+    },
+    "PeerView": {
+      "properties": {
+        "alias": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/RecordProvenanceView"
+        },
+        "pubkey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pubkey",
+        "node_id",
+        "alias",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "RecordProvenanceView": {
+      "properties": {
+        "chain_status": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "chain_status",
+        "label",
+        "message"
+      ],
+      "type": "object"
+    },
+    "RootCollectionSummary": {
+      "properties": {
+        "assets": {
+          "items": {
+            "$ref": "#/$defs/MultiAssetPackageBalance"
+          },
+          "type": "array"
+        },
+        "capability": {
+          "$ref": "#/$defs/CapabilitySummary"
+        },
+        "chain_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "creation_digest": {
+          "type": "string"
+        },
+        "creation_signature_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exit_digest": {
+          "type": "string"
+        },
+        "exit_signature_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "funding_context_id": {
+          "type": "string"
+        },
+        "input_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "output_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "participant_lock_hashes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "participants": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "payouts": {
+          "items": {
+            "$ref": "#/$defs/PayoutSummary"
+          },
+          "type": "array"
+        },
+        "ready_to_export": {
+          "type": "boolean"
+        },
+        "state_carrier_capacity": {
+          "type": "string"
+        },
+        "transaction_hash": {
+          "type": "string"
+        },
+        "vault_outpoints": {
+          "items": {
+            "$ref": "#/$defs/RootFundingPoint"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "transaction_hash",
+        "chain_id",
+        "channel_id",
+        "funding_context_id",
+        "creation_digest",
+        "exit_digest",
+        "state_carrier_capacity",
+        "participants",
+        "participant_lock_hashes",
+        "vault_outpoints",
+        "assets",
+        "payouts",
+        "capability",
+        "input_count",
+        "output_count",
+        "exit_signature_count",
+        "creation_signature_count",
+        "ready_to_export"
+      ],
+      "type": "object"
+    },
+    "RootFundingPoint": {
+      "properties": {
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tx_hash",
+        "index"
+      ],
+      "type": "object"
+    },
+    "RpcView": {
+      "properties": {
+        "chain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "tip_height": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "tip_height"
+      ],
+      "type": "object"
+    },
+    "StoredConditionalBatchPackage": {
+      "additionalProperties": false,
+      "properties": {
+        "input_since": {
+          "type": "string"
+        },
+        "resolution_witness_hex": {
+          "type": "string"
+        },
+        "resolutions": {
+          "items": {
+            "$ref": "#/$defs/StoredConditionalResolution"
+          },
+          "type": "array"
+        },
+        "resolved_capacities": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "source_package": {
+          "$ref": "#/$defs/StoredMultiAssetPackage"
+        }
+      },
+      "required": [
+        "schema",
+        "source_package",
+        "resolutions",
+        "input_since",
+        "resolution_witness_hex",
+        "resolved_capacities"
+      ],
+      "type": "object"
+    },
+    "StoredConditionalResolution": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "fulfill",
+              "type": "string"
+            },
+            "preimage": {
+              "type": "string"
+            },
+            "transfer_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "transfer_id",
+            "preimage"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "refund",
+              "type": "string"
+            },
+            "transfer_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "transfer_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "StoredMultiAssetCellDep": {
+      "additionalProperties": false,
+      "properties": {
+        "dep_type": {
+          "type": "string"
+        },
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tx_hash",
+        "index",
+        "dep_type"
+      ],
+      "type": "object"
+    },
+    "StoredMultiAssetPackage": {
+      "additionalProperties": false,
+      "description": "Binary evidence is canonical hex. Every u64/u128 exposed in this public package is\na decimal string; JSON number rounding must never change signed value.",
+      "properties": {
+        "cell_deps": {
+          "items": {
+            "$ref": "#/$defs/StoredMultiAssetCellDep"
+          },
+          "type": "array"
+        },
+        "header_hex": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "signature_witness_hex": {
+          "type": "string"
+        },
+        "state_carrier_capacity": {
+          "type": "string"
+        },
+        "witness_hex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "header_hex",
+        "witness_hex",
+        "signature_witness_hex",
+        "state_carrier_capacity",
+        "cell_deps"
+      ],
+      "type": "object"
+    },
+    "ValueSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "Token base units, canonical decimal; zero for CKB.",
+          "type": "string"
+        },
+        "business_ckb": {
+          "description": "Business CKB shannons, canonical decimal.",
+          "type": "string"
+        },
+        "reserve": {
+          "description": "Reserved CKB shannons, canonical decimal.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reserve",
+        "business_ckb",
+        "amount"
+      ],
+      "type": "object"
+    },
+    "WatchAlertEvent": {
+      "enum": [
+        "chain_reorg_detected",
+        "recovery_data_invalid",
+        "publication_failed",
+        "older_state_detected",
+        "publication_submitted",
+        "splice_detected",
+        "splice_package_stale",
+        "splice_publication_submitted",
+        "scan_idle"
+      ],
+      "type": "string"
+    },
+    "WatchAlertSeverity": {
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "type": "string"
+    },
+    "WatchtowerAlertView": {
+      "properties": {
+        "channel_id": {
+          "type": "string"
+        },
+        "created_unix_ms": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "event": {
+          "$ref": "#/$defs/WatchAlertEvent"
+        },
+        "message": {
+          "type": "string"
+        },
+        "next_from_block": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "observed_funding_anchor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_funding_context_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_out_point": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_state_number": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provenance": {
+          "$ref": "#/$defs/RecordProvenanceView"
+        },
+        "publication_tx_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scanned_to_block": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "selected_funding_anchor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selected_funding_context_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selected_state_number": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/WatchAlertSeverity"
+        }
+      },
+      "required": [
+        "schema",
+        "created_unix_ms",
+        "channel_id",
+        "severity",
+        "event",
+        "message",
+        "selected_state_number",
+        "observed_state_number",
+        "scanned_to_block",
+        "next_from_block",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "WatchtowerView": {
+      "properties": {
+        "alert_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "alerts": {
+          "items": {
+            "$ref": "#/$defs/WatchtowerAlertView"
+          },
+          "type": "array"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "file_exists": {
+          "type": "boolean"
+        },
+        "last_error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provenance": {
+          "$ref": "#/$defs/RecordProvenanceView"
+        }
+      },
+      "required": [
+        "configured",
+        "file_exists",
+        "alerts",
+        "provenance"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "channels": {
+      "items": {
+        "$ref": "#/$defs/ChannelView"
+      },
+      "type": "array"
+    },
+    "completed_flows": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "conditional_batches": {
+      "items": {
+        "$ref": "#/$defs/StoredConditionalBatchPackage"
+      },
+      "type": "array"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/EventView"
+      },
+      "type": "array"
+    },
+    "factories": {
+      "items": {
+        "$ref": "#/$defs/FactoryView"
+      },
+      "type": "array"
+    },
+    "invoices": {
+      "items": {
+        "$ref": "#/$defs/InvoiceView"
+      },
+      "type": "array"
+    },
+    "missing_flows": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "model": {
+      "$ref": "#/$defs/HubModelView"
+    },
+    "multi_asset_package_count": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "multi_asset_packages": {
+      "items": {
+        "$ref": "#/$defs/MultiAssetPackageSummary"
+      },
+      "type": "array"
+    },
+    "network": {
+      "type": "string"
+    },
+    "node_id": {
+      "type": "string"
+    },
+    "peers": {
+      "items": {
+        "$ref": "#/$defs/PeerView"
+      },
+      "type": "array"
+    },
+    "provenance": {
+      "$ref": "#/$defs/RecordProvenanceView"
+    },
+    "pubkey": {
+      "type": "string"
+    },
+    "required_flows": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "revision": {
+      "description": "Durable revision of this exact projection, for review/confirm CAS.",
+      "maxLength": 20,
+      "minLength": 1,
+      "not": {
+        "pattern": "[^0-9]"
+      },
+      "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+      "type": "string"
+    },
+    "root_fundings": {
+      "items": {
+        "$ref": "#/$defs/RootCollectionSummary"
+      },
+      "type": "array"
+    },
+    "rpc": {
+      "$ref": "#/$defs/RpcView"
+    },
+    "security": {
+      "$ref": "#/$defs/HubSecurityView"
+    },
+    "state_path": {
+      "type": "string"
+    },
+    "watchtower": {
+      "$ref": "#/$defs/WatchtowerView"
+    }
+  },
+  "required": [
+    "revision",
+    "pubkey",
+    "node_id",
+    "network",
+    "state_path",
+    "rpc",
+    "security",
+    "model",
+    "provenance",
+    "watchtower",
+    "peers",
+    "channels",
+    "invoices",
+    "factories",
+    "conditional_batches",
+    "multi_asset_packages",
+    "multi_asset_package_count",
+    "root_fundings",
+    "events",
+    "required_flows",
+    "completed_flows",
+    "missing_flows"
+  ],
+  "title": "HubView",
+  "type": "object"
+}

@@ -1,0 +1,23 @@
+[package]
+name = "morph-runtime-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Bounded transactional runtime records, recovery intents and outbox; never signer authority"
+
+[dependencies]
+aes-gcm.workspace = true
+blake2b-rs.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+rusqlite = { version = "=0.41.1", features = ["bundled", "limits"] }
+rustix = { version = "1", features = ["fs", "process"] }
+serde = { workspace = true }
+serde_json.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

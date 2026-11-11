@@ -31,7 +31,7 @@ fn command(directory: &Path, address: SocketAddr) -> Command {
         "--fiber-rpc",
         "http://127.0.0.1:1",
         "--store",
-        directory.join("gateway.db").to_str().unwrap(),
+        directory.join("private/gateway.db").to_str().unwrap(),
         "--payee",
         &format!("0x{}", "11".repeat(32)),
         "--ckb-network-id",

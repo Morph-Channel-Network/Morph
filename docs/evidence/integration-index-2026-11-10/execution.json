@@ -1,0 +1,22 @@
+{
+  "schema": "morph.scoped_fuzz_execution.v1",
+  "command": [
+    "timeout",
+    "--signal=KILL",
+    "60s",
+    "target/debug/morph-fuzz",
+    "--worker",
+    "script-args",
+    "--output",
+    "target/fuzz-campaigns/inline-args-long-20261110",
+    "--seed",
+    "332043276360",
+    "--cases",
+    "10000",
+    "--seconds",
+    "60"
+  ],
+  "exit_code": 0,
+  "target_count": 1,
+  "full_campaign": false
+}

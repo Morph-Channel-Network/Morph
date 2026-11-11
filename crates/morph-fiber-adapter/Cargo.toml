@@ -13,6 +13,8 @@ publish = false
 [dependencies]
 hex.workspace = true
 morph-core = { version = "4.0.0-alpha.1", path = "../morph-core" }
+morph-packages = { version = "4.0.0-alpha.1", path = "../morph-packages" }
+morph-runtime-store = { version = "4.0.0-alpha.1", path = "../morph-runtime-store" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -22,3 +24,4 @@ thiserror.workspace = true
 axum.workspace = true
 k256.workspace = true
 tokio.workspace = true
+tempfile = "3"

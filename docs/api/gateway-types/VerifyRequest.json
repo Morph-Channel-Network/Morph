@@ -1,0 +1,376 @@
+{
+  "$defs": {
+    "AssetKind": {
+      "enum": [
+        "ckb",
+        "rgbpp"
+      ],
+      "type": "string"
+    },
+    "BitcoinNetwork": {
+      "enum": [
+        "mainnet",
+        "testnet",
+        "signet",
+        "regtest"
+      ],
+      "type": "string"
+    },
+    "PaymentPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "payer": {
+          "description": "Morph account identity: blake2b-256(compressed secp256k1 public key).",
+          "type": "string"
+        },
+        "payer_pubkey_sec1": {
+          "description": "SEC1-compressed secp256k1 public key, encoded as 0x-prefixed hex.",
+          "type": "string"
+        },
+        "payer_signature": {
+          "description": "Raw 64-byte secp256k1 ECDSA signature over the canonical authorization digest.",
+          "type": "string"
+        },
+        "payment_hash": {
+          "type": "string"
+        },
+        "payment_preimage": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requirement_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "payment_hash",
+        "payer",
+        "payer_pubkey_sec1",
+        "payer_signature"
+      ],
+      "type": "object"
+    },
+    "PaymentRequirements": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "Raw integer amount in the asset's smallest unit.",
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/RgbppAsset"
+        },
+        "expires_at": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "hash_algorithm": {
+          "type": "string"
+        },
+        "invoice": {
+          "type": "string"
+        },
+        "network": {
+          "type": "string"
+        },
+        "nonce": {
+          "type": "string"
+        },
+        "operation": {
+          "description": "Upper-case HTTP method authorized by this payment.",
+          "type": "string"
+        },
+        "payee": {
+          "type": "string"
+        },
+        "payer": {
+          "description": "Morph account that requested this challenge and is allowed to claim it.",
+          "type": "string"
+        },
+        "payment_hash": {
+          "type": "string"
+        },
+        "payment_rail": {
+          "type": "string"
+        },
+        "requirement_id": {
+          "type": "string"
+        },
+        "resource": {
+          "type": "string"
+        },
+        "rgbpp_proof_commitment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scheme": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "scheme",
+        "network",
+        "payment_rail",
+        "asset",
+        "amount",
+        "payer",
+        "payee",
+        "invoice",
+        "payment_hash",
+        "hash_algorithm",
+        "resource",
+        "operation",
+        "nonce",
+        "expires_at"
+      ],
+      "type": "object"
+    },
+    "PublicScript": {
+      "additionalProperties": false,
+      "description": "Exact CKB Script transport; display metadata and unknown keys are rejected.",
+      "properties": {
+        "args": {
+          "type": "string"
+        },
+        "code_hash": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "hash_type": {
+          "enum": [
+            "data",
+            "type",
+            "data1",
+            "data2",
+            "data3",
+            "data4",
+            "data5",
+            "data6",
+            "data7",
+            "data8",
+            "data9",
+            "data10",
+            "data11",
+            "data12",
+            "data13",
+            "data14",
+            "data15",
+            "data16",
+            "data17",
+            "data18",
+            "data19",
+            "data20",
+            "data21",
+            "data22",
+            "data23",
+            "data24",
+            "data25",
+            "data26",
+            "data27",
+            "data28",
+            "data29",
+            "data30",
+            "data31",
+            "data32",
+            "data33",
+            "data34",
+            "data35",
+            "data36",
+            "data37",
+            "data38",
+            "data39",
+            "data40",
+            "data41",
+            "data42",
+            "data43",
+            "data44",
+            "data45",
+            "data46",
+            "data47",
+            "data48",
+            "data49",
+            "data50",
+            "data51",
+            "data52",
+            "data53",
+            "data54",
+            "data55",
+            "data56",
+            "data57",
+            "data58",
+            "data59",
+            "data60",
+            "data61",
+            "data62",
+            "data63",
+            "data64",
+            "data65",
+            "data66",
+            "data67",
+            "data68",
+            "data69",
+            "data70",
+            "data71",
+            "data72",
+            "data73",
+            "data74",
+            "data75",
+            "data76",
+            "data77",
+            "data78",
+            "data79",
+            "data80",
+            "data81",
+            "data82",
+            "data83",
+            "data84",
+            "data85",
+            "data86",
+            "data87",
+            "data88",
+            "data89",
+            "data90",
+            "data91",
+            "data92",
+            "data93",
+            "data94",
+            "data95",
+            "data96",
+            "data97",
+            "data98",
+            "data99",
+            "data100",
+            "data101",
+            "data102",
+            "data103",
+            "data104",
+            "data105",
+            "data106",
+            "data107",
+            "data108",
+            "data109",
+            "data110",
+            "data111",
+            "data112",
+            "data113",
+            "data114",
+            "data115",
+            "data116",
+            "data117",
+            "data118",
+            "data119",
+            "data120",
+            "data121",
+            "data122",
+            "data123",
+            "data124",
+            "data125",
+            "data126",
+            "data127"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "code_hash",
+        "hash_type",
+        "args"
+      ],
+      "type": "object"
+    },
+    "RgbppAsset": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_code_hash": {
+          "description": "Code hash of the RGB++ binding lock/profile.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bitcoin_network": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BitcoinNetwork"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Required for RGB++; absent for CKB."
+        },
+        "ckb_network_id": {
+          "description": "Stable CKB network/genesis identifier, not a display name.",
+          "type": "string"
+        },
+        "decimals": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/AssetKind"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "type_script": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublicScript"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Canonical CKB JSON Script. Display metadata never replaces this value."
+        },
+        "type_script_hash": {
+          "description": "Required for RGB++ and absent for CKB.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "ckb_network_id",
+        "symbol",
+        "decimals"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "payload": {
+      "$ref": "#/$defs/PaymentPayload"
+    },
+    "requirements": {
+      "$ref": "#/$defs/PaymentRequirements"
+    }
+  },
+  "required": [
+    "requirements",
+    "payload"
+  ],
+  "title": "VerifyRequest",
+  "type": "object"
+}

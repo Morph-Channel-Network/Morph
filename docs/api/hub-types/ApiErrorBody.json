@@ -1,0 +1,47 @@
+{
+  "$defs": {
+    "ApiErrorCode": {
+      "enum": [
+        "auth_required",
+        "insufficient_auth_scope",
+        "invalid_auth_token",
+        "invalid_request",
+        "rate_limited",
+        "rate_limiter_unavailable",
+        "route_not_found",
+        "state_restore_disabled",
+        "too_many_connections",
+        "too_many_event_streams",
+        "too_many_mutations",
+        "unknown_endpoint",
+        "revision_conflict",
+        "commit_outcome_unknown",
+        "store_unavailable",
+        "invalid_mutation_context",
+        "unsupported_api_version",
+        "idempotency_conflict",
+        "response_limit"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ApiErrorCode"
+    },
+    "error": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "error",
+    "code",
+    "request_id"
+  ],
+  "title": "ApiErrorBody",
+  "type": "object"
+}

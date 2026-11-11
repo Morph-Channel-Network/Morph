@@ -8,13 +8,14 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::multi_asset_session_chain::{SessionLineage, SessionOrigin};
-use crate::multi_asset_signatures::{SIGNATURE_SCHEMA, SignatureMessage, channel_signing_key};
+use crate::multi_asset_signatures::{SIGNATURE_SCHEMA, SignatureMessage};
 use crate::multi_asset_splice_transaction::SpliceDraft;
 use anyhow::{Result, anyhow, ensure};
 use ckb_types::{packed, prelude::*};
 use clap::{Subcommand, ValueEnum};
 #[cfg(test)]
 use k256::ecdsa::SigningKey;
+#[cfg(test)]
 use k256::ecdsa::{Signature, signature::hazmat::PrehashSigner};
 use morph_core::*;
 use morph_script_common::multi_asset as wire;
@@ -28,12 +29,22 @@ use crate::multi_asset_packages::{
 const SESSION_SCHEMA: &str = "morph.multi_asset_session.v1";
 const RETIRED_SCHEMA: &str = "morph.multi_asset_retired_session.v1";
 const MAX_SESSION_BYTES: u64 = 512 * 1024;
+mod close;
+#[cfg(feature = "devnet")]
+pub(crate) mod shadow;
+pub use close::CloseCommand;
+pub(crate) use close::external_authority as external_close_authority;
 const MAX_DESCRIPTOR_BYTES: usize = wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
     + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN
     + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN;
 
 #[derive(Debug, Subcommand)]
 pub enum SessionCommand {
+    /// Explicit cooperative-close preparation, signing, receipts and export.
+    CooperativeClose {
+        #[command(subcommand)]
+        operation: CloseCommand,
+    },
     /// Review the current state, pending proposal, and signing reservation.
     Inspect,
     /// Propose a canonical settlement descriptor; no key is invoked.
@@ -50,7 +61,14 @@ pub enum SessionCommand {
     Sign {
         #[arg(long, value_enum)]
         target: SigningTarget,
-        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        #[arg(long)]
+        signer_config: PathBuf,
+    },
+    /// Development-only local participant signer (requires the devnet feature).
+    SignLocal {
+        #[arg(long, value_enum)]
+        target: SigningTarget,
+        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = crate::participant_signer::development_key_file)]
         private_key: morph_key_input::SecretString,
     },
     /// Import one peer signature; its signer and exact proposal digest are verified.
@@ -192,6 +210,16 @@ impl SigningTarget {
         Ok(())
     }
 }
+impl From<SigningTarget> for morph_packages::signer_protocol::Target {
+    fn from(target: SigningTarget) -> Self {
+        match target {
+            SigningTarget::Update => Self::Update,
+            SigningTarget::SpliceCreation => Self::SpliceCreation,
+            SigningTarget::SpliceRecovery => Self::SpliceRecovery,
+            SigningTarget::SpliceBridge => Self::SpliceBridge,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -237,6 +265,66 @@ fn digest(value: &str) -> Result<Bytes32> {
 pub use morph_packages::summaries::{asset_summary, payout_summary, value_summary};
 
 impl StoredSession {
+    fn external_payload(
+        &self,
+        target: SigningTarget,
+    ) -> Result<morph_packages::signer_protocol::Payload> {
+        use morph_packages::signer_protocol::Payload;
+        let current = Box::new(self.package()?);
+        if matches!(target, SigningTarget::Update) {
+            return Ok(Payload::Update {
+                current,
+                proposal: ProposalMessage::from_proposal(
+                    self.backend
+                        .proposal()
+                        .ok_or_else(|| anyhow!("missing pending update"))?,
+                )?,
+            });
+        }
+        let plan = self
+            .backend
+            .splice_proposal()
+            .ok_or_else(|| anyhow!("missing pending splice"))?;
+        let creation_digest = self
+            .backend
+            .splice_funding_signing_digest(MultiAssetSpliceFundingKind::Creation)?;
+        let recovery_digest = self
+            .backend
+            .splice_funding_signing_digest(MultiAssetSpliceFundingKind::InitialRecovery)?;
+        Ok(Payload::Splice {
+            current,
+            draft: self
+                .splice_draft
+                .clone()
+                .ok_or_else(|| anyhow!("missing exact splice draft"))?,
+            creation_receipts: plan
+                .new_state_authorization
+                .signatures
+                .iter()
+                .map(|s| SignatureMessage::new(&creation_digest, s))
+                .collect(),
+            recovery_receipts: plan
+                .initial_recovery_authorization
+                .signatures
+                .iter()
+                .map(|s| SignatureMessage::new(&recovery_digest, s))
+                .collect(),
+        })
+    }
+    fn reserved_external_payload(
+        &self,
+        target: SigningTarget,
+    ) -> Result<morph_packages::signer_protocol::Payload> {
+        // Re-running reservation on a disposable clone must be a no-op. This
+        // checks every current reservation rule without a second state machine.
+        let mut reserved = self.backend.clone();
+        target.reserve(&mut reserved)?;
+        ensure!(
+            reserved == self.backend,
+            "external signing requires an already persisted reservation"
+        );
+        self.external_payload(target)
+    }
     fn verify_conditional_policy(&self, settlement: &MultiAssetSettlement) -> Result<()> {
         if matches!(
             settlement.capability,
@@ -543,6 +631,16 @@ impl StoredSession {
         packages::write_package(store_dir, &package)
     }
     fn summary(&self) -> Result<Value> {
+        let close = self.backend.close_attempts().iter().map(|attempt| -> Result<Value> {
+            Ok(json!({
+                "transaction_hash":canonical_hex(&attempt.proposal.transaction_hash()?),
+                "signing_digest":canonical_hex(&attempt.proposal.signing_digest(self.backend.current())?),
+                "source_outpoint":{"tx_hash":canonical_hex(&attempt.proposal.source_outpoint.tx_hash),"index":attempt.proposal.source_outpoint.index},
+                "signature_reserved":attempt.signature_reserved,
+                "signature_count":attempt.signatures.len(),
+                "participant_authorized":attempt.signatures.len() == 2
+            }))
+        }).collect::<Result<Vec<_>>>()?;
         let payouts = self
             .backend
             .proposal()
@@ -572,15 +670,88 @@ impl StoredSession {
             "reserved_state_number":self.backend.reservation().state_number.to_string(),
             "reserved_signing_digest":canonical_hex(&self.backend.reservation().signing_digest),
             "proposal":self.backend.proposal().map(ProposalMessage::from_proposal).transpose()?,
-            "proposal_payouts":payouts,"proposal_capability":proposal_capability,"splice":splice,"lineage":self.lineage,
+            "proposal_payouts":payouts,"proposal_capability":proposal_capability,"splice":splice,"close":close,"lineage":self.lineage,
             "participant_lock_hashes":self.backend.current().settlement.participant_lock_hashes.map(|hash| canonical_hex(&hash)),
             "signature_count":self.backend.signatures().len()}),
         )
     }
 }
 
+pub(crate) fn external_authority(
+    bytes: &[u8],
+    target: morph_packages::signer_protocol::Target,
+    rpc: &crate::rpc::CkbRpcClient,
+) -> Result<(morph_packages::signer_protocol::Payload, String)> {
+    use morph_packages::signer_protocol::Target;
+    let target = match target {
+        Target::Update => SigningTarget::Update,
+        Target::SpliceCreation => SigningTarget::SpliceCreation,
+        Target::SpliceRecovery => SigningTarget::SpliceRecovery,
+        Target::SpliceBridge => SigningTarget::SpliceBridge,
+        _ => return Err(anyhow!("not a session signing target")),
+    };
+    let session: StoredSession = serde_json::from_slice(bytes)?;
+    let payload = session.reserved_external_payload(target)?;
+    let lineage = session
+        .lineage
+        .as_ref()
+        .ok_or_else(|| anyhow!("external signer requires canonical lineage"))?;
+    ensure!(
+        crate::multi_asset_session_chain::rpc_endpoint(&lineage.rpc_url)?
+            == crate::multi_asset_session_chain::rpc_endpoint(rpc.endpoint())?,
+        "signer lineage RPC differs from installed endpoint"
+    );
+    #[cfg(feature = "devnet")]
+    crate::devnet::multi_asset_splice_operator::verify_context_guard(
+        rpc,
+        &lineage.evidence,
+        lineage.min_confirmations,
+        &session.package()?,
+        &lineage.contracts_dir,
+    )?;
+    #[cfg(not(feature = "devnet"))]
+    {
+        let _ = payload;
+        anyhow::bail!("external channel signer requires RPC-enabled devnet feature");
+    }
+    #[cfg(feature = "devnet")]
+    {
+        if matches!(target, SigningTarget::Update) {
+            let proposal = session
+                .backend
+                .proposal()
+                .ok_or_else(|| anyhow!("missing pending update"))?;
+            crate::admission_channel::validate_conditional_horizon(
+                &proposal.settlement,
+                rpc.tip_header()?.number_value()?,
+                &lineage.contracts_dir,
+            )?;
+        } else {
+            let plan = session
+                .backend
+                .splice_proposal()
+                .ok_or_else(|| anyhow!("missing splice"))?;
+            session
+                .splice_admission
+                .as_ref()
+                .ok_or_else(|| anyhow!("missing splice admission"))?
+                .require_fresh_with_rpc(
+                    &plan.initial_recovery_contents(session.backend.current())?,
+                    &session
+                        .splice_draft
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("missing splice draft"))?
+                        .transaction()?,
+                    rpc,
+                )?;
+        }
+        Ok((payload, canonical_hex(session.backend.local_pubkey())))
+    }
+}
+
 fn save(path: &Path, session: &StoredSession) -> Result<()> {
     session.package()?;
+    close::check_receipt_budget(session)?;
     let bytes = serde_json::to_vec(session)?;
     ensure!(
         bytes.len() as u64 <= MAX_SESSION_BYTES,
@@ -621,6 +792,7 @@ fn run_loaded(
 ) -> Result<Value> {
     session.package()?;
     let requires_chain = match &command {
+        SessionCommand::CooperativeClose { .. } => false,
         SessionCommand::Inspect
         | SessionCommand::ExportSplice { .. }
         | SessionCommand::ExportSpliceRecovery { .. }
@@ -635,6 +807,7 @@ fn run_loaded(
         verify(&session)?;
     }
     match command {
+        SessionCommand::CooperativeClose { operation } => close::run(path, session, operation),
         SessionCommand::Inspect => session.summary(),
         SessionCommand::Propose { descriptor_hex } => {
             let descriptor = decode_hex(&descriptor_hex, MAX_DESCRIPTOR_BYTES)?;
@@ -654,10 +827,31 @@ fn run_loaded(
             save(path, &session)?;
             session.summary()
         }
-        SessionCommand::Sign {
-            target,
-            private_key,
-        } => {
+        command @ (SessionCommand::Sign { .. } | SessionCommand::SignLocal { .. }) => {
+            let (target, signer) = match command {
+                SessionCommand::Sign {
+                    target,
+                    signer_config,
+                } => (
+                    target,
+                    crate::participant_signer::Prepared::external(
+                        &signer_config,
+                        path,
+                        session.backend.local_pubkey(),
+                    )?,
+                ),
+                SessionCommand::SignLocal {
+                    target,
+                    private_key,
+                } => (
+                    target,
+                    crate::participant_signer::Prepared::local(
+                        &private_key,
+                        session.backend.local_pubkey(),
+                    )?,
+                ),
+                _ => return Err(anyhow!("invalid signing command")),
+            };
             if matches!(target, SigningTarget::Update) {
                 let proposal = session
                     .backend
@@ -667,7 +861,6 @@ fn run_loaded(
             } else {
                 session.require_splice_admission()?;
             }
-            let key = channel_signing_key(&private_key, session.backend.local_pubkey())?;
             let pubkey = session.backend.local_pubkey().to_vec();
             let signing_digest = target.digest(&session.backend)?;
             if let Some(signature) = target
@@ -688,6 +881,8 @@ fn run_loaded(
             // Crash after this write can only retry the same digest or move to
             // a greater state number, even if no signature was returned yet.
             save(path, &session)?;
+            #[cfg(all(test, target_os = "linux"))]
+            crate::participant_signer::tests::checkpoint("reserved");
             verify(&session)?;
             if matches!(target, SigningTarget::Update) {
                 let proposal = session
@@ -698,15 +893,15 @@ fn run_loaded(
             } else {
                 session.require_splice_admission()?;
             }
-            let signature: Signature = key
-                .sign_prehash(&reserved_digest)
-                .map_err(|_| anyhow!("channel signature generation failed"))?;
-            let signature = ParticipantSignature {
-                pubkey_sec1: pubkey,
-                signature: signature.to_bytes().to_vec(),
-            };
+            let signature = signer.sign(target.into(), &reserved_digest, || {
+                session.external_payload(target)
+            })?;
+            #[cfg(all(test, target_os = "linux"))]
+            crate::participant_signer::tests::checkpoint("received");
             target.record(&mut session.backend, signature.clone())?;
             save(path, &session)?;
+            #[cfg(all(test, target_os = "linux"))]
+            crate::participant_signer::tests::checkpoint("recorded");
             verify(&session)?;
             Ok(serde_json::to_value(SignatureMessage::new(
                 &reserved_digest,
@@ -899,7 +1094,7 @@ pub(super) fn observe_for_supervision(
         let Some(lineage) = &session.lineage else {
             observation.status = Status::Unmanaged;
             return Err(anyhow!(
-                "session has no canonical lineage guard; use bind-root for confirmed epoch-0 custody"
+                "session has no canonical lineage guard; complete the confirmed funding ceremony"
             ));
         };
         let rpc = crate::rpc::CkbRpcClient::new_supervision(&lineage.rpc_url, budget)?;
@@ -1272,6 +1467,15 @@ fn refresh_chain(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(target_os = "linux", feature = "devnet"))]
+    #[path = "canonical_fixture.rs"]
+    mod canonical_fixture;
+    #[cfg(all(target_os = "linux", feature = "devnet"))]
+    #[path = "close_tests.rs"]
+    mod close_tests;
+    #[cfg(all(target_os = "linux", feature = "devnet"))]
+    #[path = "session_fault_tests.rs"]
+    mod fault_tests;
     use super::*;
     use ckb_types::bytes::Bytes;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1369,18 +1573,42 @@ mod tests {
         .unwrap();
         let mut receipts = Vec::new();
         for (path, key) in [(&alice, 1u8), (&bob, 2)] {
+            let before: StoredSession = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+            assert!(
+                before
+                    .reserved_external_payload(SigningTarget::Update)
+                    .is_err()
+            );
             let signed = run(
                 path,
-                SessionCommand::Sign {
+                SessionCommand::SignLocal {
                     target: SigningTarget::Update,
                     private_key: hex::encode([key; 32]).into(),
                 },
             )
             .unwrap();
+            let reserved: StoredSession = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+            assert!(
+                reserved
+                    .reserved_external_payload(SigningTarget::Update)
+                    .is_ok()
+            );
+            assert!(
+                super::external_authority(
+                    &fs::read(path).unwrap(),
+                    morph_packages::signer_protocol::Target::Update,
+                    &crate::rpc::CkbRpcClient::new_signer(
+                        "http://127.0.0.1:1",
+                        std::time::Duration::from_millis(10)
+                    )
+                    .unwrap()
+                )
+                .is_err()
+            ); // Unconfirmed test journal never becomes operational authority.
             assert_eq!(
                 run(
                     path,
-                    SessionCommand::Sign {
+                    SessionCommand::SignLocal {
                         target: SigningTarget::Update,
                         private_key: hex::encode([key; 32]).into()
                     }
@@ -1499,7 +1727,7 @@ mod tests {
                 .map(|(path, key)| {
                     let receipt = run(
                         path,
-                        SessionCommand::Sign {
+                        SessionCommand::SignLocal {
                             target,
                             private_key: hex::encode([key; 32]).into(),
                         },
@@ -1617,7 +1845,7 @@ mod tests {
             assert!(
                 run(
                     path,
-                    SessionCommand::Sign {
+                    SessionCommand::SignLocal {
                         target: SigningTarget::SpliceBridge,
                         private_key: hex::encode([1u8; 32]).into()
                     }
@@ -1632,19 +1860,25 @@ mod tests {
         ] {
             let mut receipts = Vec::new();
             for (path, key) in [(&alice, 1u8), (&bob, 2u8)] {
+                let before: StoredSession =
+                    serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+                assert!(before.reserved_external_payload(target).is_err());
                 let signed = run(
                     path,
-                    SessionCommand::Sign {
+                    SessionCommand::SignLocal {
                         target,
                         private_key: hex::encode([key; 32]).into(),
                     },
                 )
                 .unwrap();
+                let reserved: StoredSession =
+                    serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+                assert!(reserved.reserved_external_payload(target).is_ok());
                 assert_eq!(
                     signed,
                     run(
                         path,
-                        SessionCommand::Sign {
+                        SessionCommand::SignLocal {
                             target,
                             private_key: hex::encode([key; 32]).into()
                         }
@@ -1843,7 +2077,7 @@ mod tests {
         assert!(
             run(
                 &session,
-                SessionCommand::Sign {
+                SessionCommand::SignLocal {
                     target: SigningTarget::Update,
                     private_key: hex::encode([2u8; 32]).into()
                 }
@@ -1853,7 +2087,7 @@ mod tests {
         assert_eq!(fs::read(&session).unwrap(), before);
         run(
             &session,
-            SessionCommand::Sign {
+            SessionCommand::SignLocal {
                 target: SigningTarget::Update,
                 private_key: hex::encode([1u8; 32]).into(),
             },
@@ -1891,7 +2125,7 @@ mod tests {
             sender
                 .send(run(
                     &worker_path,
-                    SessionCommand::Sign {
+                    SessionCommand::SignLocal {
                         target: SigningTarget::Update,
                         private_key: hex::encode([1u8; 32]).into(),
                     },
@@ -1967,7 +2201,7 @@ mod tests {
         ] {
             let error = run(
                 &alice,
-                SessionCommand::Sign {
+                SessionCommand::SignLocal {
                     target,
                     private_key: hex::encode([1; 32]).into(),
                 },
@@ -1979,7 +2213,7 @@ mod tests {
         mock.set_tip(100);
         run(
             &alice,
-            SessionCommand::Sign {
+            SessionCommand::SignLocal {
                 target: SigningTarget::SpliceCreation,
                 private_key: hex::encode([1; 32]).into(),
             },

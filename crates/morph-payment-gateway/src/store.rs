@@ -1,26 +1,29 @@
+mod health;
+pub(crate) use health::{ProbeSource, StoreObservation};
+mod events;
+use events::Change;
+use morph_packages::events::Kind;
+mod outgoing;
+pub(crate) use outgoing::{OutgoingAttempt, OutgoingReservation};
+
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Mutex,
 };
 
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
-
-use rand::{RngCore, rngs::OsRng};
+use morph_runtime_store::{Append, Body, Commit, Family, Protection, Store};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
+use zeroize::Zeroizing;
 
-use crate::{
-    crypto::{AES_GCM_NONCE_LEN, decrypt_with_nonce, encrypt_with_nonce, random_byte32},
-    protocol::{FairExchangeEnvelope, PaymentReceipt, PaymentRequirements},
-};
+use crate::protocol::{FairExchangeEnvelope, PaymentReceipt, PaymentRequirements};
 
-const STORE_MAGIC: &[u8; 8] = b"MORPHPG1";
-const STORE_SCHEMA_VERSION: u32 = 2;
+#[cfg(test)]
+use std::fs;
+
+const STORE_SCHEMA_VERSION: u32 = 3;
 const MAX_STORE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_TRANSIENT_STORE_BYTES: usize = 48 * 1024 * 1024;
 const MAX_OUTSTANDING_CHALLENGES: usize = 2_048;
@@ -37,8 +40,16 @@ pub enum StoreError {
     Corrupt,
     #[error("gateway store schema version is unsupported")]
     UnsupportedVersion,
-    #[error("gateway store lock is poisoned")]
+    #[error("gateway store mutation lock is poisoned")]
     LockPoisoned,
+    #[error("gateway store is busy")]
+    Busy,
+    #[error(
+        "gateway store commit outcome is uncertain; reconcile the saved operation before retrying"
+    )]
+    CommitUncertain,
+    #[error("gateway store requires a private directory and owner-only regular files")]
+    Permissions,
     #[error("record already exists with different content")]
     Conflict,
     #[error("gateway store reached a configured record or reserve limit")]
@@ -60,12 +71,7 @@ pub struct StoredOffer {
     pub associated_data: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PaymentDirection {
-    Incoming,
-    Outgoing,
-}
+pub use crate::api::PaymentDirection;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrackedPayment {
@@ -77,7 +83,8 @@ pub struct TrackedPayment {
     pub fiber_result: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PersistedState {
     schema_version: u32,
     challenges: BTreeMap<String, ChallengeRecord>,
@@ -85,6 +92,7 @@ struct PersistedState {
     offers: BTreeMap<String, StoredOffer>,
     payments: BTreeMap<String, TrackedPayment>,
     consumed_requirements: BTreeSet<String>,
+    outgoing: BTreeMap<String, OutgoingAttempt>,
 }
 
 impl Default for PersistedState {
@@ -96,62 +104,98 @@ impl Default for PersistedState {
             offers: BTreeMap::new(),
             payments: BTreeMap::new(),
             consumed_requirements: BTreeSet::new(),
+            outgoing: BTreeMap::new(),
         }
     }
 }
 
 pub struct DurableStore {
-    path: PathBuf,
-    key: [u8; 32],
-    state: Mutex<PersistedState>,
+    probe_source: ProbeSource,
+    runtime: Store,
+    mutations: Mutex<()>,
 }
 
 impl DurableStore {
+    /// Bounded public outbox only; private recovery intents are never exported.
+    pub fn events(
+        &self,
+        request: &morph_packages::events::EventPageRequest,
+    ) -> morph_events::Result<morph_packages::events::EventPage> {
+        morph_events::event_page(&self.runtime, request)
+    }
+
     pub fn open(path: impl Into<PathBuf>, key: [u8; 32]) -> Result<Self, StoreError> {
         let path = path.into();
-        let state = if path.exists() {
-            read_state(&path, &key)?
-        } else {
-            PersistedState::default()
-        };
-        if state.schema_version != STORE_SCHEMA_VERSION {
-            return Err(StoreError::UnsupportedVersion);
-        }
+        let runtime = Store::open(&path, Protection::encrypted(key)).map_err(runtime_error)?;
+        runtime.validate().map_err(runtime_error)?;
         let store = Self {
-            path,
-            key,
-            state: Mutex::new(state),
+            probe_source: ProbeSource::new(path, key, runtime.identity()),
+            runtime,
+            mutations: Mutex::new(()),
         };
-        if !store.path.exists() {
-            let initial = store.state.lock().map_err(|_| StoreError::LockPoisoned)?;
-            store.persist(&initial)?;
+        let snapshot = store
+            .runtime
+            .read(Family::Gateway, "state")
+            .map_err(runtime_error)?;
+        if snapshot.record.is_none() {
+            store.persist(
+                snapshot.revision,
+                &PersistedState::default(),
+                &serde_json::json!({"operation":"initialize"}),
+                &Change::initialized(),
+                false,
+            )?;
+        } else {
+            store.load()?;
         }
         Ok(store)
     }
 
+    fn load(&self) -> Result<(u64, PersistedState), StoreError> {
+        let snapshot = self
+            .runtime
+            .read(Family::Gateway, "state")
+            .map_err(runtime_error)?;
+        let record = snapshot.record.ok_or(StoreError::Corrupt)?;
+        let state: PersistedState =
+            serde_json::from_slice(record.body.bytes()).map_err(|_| StoreError::Corrupt)?;
+        if state.schema_version != STORE_SCHEMA_VERSION {
+            return Err(StoreError::UnsupportedVersion);
+        }
+        Ok((snapshot.revision, state))
+    }
+
     pub fn insert_challenge(&self, record: ChallengeRecord) -> Result<(), StoreError> {
-        self.mutate(|state| {
-            prune_expired_transient_records(state, record.created_at);
-            match state.challenges.get(&record.requirement.requirement_id) {
-                Some(existing) if existing != &record => Err(StoreError::Conflict),
-                Some(_) => Ok(()),
-                None => {
-                    let outstanding = state
-                        .challenges
-                        .keys()
-                        .filter(|requirement_id| !state.receipts.contains_key(*requirement_id))
-                        .count();
-                    if outstanding >= MAX_OUTSTANDING_CHALLENGES {
-                        return Err(StoreError::CapacityExceeded);
+        self.mutate(
+            serde_json::json!({"operation":"insert_challenge", "record":&record}),
+            Change::new(
+                Kind::GatewayChallengeCreated,
+                Some(&record.requirement.requirement_id),
+                Some(&record.requirement.payment_hash),
+            )?,
+            |state| {
+                prune_expired_transient_records(state, record.created_at);
+                match state.challenges.get(&record.requirement.requirement_id) {
+                    Some(existing) if existing != &record => Err(StoreError::Conflict),
+                    Some(_) => Ok(()),
+                    None => {
+                        let outstanding = state
+                            .challenges
+                            .keys()
+                            .filter(|requirement_id| !state.receipts.contains_key(*requirement_id))
+                            .count();
+                        if outstanding >= MAX_OUTSTANDING_CHALLENGES {
+                            return Err(StoreError::CapacityExceeded);
+                        }
+                        state
+                            .challenges
+                            .insert(record.requirement.requirement_id.clone(), record);
+                        ensure_transient_reserve(state)?;
+                        Ok(())
                     }
-                    state
-                        .challenges
-                        .insert(record.requirement.requirement_id.clone(), record);
-                    ensure_transient_reserve(state)?;
-                    Ok(())
                 }
-            }
-        })
+            },
+        )
     }
 
     pub fn challenge(&self, requirement_id: &str) -> Result<Option<ChallengeRecord>, StoreError> {
@@ -159,21 +203,30 @@ impl DurableStore {
     }
 
     pub fn insert_offer(&self, offer: StoredOffer) -> Result<(), StoreError> {
-        self.mutate(|state| {
-            prune_expired_transient_records(state, unix_time_seconds());
-            match state.offers.get(&offer.envelope.offer_id) {
-                Some(existing) if existing != &offer => Err(StoreError::Conflict),
-                Some(_) => Ok(()),
-                None => {
-                    if state.offers.len() >= MAX_STORED_OFFERS {
-                        return Err(StoreError::CapacityExceeded);
+        let now = unix_time_seconds();
+        self.mutate(
+            serde_json::json!({"operation":"insert_offer", "record":&offer,"prune_at":now}),
+            Change::new(
+                Kind::GatewayOfferCreated,
+                Some(&offer.envelope.offer_id),
+                Some(&offer.envelope.requirement.payment_hash),
+            )?,
+            |state| {
+                prune_expired_transient_records(state, now);
+                match state.offers.get(&offer.envelope.offer_id) {
+                    Some(existing) if existing != &offer => Err(StoreError::Conflict),
+                    Some(_) => Ok(()),
+                    None => {
+                        if state.offers.len() >= MAX_STORED_OFFERS {
+                            return Err(StoreError::CapacityExceeded);
+                        }
+                        state.offers.insert(offer.envelope.offer_id.clone(), offer);
+                        ensure_transient_reserve(state)?;
+                        Ok(())
                     }
-                    state.offers.insert(offer.envelope.offer_id.clone(), offer);
-                    ensure_transient_reserve(state)?;
-                    Ok(())
                 }
-            }
-        })
+            },
+        )
     }
 
     pub fn offer(&self, offer_id: &str) -> Result<Option<StoredOffer>, StoreError> {
@@ -181,32 +234,15 @@ impl DurableStore {
     }
 
     pub fn record_payment(&self, payment: TrackedPayment) -> Result<(), StoreError> {
-        if serde_json::to_vec(&payment.fiber_result)
-            .map_err(|_| StoreError::Corrupt)?
-            .len()
-            > MAX_TRACKED_PAYMENT_JSON_BYTES
-        {
-            return Err(StoreError::CapacityExceeded);
-        }
-        self.mutate(|state| {
-            state.payments.insert(payment.payment_hash.clone(), payment);
-            while state.payments.len() > MAX_TRACKED_PAYMENTS {
-                let oldest = state
-                    .payments
-                    .iter()
-                    .min_by(|left, right| {
-                        left.1
-                            .updated_at
-                            .cmp(&right.1.updated_at)
-                            .then_with(|| left.0.cmp(right.0))
-                    })
-                    .map(|(payment_hash, _)| payment_hash.clone())
-                    .ok_or(StoreError::Corrupt)?;
-                state.payments.remove(&oldest);
-            }
-            ensure_transient_reserve(state)?;
-            Ok(())
-        })
+        self.mutate(
+            serde_json::json!({"operation":"record_payment", "record":&payment}),
+            Change::new(
+                Kind::GatewayPaymentRecorded,
+                Some(&payment.requirement_id),
+                Some(&payment.payment_hash),
+            )?,
+            |state| record_payment_in(state, payment),
+        )
     }
 
     pub fn payments(&self, limit: usize) -> Result<Vec<TrackedPayment>, StoreError> {
@@ -243,94 +279,171 @@ impl DurableStore {
     /// Atomically consumes a challenge and persists its receipt. Concurrent or
     /// retried settles get the first durable receipt rather than a second token.
     pub fn settle_once(&self, receipt: PaymentReceipt) -> Result<PaymentReceipt, StoreError> {
-        self.mutate(|state| {
-            if let Some(existing) = state.receipts.get(&receipt.requirement_id) {
-                return Ok(existing.clone());
-            }
-            if !state.challenges.contains_key(&receipt.requirement_id) {
-                return Err(StoreError::Conflict);
-            }
-            if state.receipts.len() >= MAX_SETTLED_RECEIPTS {
-                return Err(StoreError::CapacityExceeded);
-            }
-            state
-                .consumed_requirements
-                .insert(receipt.requirement_id.clone());
-            state
-                .receipts
-                .insert(receipt.requirement_id.clone(), receipt.clone());
-            Ok(receipt)
-        })
+        self.mutate(
+            serde_json::json!({"operation":"settle_once", "record":&receipt}),
+            Change::new(
+                Kind::GatewayReceiptIssued,
+                Some(&receipt.requirement_id),
+                Some(&receipt.payment_hash),
+            )?,
+            |state| {
+                if let Some(existing) = state.receipts.get(&receipt.requirement_id) {
+                    return Ok(existing.clone());
+                }
+                if !state.challenges.contains_key(&receipt.requirement_id) {
+                    return Err(StoreError::Conflict);
+                }
+                if state.receipts.len() >= MAX_SETTLED_RECEIPTS {
+                    return Err(StoreError::CapacityExceeded);
+                }
+                state
+                    .consumed_requirements
+                    .insert(receipt.requirement_id.clone());
+                state
+                    .receipts
+                    .insert(receipt.requirement_id.clone(), receipt.clone());
+                Ok(receipt)
+            },
+        )
     }
 
     fn read<T>(&self, f: impl FnOnce(&PersistedState) -> T) -> Result<T, StoreError> {
-        let state = self.state.lock().map_err(|_| StoreError::LockPoisoned)?;
+        let (_, state) = self.load()?;
         Ok(f(&state))
     }
 
     fn mutate<T>(
         &self,
+        recovery: Value,
+        event: Change,
         f: impl FnOnce(&mut PersistedState) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
-        let mut state = self.state.lock().map_err(|_| StoreError::LockPoisoned)?;
-        let mut candidate = state.clone();
+        self.mutate_mode(recovery, event, f, false)
+    }
+
+    fn mutate_new<T>(
+        &self,
+        recovery: Value,
+        event: Change,
+        f: impl FnOnce(&mut PersistedState) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        self.mutate_mode(recovery, event, f, true)
+    }
+
+    fn mutate_mode<T>(
+        &self,
+        recovery: Value,
+        event: Change,
+        f: impl FnOnce(&mut PersistedState) -> Result<T, StoreError>,
+        require_new: bool,
+    ) -> Result<T, StoreError> {
+        let _guard = self
+            .mutations
+            .lock()
+            .map_err(|_| StoreError::LockPoisoned)?;
+        let (revision, mut candidate) = self.load()?;
+        let before =
+            Zeroizing::new(serde_json::to_vec(&candidate).map_err(|_| StoreError::Corrupt)?);
         let result = f(&mut candidate)?;
-        self.persist(&candidate)?;
-        *state = candidate;
+        let after =
+            Zeroizing::new(serde_json::to_vec(&candidate).map_err(|_| StoreError::Corrupt)?);
+        if *before != *after {
+            self.persist(revision, &candidate, &recovery, &event, require_new)?;
+        }
         Ok(result)
     }
 
-    fn persist(&self, state: &PersistedState) -> Result<(), StoreError> {
-        let plaintext = serde_json::to_vec(state).map_err(|_| StoreError::Corrupt)?;
-        if plaintext.len() as u64 + STORE_MAGIC.len() as u64 + AES_GCM_NONCE_LEN as u64 + 16
-            > MAX_STORE_BYTES
-        {
-            return Err(StoreError::Corrupt);
+    fn persist(
+        &self,
+        expected_revision: u64,
+        state: &PersistedState,
+        recovery: &Value,
+        event: &Change,
+        require_new: bool,
+    ) -> Result<(), StoreError> {
+        let bytes = Zeroizing::new(serde_json::to_vec(state).map_err(|_| StoreError::Corrupt)?);
+        if bytes.len() as u64 > MAX_STORE_BYTES {
+            return Err(StoreError::CapacityExceeded);
         }
-        let mut nonce = [0_u8; AES_GCM_NONCE_LEN];
-        OsRng.fill_bytes(&mut nonce);
-        let ciphertext = encrypt_with_nonce(&self.key, &nonce, &plaintext, STORE_MAGIC)
-            .map_err(|_| StoreError::Corrupt)?;
-
-        let parent = self
-            .path
-            .parent()
-            .filter(|path| !path.as_os_str().is_empty());
-        if let Some(parent) = parent {
-            fs::create_dir_all(parent).map_err(io_error)?;
+        let hash = hex::encode(morph_core::blake2b256(&bytes));
+        let operation_id = format!("gateway:{expected_revision}:{hash}");
+        let intent = serde_json::to_vec(&serde_json::json!({
+            "schema": "morph.gateway.projection_commit.v1",
+            "state_hash": hash,
+            "recovery": recovery,
+        }))
+        .map_err(|_| StoreError::Corrupt)?;
+        let commit = Commit {
+            operation_id: operation_id.clone(),
+            expected_revision,
+            intent: Body::new(intent).map_err(runtime_error)?,
+            writes: vec![morph_runtime_store::Write {
+                family: Family::Gateway,
+                id: "state".into(),
+                value: Some(Body::new(bytes.to_vec()).map_err(runtime_error)?),
+            }],
+            events: vec![
+                event.append(
+                    &self.runtime,
+                    &operation_id,
+                    expected_revision
+                        .checked_add(1)
+                        .ok_or(StoreError::CapacityExceeded)?,
+                )?,
+            ],
+            attempts: vec![],
+        };
+        if require_new {
+            self.runtime.commit_new(&commit)
+        } else {
+            self.runtime.commit(&commit)
         }
-        let random_suffix = hex::encode(&random_byte32()[..8]);
-        let file_name = self
-            .path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| StoreError::Io("store path has no valid file name".to_string()))?;
-        let temp_path = self
-            .path
-            .with_file_name(format!(".{file_name}.{random_suffix}.tmp"));
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        options.mode(0o600);
-        let write_result = (|| -> Result<(), StoreError> {
-            let mut file = options.open(&temp_path).map_err(io_error)?;
-            file.write_all(STORE_MAGIC).map_err(io_error)?;
-            file.write_all(&nonce).map_err(io_error)?;
-            file.write_all(&ciphertext).map_err(io_error)?;
-            file.sync_all().map_err(io_error)?;
-            fs::rename(&temp_path, &self.path).map_err(io_error)?;
-            if let Some(parent) = parent {
-                File::open(parent)
-                    .and_then(|dir| dir.sync_all())
-                    .map_err(io_error)?;
-            }
-            Ok(())
-        })();
-        if write_result.is_err() {
-            let _ = fs::remove_file(&temp_path);
-        }
-        write_result
+        .map_err(runtime_error)?;
+        Ok(())
     }
+}
+
+fn runtime_error(error: morph_runtime_store::StoreError) -> StoreError {
+    use morph_runtime_store::StoreError as E;
+    match error {
+        E::Corrupt | E::Protection => StoreError::Corrupt,
+        E::Schema => StoreError::UnsupportedVersion,
+        E::Conflict | E::Revision { .. } => StoreError::Conflict,
+        E::Full | E::Invalid => StoreError::CapacityExceeded,
+        E::Busy => StoreError::Busy,
+        E::CommitUncertain => StoreError::CommitUncertain,
+        E::Permissions | E::UnsupportedPlatform => StoreError::Permissions,
+        _ => StoreError::Io("runtime storage failure".into()),
+    }
+}
+
+fn record_payment_in(
+    state: &mut PersistedState,
+    payment: TrackedPayment,
+) -> Result<(), StoreError> {
+    if serde_json::to_vec(&payment.fiber_result)
+        .map_err(|_| StoreError::Corrupt)?
+        .len()
+        > MAX_TRACKED_PAYMENT_JSON_BYTES
+    {
+        return Err(StoreError::CapacityExceeded);
+    }
+    state.payments.insert(payment.payment_hash.clone(), payment);
+    while state.payments.len() > MAX_TRACKED_PAYMENTS {
+        let oldest = state
+            .payments
+            .iter()
+            .min_by(|left, right| {
+                left.1
+                    .updated_at
+                    .cmp(&right.1.updated_at)
+                    .then_with(|| left.0.cmp(right.0))
+            })
+            .map(|(id, _)| id.clone())
+            .ok_or(StoreError::Corrupt)?;
+        state.payments.remove(&oldest);
+    }
+    ensure_transient_reserve(state)
 }
 
 fn prune_expired_transient_records(state: &mut PersistedState, now: u64) {
@@ -378,41 +491,12 @@ fn unix_time_seconds() -> u64 {
         .map_or(0, |duration| duration.as_secs())
 }
 
-fn read_state(path: &Path, key: &[u8; 32]) -> Result<PersistedState, StoreError> {
-    let metadata = fs::metadata(path).map_err(io_error)?;
-    let header_len = (STORE_MAGIC.len() + AES_GCM_NONCE_LEN) as u64;
-    if metadata.len() <= header_len || metadata.len() > MAX_STORE_BYTES {
-        return Err(StoreError::Corrupt);
-    }
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    File::open(path)
-        .and_then(|mut file| file.read_to_end(&mut bytes))
-        .map_err(io_error)?;
-    if bytes.get(..STORE_MAGIC.len()) != Some(STORE_MAGIC) {
-        return Err(StoreError::Corrupt);
-    }
-    let nonce_start = STORE_MAGIC.len();
-    let ciphertext_start = nonce_start + AES_GCM_NONCE_LEN;
-    let plaintext = decrypt_with_nonce(
-        key,
-        &bytes[nonce_start..ciphertext_start],
-        &bytes[ciphertext_start..],
-        STORE_MAGIC,
-    )
-    .map_err(|_| StoreError::Corrupt)?;
-    serde_json::from_slice(&plaintext).map_err(|_| StoreError::Corrupt)
-}
-
-fn io_error(error: std::io::Error) -> StoreError {
-    StoreError::Io(error.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::protocol::{AssetKind, RgbppAsset};
 
-    fn challenge() -> ChallengeRecord {
+    pub(super) fn challenge() -> ChallengeRecord {
         ChallengeRecord {
             requirement: PaymentRequirements {
                 requirement_id: format!("0x{}", "10".repeat(32)),
@@ -446,7 +530,11 @@ mod tests {
         }
     }
 
-    fn challenge_with_tag(tag: u64, created_at: u64, expires_at: u64) -> ChallengeRecord {
+    pub(super) fn challenge_with_tag(
+        tag: u64,
+        created_at: u64,
+        expires_at: u64,
+    ) -> ChallengeRecord {
         let mut record = challenge();
         record.requirement.requirement_id = format!("0x{tag:064x}");
         record.requirement.payment_hash = format!("0x{:064x}", tag + 1);
@@ -459,7 +547,7 @@ mod tests {
     #[test]
     fn store_is_encrypted_and_survives_restart() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("payment-gateway.db");
+        let path = dir.path().join("private/payment-gateway.db");
         let key = [9_u8; 32];
         let record = challenge();
         DurableStore::open(&path, key)
@@ -486,9 +574,81 @@ mod tests {
     }
 
     #[test]
+    fn gateway_recovery_intent_and_safe_event_are_atomic_and_immutable() {
+        use morph_runtime_store::{Cursor, History};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("private/gateway.db");
+        let store = DurableStore::open(&path, [9; 32]).unwrap();
+        let first = challenge();
+        store.insert_challenge(first.clone()).unwrap();
+        let report = store.runtime.validate().unwrap();
+        assert_eq!((report.revision, report.intents, report.events), (2, 2, 2));
+        store.insert_challenge(first.clone()).unwrap();
+        assert_eq!(store.runtime.validate().unwrap().revision, 2);
+        let intents = store
+            .runtime
+            .history(History::Intent, &Cursor::default(), 10)
+            .unwrap();
+        let intent: Value = serde_json::from_slice(intents[1].body.bytes()).unwrap();
+        assert_eq!(
+            intent["recovery"]["record"]["payment_preimage"],
+            first.payment_preimage
+        );
+        let second = DurableStore::open(&path, [9; 32]).unwrap();
+        second
+            .insert_challenge(challenge_with_tag(99, 1, u64::MAX))
+            .unwrap();
+        assert!(
+            store
+                .challenge(&format!("0x{:064x}", 99))
+                .unwrap()
+                .is_some()
+        );
+        let events = store
+            .runtime
+            .history(History::Outbox, &Cursor::default(), 10)
+            .unwrap();
+        let mut kinds = Vec::new();
+        for event in events {
+            let envelope =
+                morph_packages::events::EventEnvelope::decode(event.body.bytes()).unwrap();
+            assert_eq!(envelope.source_revision, event.revision);
+            assert_eq!(
+                envelope.event_id,
+                morph_packages::events::EventEnvelope::identity(
+                    &hex::encode(store.runtime.identity()),
+                    &event.id
+                )
+            );
+            assert_eq!(
+                envelope.component,
+                morph_packages::events::Component::Gateway
+            );
+            kinds.push(envelope.kind);
+            let public = std::str::from_utf8(event.body.bytes()).unwrap();
+            assert!(!public.contains("payment_preimage"));
+            assert!(!public.contains("invoice-secret-marker"));
+        }
+        assert_eq!(
+            kinds,
+            [
+                Kind::GatewayInitialized,
+                Kind::GatewayChallengeCreated,
+                Kind::GatewayChallengeCreated
+            ]
+        );
+        let after = store
+            .runtime
+            .history(History::Intent, &Cursor::default(), 10)
+            .unwrap();
+        assert_eq!(after[1].body.bytes(), intents[1].body.bytes());
+    }
+
+    #[test]
     fn expired_transient_records_are_pruned_before_capacity_checks() {
         let dir = tempfile::tempdir().unwrap();
-        let store = DurableStore::open(dir.path().join("payment-gateway.db"), [9_u8; 32]).unwrap();
+        let store =
+            DurableStore::open(dir.path().join("private/payment-gateway.db"), [9_u8; 32]).unwrap();
         let expired = challenge_with_tag(1, 10, 20);
         store.insert_challenge(expired.clone()).unwrap();
         store
@@ -512,17 +672,22 @@ mod tests {
     #[test]
     fn outstanding_challenge_quota_rejects_without_corrupting_existing_state() {
         let dir = tempfile::tempdir().unwrap();
-        let store = DurableStore::open(dir.path().join("payment-gateway.db"), [9_u8; 32]).unwrap();
+        let store =
+            DurableStore::open(dir.path().join("private/payment-gateway.db"), [9_u8; 32]).unwrap();
         store
-            .mutate(|state| {
-                for tag in 0..MAX_OUTSTANDING_CHALLENGES as u64 {
-                    let record = challenge_with_tag(tag, 1, u64::MAX);
-                    state
-                        .challenges
-                        .insert(record.requirement.requirement_id.clone(), record);
-                }
-                Ok(())
-            })
+            .mutate(
+                serde_json::json!({"operation":"test_bulk_insert"}),
+                Change::initialized(),
+                |state| {
+                    for tag in 0..MAX_OUTSTANDING_CHALLENGES as u64 {
+                        let record = challenge_with_tag(tag, 1, u64::MAX);
+                        state
+                            .challenges
+                            .insert(record.requirement.requirement_id.clone(), record);
+                    }
+                    Ok(())
+                },
+            )
             .unwrap();
         let rejected = challenge_with_tag(MAX_OUTSTANDING_CHALLENGES as u64 + 10, 1, u64::MAX);
         assert!(matches!(
@@ -541,7 +706,8 @@ mod tests {
     #[test]
     fn oversized_raw_payment_metadata_is_not_persisted() {
         let dir = tempfile::tempdir().unwrap();
-        let store = DurableStore::open(dir.path().join("payment-gateway.db"), [9_u8; 32]).unwrap();
+        let store =
+            DurableStore::open(dir.path().join("private/payment-gateway.db"), [9_u8; 32]).unwrap();
         let result = store.record_payment(TrackedPayment {
             payment_hash: format!("0x{}", "12".repeat(32)),
             requirement_id: format!("0x{}", "13".repeat(32)),
@@ -554,5 +720,121 @@ mod tests {
         });
         assert!(matches!(result, Err(StoreError::CapacityExceeded)));
         assert!(store.payments(10).unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod event_boundary_tests {
+    use super::*;
+    #[test]
+    fn malformed_missing_unknown_and_future_projection_records_fail_without_reinitialization() {
+        let canonical = serde_json::to_value(PersistedState::default()).unwrap();
+        let mut inputs = vec![b"{".to_vec(), b"null".to_vec(), b"[]".to_vec()];
+        for version in [0, STORE_SCHEMA_VERSION + 1, u32::MAX] {
+            let mut value = canonical.clone();
+            value["schema_version"] = serde_json::json!(version);
+            inputs.push(serde_json::to_vec(&value).unwrap());
+        }
+        let mut missing = canonical.clone();
+        missing.as_object_mut().unwrap().remove("outgoing");
+        inputs.push(serde_json::to_vec(&missing).unwrap());
+        let mut unknown = canonical.clone();
+        unknown["future_authority"] = serde_json::json!({});
+        inputs.push(serde_json::to_vec(&unknown).unwrap());
+        let mut wrong_shape = canonical;
+        wrong_shape["outgoing"] = serde_json::json!([]);
+        inputs.push(serde_json::to_vec(&wrong_shape).unwrap());
+        for (index, bytes) in inputs.into_iter().enumerate() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("private/store.db");
+            let key = [11; 32];
+            let store = DurableStore::open(&path, key).unwrap();
+            let (revision, _) = store.load().unwrap();
+            // Commit a syntactically corrupt projection through the generic
+            // encrypted transaction layer, so this reaches the consumer codec
+            // rather than merely failing ciphertext authentication.
+            store
+                .runtime
+                .commit(&Commit {
+                    operation_id: format!("test-corrupt-projection-{index}"),
+                    expected_revision: revision,
+                    intent: Body::new(vec![1]).unwrap(),
+                    writes: vec![morph_runtime_store::Write {
+                        family: Family::Gateway,
+                        id: "state".into(),
+                        value: Some(Body::new(bytes.clone()).unwrap()),
+                    }],
+                    events: vec![],
+                    attempts: vec![],
+                })
+                .unwrap();
+            drop(store);
+            let before = std::fs::read(&path).unwrap();
+            assert!(
+                matches!(
+                    DurableStore::open(&path, key),
+                    Err(StoreError::Corrupt | StoreError::UnsupportedVersion)
+                ),
+                "case {index}"
+            );
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                before,
+                "case {index} changed database"
+            );
+            let reader = morph_runtime_store::Store::read_only(
+                &path,
+                morph_runtime_store::Protection::encrypted(key),
+            )
+            .unwrap();
+            let snapshot = reader.read(Family::Gateway, "state").unwrap();
+            assert_eq!(snapshot.revision, revision + 1);
+            assert_eq!(snapshot.record.unwrap().body.bytes(), bytes);
+        }
+    }
+    #[test]
+    fn retired_gateway_projection_is_rejected_without_migration_or_new_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("private/store.db");
+        let store = DurableStore::open(&path, [11; 32]).unwrap();
+        let (revision, mut old) = store.load().unwrap();
+        old.schema_version = 2;
+        store
+            .runtime
+            .commit(&Commit {
+                operation_id: "test-old-shape".into(),
+                expected_revision: revision,
+                intent: Body::new(vec![1]).unwrap(),
+                writes: vec![morph_runtime_store::Write {
+                    family: Family::Gateway,
+                    id: "state".into(),
+                    value: Some(Body::new(serde_json::to_vec(&old).unwrap()).unwrap()),
+                }],
+                events: vec![],
+                attempts: vec![],
+            })
+            .unwrap();
+        drop(store);
+        let before = std::fs::read(&path).unwrap();
+        assert!(matches!(
+            DurableStore::open(&path, [11; 32]),
+            Err(StoreError::UnsupportedVersion)
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+    #[test]
+    fn unsafe_public_reference_fails_before_projection_or_event_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = DurableStore::open(dir.path().join("private/store.db"), [11; 32]).unwrap();
+        let before = store.runtime.validate().unwrap();
+        let mut challenge = super::tests::challenge();
+        challenge.requirement.payment_hash = "private-error-payload".into();
+        assert!(store.insert_challenge(challenge).is_err());
+        let after = store.runtime.validate().unwrap();
+        assert_eq!(
+            (before.revision, before.events),
+            (after.revision, after.events)
+        );
+        assert!(store.read(|s| s.challenges.is_empty()).unwrap());
     }
 }

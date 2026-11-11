@@ -47,6 +47,12 @@ enum Command {
         listen: SocketAddr,
         #[arg(long, default_value = "http://127.0.0.1:8227")]
         fiber_rpc: String,
+        /// Expected Fiber compressed public key (66 lowercase hex digits, no 0x), for readiness.
+        #[arg(long, requires = "fiber_chain_hash")]
+        fiber_pubkey: Option<String>,
+        /// Expected node_info chain hash, for readiness; not an independent chain proof.
+        #[arg(long, requires = "fiber_pubkey")]
+        fiber_chain_hash: Option<String>,
         #[arg(
             long,
             env = "MORPH_PAYMENT_GATEWAY_FIBER_BEARER_TOKEN",
@@ -124,6 +130,8 @@ async fn main() -> Result<()> {
         Command::Serve {
             listen,
             fiber_rpc,
+            fiber_pubkey,
+            fiber_chain_hash,
             fiber_bearer_token,
             store,
             api_bearer_token,
@@ -172,6 +180,13 @@ async fn main() -> Result<()> {
             let service = Arc::new(
                 PaymentGatewayService::new(
                     PaymentGatewayConfig {
+                        fiber_identity: match (fiber_pubkey, fiber_chain_hash) {
+                            (Some(key), Some(chain)) => {
+                                Some(morph_payment_gateway::FiberIdentity::new(&key, &chain)?)
+                            }
+                            (None, None) => None,
+                            _ => anyhow::bail!("both Fiber identity pins are required"),
+                        },
                         payee,
                         outgoing_payer,
                         outgoing_max_fee_amount,

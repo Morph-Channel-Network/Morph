@@ -1,0 +1,24 @@
+[package]
+name = "morph-signer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Bounded role-bound participant signing transport for Morph"
+
+[dependencies]
+morph-packages = { path = "../morph-packages" }
+serde_json.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["event", "fs", "net", "process"] }
+
+[dev-dependencies]
+anyhow.workspace = true
+ckb-types.workspace = true
+hex.workspace = true
+morph-core = { path = "../morph-core" }
+

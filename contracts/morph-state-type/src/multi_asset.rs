@@ -172,6 +172,18 @@ pub fn validate(
             if header.funding_anchor() != anchor {
                 return Err(ScriptError::FundingAnchorMismatch);
             }
+            if let Some(raw) = morph_script_common::multi_asset_close_runtime::close_evidence(
+                0,
+                Source::GroupInput,
+            )? {
+                if load_input_out_point(0, Source::GroupInput).map_err(|_| ScriptError::Encoding)?
+                    != load_input_out_point(0, Source::Input).map_err(|_| ScriptError::Encoding)?
+                {
+                    return Err(ScriptError::MultiAssetCloseMismatch);
+                }
+                super::validate_output_lock_args_bind_output_type(0, Source::GroupInput)?;
+                return morph_script_common::multi_asset_close_runtime::verify_close(&raw);
+            }
             if let Some(raw) = morph_script_common::multi_asset_splice_runtime::splice_evidence(
                 0,
                 Source::GroupInput,
@@ -195,7 +207,7 @@ pub fn validate(
             evidence.validate_header(&header)?;
             bind_vault_lock(&evidence, anchor, since, Source::GroupInput)?;
             verify_multi_asset_vault_set(&evidence, Source::Input, true)?;
-            verify_multi_asset_settlement_outputs(&evidence, 0, Source::GroupInput)
+            verify_multi_asset_settlement_outputs(&evidence, 0, Source::GroupInput, &header)
         }
         _ => Err(ScriptError::WrongGroupShape),
     }

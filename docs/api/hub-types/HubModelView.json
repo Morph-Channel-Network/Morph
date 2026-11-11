@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "chain_actions_enabled": {
+      "type": "boolean"
+    },
+    "channel_authority": {
+      "type": "string"
+    },
+    "factory_authority": {
+      "type": "string"
+    },
+    "factory_max_participants": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "factory_min_participants": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "factory_rights_exposed": {
+      "type": "boolean"
+    },
+    "hub_role": {
+      "type": "string"
+    },
+    "payment_gateway_receipts_exposed": {
+      "type": "boolean"
+    },
+    "payment_gateway_role": {
+      "type": "string"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "provider_edges_exposed": {
+      "type": "boolean"
+    },
+    "rgbpp_evidence_exposed": {
+      "type": "boolean"
+    },
+    "routing_role": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "hub_role",
+    "factory_authority",
+    "channel_authority",
+    "routing_role",
+    "payment_gateway_role",
+    "factory_min_participants",
+    "factory_max_participants",
+    "chain_actions_enabled",
+    "factory_rights_exposed",
+    "provider_edges_exposed",
+    "rgbpp_evidence_exposed",
+    "payment_gateway_receipts_exposed"
+  ],
+  "title": "HubModelView",
+  "type": "object"
+}

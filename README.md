@@ -99,7 +99,10 @@ Implemented locally:
   `ChannelBackend`, Factory-right edge registry, and isolated Fiber-hook
   adapter. The gateway x402/credential/fair-exchange flow is exercised over a
   real three-node Fiber devnet route; a real Fiber external-edge hook routing
-  a Morph-backed channel is not yet implemented.
+  a Morph-backed channel is not yet implemented. An opt-in, pinned
+  [Fiber shadow patch](integrations/fiber-shadow/README.md) now provides persistent
+  diagnostic mirrors and separate RPC permissions, always with forwarding disabled.
+  Canonical-chain orchestration and live Morph-backed routing remain separate work.
 
 Production rollout is gated on the qualification program in
 [docs/mainnet-readiness.md](docs/mainnet-readiness.md):
@@ -194,9 +197,11 @@ contracts/             no-std CKB scripts and shared script parsers.
 docs/                  Devnet, implementation, readiness, and tutorial notes.
 scripts/               Devnet, smoke, and environment helpers.
 crates/morph-packages  Shared canonical package codecs and construction/review.
+crates/morph-signer    Bounded participant IPC; CLI key service checks the existing journal.
 crates/morph-hub-api   Typed public service contract, without private store state.
 crates/morph-sdk       Native Rust protocol and HTTP client.
-crates/morph-desktop   Native GPUI operator console.
+crates/morph-desktop   Native GPUI wallet and operator console.
+crates/morph-wallet    Local encrypted CKB wallet, transfers and bounded observation.
 crates/morph-xtask     Rust regression, Fiber/Gateway and hygiene tools.
 fixtures/             Current protocol samples, Gateway vector and native scenario data.
 ```
@@ -238,7 +243,7 @@ Run the local operator console:
 cargo run -p morph-cli -- hub serve \
   --listen 127.0.0.1:4617 \
   --pubkey "${MORPH_PUBKEY:?set MORPH_PUBKEY to the local compressed secp256k1 pubkey}" \
-  --state-path target/morph-hub/node-state.json \
+  --state-path target/morph-hub/runtime/node.db \
   --ckb-rpc-url "${MORPH_CKB_RPC:-http://127.0.0.1:18114}" \
   --rotate-auth-token-on-restart
 ```
@@ -249,6 +254,13 @@ format. Morph derives its internal 32-byte node id from that pubkey. In a second
 terminal run `make desktop`, then connect to `http://127.0.0.1:4617` with the
 runtime token. The Hub serves `/api` only. The desktop is native GPUI, with no
 browser, WebView or JS/TS build. See [native desktop setup](docs/native-desktop.md).
+
+The desktop's **Wallet** works independently of Hub: local creation/import,
+encrypted backup/restore, receive addresses and QR codes, CKB/admitted-token
+transfers, and transaction history. Keys remain in the local wallet worker.
+Channel funding still uses its separate signing and initial-exit ceremony; a Hub
+channel record is not a funded channel. See the [wallet runbook](docs/runbooks/local-wallet.md)
+for supported assets, bounded transaction policy and current limitations.
 
 When you have a real watchtower JSONL output from a devnet run, add
 `--watch-alert-file "$MORPH_WATCH_ALERT_FILE"`. Without that file, Morph Hub

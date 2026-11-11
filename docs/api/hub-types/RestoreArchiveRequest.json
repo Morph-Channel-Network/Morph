@@ -1,0 +1,671 @@
+{
+  "$defs": {
+    "ArchiveBalance": {
+      "additionalProperties": false,
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/AssetRequest"
+        },
+        "local": {
+          "type": "string"
+        },
+        "pending": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset",
+        "local",
+        "remote",
+        "pending"
+      ],
+      "type": "object"
+    },
+    "ArchiveChannel": {
+      "additionalProperties": false,
+      "properties": {
+        "balances": {
+          "items": {
+            "$ref": "#/$defs/ArchiveBalance"
+          },
+          "type": "array"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "counterparty_pubkey": {
+          "type": "string"
+        },
+        "funding_context_id": {
+          "type": "string"
+        },
+        "funding_epoch": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/$defs/ArchivePhase"
+        },
+        "sponsor_budget": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "state_number": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel_id",
+        "counterparty_pubkey",
+        "funding_epoch",
+        "funding_context_id",
+        "state_number",
+        "phase",
+        "balances",
+        "sponsor_budget"
+      ],
+      "type": "object"
+    },
+    "ArchiveEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at_unix": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "id": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/EventSeverity"
+        },
+        "subject_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "severity",
+        "event",
+        "message",
+        "created_at_unix"
+      ],
+      "type": "object"
+    },
+    "ArchiveFactory": {
+      "additionalProperties": false,
+      "properties": {
+        "factory_id": {
+          "type": "string"
+        },
+        "materialised_child_channels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "participant_pubkeys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reserve_balances": {
+          "items": {
+            "$ref": "#/$defs/ArchiveBalance"
+          },
+          "type": "array"
+        },
+        "update_number": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "factory_id",
+        "participant_pubkeys",
+        "update_number",
+        "reserve_balances",
+        "materialised_child_channels"
+      ],
+      "type": "object"
+    },
+    "ArchiveFlow": {
+      "enum": [
+        "peer_connected",
+        "invoice_created",
+        "invoice_received",
+        "invoice_settled",
+        "channel_opened",
+        "state_published",
+        "channel_finalised",
+        "channel_spliced",
+        "factory_opened",
+        "factory_advanced",
+        "factory_child_materialised"
+      ],
+      "type": "string"
+    },
+    "ArchiveInvoice": {
+      "additionalProperties": false,
+      "properties": {
+        "cancelled_at_unix": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "encoded_invoice": {
+          "type": "string"
+        },
+        "paid_at_unix": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "received_at_unix": {
+          "anyOf": [
+            {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/ArchiveInvoiceStatus"
+        }
+      },
+      "required": [
+        "encoded_invoice",
+        "status",
+        "received_at_unix",
+        "paid_at_unix",
+        "cancelled_at_unix"
+      ],
+      "type": "object"
+    },
+    "ArchiveInvoiceStatus": {
+      "enum": [
+        "open",
+        "received",
+        "paid",
+        "cancelled",
+        "expired"
+      ],
+      "type": "string"
+    },
+    "ArchiveNetwork": {
+      "enum": [
+        "devnet",
+        "testnet",
+        "mainnet"
+      ],
+      "type": "string"
+    },
+    "ArchivePeer": {
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "type": "string"
+        },
+        "pubkey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pubkey",
+        "alias"
+      ],
+      "type": "object"
+    },
+    "ArchivePhase": {
+      "enum": [
+        "funding",
+        "active",
+        "settling",
+        "closed"
+      ],
+      "type": "string"
+    },
+    "AssetRequest": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ckb",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "xudt",
+              "type": "string"
+            },
+            "type_hash": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "type_hash"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "EventSeverity": {
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "type": "string"
+    },
+    "RootFundingCollection": {
+      "additionalProperties": false,
+      "description": "Public coordination state. It contains no signer authority or reservation.",
+      "properties": {
+        "creation_signatures": {
+          "items": {
+            "$ref": "#/$defs/SignatureMessage"
+          },
+          "type": "array"
+        },
+        "draft": {
+          "$ref": "#/$defs/RootFundingDraft"
+        },
+        "exit_signatures": {
+          "items": {
+            "$ref": "#/$defs/SignatureMessage"
+          },
+          "type": "array"
+        },
+        "schema": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "draft",
+        "exit_signatures",
+        "creation_signatures"
+      ],
+      "type": "object"
+    },
+    "RootFundingDraft": {
+      "additionalProperties": false,
+      "description": "Public immutable funding proposal. Every amount and the initial exit are\nderived from the packed transaction; no duplicate roots or amounts exist.",
+      "properties": {
+        "participants": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "transaction_hex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "transaction_hex",
+        "participants"
+      ],
+      "type": "object"
+    },
+    "SignatureMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "pubkey": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "signing_digest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "signing_digest",
+        "pubkey",
+        "signature"
+      ],
+      "type": "object"
+    },
+    "StateArchive": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "items": {
+            "$ref": "#/$defs/ArchiveChannel"
+          },
+          "type": "array"
+        },
+        "completed_flows": {
+          "items": {
+            "$ref": "#/$defs/ArchiveFlow"
+          },
+          "type": "array"
+        },
+        "conditional_batches": {
+          "items": {
+            "$ref": "#/$defs/StoredConditionalBatchPackage"
+          },
+          "type": "array"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/ArchiveEvent"
+          },
+          "type": "array"
+        },
+        "factories": {
+          "items": {
+            "$ref": "#/$defs/ArchiveFactory"
+          },
+          "type": "array"
+        },
+        "invoices": {
+          "items": {
+            "$ref": "#/$defs/ArchiveInvoice"
+          },
+          "type": "array"
+        },
+        "multi_asset_packages": {
+          "items": {
+            "$ref": "#/$defs/StoredMultiAssetPackage"
+          },
+          "type": "array"
+        },
+        "network": {
+          "$ref": "#/$defs/ArchiveNetwork"
+        },
+        "peers": {
+          "items": {
+            "$ref": "#/$defs/ArchivePeer"
+          },
+          "type": "array"
+        },
+        "pubkey": {
+          "type": "string"
+        },
+        "root_fundings": {
+          "items": {
+            "$ref": "#/$defs/RootFundingCollection"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pubkey",
+        "network",
+        "peers",
+        "channels",
+        "factories",
+        "conditional_batches",
+        "multi_asset_packages",
+        "root_fundings",
+        "invoices",
+        "completed_flows",
+        "events"
+      ],
+      "type": "object"
+    },
+    "StoredConditionalBatchPackage": {
+      "additionalProperties": false,
+      "properties": {
+        "input_since": {
+          "type": "string"
+        },
+        "resolution_witness_hex": {
+          "type": "string"
+        },
+        "resolutions": {
+          "items": {
+            "$ref": "#/$defs/StoredConditionalResolution"
+          },
+          "type": "array"
+        },
+        "resolved_capacities": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "source_package": {
+          "$ref": "#/$defs/StoredMultiAssetPackage"
+        }
+      },
+      "required": [
+        "schema",
+        "source_package",
+        "resolutions",
+        "input_since",
+        "resolution_witness_hex",
+        "resolved_capacities"
+      ],
+      "type": "object"
+    },
+    "StoredConditionalResolution": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "fulfill",
+              "type": "string"
+            },
+            "preimage": {
+              "type": "string"
+            },
+            "transfer_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "transfer_id",
+            "preimage"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "refund",
+              "type": "string"
+            },
+            "transfer_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "transfer_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "StoredMultiAssetCellDep": {
+      "additionalProperties": false,
+      "properties": {
+        "dep_type": {
+          "type": "string"
+        },
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tx_hash",
+        "index",
+        "dep_type"
+      ],
+      "type": "object"
+    },
+    "StoredMultiAssetPackage": {
+      "additionalProperties": false,
+      "description": "Binary evidence is canonical hex. Every u64/u128 exposed in this public package is\na decimal string; JSON number rounding must never change signed value.",
+      "properties": {
+        "cell_deps": {
+          "items": {
+            "$ref": "#/$defs/StoredMultiAssetCellDep"
+          },
+          "type": "array"
+        },
+        "header_hex": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "signature_witness_hex": {
+          "type": "string"
+        },
+        "state_carrier_capacity": {
+          "type": "string"
+        },
+        "witness_hex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "header_hex",
+        "witness_hex",
+        "signature_witness_hex",
+        "state_carrier_capacity",
+        "cell_deps"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "confirmation_hash": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/StateArchive"
+    }
+  },
+  "required": [
+    "state",
+    "confirmation_hash"
+  ],
+  "title": "RestoreArchiveRequest",
+  "type": "object"
+}

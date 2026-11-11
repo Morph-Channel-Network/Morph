@@ -5,6 +5,9 @@ use morph_core::*;
 use morph_script_common::multi_asset as wire;
 use proptest::prelude::*;
 
+#[path = "multi_asset_cases/cooperative_close.rs"]
+mod cooperative_close;
+
 fn script(code: u8, args: &[u8]) -> Vec<u8> {
     Script::new_builder()
         .code_hash([code; 32].pack())
@@ -566,6 +569,88 @@ fn multi_asset_backend_cancel_and_restart_cannot_reuse_signed_state_number() {
         next.state.header.state_number,
         proposal.state.header.state_number + 1
     );
+}
+
+#[test]
+fn multi_asset_backend_reserved_but_unrecorded_vote_survives_restart() {
+    let original = fixture(2);
+    let mut backend =
+        MultiAssetChannelBackend::new(original.clone(), participant_pubkey(1)).unwrap();
+    let proposal = backend.propose(original.settlement.clone()).unwrap();
+    backend.reserve_signature().unwrap();
+    // Signature may have been produced externally but its response was lost.
+    // Reopen the exact persisted reservation, without any recorded receipt.
+    let mut restarted: MultiAssetChannelBackend =
+        serde_json::from_slice(&serde_json::to_vec(&backend).unwrap()).unwrap();
+    assert!(restarted.signatures().is_empty());
+    restarted.cancel_proposal();
+    let mut conflicting = proposal.clone();
+    conflicting.settlement.payouts[0].values[0].amount -= 1;
+    conflicting.settlement.payouts[0].values[1].amount += 1;
+    conflicting.state.header.settlement_descriptor_commitment =
+        conflicting.settlement.commitment().unwrap();
+    assert_eq!(
+        restarted.accept_proposal(conflicting).unwrap_err(),
+        MultiAssetBackendError::ConflictingVote
+    );
+    restarted.accept_proposal(proposal.clone()).unwrap();
+    assert_eq!(
+        restarted.reserve_signature().unwrap().signing_digest,
+        proposal.signing_digest().unwrap()
+    );
+    restarted
+        .record_signature(proposal_signature(&proposal, 1))
+        .unwrap();
+    assert_eq!(restarted.signatures().len(), 1);
+}
+
+#[test]
+fn multi_asset_backend_whole_consistent_snapshot_rollback_is_not_detectable_locally() {
+    let original = fixture(2);
+    let mut alice = MultiAssetChannelBackend::new(original.clone(), participant_pubkey(1)).unwrap();
+    let old_consistent_snapshot = serde_json::to_vec(&alice).unwrap();
+    let first = alice.propose(original.settlement.clone()).unwrap();
+    alice.reserve_signature().unwrap();
+    alice
+        .record_signature(proposal_signature(&first, 1))
+        .unwrap();
+    // Bob is malicious: he signs both allocations. He does not need to restore
+    // an honest journal, nor can an honest peer be assumed in this threat model.
+    alice
+        .record_signature(proposal_signature(&first, 2))
+        .unwrap();
+    let first_package = alice.commit().unwrap();
+    first_package.validate().unwrap();
+
+    let mut second = first.clone();
+    second.settlement.payouts[0].values[0].amount -= 1;
+    second.settlement.payouts[0].values[1].amount += 1;
+    second.state.header.settlement_descriptor_commitment = second.settlement.commitment().unwrap();
+    // A clone or full rollback is structurally valid. An internal hash chain
+    // cannot distinguish these older bytes from the original legitimate state.
+    let mut restored: MultiAssetChannelBackend =
+        serde_json::from_slice(&old_consistent_snapshot).unwrap();
+    restored.accept_proposal(second.clone()).unwrap();
+    restored.reserve_signature().unwrap();
+    restored
+        .record_signature(proposal_signature(&second, 1))
+        .unwrap();
+    restored
+        .record_signature(proposal_signature(&second, 2))
+        .unwrap();
+    let second_package = restored.commit().unwrap();
+    second_package.validate().unwrap();
+    assert_eq!(
+        first_package.state.header.state_number,
+        second_package.state.header.state_number
+    );
+    assert_eq!(first_package.outpoints, second_package.outpoints);
+    assert_ne!(
+        first_package.state.signing_digest().unwrap(),
+        second_package.state.signing_digest().unwrap()
+    );
+    // This demonstrates two authorizations, not repeated consumption of a cell.
+    // The CLI prohibition on restoring/cloning active signer authority remains.
 }
 
 #[test]

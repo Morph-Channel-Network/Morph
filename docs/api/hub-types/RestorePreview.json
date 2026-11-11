@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "RestoreStateSummary": {
+      "properties": {
+        "channels": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "completed_flows": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "conditional_batches": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "events": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "factories": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "invoices": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "multi_asset_packages": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "peers": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "root_fundings": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "settling_channels": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "peers",
+        "channels",
+        "factories",
+        "conditional_batches",
+        "multi_asset_packages",
+        "root_fundings",
+        "invoices",
+        "completed_flows",
+        "events",
+        "settling_channels"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "allowed": {
+      "type": "boolean"
+    },
+    "candidate": {
+      "$ref": "#/$defs/RestoreStateSummary"
+    },
+    "confirmation_hash": {
+      "type": "string"
+    },
+    "current": {
+      "$ref": "#/$defs/RestoreStateSummary"
+    },
+    "ignored_completed_flows": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "confirmation_hash",
+    "allowed",
+    "current",
+    "candidate",
+    "ignored_completed_flows",
+    "warnings"
+  ],
+  "title": "RestorePreview",
+  "type": "object"
+}

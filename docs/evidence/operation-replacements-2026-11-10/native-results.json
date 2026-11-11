@@ -1,0 +1,538 @@
+[
+  {
+    "asset_count": 2,
+    "final_branch": "ordinary_unilateral_fallback_after_three_controlled_rollbacks",
+    "checks": {
+      "all_custody_consumed": true,
+      "confirmed_retry_no_broadcast": true,
+      "journals_unchanged_after_reorg_and_fallback": true,
+      "missing_fee_preflight_rejected": true,
+      "old_approval_exportable": true,
+      "replacement_winners_reconciled": true,
+      "required_depth_enforced": true,
+      "source_race_rejected": true,
+      "unilateral_package_retained": true,
+      "wrong_fee_owner_rejected": true
+    },
+    "database": {
+      "sha256": "0176416c5bab52a805d90702b7ebcc4c8217fad0e644b704f2a6acd5a90a58f1",
+      "validation": {
+        "schema_version": 1,
+        "revision": 36,
+        "encrypted": false,
+        "records": 2,
+        "intents": 36,
+        "events": 36,
+        "attempts": 36,
+        "payload_bytes": 83352
+      },
+      "offline_export_unchanged": true
+    },
+    "offline_exports": [
+      {
+        "version": "older",
+        "operation_id": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+        "sha256": "f27e27cf3378ccb5ece3cec09a72bc7246dd4556cc94c17f0264e0a838f33c54",
+        "matches_original": true,
+        "canonical_confirmation_checked": false
+      },
+      {
+        "version": "newer",
+        "operation_id": "717adcb67fb133bf9055a4addff7baa5c345a86824a441126b01adaa23da2cb8",
+        "sha256": "6ab5f0bb22cd5001bd98f7e57bc86509b142cacc44f23c755c1df4bd981653d8",
+        "matches_original": true,
+        "canonical_confirmation_checked": false
+      }
+    ],
+    "predecessor_preview": {
+      "transaction_hash": "0xda72496b1442c36b3a1ed07035354b9643d64662c26889ba41f2ae4976196f81",
+      "status": {
+        "state": "unknown"
+      },
+      "canonical_confirmations": 0,
+      "operation": {
+        "broadcasts": 0,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794307558907,
+        "operation_id": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+        "preflight": {
+          "estimated_cycles": 12215474,
+          "fee": 100000,
+          "tx_size_bytes": 3548
+        },
+        "replaces": null,
+        "required_depth": 4,
+        "status": {
+          "state": "unknown"
+        },
+        "tip_hash": "0x22f548300787f645aca1cd7363ceb70e0f5205c8243857a8d9d8242c6b36bf48",
+        "transaction_hash": "0xda72496b1442c36b3a1ed07035354b9643d64662c26889ba41f2ae4976196f81"
+      },
+      "fee": "100000",
+      "metrics": {
+        "estimated_cycles": 12215474,
+        "tx_size_bytes": 3548
+      }
+    },
+    "submitted": {
+      "transaction_hash": "0x485b2fad98b6486e6a2a4ee52c7def8316cad954251b3858952bb6c2ee5e120f",
+      "status": {
+        "block_hash": "0x3cf74b5e562c83e9573bddad2726dc953e316b965b836c560e7dcce8e87cf527",
+        "block_number": 66,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 1,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794307559753,
+        "operation_id": "717adcb67fb133bf9055a4addff7baa5c345a86824a441126b01adaa23da2cb8",
+        "preflight": {
+          "estimated_cycles": 12390267,
+          "fee": 200000,
+          "tx_size_bytes": 3548
+        },
+        "replaces": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x3cf74b5e562c83e9573bddad2726dc953e316b965b836c560e7dcce8e87cf527",
+          "block_number": 66,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0x67421eca59bca3841b0177b8d0d89d90365a5ed70845e7f14dda70e1a3900033",
+        "transaction_hash": "0x485b2fad98b6486e6a2a4ee52c7def8316cad954251b3858952bb6c2ee5e120f"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 12390267,
+        "tx_size_bytes": 3548
+      }
+    },
+    "reorg_replay": {
+      "transaction_hash": "0x485b2fad98b6486e6a2a4ee52c7def8316cad954251b3858952bb6c2ee5e120f",
+      "status": {
+        "block_hash": "0xa8f675ad603747c6ab66a21a219d33bb02a33c06f0a59a2107dd8120c1eaf6d4",
+        "block_number": 66,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794307561241,
+        "operation_id": "717adcb67fb133bf9055a4addff7baa5c345a86824a441126b01adaa23da2cb8",
+        "preflight": {
+          "estimated_cycles": 12390267,
+          "fee": 200000,
+          "tx_size_bytes": 3548
+        },
+        "replaces": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0xa8f675ad603747c6ab66a21a219d33bb02a33c06f0a59a2107dd8120c1eaf6d4",
+          "block_number": 66,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0x66cdbeb64e4e9117bf75996362c741e52b3cdfdc437d4b07b79c266b32964bbb",
+        "transaction_hash": "0x485b2fad98b6486e6a2a4ee52c7def8316cad954251b3858952bb6c2ee5e120f"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 12390267,
+        "tx_size_bytes": 3548
+      }
+    },
+    "predecessor_won": {
+      "transaction_hash": "0xda72496b1442c36b3a1ed07035354b9643d64662c26889ba41f2ae4976196f81",
+      "status": {
+        "block_hash": "0x31edd69a832e7b3b4580698d8c97da59902c53d9f3b8c5e1fb0f18fbac2bea12",
+        "block_number": 66,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 1,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794307561734,
+        "operation_id": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+        "preflight": {
+          "estimated_cycles": 12215474,
+          "fee": 100000,
+          "tx_size_bytes": 3548
+        },
+        "replaces": null,
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x31edd69a832e7b3b4580698d8c97da59902c53d9f3b8c5e1fb0f18fbac2bea12",
+          "block_number": 66,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0x2a024a97e4a2ee0cc981cc7c826c0fa1add7b87b5f3e9d07967134968cea88f6",
+        "transaction_hash": "0xda72496b1442c36b3a1ed07035354b9643d64662c26889ba41f2ae4976196f81"
+      },
+      "fee": "100000",
+      "metrics": {
+        "estimated_cycles": 12215474,
+        "tx_size_bytes": 3548
+      }
+    },
+    "lost_race_operation": {
+      "transaction_hash": "0x485b2fad98b6486e6a2a4ee52c7def8316cad954251b3858952bb6c2ee5e120f",
+      "status": {
+        "state": "operator_action"
+      },
+      "canonical_confirmations": 0,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794307562408,
+        "operation_id": "717adcb67fb133bf9055a4addff7baa5c345a86824a441126b01adaa23da2cb8",
+        "preflight": {
+          "estimated_cycles": 12390267,
+          "fee": 200000,
+          "tx_size_bytes": 3548
+        },
+        "replaces": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+        "required_depth": 4,
+        "status": {
+          "state": "operator_action"
+        },
+        "tip_hash": "0x9a1179ef966d473e77585253b40e97efaa1da37af068afb911eb150c5cfdad2b",
+        "transaction_hash": "0x485b2fad98b6486e6a2a4ee52c7def8316cad954251b3858952bb6c2ee5e120f"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 12390267,
+        "tx_size_bytes": 3548
+      }
+    },
+    "predecessor_lost": {
+      "depth_reached": false,
+      "operation": {
+        "broadcasts": 0,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794307559800,
+        "operation_id": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+        "preflight": {
+          "estimated_cycles": 12215474,
+          "fee": 100000,
+          "tx_size_bytes": 3548
+        },
+        "replaces": null,
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x3cf74b5e562c83e9573bddad2726dc953e316b965b836c560e7dcce8e87cf527",
+          "block_number": 66,
+          "by_operation_id": "717adcb67fb133bf9055a4addff7baa5c345a86824a441126b01adaa23da2cb8",
+          "depth": 4,
+          "state": "replaced",
+          "transaction_hash": "0x485b2fad98b6486e6a2a4ee52c7def8316cad954251b3858952bb6c2ee5e120f"
+        },
+        "tip_hash": "0x67421eca59bca3841b0177b8d0d89d90365a5ed70845e7f14dda70e1a3900033",
+        "transaction_hash": "0xda72496b1442c36b3a1ed07035354b9643d64662c26889ba41f2ae4976196f81"
+      },
+      "required_depth": 4
+    },
+    "descendant_lost": {
+      "depth_reached": false,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794307561752,
+        "operation_id": "717adcb67fb133bf9055a4addff7baa5c345a86824a441126b01adaa23da2cb8",
+        "preflight": {
+          "estimated_cycles": 12390267,
+          "fee": 200000,
+          "tx_size_bytes": 3548
+        },
+        "replaces": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x31edd69a832e7b3b4580698d8c97da59902c53d9f3b8c5e1fb0f18fbac2bea12",
+          "block_number": 66,
+          "by_operation_id": "ffb0a35b572b0b2ec53d7b3e9420bdcee3bb7c4790e9d1ddd5306730f1cb58d0",
+          "depth": 4,
+          "state": "replaced",
+          "transaction_hash": "0xda72496b1442c36b3a1ed07035354b9643d64662c26889ba41f2ae4976196f81"
+        },
+        "tip_hash": "0x2a024a97e4a2ee0cc981cc7c826c0fa1add7b87b5f3e9d07967134968cea88f6",
+        "transaction_hash": "0x485b2fad98b6486e6a2a4ee52c7def8316cad954251b3858952bb6c2ee5e120f"
+      },
+      "required_depth": 4
+    }
+  },
+  {
+    "asset_count": 8,
+    "final_branch": "ordinary_unilateral_fallback_after_three_controlled_rollbacks",
+    "checks": {
+      "all_custody_consumed": true,
+      "confirmed_retry_no_broadcast": true,
+      "journals_unchanged_after_reorg_and_fallback": true,
+      "missing_fee_preflight_rejected": true,
+      "old_approval_exportable": true,
+      "replacement_winners_reconciled": true,
+      "required_depth_enforced": true,
+      "source_race_rejected": true,
+      "unilateral_package_retained": true,
+      "wrong_fee_owner_rejected": true
+    },
+    "database": {
+      "sha256": "a3c933e909d8a2c56ef482908f245f1dbdede1e55c1ef444278d4c3cb43fbdcb",
+      "validation": {
+        "schema_version": 1,
+        "revision": 36,
+        "encrypted": false,
+        "records": 2,
+        "intents": 36,
+        "events": 36,
+        "attempts": 36,
+        "payload_bytes": 121349
+      },
+      "offline_export_unchanged": true
+    },
+    "offline_exports": [
+      {
+        "version": "older",
+        "operation_id": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+        "sha256": "046133bd475fff588f89f0ea1be9fc893738348d960a3eea1f8d96fb42ee42dc",
+        "matches_original": true,
+        "canonical_confirmation_checked": false
+      },
+      {
+        "version": "newer",
+        "operation_id": "bb45772999160b0cfc2722c0b30f51d45852d06a2441a678ad17949d96be9ecf",
+        "sha256": "c01e306557c70cf264986c386b8a440705cd902a0bd38030b96c80ea926c4386",
+        "matches_original": true,
+        "canonical_confirmation_checked": false
+      }
+    ],
+    "predecessor_preview": {
+      "transaction_hash": "0x2e0f47c7deecbec039b1968c9c90dda32b0eacd7551103c8081e6bab1716c9aa",
+      "status": {
+        "state": "unknown"
+      },
+      "canonical_confirmations": 0,
+      "operation": {
+        "broadcasts": 0,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794307613451,
+        "operation_id": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+        "preflight": {
+          "estimated_cycles": 14012337,
+          "fee": 100000,
+          "tx_size_bytes": 8294
+        },
+        "replaces": null,
+        "required_depth": 4,
+        "status": {
+          "state": "unknown"
+        },
+        "tip_hash": "0x54db5b274097a6d1b9773cd3aa06d04b8e4e3efb7621fccbff32a4cdd79d895d",
+        "transaction_hash": "0x2e0f47c7deecbec039b1968c9c90dda32b0eacd7551103c8081e6bab1716c9aa"
+      },
+      "fee": "100000",
+      "metrics": {
+        "estimated_cycles": 14012337,
+        "tx_size_bytes": 8294
+      }
+    },
+    "submitted": {
+      "transaction_hash": "0x6fbb161888ef8f33786dc2990a2b5302a22b1f9bc4aca287db4fae222c33b3f3",
+      "status": {
+        "block_hash": "0x4399b93e42218be76285aab8e871dd86649a7c74bfff189a925b59d1a00da891",
+        "block_number": 213,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 1,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794307614616,
+        "operation_id": "bb45772999160b0cfc2722c0b30f51d45852d06a2441a678ad17949d96be9ecf",
+        "preflight": {
+          "estimated_cycles": 14098115,
+          "fee": 200000,
+          "tx_size_bytes": 8294
+        },
+        "replaces": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x4399b93e42218be76285aab8e871dd86649a7c74bfff189a925b59d1a00da891",
+          "block_number": 213,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0x46c5f1dfe00315b8d249c00d5bc34590bba234472a9eaff2f3eef20db858e7b4",
+        "transaction_hash": "0x6fbb161888ef8f33786dc2990a2b5302a22b1f9bc4aca287db4fae222c33b3f3"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 14098115,
+        "tx_size_bytes": 8294
+      }
+    },
+    "reorg_replay": {
+      "transaction_hash": "0x6fbb161888ef8f33786dc2990a2b5302a22b1f9bc4aca287db4fae222c33b3f3",
+      "status": {
+        "block_hash": "0xd96c90d6a3f3589be2e5b8ae25537aec62b45e1a507cec7012adec0446daed7e",
+        "block_number": 213,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794307616343,
+        "operation_id": "bb45772999160b0cfc2722c0b30f51d45852d06a2441a678ad17949d96be9ecf",
+        "preflight": {
+          "estimated_cycles": 14098115,
+          "fee": 200000,
+          "tx_size_bytes": 8294
+        },
+        "replaces": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0xd96c90d6a3f3589be2e5b8ae25537aec62b45e1a507cec7012adec0446daed7e",
+          "block_number": 213,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0xc864d636fc2fcf23599b1eaa7677f3450e15d2d1fee92a7419fcf4a65c627379",
+        "transaction_hash": "0x6fbb161888ef8f33786dc2990a2b5302a22b1f9bc4aca287db4fae222c33b3f3"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 14098115,
+        "tx_size_bytes": 8294
+      }
+    },
+    "predecessor_won": {
+      "transaction_hash": "0x2e0f47c7deecbec039b1968c9c90dda32b0eacd7551103c8081e6bab1716c9aa",
+      "status": {
+        "block_hash": "0xe62b5ae84f881c0a62cfe3e794ce71e0adea01f0586f3df43c4861a9d94237fb",
+        "block_number": 213,
+        "depth": 4,
+        "state": "finalised"
+      },
+      "canonical_confirmations": 4,
+      "operation": {
+        "broadcasts": 1,
+        "canonical_confirmations": 4,
+        "observed_ms": 1794307617017,
+        "operation_id": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+        "preflight": {
+          "estimated_cycles": 14012337,
+          "fee": 100000,
+          "tx_size_bytes": 8294
+        },
+        "replaces": null,
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0xe62b5ae84f881c0a62cfe3e794ce71e0adea01f0586f3df43c4861a9d94237fb",
+          "block_number": 213,
+          "depth": 4,
+          "state": "finalised"
+        },
+        "tip_hash": "0x24cca5f2e9a4a779f3ae2fd15ac96008c40837654fdd16bde896e2ff3ec9960f",
+        "transaction_hash": "0x2e0f47c7deecbec039b1968c9c90dda32b0eacd7551103c8081e6bab1716c9aa"
+      },
+      "fee": "100000",
+      "metrics": {
+        "estimated_cycles": 14012337,
+        "tx_size_bytes": 8294
+      }
+    },
+    "lost_race_operation": {
+      "transaction_hash": "0x6fbb161888ef8f33786dc2990a2b5302a22b1f9bc4aca287db4fae222c33b3f3",
+      "status": {
+        "state": "operator_action"
+      },
+      "canonical_confirmations": 0,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794307618045,
+        "operation_id": "bb45772999160b0cfc2722c0b30f51d45852d06a2441a678ad17949d96be9ecf",
+        "preflight": {
+          "estimated_cycles": 14098115,
+          "fee": 200000,
+          "tx_size_bytes": 8294
+        },
+        "replaces": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+        "required_depth": 4,
+        "status": {
+          "state": "operator_action"
+        },
+        "tip_hash": "0x496751f738d8b741ef02646e6f22c73ecf1f7356c3e8d8a8f735b7ecc5761d2d",
+        "transaction_hash": "0x6fbb161888ef8f33786dc2990a2b5302a22b1f9bc4aca287db4fae222c33b3f3"
+      },
+      "fee": "200000",
+      "metrics": {
+        "estimated_cycles": 14098115,
+        "tx_size_bytes": 8294
+      }
+    },
+    "predecessor_lost": {
+      "depth_reached": false,
+      "operation": {
+        "broadcasts": 0,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794307614692,
+        "operation_id": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+        "preflight": {
+          "estimated_cycles": 14012337,
+          "fee": 100000,
+          "tx_size_bytes": 8294
+        },
+        "replaces": null,
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0x4399b93e42218be76285aab8e871dd86649a7c74bfff189a925b59d1a00da891",
+          "block_number": 213,
+          "by_operation_id": "bb45772999160b0cfc2722c0b30f51d45852d06a2441a678ad17949d96be9ecf",
+          "depth": 4,
+          "state": "replaced",
+          "transaction_hash": "0x6fbb161888ef8f33786dc2990a2b5302a22b1f9bc4aca287db4fae222c33b3f3"
+        },
+        "tip_hash": "0x46c5f1dfe00315b8d249c00d5bc34590bba234472a9eaff2f3eef20db858e7b4",
+        "transaction_hash": "0x2e0f47c7deecbec039b1968c9c90dda32b0eacd7551103c8081e6bab1716c9aa"
+      },
+      "required_depth": 4
+    },
+    "descendant_lost": {
+      "depth_reached": false,
+      "operation": {
+        "broadcasts": 2,
+        "canonical_confirmations": 0,
+        "observed_ms": 1794307617055,
+        "operation_id": "bb45772999160b0cfc2722c0b30f51d45852d06a2441a678ad17949d96be9ecf",
+        "preflight": {
+          "estimated_cycles": 14098115,
+          "fee": 200000,
+          "tx_size_bytes": 8294
+        },
+        "replaces": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+        "required_depth": 4,
+        "status": {
+          "block_hash": "0xe62b5ae84f881c0a62cfe3e794ce71e0adea01f0586f3df43c4861a9d94237fb",
+          "block_number": 213,
+          "by_operation_id": "147e1ad6c60068ce14863b21ec521dfadbf70d1b1a71ae290f69a6ced772cffb",
+          "depth": 4,
+          "state": "replaced",
+          "transaction_hash": "0x2e0f47c7deecbec039b1968c9c90dda32b0eacd7551103c8081e6bab1716c9aa"
+        },
+        "tip_hash": "0x24cca5f2e9a4a779f3ae2fd15ac96008c40837654fdd16bde896e2ff3ec9960f",
+        "transaction_hash": "0x6fbb161888ef8f33786dc2990a2b5302a22b1f9bc4aca287db4fae222c33b3f3"
+      },
+      "required_depth": 4
+    }
+  }
+]

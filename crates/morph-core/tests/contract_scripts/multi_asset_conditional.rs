@@ -9,6 +9,109 @@ struct ConditionalFixture {
     finalisation: TransactionView,
 }
 
+#[test]
+#[ignore = "requires built current ELFs"]
+fn cooperative_close_host_output_builder_and_journal_preserve_independent_batch() {
+    let mut fixture = conditional_fixture();
+    let mut inputs: Vec<_> = fixture.finalisation.inputs().into_iter().collect();
+    inputs[0] = inputs[0].clone().as_builder().since(0u64).build();
+    let tx = fixture
+        .finalisation
+        .clone()
+        .as_advanced_builder()
+        .set_inputs(inputs)
+        .build();
+    let tx = super::close::journal_close(&fixture.base.package, tx);
+    fixture.base.context.verify_tx(&tx, MAX_CYCLES).unwrap();
+    fixture.finalisation = tx;
+    let resolution = resolve(
+        &mut fixture,
+        ConditionalResolution::Fulfill { preimage: [34; 32] },
+        0,
+    );
+    fixture
+        .base
+        .context
+        .verify_tx(&resolution, MAX_CYCLES)
+        .unwrap();
+}
+
+#[test]
+#[ignore = "requires built current ELFs"]
+fn cooperative_close_preserves_target_batch_after_older_active_source() {
+    let mut fixture = conditional_fixture();
+    let mut inputs: Vec<_> = fixture.finalisation.inputs().into_iter().collect();
+    inputs[0] = CellInput::new(point(&fixture.base.activation, 0), 0);
+    let tx = fixture
+        .finalisation
+        .clone()
+        .as_advanced_builder()
+        .set_inputs(inputs)
+        .build();
+    let tx = super::close::authorize_close(&fixture.base.package, tx);
+    fixture
+        .base
+        .context
+        .verify_tx(&tx, MAX_CYCLES)
+        .expect("close binds latest target Batch rather than Active/0");
+    let descriptor_raw = fixture.base.package.settlement.encode().unwrap();
+    let descriptor = wire::MultiAssetSettlementDescriptor::parse(&descriptor_raw).unwrap();
+    let conditional = descriptor.conditional().unwrap().unwrap();
+    let old_batch = Script::from_slice(
+        &conditional
+            .batch_script(
+                &fixture.base.package.state.header.channel_id,
+                &fixture.base.package.state.funding_context_id().unwrap(),
+                fixture.base.package.state.header.state_number - 1,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let mut outputs: Vec<_> = tx.outputs().into_iter().collect();
+    outputs[0] = outputs[0].clone().as_builder().lock(old_batch).build();
+    let bad = super::close::authorize_close(
+        &fixture.base.package,
+        tx.clone()
+            .as_advanced_builder()
+            .set_outputs(outputs)
+            .build(),
+    );
+    rejects(&fixture.base.context, &bad, &[65]);
+    fixture.finalisation = tx;
+    let fulfillment = resolve(
+        &mut fixture,
+        ConditionalResolution::Fulfill { preimage: [34; 32] },
+        0,
+    );
+    fixture
+        .base
+        .context
+        .verify_tx(&fulfillment, MAX_CYCLES)
+        .expect("independent Batch fulfillment after cooperative retirement");
+}
+
+#[test]
+#[ignore = "requires built current ELFs; emits ADR 005 measurement rows"]
+fn current_close_geometry_with_pending_batch() {
+    let mut fixture = conditional_fixture();
+    super::close_costs::measure(
+        &fixture.base.context,
+        &fixture.base.supersede,
+        "conditional-publication-ckb-plus-token",
+    );
+    super::close_costs::measure(
+        &fixture.base.context,
+        &fixture.finalisation,
+        "conditional-finalise-ckb-plus-token",
+    );
+    let tx = resolve(
+        &mut fixture,
+        ConditionalResolution::Fulfill { preimage: [34; 32] },
+        0,
+    );
+    super::close_costs::measure(&fixture.base.context, &tx, "conditional-batch-fulfill");
+}
+
 fn conditional_fixture() -> ConditionalFixture {
     // A plain CKB lane and an unrelated token lane settle atomically. Funding,
     // activation and ordinary updates run through the exact same fixture first.

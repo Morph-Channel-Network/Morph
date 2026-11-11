@@ -8,6 +8,10 @@ fn bytes32(value: u8) -> [u8; 32] {
 
 #[test]
 fn duplicated_current_host_and_script_domains_match() {
+    assert_eq!(
+        host_hash::MULTI_ASSET_CLOSE_DOMAIN,
+        wire::multi_asset_close::MULTI_ASSET_CLOSE_DOMAIN
+    );
     assert_eq!(host_hash::PARTICIPANTS_DOMAIN, wire::PARTICIPANTS_DOMAIN);
     assert_eq!(
         host_hash::FACTORY_MULTI_ASSET_STATE_DOMAIN,

@@ -1,0 +1,16 @@
+{
+  "accepted": 1126,
+  "cases": 10000,
+  "corpus": [
+    {
+      "bytes": 2245,
+      "ckb_blake2b256": "daa95073a6ce3220974c9a71144a17d4c987ffe7cb2661b128319e7c9d0093e8",
+      "file": "seed-0.bin"
+    }
+  ],
+  "elapsed_ms": 6650,
+  "rejected": 8874,
+  "seed": 332043276360,
+  "status": "pass",
+  "target": "gateway-receipt"
+}

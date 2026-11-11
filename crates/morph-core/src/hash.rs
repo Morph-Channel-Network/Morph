@@ -1,5 +1,6 @@
 use crate::types::{AssetRegistry, Bytes32, Mode, Phase};
 use blake2b_rs::Blake2bBuilder;
+pub use morph_script_common::multi_asset_close::MULTI_ASSET_CLOSE_DOMAIN;
 pub const PARTICIPANTS_DOMAIN: &[u8] = b"CKB_MORPH_PARTICIPANTS";
 pub const FACTORY_MULTI_ASSET_MATERIALISATION_DOMAIN: &[u8] =
     b"CKB_MORPH_FACTORY_MULTI_ASSET_MATERIALISATION_V1";

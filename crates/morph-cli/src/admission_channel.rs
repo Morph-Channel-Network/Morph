@@ -296,6 +296,21 @@ impl Binding {
             &config.rpc_url,
             std::time::Duration::from_secs(30),
         )?;
+        self.require_fresh_with_rpc(recovery, transaction, &rpc)
+    }
+    pub(crate) fn require_fresh_with_rpc(
+        &self,
+        recovery: &MultiAssetRecoveryPackage,
+        transaction: &packed::Transaction,
+        rpc: &crate::rpc::CkbRpcClient,
+    ) -> Result<()> {
+        self.require(recovery, transaction)?;
+        let config = crate::admission::read_verified_config(&self.config, &self.contracts)?;
+        ensure!(
+            crate::multi_asset_session_chain::rpc_endpoint(&config.rpc_url)?
+                == crate::multi_asset_session_chain::rpc_endpoint(rpc.endpoint())?,
+            "signer admission RPC differs from installed endpoint"
+        );
         validate(
             &self.config,
             &self.contracts,
@@ -303,7 +318,7 @@ impl Binding {
             Some(rpc.tip_header()?.number_value()?),
         )?;
         crate::admission::reserve_bilateral(
-            &rpc,
+            rpc,
             &self.config,
             &self.contracts,
             recovery.state.header.chain_id,
@@ -357,8 +372,13 @@ pub(crate) mod tests {
     /// unknown methods receive an immediate method-not-found response.
     pub(crate) struct MockRpc {
         pub(crate) url: String,
+        #[cfg(feature = "devnet")]
+        responses:
+            std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, serde_json::Value>>>,
         tip: std::sync::Arc<std::sync::atomic::AtomicU64>,
         stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        cells:
+            std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, serde_json::Value>>>,
         worker: Option<std::thread::JoinHandle<()>>,
     }
     impl MockRpc {
@@ -371,6 +391,15 @@ pub(crate) mod tests {
             let stop = std::sync::Arc::new(AtomicBool::new(false));
             let current = tip.clone();
             let stopping = stop.clone();
+            let cells =
+                std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::new()));
+            let live_cells = cells.clone();
+            let responses =
+                std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::<
+                    String,
+                    serde_json::Value,
+                >::new()));
+            let overrides = responses.clone();
             let worker = std::thread::spawn(move || {
                 for connection in listener.incoming() {
                     let Ok(mut stream) = connection else {
@@ -417,25 +446,49 @@ pub(crate) mod tests {
                         }
                         let body: serde_json::Value =
                             serde_json::from_slice(&request[header_end..header_end + length])?;
-                        let result = match body["method"].as_str() {
-                            Some("get_block_hash") if body["params"][0] == "0x0" => {
-                                serde_json::json!(crate::multi_asset_packages::canonical_hex(
-                                    &genesis
-                                ))
-                            }
-                            Some("get_blockchain_info") => {
-                                serde_json::json!({"chain":"ckb_dev","median_time":"0x0","epoch":"0x0","is_initial_block_download":false})
-                            }
-                            Some("get_tip_header") => {
-                                serde_json::json!({"hash":crate::multi_asset_packages::canonical_hex(&[42;32]),"number":format!("0x{:x}", current.load(Ordering::Relaxed)),"parent_hash":crate::multi_asset_packages::canonical_hex(&[41;32]),"timestamp":"0x0","epoch":"0x0"})
-                            }
-                            Some("get_transaction") => {
-                                serde_json::json!({"transaction":null,"cycles":null,"tx_status":{"status":"unknown","block_hash":null,"block_number":null,"tx_index":null,"reason":null}})
-                            }
-                            _ => {
-                                return Ok(
-                                    serde_json::json!({"jsonrpc":"2.0","id":body["id"],"error":{"code":-32601,"message":"bounded admission mock: unknown method"}}),
-                                );
+                        let lookup = serde_json::to_string(&serde_json::json!([
+                            body["method"],
+                            body["params"]
+                        ]))?;
+                        let matched = overrides.lock().unwrap().get(&lookup).cloned();
+                        let result = if let Some(value) = matched {
+                            value
+                        } else {
+                            match body["method"].as_str() {
+                                Some("get_block_hash") if body["params"][0] == "0x0" => {
+                                    serde_json::json!(crate::multi_asset_packages::canonical_hex(
+                                        &genesis
+                                    ))
+                                }
+                                Some("get_blockchain_info") => {
+                                    serde_json::json!({"chain":"ckb_dev","median_time":"0x0","epoch":"0x0","is_initial_block_download":false})
+                                }
+                                Some("get_tip_header") => {
+                                    serde_json::json!({"hash":crate::multi_asset_packages::canonical_hex(&[42;32]),"number":format!("0x{:x}", current.load(Ordering::Relaxed)),"parent_hash":crate::multi_asset_packages::canonical_hex(&[41;32]),"timestamp":"0x0","epoch":"0x0"})
+                                }
+                                Some("get_live_cell") => {
+                                    ensure!(
+                                        body["params"][1] == false && body["params"][2] == false,
+                                        "signer must request canonical outputs without data"
+                                    );
+                                    let key = serde_json::to_string(&body["params"][0])?;
+                                    live_cells
+                                        .lock()
+                                        .unwrap()
+                                        .get(&key)
+                                        .cloned()
+                                        .unwrap_or_else(
+                                            || serde_json::json!({"status":"unknown","cell":null}),
+                                        )
+                                }
+                                Some("get_transaction") => {
+                                    serde_json::json!({"transaction":null,"cycles":null,"tx_status":{"status":"unknown","block_hash":null,"block_number":null,"tx_index":null,"reason":null}})
+                                }
+                                _ => {
+                                    return Ok(
+                                        serde_json::json!({"jsonrpc":"2.0","id":body["id"],"error":{"code":-32601,"message":"bounded admission mock: unknown method"}}),
+                                    );
+                                }
                             }
                         };
                         Ok(serde_json::json!({"jsonrpc":"2.0","id":body["id"],"result":result}))
@@ -451,10 +504,33 @@ pub(crate) mod tests {
             });
             Self {
                 url: format!("http://{address}/"),
+                #[cfg(feature = "devnet")]
+                responses,
                 tip,
                 stop,
+                cells,
                 worker: Some(worker),
             }
+        }
+        pub(crate) fn set_live_cell(
+            &self,
+            point: &ckb_types::packed::OutPoint,
+            output: &ckb_types::packed::CellOutput,
+        ) {
+            let point =
+                serde_json::to_value(ckb_jsonrpc_types::OutPoint::from(point.clone())).unwrap();
+            let key = serde_json::to_string(&point).unwrap();
+            self.cells.lock().unwrap().insert(key, serde_json::json!({"status":"live","cell":{"output":ckb_jsonrpc_types::CellOutput::from(output.clone()),"data":null}}));
+        }
+        #[cfg(feature = "devnet")]
+        pub(crate) fn respond(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+            value: serde_json::Value,
+        ) {
+            let key = serde_json::to_string(&serde_json::json!([method, params])).unwrap();
+            self.responses.lock().unwrap().insert(key, value);
         }
         pub(crate) fn set_tip(&self, tip: u64) {
             self.tip.store(tip, std::sync::atomic::Ordering::Relaxed);

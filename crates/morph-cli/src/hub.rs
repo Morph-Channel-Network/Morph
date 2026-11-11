@@ -1,3 +1,7 @@
+#[path = "hub_archive.rs"]
+mod archive;
+#[path = "hub_health.rs"]
+mod health;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -14,15 +18,17 @@ use std::os::unix::fs::OpenOptionsExt;
 use anyhow::{Context, Result, anyhow, ensure};
 use k256::ecdsa::SigningKey;
 use morph_core::*;
+use morph_hub_api::endpoints::Endpoint;
+use morph_runtime_store::{
+    Append as RuntimeAppend, Body as RuntimeBody, Commit as RuntimeCommit, Family as RuntimeFamily,
+    Protection as RuntimeProtection, Store as RuntimeStore, Write as RuntimeWrite,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::conditional_packages::StoredConditionalBatchPackage;
-use crate::multi_asset_funding::{
-    RootCollectionSummary, RootFundingCollection, RootFundingDraft, RootFundingTarget,
-};
+use crate::multi_asset_funding::{RootCollectionSummary, RootFundingCollection, RootFundingDraft};
 use crate::multi_asset_packages::{MultiAssetPackageSummary, StoredMultiAssetPackage};
-use crate::multi_asset_signatures::SignatureMessage;
 use crate::rpc::CkbRpcClient;
 use crate::watch_alert::WatchtowerAlert;
 
@@ -64,6 +70,8 @@ pub struct HubServeOptions {
 struct HubServer {
     store: Arc<Mutex<HubStore>>,
     rpc_cache: Arc<Mutex<RpcHealthCache>>,
+    health_cache: Arc<Mutex<health::Cache>>,
+    metrics: Arc<morph_observability::metrics::Metrics>,
     watch_alert_cache: Arc<Mutex<WatchtowerAlertCache>>,
     active_connections: Arc<AtomicUsize>,
     active_mutations: Arc<AtomicUsize>,
@@ -84,6 +92,7 @@ struct HubStore {
     path: PathBuf,
     state: HubRuntimeState,
     next_event_id: u64,
+    revision: u64,
 }
 
 #[derive(Clone)]
@@ -136,12 +145,6 @@ fn validate_registered_conditional_source(
 struct HubRootFunding {
     collection: RootFundingCollection,
     summary: RootCollectionSummary,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RootReceiptRequest {
-    target: RootFundingTarget,
-    receipt: SignatureMessage,
 }
 
 #[derive(Default)]
@@ -250,12 +253,19 @@ struct HubEvent {
     created_at_unix: u64,
 }
 
-#[derive(Debug)]
-struct HttpRequest {
-    method: String,
-    path: String,
-    headers: BTreeMap<String, String>,
-    body: Vec<u8>,
+pub(crate) struct HttpRequest {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) headers: BTreeMap<String, String>,
+    pub(crate) body: Vec<u8>,
+}
+impl std::fmt::Debug for HttpRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpRequest")
+            .field("method", &self.method)
+            .field("body_bytes", &self.body.len())
+            .finish_non_exhaustive()
+    }
 }
 
 struct HttpResponse {
@@ -287,13 +297,14 @@ fn restore_state_summary(state: &HubRuntimeState) -> RestoreStateSummary {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RestoreStateFileRequest {
     state: PersistedHubState,
     confirmation_hash: String,
 }
 
 impl HttpRequest {
-    fn header(&self, name: &str) -> Option<&str> {
+    pub(crate) fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .get(&name.to_ascii_lowercase())
             .map(String::as_str)
@@ -484,6 +495,10 @@ pub fn serve(mut options: HubServeOptions) -> Result<()> {
     let server = Arc::new(HubServer {
         store: Arc::new(Mutex::new(store)),
         rpc_cache: Arc::new(Mutex::new(RpcHealthCache::default())),
+        health_cache: Arc::new(Mutex::new(health::Cache::default())),
+        metrics: Arc::new(morph_observability::metrics::Metrics::new(
+            morph_observability::Service::Hub,
+        )),
         watch_alert_cache: Arc::new(Mutex::new(WatchtowerAlertCache::default())),
         active_connections: Arc::new(AtomicUsize::new(0)),
         active_mutations: Arc::new(AtomicUsize::new(0)),
@@ -564,7 +579,7 @@ pub fn serve(mut options: HubServeOptions) -> Result<()> {
                 api_error_response(
                     503,
                     "Service Unavailable",
-                    "too_many_connections",
+                    ApiErrorCode::TooManyConnections,
                     "too many concurrent Morph Hub connections",
                     "accept",
                 ),
@@ -586,25 +601,13 @@ pub fn serve(mut options: HubServeOptions) -> Result<()> {
 impl HubStore {
     fn load_or_create(path: PathBuf, pubkey: &str, network: MorphNetwork) -> Result<Self> {
         let requested_pubkey = canonical_pubkey(pubkey)?;
-        let state_file_exists = path.exists();
-        let state = if state_file_exists {
-            let raw = fs::read_to_string(&path)
-                .with_context(|| format!("failed to read hub state {}", path.display()))?;
-            let persisted: PersistedHubState = serde_json::from_str(&raw).with_context(|| {
-                let backup_hint = latest_state_backup(&path).map_or_else(
-                    || "no backup file was found next to the state file".to_string(),
-                    |backup| {
-                        format!(
-                            "latest backup candidate is {}; inspect it before deleting or replacing the state file",
-                            backup.display()
-                        )
-                    },
-                );
-                format!(
-                    "failed to parse hub state {}; {backup_hint}",
-                    path.display()
-                )
-            })?;
+        let runtime = RuntimeStore::open(&path, RuntimeProtection::private_plaintext())?;
+        runtime.validate()?;
+        let snapshot = runtime.read(RuntimeFamily::Hub, "state")?;
+        let state_file_exists = snapshot.record.is_some();
+        let state = if let Some(record) = snapshot.record {
+            let persisted: PersistedHubState = serde_json::from_slice(record.body.bytes())
+                .context("invalid current Hub runtime projection")?;
             HubRuntimeState::from_persisted(persisted)?
         } else {
             let node_id = node_id_from_pubkey(&requested_pubkey)?;
@@ -637,15 +640,48 @@ impl HubStore {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
-        let store = Self {
+        let mut store = Self {
             path,
             state,
             next_event_id,
+            revision: snapshot.revision,
         };
         if !state_file_exists {
             store.persist()?;
         }
         Ok(store)
+    }
+
+    // A committed write can outlive its HTTP acknowledgement or an in-memory
+    // update. Reconcile ordinary runtime projection only; never signer authority.
+    fn refresh(&mut self) -> Result<()> {
+        let runtime = RuntimeStore::read_only(&self.path, RuntimeProtection::private_plaintext())?;
+        let snapshot = runtime.read(RuntimeFamily::Hub, "state")?;
+        ensure!(
+            snapshot.revision >= self.revision,
+            "runtime revision moved backwards"
+        );
+        if snapshot.revision == self.revision {
+            return Ok(());
+        }
+        let record = snapshot
+            .record
+            .ok_or_else(|| anyhow!("missing Hub projection"))?;
+        let state = HubRuntimeState::from_persisted(serde_json::from_slice(record.body.bytes())?)?;
+        ensure!(
+            state.pubkey == self.state.pubkey && state.node.network == self.state.node.network,
+            "runtime projection identity changed"
+        );
+        self.next_event_id = state
+            .events
+            .iter()
+            .map(|e| e.id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.state = state;
+        self.revision = snapshot.revision;
+        Ok(())
     }
 
     fn restore_preview(&self, persisted: PersistedHubState) -> Result<RestorePreview> {
@@ -683,7 +719,10 @@ impl HubStore {
         );
         let (candidate_state, ignored_flows, _, _) = self.restore_candidate_state(restore.state)?;
         let mut candidate = self.with_state(candidate_state);
-        let backup_path = backup_existing_state_file(&self.path)?;
+        let backup_path = backup_existing_state_file(
+            &self.path,
+            &serde_json::to_vec_pretty(&self.persisted()?)?,
+        )?;
         let mut message = backup_path.map_or_else(
             || {
                 "Hub state file was replaced through the API; no previous file existed to back up"
@@ -701,7 +740,6 @@ impl HubStore {
             message.push_str(&ignored_flows.join(", "));
         }
         candidate.push_event(EventSeverity::Critical, "state_restored", None, message)?;
-        candidate.persist()?;
         *self = candidate;
         Ok(())
     }
@@ -777,6 +815,7 @@ impl HubStore {
             path: self.path.clone(),
             state,
             next_event_id: self.next_event_id,
+            revision: self.revision,
         }
     }
 
@@ -799,6 +838,7 @@ impl HubStore {
             })
             .collect::<BTreeMap<_, _>>();
         Ok(HubView {
+            revision: self.revision,
             pubkey: self.state.pubkey.clone(),
             node_id: hex_prefixed(&self.state.node.node_id),
             network: network_label(self.state.node.network).to_string(),
@@ -941,14 +981,134 @@ impl HubStore {
         })
     }
 
-    fn persist(&self) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            crate::persistence::create_private_directories(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
+    fn persist(&mut self) -> Result<()> {
+        self.persist_api(None)
+    }
+
+    fn persist_api(
+        &mut self,
+        api: Option<(
+            &crate::hub_mutation::Mutation,
+            crate::hub_mutation::SavedResponse,
+        )>,
+    ) -> Result<()> {
+        let runtime = RuntimeStore::open(&self.path, RuntimeProtection::private_plaintext())?;
+        let previous = runtime.read(RuntimeFamily::Hub, "state")?;
+        if previous.revision != self.revision {
+            return Err(morph_runtime_store::StoreError::Revision {
+                expected: self.revision,
+                actual: previous.revision,
+            }
+            .into());
         }
-        let persisted = self.persisted()?;
-        let data = serde_json::to_vec_pretty(&persisted)?;
-        write_private_file_atomic(&self.path, &data)?;
+        let data = serde_json::to_vec(&self.persisted()?)?;
+        if api.is_none()
+            && previous
+                .record
+                .as_ref()
+                .is_some_and(|record| record.body.bytes() == data)
+        {
+            return Ok(());
+        }
+        let previous_events = previous
+            .record
+            .as_ref()
+            .map(|record| {
+                serde_json::from_slice::<PersistedHubState>(record.body.bytes()).map(|state| {
+                    state
+                        .events
+                        .into_iter()
+                        .map(|event| event.id)
+                        .collect::<BTreeSet<_>>()
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let hash = hex::encode(blake2b256(&data));
+        let operation_id = api.as_ref().map_or_else(
+            || format!("hub:{}:{hash}", self.revision),
+            |(m, _)| m.operation_id(),
+        );
+        let intent = match api {
+            Some((_, response)) => serde_json::to_vec(&response)?,
+            None => serde_json::to_vec(
+                &json!({"schema":"morph.hub.projection_commit.v1","state_hash":hash}),
+            )?,
+        };
+        let events = self
+            .state
+            .events
+            .iter()
+            .filter(|event| !previous_events.contains(&event.id))
+            .map(|event| {
+                let id = format!("{operation_id}:{}", event.id);
+                let source_id = hex::encode(runtime.identity());
+                let kind: morph_events::Kind =
+                    serde_json::from_value(serde_json::Value::String(event.event.clone()))?;
+                let funding_context_id = match kind {
+                    morph_events::Kind::ChannelOpened
+                    | morph_events::Kind::ChannelSpliced
+                    | morph_events::Kind::StatePublished
+                    | morph_events::Kind::ChannelFinalised
+                    | morph_events::Kind::FactoryChildMaterialised => event
+                        .subject_id
+                        .as_ref()
+                        .and_then(|id| self.state.node.channels.get(id))
+                        .map(|channel| hex::encode(channel.funding_context_id)),
+                    _ => None,
+                };
+                let payment_hash = match kind {
+                    morph_events::Kind::InvoiceCreated
+                    | morph_events::Kind::InvoiceReceived
+                    | morph_events::Kind::InvoiceSettled => event
+                        .subject_id
+                        .as_ref()
+                        .and_then(|id| self.state.node.invoices.get(id).ok())
+                        .map(|stored| hex::encode(stored.invoice.payment_hash)),
+                    _ => None,
+                };
+                let envelope = morph_events::EventEnvelope {
+                    schema: morph_events::EventSchema::Current,
+                    event_id: morph_events::EventEnvelope::identity(&source_id, &id),
+                    source_id,
+                    source_revision: self
+                        .revision
+                        .checked_add(1)
+                        .ok_or_else(|| anyhow!("Hub revision exhausted"))?,
+                    created_at_ms: event
+                        .created_at_unix
+                        .checked_mul(1000)
+                        .ok_or_else(|| anyhow!("event timestamp overflow"))?,
+                    component: morph_events::Component::Hub,
+                    evidence_level: morph_events::EvidenceLevel::LocalRecord,
+                    kind,
+                    severity: serde_json::from_value(serde_json::to_value(event.severity)?)?,
+                    correlation_id: morph_events::EventEnvelope::correlation(&operation_id),
+                    subject_id: event.subject_id.as_ref().map(hex::encode),
+                    funding_context_id,
+                    payment_hash,
+                    provider_revision: None,
+                    evidence_digest: None,
+                };
+                Ok(RuntimeAppend {
+                    id,
+                    body: RuntimeBody::new(envelope.encode()?)?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let receipt = runtime.commit(&RuntimeCommit {
+            operation_id,
+            expected_revision: self.revision,
+            intent: RuntimeBody::new(intent)?,
+            writes: vec![RuntimeWrite {
+                family: RuntimeFamily::Hub,
+                id: "state".into(),
+                value: Some(RuntimeBody::new(data)?),
+            }],
+            events,
+            attempts: vec![],
+        })?;
+        self.revision = receipt.revision;
         Ok(())
     }
 
@@ -1182,7 +1342,7 @@ fn handle_connection(mut stream: TcpStream, server: &HubServer) -> Result<()> {
         read_request_body(&mut reader, &mut request, content_length)?;
     }
     drop(reader);
-    if request.method == "GET" && request.path == "/api/events" {
+    if Endpoint::resolve(&request.method, &request.path) == Some(Endpoint::Events) {
         server.stream_events(&request, &mut stream)?;
         return Ok(());
     }
@@ -1193,15 +1353,68 @@ fn handle_connection(mut stream: TcpStream, server: &HubServer) -> Result<()> {
 
 impl HubServer {
     fn route(&self, request: HttpRequest) -> HttpResponse {
+        let timer = self.metrics.begin(health::operation(Endpoint::resolve(
+            &request.method,
+            &request.path,
+        )));
+        let observation = matches!(
+            Endpoint::resolve(&request.method, &request.path),
+            Some(Endpoint::Health | Endpoint::Readiness | Endpoint::Metrics)
+        );
+        let response = self.route_measured(request);
+        let response = if observation {
+            with_header(response, "Cache-Control", "no-store")
+        } else {
+            response
+        };
+        timer.finish(morph_observability::metrics::Outcome::http(response.status));
+        response
+    }
+    fn route_measured(&self, request: HttpRequest) -> HttpResponse {
         let request_id = self.next_request_id();
         let response = match self.route_result(request, &request_id) {
             Ok(response) => response,
             Err(err) => {
-                eprintln!("morph hub request {request_id} failed: {err:#}");
+                if let Some(failure) = err.downcast_ref::<crate::hub_mutation::Failure>() {
+                    return with_header(
+                        api_error_response(
+                            failure.status,
+                            "Request Rejected",
+                            failure.code,
+                            failure.message,
+                            &request_id,
+                        ),
+                        "X-Morph-Hub-Request-Id",
+                        request_id,
+                    );
+                }
+                if let Some(storage) = err.downcast_ref::<morph_runtime_store::StoreError>() {
+                    let (status, code) = match storage {
+                        morph_runtime_store::StoreError::Revision { .. } => {
+                            (409, ApiErrorCode::RevisionConflict)
+                        }
+                        morph_runtime_store::StoreError::CommitUncertain => {
+                            (503, ApiErrorCode::CommitOutcomeUnknown)
+                        }
+                        _ => (503, ApiErrorCode::StoreUnavailable),
+                    };
+                    return with_header(
+                        api_error_response(
+                            status,
+                            "Request Rejected",
+                            code,
+                            "runtime operation needs reconciliation",
+                            &request_id,
+                        ),
+                        "X-Morph-Hub-Request-Id",
+                        request_id,
+                    );
+                }
+                eprintln!("morph hub request {request_id} failed: invalid_request");
                 api_error_response(
                     400,
                     "Bad Request",
-                    "invalid_request",
+                    ApiErrorCode::InvalidRequest,
                     public_api_error_message(&err),
                     &request_id,
                 )
@@ -1220,7 +1433,7 @@ impl HubServer {
             Ok(api_error_response(
                 404,
                 "Not Found",
-                "route_not_found",
+                ApiErrorCode::RouteNotFound,
                 "Hub serves the API only; use morph-desktop for the native operator interface",
                 request_id,
             ))
@@ -1237,9 +1450,40 @@ impl HubServer {
         {
             return Ok(response);
         }
-        match (request.method.as_str(), request.path.as_str()) {
-            ("GET", "/api/health") | ("GET", "/api/state") => self.state_response(),
-            ("GET", path) if path.starts_with("/api/multi-asset-packages/") => {
+        let Some(endpoint) = Endpoint::resolve(&request.method, &request.path) else {
+            return Ok(api_error_response(
+                404,
+                "Not Found",
+                ApiErrorCode::UnknownEndpoint,
+                "unknown Morph hub endpoint",
+                request_id,
+            ));
+        };
+        let path = request.path.as_str();
+        match endpoint {
+            Endpoint::Meta => {
+                let store=self.store_lock()?;
+                let runtime=RuntimeStore::read_only(&store.path,RuntimeProtection::private_plaintext())?;
+                let revision=runtime.read(RuntimeFamily::Hub,"state")?.revision;
+                Ok(json_response(200,"OK",&ApiInfo{api_version:morph_hub_api::mutation::API_VERSION.into(),revision}))
+            }
+            Endpoint::Health => Ok(json_response(200, "OK", &Liveness { service: morph_observability::Service::Hub, alive: true })),
+            Endpoint::Readiness => {
+                let report = health::report(self);
+                Ok(json_response(if report.ready { 200 } else { 503 }, if report.ready { "OK" } else { "Service Unavailable" }, &report))
+            }
+            Endpoint::Metrics => {
+                let report = health::report(self);
+                Ok(HttpResponse { status:200, reason:"OK", content_type:"text/plain; version=0.0.4; charset=utf-8", headers:vec![], body:self.metrics.render(&report).into_bytes() })
+            }
+            Endpoint::EventLog => {
+                let body: EventPageRequest = parse_body(&request.body)?;
+                let state_path = self.store_lock()?.path.clone();
+                let source = RuntimeStore::read_only(&state_path, RuntimeProtection::private_plaintext())?;
+                Ok(json_response(200, "OK", &morph_events::event_page(&source, &body)?))
+            }
+            Endpoint::State => self.state_response(),
+            Endpoint::RecoveryPackage => {
                 let requested = path.trim_start_matches("/api/multi-asset-packages/");
                 let id = parse_bytes32("package_id", requested)?;
                 let id = hex_prefixed(&id);
@@ -1248,7 +1492,7 @@ impl HubServer {
                     .ok_or_else(|| anyhow!("multi-asset recovery package not found"))?;
                 Ok(json_response(200, "OK", &entry.package))
             }
-            ("GET",path) if path.starts_with("/api/root-fundings/") => {
+            Endpoint::RootCollection | Endpoint::RootExport => {
                 let rest=path.strip_prefix("/api/root-fundings/").ok_or_else(||anyhow!("invalid root funding path"))?;
                 let (requested,export)=rest.strip_suffix("/export").map_or((rest,false),|id|(id,true));
                 let id=parse_bytes32("root funding transaction hash",requested)?;
@@ -1258,46 +1502,41 @@ impl HubServer {
                 if export {Ok(json_response(200,"OK",&entry.collection.export()?))}
                 else {Ok(json_response(200,"OK",&entry.collection))}
             }
-            ("GET", "/api/state-file") => {
+            Endpoint::ExportState => {
                 let store = self.store_lock()?;
                 let persisted = store.persisted()?;
-                Ok(json_response(200, "OK", &persisted))
+                Ok(json_response(200, "OK", &StateArchive::from(persisted)))
             }
-            ("POST", "/api/state-file/preview") => {
+            Endpoint::PreviewRestore => {
                 if !self.allow_state_restore {
                     return Ok(api_error_response(
                         403,
                         "Forbidden",
-                        "state_restore_disabled",
+                        ApiErrorCode::StateRestoreDisabled,
                         "state restore is disabled; restart Morph Hub with --allow-state-restore to enable this write path",
                         request_id,
                     ));
                 }
-                let persisted: PersistedHubState = parse_body(&request.body)?;
+                let persisted = PersistedHubState::try_from(parse_body::<StateArchive>(&request.body)?)?;
                 let store = self.store_lock()?;
                 let preview = store.restore_preview(persisted)?;
                 Ok(json_response(200, "OK", &preview))
             }
-            ("PUT", "/api/state-file") => {
+            Endpoint::RestoreState => {
                 if !self.allow_state_restore {
                     return Ok(api_error_response(
                         403,
                         "Forbidden",
-                        "state_restore_disabled",
+                        ApiErrorCode::StateRestoreDisabled,
                         "state restore is disabled; restart Morph Hub with --allow-state-restore to enable this write path",
                         request_id,
                     ));
                 }
-                let restore: RestoreStateFileRequest = parse_body(&request.body)?;
-                let rpc = self.rpc_view();
-                let security = self.security_view();
-                let watchtower = self.watchtower_view();
-                let mut store = self.store_lock()?;
-                store.replace(restore)?;
-                let view = store.view(rpc, security, watchtower)?;
-                Ok(json_response(200, "OK", &view))
+                let public: RestoreArchiveRequest = parse_body(&request.body)?;
+                let restore = RestoreStateFileRequest { state: public.state.try_into()?, confirmation_hash: public.confirmation_hash };
+                self.mutate(&request,request_id,|store|store.replace(restore))
             }
-            ("POST", "/api/peers") => self.mutate(request_id, |store| {
+            Endpoint::ConnectPeer => self.mutate(&request,request_id, |store| {
                 let body: ConnectPeerRequest = parse_body(&request.body)?;
                 let pubkey = canonical_pubkey(&body.pubkey)?;
                 let node_id = node_id_from_pubkey(&pubkey)?;
@@ -1322,7 +1561,7 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            ("POST", "/api/invoices") => self.mutate(request_id, |store| {
+            Endpoint::CreateInvoice => self.mutate(&request,request_id, |store| {
                 let payee_signing_key = self.invoice_signing_key.as_ref().ok_or_else(|| {
                     anyhow!(
                         "invoice signing is disabled; restart Morph Hub with --invoice-private-key-file to create signed invoices"
@@ -1381,7 +1620,7 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            ("POST", "/api/invoices/decode") => self.mutate(request_id, |store| {
+            Endpoint::DecodeInvoice => self.mutate(&request,request_id, |store| {
                 let body: DecodeInvoiceRequest = parse_body(&request.body)?;
                 let stored = store
                     .state
@@ -1395,10 +1634,10 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            ("POST", path) if path.starts_with("/api/invoices/") => {
-                self.route_invoice_action(path, &request.body, request_id)
+            Endpoint::ReceiveInvoice | Endpoint::SettleInvoice => {
+                self.route_invoice_action(&request, request_id)
             }
-            ("POST", "/api/channels") => self.mutate(request_id, |store| {
+            Endpoint::OpenChannel => self.mutate(&request,request_id, |store| {
                 let body: OpenChannelRequest = parse_body(&request.body)?;
                 let counterparty_pubkey = canonical_pubkey(&body.counterparty_pubkey)?;
                 let counterparty_node_id = node_id_from_pubkey(&counterparty_pubkey)?;
@@ -1428,10 +1667,10 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            ("POST", path) if path.starts_with("/api/channels/") => {
-                self.route_channel_action(path, &request.body, request_id)
+            Endpoint::SpliceChannel | Endpoint::PublishChannel | Endpoint::FinaliseChannel => {
+                self.route_channel_action(&request, request_id)
             }
-            ("POST", "/api/conditional-batches") => self.mutate(request_id, |store| {
+            Endpoint::ImportBatch => self.mutate(&request,request_id, |store| {
                 let package: StoredConditionalBatchPackage = parse_body(&request.body)?;
                 let summary = package.validate()?;
                 let batch_id = parse_bytes32("batch_lock_hash", &summary.batch_lock_hash)?;
@@ -1452,7 +1691,7 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            ("POST","/api/root-fundings") => self.mutate(request_id,|store| {
+            Endpoint::ImportRoot => self.mutate(&request,request_id,|store| {
                 let draft:RootFundingDraft=parse_body(&request.body)?;
                 let collection=RootFundingCollection::new(draft)?;
                 let local=format!("0x{}",store.state.pubkey);
@@ -1468,7 +1707,7 @@ impl HubServer {
                 store.state.root_fundings.insert(id,HubRootFunding {collection,summary});
                 store.push_event(EventSeverity::Info,"root_funding_proposed",Some(id),"Root funding proposal retained for participant review")?;Ok(())
             }),
-            ("POST",path) if path.starts_with("/api/root-fundings/") && path.ends_with("/signatures") => self.mutate(request_id,|store| {
+            Endpoint::RootSignature => self.mutate(&request,request_id,|store| {
                 let requested=path.strip_prefix("/api/root-fundings/").and_then(|rest|rest.strip_suffix("/signatures")).ok_or_else(||anyhow!("invalid root receipt path"))?;
                 let id=parse_bytes32("root funding transaction hash",requested)?;
                 ensure!(hex_prefixed(&id)==requested,"root funding id must be canonical lowercase hex");
@@ -1478,7 +1717,7 @@ impl HubServer {
                 entry.summary=entry.collection.summary()?;
                 store.push_event(EventSeverity::Info,"root_funding_signature_received",Some(id),"Verified participant funding receipt retained")?;Ok(())
             }),
-            ("POST", "/api/multi-asset-packages") => self.mutate(request_id, |store| {
+            Endpoint::ImportRecovery => self.mutate(&request,request_id, |store| {
                 let package: StoredMultiAssetPackage = parse_body(&request.body)?;
                 let summary = package.validate()?;
                 let channel_id = parse_bytes32("channel_id", &summary.channel_id)?;
@@ -1504,7 +1743,7 @@ impl HubServer {
                 store.push_event(EventSeverity::Warning, "multi_asset_recovery_imported", Some(channel_id), "Validated multi-asset unilateral recovery package stored")?;
                 Ok(())
             }),
-            ("POST", "/api/factories") => self.mutate(request_id, |store| {
+            Endpoint::OpenFactory => self.mutate(&request,request_id, |store| {
                 let body: OpenFactoryRequest = parse_body(&request.body)?;
                 let factory_id = parse_bytes32("factory_id", &body.factory_id)?;
                 ensure!(
@@ -1556,13 +1795,13 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            ("POST", path) if path.starts_with("/api/factories/") => {
-                self.route_factory_action(path, &request.body, request_id)
+            Endpoint::AdvanceFactory | Endpoint::MaterialiseChild => {
+                self.route_factory_action(&request, request_id)
             }
-            _ => Ok(api_error_response(
+            Endpoint::Events => Ok(api_error_response(
                 404,
                 "Not Found",
-                "unknown_endpoint",
+                ApiErrorCode::UnknownEndpoint,
                 "unknown Morph hub endpoint",
                 request_id,
             )),
@@ -1589,7 +1828,7 @@ impl HubServer {
                     api_error_response(
                         429,
                         "Too Many Requests",
-                        "too_many_event_streams",
+                        ApiErrorCode::TooManyEventStreams,
                         "too many concurrent Morph Hub event streams",
                         &request_id,
                     ),
@@ -1656,13 +1895,15 @@ impl HubServer {
 
     fn route_invoice_action(
         &self,
-        path: &str,
-        body: &[u8],
+        request: &HttpRequest,
         request_id: &str,
     ) -> Result<HttpResponse> {
+        let path = request.path.as_str();
+        let body = request.body.as_slice();
         let (invoice_id, action) = split_action_path(path, "/api/invoices/")?;
         match action {
-            "receive" => self.mutate(request_id, |store| {
+            "receive" => self.mutate(request, request_id, |store| {
+                let _: EmptyRequest = parse_body(body)?;
                 store.state.node.receive_invoice(&invoice_id, now_unix()?)?;
                 store.push_event(
                     EventSeverity::Info,
@@ -1672,7 +1913,7 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            "settle" => self.mutate(request_id, |store| {
+            "settle" => self.mutate(request, request_id, |store| {
                 let body: SettleInvoiceRequest = parse_body(body)?;
                 let preimage = parse_bytes32("payment_preimage", &body.payment_preimage)?;
                 store
@@ -1697,13 +1938,14 @@ impl HubServer {
 
     fn route_channel_action(
         &self,
-        path: &str,
-        body: &[u8],
+        request: &HttpRequest,
         request_id: &str,
     ) -> Result<HttpResponse> {
+        let path = request.path.as_str();
+        let body = request.body.as_slice();
         let (channel_id, action) = split_action_path(path, "/api/channels/")?;
         match action {
-            "splice" => self.mutate(request_id, |store| {
+            "splice" => self.mutate(request, request_id, |store| {
                 let body: SpliceChannelRequest = parse_body(body)?;
                 let new_funding_context_id =
                     parse_bytes32("new_funding_context_id", &body.new_funding_context_id)?;
@@ -1720,7 +1962,7 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            "publish" => self.mutate(request_id, |store| {
+            "publish" => self.mutate(request, request_id, |store| {
                 let body: PublishStateRequest = parse_body(body)?;
                 let funding_context_id =
                     parse_bytes32("funding_context_id", &body.funding_context_id)?;
@@ -1737,7 +1979,7 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            "finalise" => self.mutate(request_id, |store| {
+            "finalise" => self.mutate(request, request_id, |store| {
                 ensure!(body.is_empty(), "finalise request body must be empty");
                 store.state.node.finalise_channel(&channel_id)?;
                 store.push_event(
@@ -1758,13 +2000,14 @@ impl HubServer {
 
     fn route_factory_action(
         &self,
-        path: &str,
-        body: &[u8],
+        request: &HttpRequest,
         request_id: &str,
     ) -> Result<HttpResponse> {
+        let path = request.path.as_str();
+        let body = request.body.as_slice();
         let (factory_id, action) = split_action_path(path, "/api/factories/")?;
         match action {
-            "advance" => self.mutate(request_id, |store| {
+            "advance" => self.mutate(request, request_id, |store| {
                 let body: AdvanceFactoryRequest = parse_body(body)?;
                 store
                     .state
@@ -1778,7 +2021,7 @@ impl HubServer {
                 )?;
                 Ok(())
             }),
-            "materialise-child" => self.mutate(request_id, |store| {
+            "materialise-child" => self.mutate(request, request_id, |store| {
                 let body: MaterialiseChildRequest = parse_body(body)?;
                 let counterparty_pubkey = canonical_pubkey(&body.counterparty_pubkey)?;
                 let counterparty_node_id = node_id_from_pubkey(&counterparty_pubkey)?;
@@ -1819,7 +2062,7 @@ impl HubServer {
         }
     }
 
-    fn mutate<F>(&self, request_id: &str, f: F) -> Result<HttpResponse>
+    fn mutate<F>(&self, request: &HttpRequest, request_id: &str, f: F) -> Result<HttpResponse>
     where
         F: FnOnce(&mut HubStore) -> Result<()>,
     {
@@ -1829,21 +2072,68 @@ impl HubServer {
             return Ok(api_error_response(
                 429,
                 "Too Many Requests",
-                "too_many_mutations",
+                ApiErrorCode::TooManyMutations,
                 "too many concurrent Morph Hub mutations",
                 request_id,
             ));
         };
+        let mutation = crate::hub_mutation::Mutation::parse(request)?;
         let rpc = self.rpc_view();
         let security = self.security_view();
         let watchtower = self.watchtower_view();
         let mut store = self.store_lock()?;
+        let runtime = RuntimeStore::open(&store.path, RuntimeProtection::private_plaintext())?;
+        if let Some(saved) = runtime.intent(&mutation.operation_id())? {
+            let committed_revision = saved.revision;
+            let saved: crate::hub_mutation::SavedResponse =
+                serde_json::from_slice(saved.body.bytes())?;
+            ensure!(
+                saved.schema == "morph.hub.api_response.v1",
+                "invalid saved API receipt"
+            );
+            if saved.fingerprint != mutation.fingerprint {
+                return Err(crate::hub_mutation::Failure {
+                    status: 409,
+                    code: ApiErrorCode::IdempotencyConflict,
+                    message: "idempotency key already names a different request",
+                }
+                .into());
+            }
+            return Ok(with_header(
+                HttpResponse {
+                    status: 200,
+                    reason: "OK",
+                    content_type: "application/json",
+                    headers: vec![("X-Morph-Committed-Revision", committed_revision.to_string())],
+                    body: saved.response.into_bytes(),
+                },
+                "X-Morph-Replayed",
+                "true",
+            ));
+        }
+        let actual = runtime.read(RuntimeFamily::Hub, "state")?.revision;
+        if mutation.context.expected_revision != actual || store.revision != actual {
+            return Err(crate::hub_mutation::Failure{status:409,code:ApiErrorCode::RevisionConflict,message:"expected revision is stale; refresh and review before creating a new request"}.into());
+        }
         let mut candidate = store.clone();
         f(&mut candidate)?;
-        let view = candidate.view(rpc, security, watchtower)?;
-        candidate.persist()?;
+        let mut view = candidate.view(rpc, security, watchtower)?;
+        view.revision = actual
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("runtime revision exhausted"))?;
+        let response = json_response(200, "OK", &view);
+        let saved = mutation.saved_response(response.body.clone())?;
+        candidate.persist_api(Some((&mutation, saved)))?;
         *store = candidate;
-        Ok(json_response(200, "OK", &view))
+        Ok(with_header(
+            with_header(
+                response,
+                "X-Morph-Committed-Revision",
+                store.revision.to_string(),
+            ),
+            "X-Morph-Replayed",
+            "false",
+        ))
     }
 
     fn state_response(&self) -> Result<HttpResponse> {
@@ -1856,9 +2146,12 @@ impl HubServer {
     }
 
     fn store_lock(&self) -> Result<MutexGuard<'_, HubStore>> {
-        self.store
+        let mut store = self
+            .store
             .lock()
-            .map_err(|_| anyhow!("hub state lock is poisoned"))
+            .map_err(|_| anyhow!("hub state lock is poisoned"))?;
+        store.refresh()?;
+        Ok(store)
     }
 
     fn auth_failure_response(
@@ -1872,7 +2165,7 @@ impl HubServer {
                 api_error_response(
                     401,
                     "Unauthorized",
-                    "auth_required",
+                    ApiErrorCode::AuthRequired,
                     "Morph Hub API authentication is required; start with an auth token or explicitly allow unauthenticated loopback for local development",
                     request_id,
                 )
@@ -1891,7 +2184,7 @@ impl HubServer {
             return Some(api_error_response(
                 401,
                 "Unauthorized",
-                "invalid_auth_token",
+                ApiErrorCode::InvalidAuthToken,
                 "missing or invalid Morph Hub auth token",
                 request_id,
             ));
@@ -1900,7 +2193,7 @@ impl HubServer {
             api_error_response(
                 403,
                 "Forbidden",
-                "insufficient_auth_scope",
+                ApiErrorCode::InsufficientAuthScope,
                 format!(
                     "Morph Hub auth token needs the {} scope for this endpoint",
                     auth_scope_label(required_scope)
@@ -1915,7 +2208,7 @@ impl HubServer {
             return Some(api_error_response(
                 503,
                 "Service Unavailable",
-                "rate_limiter_unavailable",
+                ApiErrorCode::RateLimiterUnavailable,
                 "Morph Hub rate limiter is unavailable",
                 request_id,
             ));
@@ -1933,7 +2226,7 @@ impl HubServer {
                 api_error_response(
                     429,
                     "Too Many Requests",
-                    "rate_limited",
+                    ApiErrorCode::RateLimited,
                     "too many Morph Hub mutating requests; retry after the rate limit window resets",
                     request_id,
                 ),
@@ -2250,27 +2543,7 @@ fn restore_confirmation_hash(
     Ok(hex_prefixed(&blake2b256(&encoded)))
 }
 
-fn latest_state_backup(path: &Path) -> Option<PathBuf> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = path.file_name()?.to_str()?;
-    let prefix = format!("{file_name}.bak.");
-    fs::read_dir(parent)
-        .ok()?
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            let path = entry.path();
-            let name = path.file_name()?.to_str()?;
-            if !name.starts_with(&prefix) {
-                return None;
-            }
-            let modified = entry.metadata().ok()?.modified().ok()?;
-            Some((path, modified))
-        })
-        .max_by_key(|(_, modified)| *modified)
-        .map(|(path, _)| path)
-}
-
-fn backup_existing_state_file(path: &Path) -> Result<Option<PathBuf>> {
+fn backup_existing_state_file(path: &Path, data: &[u8]) -> Result<Option<PathBuf>> {
     if !path.exists() {
         return Ok(None);
     }
@@ -2286,34 +2559,13 @@ fn backup_existing_state_file(path: &Path) -> Result<Option<PathBuf>> {
         "{file_name}.bak.{timestamp}.{}",
         std::process::id()
     ));
-    let data = fs::read(path)
-        .with_context(|| format!("failed to read current hub state {}", path.display()))?;
     let mut file = create_private_new_file(&backup_path)?;
-    file.write_all(&data)
+    file.write_all(data)
         .with_context(|| format!("failed to write state backup {}", backup_path.display()))?;
     file.sync_all()
         .with_context(|| format!("failed to sync state backup {}", backup_path.display()))?;
     sync_parent_dir(&backup_path)?;
     Ok(Some(backup_path))
-}
-
-fn write_private_file_atomic(path: &Path, data: &[u8]) -> Result<()> {
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| anyhow!("hub state path must include a file name"))?;
-    let tmp_path = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
-    let _ = fs::remove_file(&tmp_path);
-    let mut file = create_private_new_file(&tmp_path)?;
-    file.write_all(data)
-        .with_context(|| format!("failed to write {}", tmp_path.display()))?;
-    file.sync_all()
-        .with_context(|| format!("failed to sync {}", tmp_path.display()))?;
-    drop(file);
-    fs::rename(&tmp_path, path)
-        .with_context(|| format!("failed to atomically replace hub state {}", path.display()))?;
-    sync_parent_dir(path)?;
-    Ok(())
 }
 
 fn create_private_new_file(path: &Path) -> Result<fs::File> {
@@ -2349,8 +2601,8 @@ fn parse_body<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T> {
 }
 
 fn parse_asset(asset: Option<AssetRequest>) -> Result<MorphAsset> {
-    match asset.unwrap_or(AssetRequest::Ckb) {
-        AssetRequest::Ckb => Ok(MorphAsset::Ckb),
+    match asset.unwrap_or(AssetRequest::Ckb {}) {
+        AssetRequest::Ckb {} => Ok(MorphAsset::Ckb),
         AssetRequest::Xudt { type_hash } => Ok(MorphAsset::Xudt(parse_bytes32(
             "asset.type_hash",
             &type_hash,
@@ -2359,8 +2611,13 @@ fn parse_asset(asset: Option<AssetRequest>) -> Result<MorphAsset> {
 }
 
 fn parse_amount(label: &str, value: &str) -> Result<u128> {
-    let value = value.trim();
-    ensure!(!value.is_empty(), "{label} must not be empty");
+    ensure!(
+        !value.is_empty()
+            && value.len() <= 39
+            && value.bytes().all(|b| b.is_ascii_digit())
+            && (value.len() == 1 || !value.starts_with('0')),
+        "{label} must be a canonical decimal quantity"
+    );
     let amount = value
         .parse::<u128>()
         .with_context(|| format!("{label} must be an unsigned integer"))?;
@@ -2392,7 +2649,12 @@ fn node_id_from_pubkey(pubkey: &str) -> Result<Bytes32> {
 }
 
 fn parse_pubkey_bytes(value: &str) -> Result<[u8; 33]> {
-    let value = value.trim().to_lowercase();
+    ensure!(
+        value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+        "pubkey must be canonical lowercase hex"
+    );
     ensure!(
         !value.is_empty(),
         "pubkey must not be empty; pass a 33-byte compressed secp256k1 pubkey as 66 hex characters without 0x"
@@ -2405,7 +2667,7 @@ fn parse_pubkey_bytes(value: &str) -> Result<[u8; 33]> {
         value.len() == 66,
         "pubkey must be a 33-byte compressed secp256k1 pubkey encoded as 66 hex characters"
     );
-    let raw = hex::decode(&value).context("pubkey is not valid hex")?;
+    let raw = hex::decode(value).context("pubkey is not valid hex")?;
     let mut out = [0u8; 33];
     out.copy_from_slice(&raw);
     ensure!(
@@ -2437,11 +2699,16 @@ fn signing_key_pubkey_sec1(signing_key: &SigningKey) -> [u8; 33] {
 }
 
 fn parse_bytes32(label: &str, value: &str) -> Result<Bytes32> {
-    let value = value.trim();
     let hex = value
         .strip_prefix("0x")
         .ok_or_else(|| anyhow!("{label} must be 0x-prefixed"))?;
-    ensure!(hex.len() == 64, "{label} must be 32 bytes");
+    ensure!(
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+        "{label} must be canonical lowercase 32-byte hex"
+    );
     let raw = hex::decode(hex).with_context(|| format!("{label} is not valid hex"))?;
     let mut out = [0u8; 32];
     out.copy_from_slice(&raw);
@@ -2556,7 +2823,11 @@ fn read_request_head_from_reader<R: Read>(
         matches!(version, "HTTP/1.0" | "HTTP/1.1"),
         "unsupported HTTP request version"
     );
-    let path = uri.split('?').next().unwrap_or(&uri).to_string();
+    ensure!(
+        !uri.contains('?') && !uri.contains('#'),
+        "query and fragment are not supported on current Hub routes"
+    );
+    let path = uri;
 
     let mut content_length = None;
     let mut headers = BTreeMap::new();
@@ -2685,9 +2956,14 @@ fn write_response(
     if let Some(origin) = cors_origin {
         write!(
             stream,
-            "Access-Control-Allow-Origin: {origin}\r\nVary: Origin\r\nAccess-Control-Allow-Methods: GET, POST, PUT, OPTIONS\r\nAccess-Control-Allow-Headers: content-type, authorization, x-morph-hub-token\r\n"
+            "Access-Control-Allow-Origin: {origin}\r\nVary: Origin\r\nAccess-Control-Allow-Methods: GET, POST, PUT, OPTIONS\r\nAccess-Control-Allow-Headers: content-type, authorization, x-morph-hub-token, x-morph-api-version, idempotency-key, x-morph-expected-revision\r\n"
         )?;
     }
+    write!(
+        stream,
+        "X-Morph-Api-Version: {}\r\n",
+        morph_hub_api::mutation::API_VERSION
+    )?;
     for (name, value) in response.headers {
         write!(stream, "{name}: {value}\r\n")?;
     }
@@ -2706,10 +2982,15 @@ fn write_sse_headers(
         stream,
         "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nX-Morph-Hub-Request-Id: {request_id}\r\nConnection: keep-alive\r\n"
     )?;
+    write!(
+        stream,
+        "X-Morph-Api-Version: {}\r\n",
+        morph_hub_api::mutation::API_VERSION
+    )?;
     if let Some(origin) = cors_origin {
         write!(
             stream,
-            "Access-Control-Allow-Origin: {origin}\r\nVary: Origin\r\nAccess-Control-Allow-Headers: content-type, authorization, x-morph-hub-token\r\n"
+            "Access-Control-Allow-Origin: {origin}\r\nVary: Origin\r\nAccess-Control-Allow-Headers: content-type, authorization, x-morph-hub-token, x-morph-api-version, idempotency-key, x-morph-expected-revision\r\n"
         )?;
     }
     write!(stream, "\r\n")?;
@@ -2762,20 +3043,13 @@ fn try_acquire_counter(counter: Arc<AtomicUsize>, limit: usize) -> Option<Counte
 }
 
 fn request_auth_scope(method: &str, path: &str) -> AuthScope {
-    match (method, path) {
-        ("GET", "/api/state-file")
-        | ("POST", "/api/state-file/preview")
-        | ("PUT", "/api/state-file") => AuthScope::Restore,
-        ("POST", "/api/invoices") => AuthScope::Sign,
-        ("POST", _) | ("PUT", _) => AuthScope::Write,
-        _ => AuthScope::Read,
-    }
+    Endpoint::resolve(method, path).map_or(AuthScope::Read, Endpoint::scope)
 }
 
 fn api_error_response(
     status: u16,
     reason: &'static str,
-    code: impl Into<String>,
+    code: ApiErrorCode,
     error: impl Into<String>,
     request_id: &str,
 ) -> HttpResponse {
@@ -2784,7 +3058,7 @@ fn api_error_response(
         reason,
         &ApiErrorBody {
             error: error.into(),
-            code: code.into(),
+            code,
             request_id: request_id.to_string(),
         },
     )
@@ -3193,6 +3467,81 @@ mod tests {
     static TEST_STATE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[test]
+    fn public_archive_is_separate_exact_and_validated_before_restore() {
+        let server = test_server(&pubkey_from_scalar(1));
+        let response = route_json(
+            &server,
+            "POST",
+            "/api/invoices",
+            json!({
+                "amount":"100", "description":"archive", "payment_hash":bytes32_hex(73),
+                "expiry_secs":"3600", "asset":{"kind":"ckb"}
+            }),
+        );
+        assert_eq!(response.status, 200);
+        let mut private = server.store.lock().unwrap().persisted().unwrap();
+        private.channels.push(PersistedChannel {
+            channel_id: bytes32_hex(74),
+            counterparty_pubkey: pubkey_from_scalar(2),
+            funding_epoch: u64::MAX,
+            funding_context_id: bytes32_hex(75),
+            state_number: u64::MAX,
+            phase: Phase::Closed,
+            sponsor_budget: u64::MAX,
+            balances: vec![MorphAssetBalance {
+                asset: MorphAsset::Xudt([76; 32]),
+                local: u128::MAX,
+                remote: 0,
+                pending: 0,
+            }],
+        });
+        let original = serde_json::to_value(&private).unwrap();
+        let public = serde_json::to_value(StateArchive::from(private)).unwrap();
+        assert_eq!(public["channels"][0]["state_number"], u64::MAX.to_string());
+        assert_eq!(
+            public["channels"][0]["balances"][0]["local"],
+            u128::MAX.to_string()
+        );
+        assert!(public["invoices"][0].get("invoice").is_none());
+        let decoded: StateArchive = serde_json::from_value(public.clone()).unwrap();
+        let restored = PersistedHubState::try_from(decoded).unwrap();
+        assert_eq!(serde_json::to_value(restored).unwrap(), original);
+        assert!(serde_json::from_value::<StateArchive>(original).is_err());
+        for amount in [
+            "01",
+            "+1",
+            "-1",
+            " 1",
+            "340282366920938463463374607431768211456",
+        ] {
+            let mut bad = public.clone();
+            bad["channels"][0]["balances"][0]["local"] = json!(amount);
+            let request: StateArchive = serde_json::from_value(bad).unwrap();
+            assert!(PersistedHubState::try_from(request).is_err(), "{amount}");
+        }
+        let mut overflow = public.clone();
+        overflow["channels"][0]["balances"][0]["remote"] = json!("1");
+        assert!(
+            PersistedHubState::try_from(serde_json::from_value::<StateArchive>(overflow).unwrap())
+                .is_err()
+        );
+        let mut ckb_overflow = public.clone();
+        ckb_overflow["channels"][0]["balances"][0]["asset"] = json!({"kind":"ckb"});
+        assert!(
+            PersistedHubState::try_from(
+                serde_json::from_value::<StateArchive>(ckb_overflow).unwrap()
+            )
+            .is_err()
+        );
+        let mut unknown = public.clone();
+        unknown["invoices"][0]["signer_snapshot"] = json!({});
+        assert!(serde_json::from_value::<StateArchive>(unknown).is_err());
+        let mut numeric = public;
+        numeric["channels"][0]["state_number"] = json!(1);
+        assert!(serde_json::from_value::<StateArchive>(numeric).is_err());
+    }
+
+    #[test]
     fn persisted_state_requires_current_collections_and_rejects_unknown_fields() {
         let server = test_server(&pubkey_from_scalar(41));
         let store = server.store.lock().unwrap();
@@ -3265,7 +3614,22 @@ mod tests {
         assert_eq!(reloaded.state.multi_asset_packages.len(), 1);
         let mut detached = reloaded.persisted().unwrap();
         detached.multi_asset_packages.clear();
-        fs::write(&reloaded.path, serde_json::to_vec(&detached).unwrap()).unwrap();
+        let runtime =
+            RuntimeStore::open(&reloaded.path, RuntimeProtection::private_plaintext()).unwrap();
+        runtime
+            .commit(&RuntimeCommit {
+                operation_id: "test-invalid-detached-source".into(),
+                expected_revision: reloaded.revision,
+                intent: RuntimeBody::new(b"invalid projection test".to_vec()).unwrap(),
+                writes: vec![RuntimeWrite {
+                    family: RuntimeFamily::Hub,
+                    id: "state".into(),
+                    value: Some(RuntimeBody::new(serde_json::to_vec(&detached).unwrap()).unwrap()),
+                }],
+                events: vec![],
+                attempts: vec![],
+            })
+            .unwrap();
         assert!(
             HubStore::load_or_create(
                 reloaded.path.clone(),
@@ -3471,7 +3835,8 @@ mod tests {
             serde_json::from_slice::<serde_json::Value>(&exported.body).unwrap(),
             fixture["funding"]
         );
-        let persisted = fs::read(&path).unwrap();
+        let persisted =
+            serde_json::to_value(server.store.lock().unwrap().persisted().unwrap()).unwrap();
         assert_eq!(
             route_json(
                 &server,
@@ -3482,7 +3847,11 @@ mod tests {
             .status,
             200
         );
-        assert_eq!(fs::read(&path).unwrap(), persisted);
+        // A new HTTP idempotency key gets its own receipt, without duplicating protocol state.
+        assert_eq!(
+            serde_json::to_value(server.store.lock().unwrap().persisted().unwrap()).unwrap(),
+            persisted
+        );
         let reloaded = HubStore::load_or_create(path, &pubkey, MorphNetwork::Devnet).unwrap();
         assert_eq!(reloaded.state.root_fundings.len(), 1);
         assert!(
@@ -3514,7 +3883,7 @@ mod tests {
             "/api/channels",
             json!({
                 "channel_id": summary.channel_id, "counterparty_pubkey": peer, "counterparty_alias": "multi-asset-peer",
-                "funding_context_id": summary.funding_context_id, "local": "500", "remote": "500", "sponsor_budget": 1000000,
+                "funding_context_id": summary.funding_context_id, "local": "500", "remote": "500", "sponsor_budget": "1000000",
                 "asset": { "kind": "xudt", "type_hash": summary.assets[0].type_hash }
             }),
         );
@@ -3524,7 +3893,7 @@ mod tests {
             "POST",
             format!("/api/channels/{}/publish", summary.channel_id),
             json!({
-                "funding_context_id": summary.funding_context_id, "state_number": summary.state_number.parse::<u64>().unwrap()
+                "funding_context_id": summary.funding_context_id, "state_number": summary.state_number
             }),
         );
         assert_eq!(published.status, 200);
@@ -3578,7 +3947,7 @@ mod tests {
             "POST",
             format!("/api/channels/{}/publish", summary.channel_id),
             json!({
-                "funding_context_id": summary.funding_context_id, "state_number": 10
+                "funding_context_id": summary.funding_context_id, "state_number": "10"
             }),
         );
         assert_eq!(advanced.status, 200);
@@ -3612,7 +3981,7 @@ mod tests {
             "/api/channels",
             json!({
                 "channel_id": summary.channel_id, "counterparty_pubkey": pubkey_from_scalar(42), "counterparty_alias": "foreign-peer",
-                "funding_context_id": summary.funding_context_id, "local": "500", "remote": "500", "sponsor_budget": 1000000,
+                "funding_context_id": summary.funding_context_id, "local": "500", "remote": "500", "sponsor_budget": "1000000",
                 "asset": { "kind": "xudt", "type_hash": summary.assets[0].type_hash }
             }),
         );
@@ -3622,7 +3991,7 @@ mod tests {
             "POST",
             format!("/api/channels/{}/publish", summary.channel_id),
             json!({
-                "funding_context_id": summary.funding_context_id, "state_number": 9
+                "funding_context_id": summary.funding_context_id, "state_number": "9"
             }),
         );
         assert_eq!(published.status, 200);
@@ -3790,16 +4159,25 @@ mod tests {
                 "amount": "100000000",
                 "description": "private invoice",
                 "payment_preimage": bytes32_hex(51),
-                "expiry_secs": 3600,
+                "expiry_secs": "3600",
                 "asset": { "kind": "ckb" }
             }),
         );
         assert_eq!(response.status, 200);
         assert_eq!(state_file_mode(&path), 0o600);
 
-        let persisted = fs::read_to_string(&path).unwrap();
-        assert!(!persisted.contains("payment_preimage"));
-        assert!(!persisted.contains(&bytes32_hex(51)));
+        let persisted = fs::read(&path).unwrap();
+        assert!(
+            !persisted
+                .windows(b"payment_preimage".len())
+                .any(|w| w == b"payment_preimage")
+        );
+        let secret = bytes32_hex(51);
+        assert!(
+            !persisted
+                .windows(secret.len())
+                .any(|w| w == secret.as_bytes())
+        );
 
         let state_file = route_empty(&server, "GET", "/api/state-file");
         let exported = String::from_utf8(state_file.body).unwrap();
@@ -3841,7 +4219,7 @@ mod tests {
                 "funding_context_id": funding_context_id,
                 "local": "100000000",
                 "remote": "100000000",
-                "sponsor_budget": 1000000,
+                "sponsor_budget": "1000000",
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -3869,7 +4247,7 @@ mod tests {
                 "funding_context_id": funding_context_id,
                 "local": "100000000",
                 "remote": "100000000",
-                "sponsor_budget": 1000000,
+                "sponsor_budget": "1000000",
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -3922,7 +4300,8 @@ mod tests {
         let local_pubkey = pubkey_from_scalar(1);
         let server = test_server_with_options(&local_pubkey, None, true, None);
         let path = server.store.lock().unwrap().path.clone();
-        let original = fs::read(&path).unwrap();
+        let original =
+            serde_json::to_vec_pretty(&server.store.lock().unwrap().persisted().unwrap()).unwrap();
         let state_file = route_empty(&server, "GET", "/api/state-file");
         let persisted: serde_json::Value = serde_json::from_slice(&state_file.body).unwrap();
 
@@ -3944,6 +4323,228 @@ mod tests {
                 .unwrap()
                 .contains("previous state was backed up")
         );
+    }
+
+    #[test]
+    fn runtime_commit_keeps_projection_and_outbox_atomic_and_rejects_stale_owner() {
+        let pubkey = pubkey_from_scalar(1);
+        let server = test_server(&pubkey);
+        let path = server.store.lock().unwrap().path.clone();
+        let mut stale =
+            HubStore::load_or_create(path.clone(), &pubkey, MorphNetwork::Devnet).unwrap();
+        assert_eq!(
+            route_json(
+                &server,
+                "POST",
+                "/api/peers",
+                json!({"pubkey":pubkey_from_scalar(2),"alias":"peer"})
+            )
+            .status,
+            200
+        );
+        let before = fs::read(&path).unwrap();
+        stale
+            .push_event(
+                EventSeverity::Info,
+                "stale_owner",
+                None,
+                "must not become an outbox event",
+            )
+            .unwrap();
+        assert!(stale.persist().is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+        let runtime =
+            RuntimeStore::read_only(&path, RuntimeProtection::private_plaintext()).unwrap();
+        let report = runtime.validate().unwrap();
+        assert_eq!(
+            (
+                report.revision,
+                report.records,
+                report.intents,
+                report.events
+            ),
+            (2, 1, 2, 1)
+        );
+        let events = runtime
+            .history(
+                morph_runtime_store::History::Outbox,
+                &morph_runtime_store::Cursor::default(),
+                10,
+            )
+            .unwrap();
+        let event: serde_json::Value = serde_json::from_slice(events[0].body.bytes()).unwrap();
+        assert_eq!(event["kind"], "peer_connected");
+        assert_eq!(event["schema"], "morph.event.v1");
+        assert!(event.get("message").is_none());
+        let current = HubStore::load_or_create(path, &pubkey, MorphNetwork::Devnet).unwrap();
+        assert_eq!(current.state.node.peers.len(), 1);
+    }
+
+    #[test]
+    fn mutation_receipts_survive_restart_and_do_not_reexecute_or_bypass_auth() {
+        use morph_hub_api::mutation::*;
+        let local = pubkey_from_scalar(1);
+        let mut server = test_server(&local);
+        let make = |key: &str, revision: &str, alias: &str| {
+            let mut request = request_empty("POST", "/api/peers", []);
+            request
+                .headers
+                .insert(API_VERSION_HEADER.into(), API_VERSION.into());
+            request
+                .headers
+                .insert(IDEMPOTENCY_HEADER.into(), key.into());
+            request
+                .headers
+                .insert(REVISION_HEADER.into(), revision.into());
+            request.body =
+                serde_json::to_vec(&json!({"pubkey":pubkey_from_scalar(2),"alias":alias})).unwrap();
+            request
+        };
+        let key = "11".repeat(16);
+        let stale_memory = server.store.lock().unwrap().clone();
+        let first = server.route(make(&key, "1", "original"));
+        assert_eq!(first.status, 200);
+        assert_eq!(
+            response_header(&first, "X-Morph-Committed-Revision"),
+            Some("2")
+        );
+        let path = server.store.lock().unwrap().path.clone();
+        // Simulate durable commit followed by a lost in-memory update/ACK.
+        *server.store.lock().unwrap() = stale_memory;
+        let refreshed = server.state_response().unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&refreshed.body).unwrap()["revision"],
+            "2"
+        );
+        assert_eq!(server.store.lock().unwrap().state.node.peers.len(), 1);
+        let mut later = make(&"22".repeat(16), "2", "newer");
+        later.body =
+            serde_json::to_vec(&json!({"pubkey":pubkey_from_scalar(3),"alias":"newer"})).unwrap();
+        let second = server.route(later);
+        assert_eq!(second.status, 200);
+        *server.store.lock().unwrap() =
+            HubStore::load_or_create(path.clone(), &local, MorphNetwork::Devnet).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let replay = server.route(make(&key, "1", "original"));
+        assert_eq!(replay.status, 200);
+        assert_eq!(replay.body, first.body);
+        assert_eq!(response_header(&replay, "X-Morph-Replayed"), Some("true"));
+        assert_eq!(
+            response_header(&replay, "X-Morph-Committed-Revision"),
+            Some("2")
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let conflict = server.route(make(&key, "1", "different"));
+        assert_eq!(conflict.status, 409);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&conflict.body).unwrap()["code"],
+            "idempotency_conflict"
+        );
+        let stale = server.route(make(&"33".repeat(16), "1", "stale"));
+        assert_eq!(stale.status, 409);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&stale.body).unwrap()["code"],
+            "revision_conflict"
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        server.auth_token = parse_hub_auth_token(Some("read:only-reader".into())).unwrap();
+        let mut denied = make(&key, "1", "original");
+        denied
+            .headers
+            .insert("authorization".into(), "Bearer only-reader".into());
+        assert_eq!(server.route(denied).status, 403);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn public_identifiers_and_amounts_reject_ambiguous_encodings() {
+        for amount in [
+            "01",
+            "+1",
+            " 1",
+            "1 ",
+            "1.0",
+            "",
+            "-1",
+            "340282366920938463463374607431768211456",
+        ] {
+            assert!(parse_amount("amount", amount).is_err(), "{amount}");
+        }
+        assert_eq!(
+            parse_amount("amount", &u128::MAX.to_string()).unwrap(),
+            u128::MAX
+        );
+        let id = format!("0x{}", "ab".repeat(32));
+        assert!(parse_bytes32("id", &id).is_ok());
+        for bad in [
+            id.to_uppercase(),
+            format!(" {id}"),
+            format!("{id} "),
+            "ab".repeat(32),
+        ] {
+            assert!(parse_bytes32("id", &bad).is_err());
+        }
+        let public = pubkey_from_scalar(1);
+        assert!(canonical_pubkey(&public).is_ok());
+        for bad in [
+            public.to_uppercase(),
+            format!(" {public}"),
+            format!("{public} "),
+        ] {
+            assert!(canonical_pubkey(&bad).is_err());
+        }
+        assert!(serde_json::from_str::<EmptyRequest>(r#"{"ignored":true}"#).is_err());
+        assert!(serde_json::from_str::<EmptyRequest>("{}").is_ok());
+    }
+
+    #[test]
+    fn mutations_require_current_explicit_context_before_any_state_change() {
+        use morph_hub_api::mutation::*;
+        let server = test_server(&pubkey_from_scalar(1));
+        let path = server.store.lock().unwrap().path.clone();
+        let before = fs::read(&path).unwrap();
+        for (version, key, revision) in [
+            (None, None, None),
+            (
+                Some("0"),
+                Some("11111111111111111111111111111111"),
+                Some("1"),
+            ),
+            (
+                Some("1"),
+                Some("ABABABABABABABABABABABABABABABAB"),
+                Some("1"),
+            ),
+            (
+                Some("1"),
+                Some("11111111111111111111111111111111"),
+                Some("01"),
+            ),
+        ] {
+            let mut request = request_empty("POST", "/api/peers", []);
+            request.body =
+                serde_json::to_vec(&json!({"pubkey":pubkey_from_scalar(2),"alias":"peer"}))
+                    .unwrap();
+            for (name, value) in [
+                (API_VERSION_HEADER, version),
+                (IDEMPOTENCY_HEADER, key),
+                (REVISION_HEADER, revision),
+            ] {
+                if let Some(value) = value {
+                    request.headers.insert(name.into(), value.into());
+                }
+            }
+            assert_eq!(server.route(request).status, 400);
+            assert_eq!(fs::read(&path).unwrap(), before);
+        }
+        let invalid = route_json(
+            &server,
+            "POST",
+            "/api/peers",
+            json!({"pubkey":pubkey_from_scalar(2),"alias":"peer","unexpected":"private-body-marker"}),
+        );
+        assert_eq!(invalid.status, 400);
+        assert_eq!(fs::read(&path).unwrap(), before);
     }
 
     #[test]
@@ -3980,7 +4581,9 @@ mod tests {
         let state_file = route_empty(&server, "GET", "/api/state-file");
         let mut persisted: serde_json::Value = serde_json::from_slice(&state_file.body).unwrap();
         persisted["completed_flows"] =
-            json!([serde_json::to_value(MorphBusinessFlow::PeerConnected).unwrap()]);
+            json!([
+                serde_json::to_value(morph_hub_api::admin::ArchiveFlow::PeerConnected).unwrap()
+            ]);
 
         let response = route_restore_state_file(&server, persisted);
 
@@ -4093,7 +4696,7 @@ mod tests {
         let response = route_empty(&server, "GET", "/api/state-file");
         assert_eq!(response.status, 200);
         let mut persisted: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
-        persisted["network"] = serde_json::to_value(MorphNetwork::Testnet).unwrap();
+        persisted["network"] = json!("testnet");
 
         let response = route_json(
             &server,
@@ -4168,6 +4771,47 @@ mod tests {
         assert_eq!(response.status, 401);
         let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
         assert_eq!(body["code"].as_str(), Some("auth_required"));
+    }
+
+    #[test]
+    fn registered_routes_enforce_scope_before_body_and_unknown_actions_do_not_mutate() {
+        let local = pubkey_from_scalar(1);
+        let server = test_server_with_options(&local, Some("read:secret-token"), true, None);
+        let before = fs::read(&server.store.lock().unwrap().path).unwrap();
+        for endpoint in Endpoint::ALL {
+            if endpoint.scope() == AuthScope::Read {
+                continue;
+            }
+            let (method, template) = endpoint.route();
+            let path = template.replace("{id}", &format!("0x{}", "12".repeat(32)));
+            let mut request =
+                request_empty(method, &path, [("authorization", "Bearer secret-token")]);
+            // Unauthorized input must not be decoded or consume a mutation slot.
+            request.body = b"not-json".to_vec();
+            let response = server.route(request);
+            assert_eq!(response.status, 403, "{endpoint:?}");
+            let body: ApiErrorBody = serde_json::from_slice(&response.body).unwrap();
+            assert_eq!(body.code, ApiErrorCode::InsufficientAuthScope);
+        }
+        for path in [
+            "/api/channels/id/unknown",
+            "/api/factories/id/unknown",
+            "/api/invoices/id/unknown",
+            "/api/root-fundings/id/unknown",
+        ] {
+            let response = route_empty_with_headers(
+                &server,
+                "POST",
+                path,
+                [("authorization", "Bearer secret-token")],
+            );
+            assert_eq!(response.status, 404, "{path}");
+        }
+        assert_eq!(server.active_mutations.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            fs::read(&server.store.lock().unwrap().path).unwrap(),
+            before
+        );
     }
 
     #[test]
@@ -4312,7 +4956,7 @@ mod tests {
                 "amount": "100000000",
                 "description": "stream invoice",
                 "payment_preimage": bytes32_hex(41),
-                "expiry_secs": 3600,
+                "expiry_secs": "3600",
                 "asset": { "kind": "ckb" }
             }),
             [("authorization", "Bearer secret-token")],
@@ -4419,7 +5063,7 @@ mod tests {
                 "amount": "100000000",
                 "description": "integration invoice",
                 "payment_preimage": preimage,
-                "expiry_secs": 3600,
+                "expiry_secs": "3600",
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -4441,10 +5085,11 @@ mod tests {
                 .contains("not CKB devnet confirmation")
         );
 
-        let response = route_empty(
+        let response = route_json(
             &server,
             "POST",
             format!("/api/invoices/{invoice_id}/receive"),
+            json!({}),
         );
         assert_eq!(response.status, 200);
 
@@ -4479,7 +5124,7 @@ mod tests {
                 "amount": "100000000",
                 "description": "too long",
                 "payment_preimage": bytes32_hex(17),
-                "expiry_secs": MAX_INVOICE_EXPIRY_SECS + 1,
+                "expiry_secs": (MAX_INVOICE_EXPIRY_SECS + 1).to_string(),
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -4534,7 +5179,12 @@ mod tests {
             .find(|entry| entry["invoice_id"].as_str() == Some(invoice_id.as_str()))
             .expect("decoded invoice should be returned");
         assert_eq!(decoded["status"].as_str(), Some("received"));
-        assert!(decoded["received_at_unix"].as_u64().is_some());
+        assert!(
+            decoded["received_at_unix"]
+                .as_str()
+                .and_then(morph_hub_api::mutation::decimal::parse)
+                .is_some()
+        );
         assert!(
             body["completed_flows"]
                 .as_array()
@@ -4562,7 +5212,7 @@ mod tests {
                 "funding_context_id": bytes32_hex(22),
                 "local": "100000000",
                 "remote": "200000000",
-                "sponsor_budget": 1000000,
+                "sponsor_budget": "1000000",
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -4573,7 +5223,7 @@ mod tests {
             "POST",
             format!("/api/channels/{channel_id}/splice"),
             json!({
-                "new_funding_epoch": 2,
+                "new_funding_epoch": "2",
                 "new_funding_context_id": bytes32_hex(23)
             }),
         );
@@ -4585,7 +5235,7 @@ mod tests {
             format!("/api/channels/{channel_id}/publish"),
             json!({
                 "funding_context_id": bytes32_hex(23),
-                "state_number": 3
+                "state_number": "3"
             }),
         );
         assert_eq!(response.status, 200);
@@ -4624,7 +5274,7 @@ mod tests {
                 "funding_context_id": bytes32_hex(82),
                 "local": (u128::from(u64::MAX) + 1).to_string(),
                 "remote": "100000000",
-                "sponsor_budget": 1000000,
+                "sponsor_budget": "1000000",
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -4664,7 +5314,7 @@ mod tests {
             &server,
             "POST",
             format!("/api/factories/{factory_id}/advance"),
-            json!({ "new_update_number": 2 }),
+            json!({ "new_update_number": "2" }),
         );
         assert_eq!(response.status, 200);
 
@@ -4679,13 +5329,13 @@ mod tests {
                 "funding_context_id": bytes32_hex(33),
                 "local": "100000000",
                 "remote": "100000000",
-                "sponsor_budget": 1000000,
+                "sponsor_budget": "1000000",
                 "asset": { "kind": "ckb" }
             }),
         );
         assert_eq!(response.status, 200);
         let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
-        assert_eq!(body["factories"][0]["update_number"].as_u64(), Some(2));
+        assert_eq!(body["factories"][0]["update_number"].as_str(), Some("2"));
         assert_eq!(
             body["factories"][0]["materialised_child_channels"][0].as_str(),
             Some(child_id.as_str())
@@ -4757,7 +5407,7 @@ mod tests {
                 "amount": "100000000",
                 "description": "all-flow invoice",
                 "payment_preimage": preimage,
-                "expiry_secs": 3600,
+                "expiry_secs": "3600",
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -4772,10 +5422,11 @@ mod tests {
             .unwrap()
             .to_string();
 
-        let response = route_empty(
+        let response = route_json(
             &server,
             "POST",
             format!("/api/invoices/{invoice_id}/receive"),
+            json!({}),
         );
         assert_eq!(response.status, 200);
 
@@ -4801,7 +5452,7 @@ mod tests {
                 "funding_context_id": funding_context_id,
                 "local": "100000000",
                 "remote": "200000000",
-                "sponsor_budget": 1000000,
+                "sponsor_budget": "1000000",
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -4812,7 +5463,7 @@ mod tests {
             "POST",
             format!("/api/channels/{channel_id}/splice"),
             json!({
-                "new_funding_epoch": 1,
+                "new_funding_epoch": "1",
                 "new_funding_context_id": spliced_funding_context_id
             }),
         );
@@ -4824,7 +5475,7 @@ mod tests {
             format!("/api/channels/{channel_id}/publish"),
             json!({
                 "funding_context_id": spliced_funding_context_id,
-                "state_number": 2
+                "state_number": "2"
             }),
         );
         assert_eq!(response.status, 200);
@@ -4855,7 +5506,7 @@ mod tests {
             &server,
             "POST",
             format!("/api/factories/{factory_id}/advance"),
-            json!({ "new_update_number": 1 }),
+            json!({ "new_update_number": "1" }),
         );
         assert_eq!(response.status, 200);
 
@@ -4870,7 +5521,7 @@ mod tests {
                 "funding_context_id": bytes32_hex(63),
                 "local": "100000000",
                 "remote": "100000000",
-                "sponsor_budget": 1000000,
+                "sponsor_budget": "1000000",
                 "asset": { "kind": "ckb" }
             }),
         );
@@ -4896,7 +5547,7 @@ mod tests {
         }
     }
 
-    fn test_server(local_pubkey: &str) -> HubServer {
+    pub(super) fn test_server(local_pubkey: &str) -> HubServer {
         test_server_with_options(local_pubkey, None, false, None)
     }
 
@@ -4915,22 +5566,17 @@ mod tests {
         allow_state_restore: bool,
         cors_origin: Option<&str>,
     ) -> HubServer {
-        let path = std::env::temp_dir().join(format!(
-            "morph-hub-test-{}-{}-{}.json",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            TEST_STATE_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_file(&path);
+        let path = temp_file_path("runtime", "db");
         let store = HubStore::load_or_create(path, local_pubkey, MorphNetwork::Devnet).unwrap();
         let auth_token = parse_hub_auth_token(auth_token.map(str::to_string)).unwrap();
         let allow_unauthenticated_loopback = auth_token.is_none();
         HubServer {
             store: Arc::new(Mutex::new(store)),
             rpc_cache: Arc::new(Mutex::new(RpcHealthCache::default())),
+            health_cache: Arc::new(Mutex::new(health::Cache::default())),
+            metrics: Arc::new(morph_observability::metrics::Metrics::new(
+                morph_observability::Service::Hub,
+            )),
             watch_alert_cache: Arc::new(Mutex::new(WatchtowerAlertCache::default())),
             active_connections: Arc::new(AtomicUsize::new(0)),
             active_mutations: Arc::new(AtomicUsize::new(0)),
@@ -4991,7 +5637,7 @@ mod tests {
         value: serde_json::Value,
         headers: impl IntoIterator<Item = (&'static str, &'static str)>,
     ) -> HttpResponse {
-        server.route(HttpRequest {
+        let mut request = HttpRequest {
             method: method.into(),
             path: path.into(),
             headers: headers
@@ -4999,7 +5645,9 @@ mod tests {
                 .map(|(key, value)| (key.to_ascii_lowercase(), value.to_string()))
                 .collect(),
             body: serde_json::to_vec(&value).unwrap(),
-        })
+        };
+        attach_test_mutation_context(server, &mut request);
+        server.route(request)
     }
 
     fn route_empty(
@@ -5016,7 +5664,33 @@ mod tests {
         path: impl Into<String>,
         headers: impl IntoIterator<Item = (&'static str, &'static str)>,
     ) -> HttpResponse {
-        server.route(request_empty(method, path, headers))
+        let mut request = request_empty(method, path, headers);
+        attach_test_mutation_context(server, &mut request);
+        server.route(request)
+    }
+
+    fn attach_test_mutation_context(server: &HubServer, request: &mut HttpRequest) {
+        if matches!(request.method.as_str(), "POST" | "PUT") {
+            use morph_hub_api::mutation::*;
+            let revision = server.store.lock().unwrap().revision;
+            request
+                .headers
+                .entry(API_VERSION_HEADER.into())
+                .or_insert(API_VERSION.into());
+            request
+                .headers
+                .entry(REVISION_HEADER.into())
+                .or_insert(revision.to_string());
+            request
+                .headers
+                .entry(IDEMPOTENCY_HEADER.into())
+                .or_insert_with(|| {
+                    format!(
+                        "{:032x}",
+                        TEST_STATE_COUNTER.fetch_add(1, Ordering::Relaxed)
+                    )
+                });
+        }
     }
 
     fn response_header<'a>(response: &'a HttpResponse, name: &str) -> Option<&'a str> {
@@ -5060,7 +5734,13 @@ mod tests {
     }
 
     fn temp_file_path(label: &str, extension: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
+        let directory = std::env::temp_dir().join(format!(
+            "morph-hub-private-{}-{}",
+            std::process::id(),
+            TEST_STATE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        crate::persistence::create_private_directories(&directory).unwrap();
+        directory.join(format!(
             "morph-hub-test-{label}-{}-{}-{}.{}",
             std::process::id(),
             SystemTime::now()

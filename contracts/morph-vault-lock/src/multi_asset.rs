@@ -52,6 +52,18 @@ pub fn validate(raw_args: &[u8]) -> Result<()> {
     if header.funding_anchor() != args.funding_anchor() {
         return Err(ScriptError::FundingAnchorMismatch);
     }
+    if let Some(raw) =
+        morph_script_common::multi_asset_close_runtime::close_evidence(state_index, Source::Input)?
+    {
+        let frame = morph_script_common::multi_asset_close::MultiAssetCloseWitness::parse(&raw)?;
+        if state_index != 0
+            || frame.evidence().manifest().entry(0)?.lock_hash
+                != load_script_hash().map_err(|_| ScriptError::Encoding)?
+        {
+            return Err(ScriptError::MultiAssetCloseMismatch);
+        }
+        return morph_script_common::multi_asset_close_runtime::verify_close(&raw);
+    }
     if let Some(raw) = morph_script_common::multi_asset_splice_runtime::splice_evidence(
         state_index,
         Source::Input,
@@ -93,5 +105,5 @@ pub fn validate(raw_args: &[u8]) -> Result<()> {
         return Err(ScriptError::MultiAssetCommitmentMismatch);
     }
     verify_multi_asset_vault_set(&evidence, Source::Input, true)?;
-    verify_multi_asset_settlement_outputs(&evidence, state_index, Source::Input)
+    verify_multi_asset_settlement_outputs(&evidence, state_index, Source::Input, &header)
 }

@@ -218,7 +218,8 @@ status cannot substitute for step 4-6.
 
 ### Required evidence
 
-- Factory ID, update number, exact right ID and quantity;
+- Factory ID, update number, exact source right ID and quantity;
+- explicit intended physical `target_channel_id`, independently committed in the reservation ID;
 - state/access roots, full sparse-Merkle right proof, and proof commitment;
 - reservation expiry and idempotency key;
 - committed child State and Vault outpoints;
@@ -236,9 +237,11 @@ Reserved -> Materializing -> Active -> Draining -> Disabled
 ```
 
 - reservation cannot be reused for a different intent;
-- `FactoryProof` mode requires the trusted Factory code set and matching
-  subchannel ID;
-- direct `BilateralPlain` mode must not claim Factory provenance;
+- Factory-origin child evidence requires the trusted Factory code set, actual
+  historical source, matching access/state roots and intended physical channel
+  ID. Current ReserveClaims may have a zero bookkeeping label; that label is
+  not the future physical channel ID.
+- direct Root channels must not claim Factory provenance;
 - splice creates a new funding-context edge only after the old edge drains and
   disables;
 - reorg/proof invalidation can move any published edge to `Invalidated`;

@@ -22,7 +22,7 @@ use crate::multi_asset_packages::{
 pub const CONDITIONAL_BATCH_PACKAGE_SCHEMA: &str = "morph.conditional_batch_package.v1";
 pub const MAX_PACKAGE_BYTES: usize = 256 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StoredConditionalBatchPackage {
     pub schema: String,
@@ -33,7 +33,7 @@ pub struct StoredConditionalBatchPackage {
     pub resolved_capacities: [String; 2],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StoredConditionalResolution {
     Fulfill {
@@ -45,7 +45,7 @@ pub enum StoredConditionalResolution {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct ConditionalBatchPackageSummary {
     pub schema: String,
     pub source: MultiAssetPackageSummary,
@@ -135,8 +135,10 @@ impl StoredConditionalBatchPackage {
             morph_script_common::BilateralCkbConditionalDescriptor::parse(&descriptor)
                 .map_err(|error| anyhow!("invalid Batch descriptor: {error:?}"))?
                 .commitment();
-        let batch_lock_hash = source.capability["batch_lock_hash"]
-            .as_str()
+        let batch_lock_hash = source
+            .capability
+            .conditional()
+            .map(|value| &value.batch_lock_hash)
             .ok_or_else(|| anyhow!("missing validated Batch lock identity"))?
             .to_string();
         Ok(ConditionalBatchPackageSummary {

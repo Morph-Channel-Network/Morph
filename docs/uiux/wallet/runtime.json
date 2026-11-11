@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-10",
+  "build_profile": "desktop",
+  "foreground": {
+    "kind": "foreground-wallet",
+    "pid": 2785602,
+    "elapsed_seconds": 5.0,
+    "cpu_seconds": 0.35,
+    "one_core_cpu_percent": 7.0,
+    "rss_kib": 219628,
+    "cpus": 20
+  },
+  "hidden": {
+    "kind": "hidden-wallet",
+    "pid": 2785602,
+    "elapsed_seconds": 4.0,
+    "cpu_seconds": 0.03,
+    "one_core_cpu_percent": 0.75,
+    "rss_kib": 219568,
+    "cpus": 20
+  },
+  "active_before": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x1200001",
+  "active_after": "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x1200001",
+  "foreground_valid": true,
+  "geometry": "0x01200001  0 2785602 85   149  1440 960  N/A Morph \u5de5\u4f5c\u533a",
+  "preferences": {
+    "language": "zh-CN",
+    "scale_percent": 100,
+    "reduced_motion": false
+  },
+  "hidden_state": "_NET_WM_STATE(ATOM) = _NET_WM_STATE_HIDDEN",
+  "notes": "/proc CPU/RSS only; not FPS, input-latency, GPU or cross-device qualification. No recorder during samples.",
+  "input_focus_before": "0x1200001",
+  "input_focus_after": "0x1200001",
+  "checkpoint": "Measured before the final evidence-tools footer alignment; wallet, motion and renderer code unchanged by that last layout edit."
+}

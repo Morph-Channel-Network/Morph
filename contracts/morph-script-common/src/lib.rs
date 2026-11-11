@@ -11,12 +11,15 @@ mod crypto_vectors;
 
 pub mod factory_multi_asset;
 pub mod multi_asset;
+pub mod multi_asset_close;
 pub mod multi_asset_conditional;
 pub mod multi_asset_splice;
 #[cfg(target_arch = "riscv64")]
 extern crate alloc;
 #[cfg(target_arch = "riscv64")]
 pub mod factory_multi_asset_runtime;
+#[cfg(target_arch = "riscv64")]
+pub mod multi_asset_close_runtime;
 #[cfg(target_arch = "riscv64")]
 pub mod multi_asset_runtime;
 #[cfg(target_arch = "riscv64")]
@@ -195,6 +198,8 @@ pub enum ScriptError {
     MultiAssetSpliceEncoding = 67,
     MultiAssetSpliceMismatch = 68,
     FactoryMultiAssetPartitionMismatch = 69,
+    MultiAssetCloseEncoding = 70,
+    MultiAssetCloseMismatch = 71,
 }
 
 pub type Result<T> = core::result::Result<T, ScriptError>;

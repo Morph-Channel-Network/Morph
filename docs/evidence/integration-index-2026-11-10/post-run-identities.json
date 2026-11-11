@@ -1,0 +1,71 @@
+{
+  "schema": "morph.scoped_post_run_inventory.v1",
+  "qualification": false,
+  "notes": "Post-run hashes only; no whole-tree freeze, clean candidate or ELF rebuild claim.",
+  "files": {
+    "scripts/verify-integration-evidence.py": {
+      "sha256": "8132f59c48f8a0172dbf670076d6e649287841bd116f30cd264adcbb48f75752",
+      "bytes": 19351
+    },
+    "scripts/tests/test_verify_integration_evidence.py": {
+      "sha256": "fcb7605eacb8ef66bd31fe7cc3568f58c09838341da7897dc69f2fc4ddfe7ed6",
+      "bytes": 17025
+    },
+    "scripts/current-stateful-ledger.py": {
+      "sha256": "7c6bbcb59102e7146458184c39cedc9216ee1e6eaac69f0efa669cfd3ab991fc",
+      "bytes": 26413
+    },
+    "crates/morph-xtask/src/fuzz/targets/settlement.rs": {
+      "sha256": "a5d41f8a32e2f549744782fa2e40b33acfddb72b97e5e9650889593a518c7fdb",
+      "bytes": 9990
+    },
+    "crates/morph-core/tests/contract_scripts/current_boundaries.rs": {
+      "sha256": "c05f0b2106aec364a646412f1ed7244fec6955d9c66c044b15c20233595474cc",
+      "bytes": 14980
+    },
+    "Cargo.lock": {
+      "sha256": "179b0b9c561f4074efd1e157e261275291cc7e067f038f328c35f922cdf77d02",
+      "bytes": 262141
+    },
+    "rust-toolchain.toml": {
+      "sha256": "e3a213e0d222e94d213cafbc20932eb3f76c643b4dd63756acf95192df2aa310",
+      "bytes": 86
+    },
+    "target/debug/morph-fuzz": {
+      "sha256": "825ce383608d64547e40540b73b096f6a977c31d3a24dfcfb36ed13c8c513a3f",
+      "bytes": 181816992
+    },
+    "target/riscv64imac-unknown-none-elf/release/morph-batch-lock": {
+      "sha256": "6eeae2e11c017ec12034da9c00e33dd928f7339c75f135933d6d824157f7ee20",
+      "bytes": 44160
+    },
+    "target/riscv64imac-unknown-none-elf/release/morph-devnet-xudt": {
+      "sha256": "6dfce05c6e5d355778f316de2d656b1399eb702b3d147e88ff8d32c50c9725b4",
+      "bytes": 13584
+    },
+    "target/riscv64imac-unknown-none-elf/release/morph-factory-type": {
+      "sha256": "5863526907d4a939bb1d4bdbc0dfd4a6a0dbe64ca395e34abd231f60aa587f4c",
+      "bytes": 224224
+    },
+    "target/riscv64imac-unknown-none-elf/release/morph-factory-vault-lock": {
+      "sha256": "1d31cb27b0681540098b7ad0ae92987965b2abcd6908c0f694cbfb4612feffea",
+      "bytes": 94872
+    },
+    "target/riscv64imac-unknown-none-elf/release/morph-sponsor-lock": {
+      "sha256": "9ddaa4336839705277a4b7044a2bb04d3d0def29a91f5c8a8e47328e88269046",
+      "bytes": 16592
+    },
+    "target/riscv64imac-unknown-none-elf/release/morph-state-lock": {
+      "sha256": "543522adf198697281aec7a748e4554a971f8d4d955a0c2101624ddbd93951ed",
+      "bytes": 12960
+    },
+    "target/riscv64imac-unknown-none-elf/release/morph-state-type": {
+      "sha256": "b4d9df26d91df8292008052582f912913412c2f3d7f4c4aa2ca1232dad8f9788",
+      "bytes": 190856
+    },
+    "target/riscv64imac-unknown-none-elf/release/morph-vault-lock": {
+      "sha256": "6cf397ed87e21a1be0a531e246fab391b24b1a4650182ce40b4db681496bfb28",
+      "bytes": 172360
+    }
+  }
+}

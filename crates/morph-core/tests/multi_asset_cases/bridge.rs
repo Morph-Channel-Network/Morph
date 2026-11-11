@@ -205,6 +205,7 @@ fn reservation(materialized: &MaterializedChannelEvidence, now: u64) -> FactoryR
         factory_id: [7; 32],
         factory_update_number: 9,
         right,
+        target_channel_id: materialized.recovery.state.header.channel_id,
         quantity,
         factory_state_root: factory_right_sparse_root(&rights).unwrap(),
         access_manifest_root: [11; 32],
@@ -224,6 +225,7 @@ fn reserve_child(registry: &mut SovereignEdgeRegistry) -> MaterializedChannelEvi
     let origin = materialized.factory_origin.as_mut().unwrap();
     let mut header = origin.source.state().unwrap().fields();
     header.state_root = reserved.factory_state_root;
+    header.access_manifest_root = reserved.access_manifest_root;
     origin.source.header = header.encode().unwrap().to_vec();
     assert_eq!(
         reserved.validate(99),
@@ -753,6 +755,7 @@ fn arbitrary_factory_member_ids_map_through_committed_keys_to_channel_nodes() {
     let origin = materialized.factory_origin.as_mut().unwrap();
     let mut header = origin.source.state().unwrap().fields();
     header.state_root = reserved.factory_state_root;
+    header.access_manifest_root = reserved.access_manifest_root;
     header.participants_commitment = factory_membership_commitment(&origin.members).unwrap();
     origin.source.header = header.encode().unwrap().to_vec();
     let mut registry = SovereignEdgeRegistry::default();
@@ -763,4 +766,57 @@ fn arbitrary_factory_member_ids_map_through_committed_keys_to_channel_nodes() {
         .activate(materialized, &deployment(), 6, 101)
         .unwrap();
     assert_eq!(edge.participants[0], blake2b256(&participant_pubkey(1)));
+}
+
+#[test]
+fn current_bridge_reservation_binds_physical_target_separately_from_source_right_label() {
+    let mut materialized = evidence(true);
+    let mut reserved = reservation(&materialized, 100);
+    let mut right = reserved.right_proof.right.clone();
+    right.id.subchannel = [0; 32];
+    right.id.kind = FactoryRightKind::ReserveClaim;
+    reserved.right = right.id.clone();
+    reserved.right_proof = factory_right_sparse_proof(&[right.clone()], &right.id).unwrap();
+    reserved.factory_state_root = factory_right_sparse_root(&[right]).unwrap();
+    reserved.proof_commitment = factory_right_proof_commitment(&reserved.right_proof);
+    reserved.reservation_id = reserved.derive_id().unwrap();
+    let source = &mut materialized.factory_origin.as_mut().unwrap().source;
+    let mut header = source.state().unwrap().fields();
+    header.state_root = reserved.factory_state_root;
+    header.access_manifest_root = reserved.access_manifest_root;
+    source.header = header.encode().unwrap().to_vec();
+    let mut registry = SovereignEdgeRegistry::default();
+    let id = registry.reserve(reserved.clone(), 100).unwrap();
+    registry.begin_materialisation(&id).unwrap();
+    materialized.factory_reservation_id = Some(id);
+    assert!(
+        registry
+            .activate(materialized.clone(), &deployment(), 6, 101)
+            .is_ok()
+    );
+    let mut wrong_access = materialized.clone();
+    let source = &mut wrong_access.factory_origin.as_mut().unwrap().source;
+    let mut header = source.state().unwrap().fields();
+    header.access_manifest_root = [92; 32];
+    source.header = header.encode().unwrap().to_vec();
+    assert_eq!(
+        registry.activate(wrong_access, &deployment(), 6, 101),
+        Err(BridgeError::FactoryOriginMismatch)
+    );
+    let old_id = reserved.reservation_id;
+    reserved.target_channel_id = [93; 32];
+    assert_ne!(reserved.derive_id().unwrap(), old_id);
+    assert_eq!(
+        reserved.validate(101),
+        Err(BridgeError::ReservationIdMismatch)
+    );
+    reserved.reservation_id = reserved.derive_id().unwrap();
+    let mut registry = SovereignEdgeRegistry::default();
+    let id = registry.reserve(reserved, 100).unwrap();
+    registry.begin_materialisation(&id).unwrap();
+    materialized.factory_reservation_id = Some(id);
+    assert_eq!(
+        registry.activate(materialized, &deployment(), 6, 101),
+        Err(BridgeError::FactoryOriginMismatch)
+    );
 }

@@ -60,7 +60,51 @@ it does not enable a removed State format.
 
 ## Safety boundaries and current evidence
 
-The current contract harness contains **89 registered CKB-VM tests**, including
+The November 10 working-tree harness now has **100 registered CKB-VM tests**,
+all passing after the Core close snapshot/output-builder checkpoint. Two new
+tests export the actual Core-generated close witness to CKB-VM, including Batch
+fulfillment. The subsequent execution checkpoint adds six CLI tests (including a
+child-process entrypoint): three real host SIGKILL cuts, eight actual write/fsync/
+rename/directory-fsync failures, receipt-space exhaustion, cross-role rejection
+and canonical-source rejection. Its native two/eight-token runs use the actual
+secp wallet, independent participant services, exact fee replacements and keyless
+submission; two controlled rollbacks exercise exact replay and ordinary-state
+source races followed by unilateral finalisation. That CLI checkpoint passes 313
+tests. These native cases do not cover conditional Batch or a Factory child;
+their consensus coverage above remains separate. See
+[execution evidence](evidence/cooperative-close-execution-2026-11-10/README.md).
+
+The following #41 checkpoint adds the common exact-operation runtime and its
+first close adapter: durable send intent, canonical/depth/reorg observation,
+independent subscribers, offline byte export and atomic reference-only outbox.
+Its CLI suite passes 324 tests; the broader targeted integration command also
+covers the event library, Hub API, Gateway and their schemas. Other lifecycle
+adapters, autonomous scheduling, API/SDK/desktop operation integration and final
+qualification remain open. See [operation evidence](evidence/operation-runtime-2026-11-10/README.md).
+
+The later replacement checkpoint raises the CLI suite to **328 passing tests**.
+Explicit close fee-version links preserve older authority and attribute a winner
+only from fresh canonical evidence. Native two/eight-token runs now add an
+older-version-wins branch before ordinary fallback, for three intentional rollbacks;
+both directions of replacement are observed without crediting the losing body's
+confirmations. See [replacement evidence](evidence/operation-replacements-2026-11-10/README.md).
+
+The preceding verifier checkpoint had 98 registered CKB-VM tests.
+All 98 passed after rebuilding the cooperative-close verifier, followed by the
+five close tests with additional maximum-script/unbound/duplicate-source variants.
+The new `cooperative_close*` matrix covers fresh close authorization, original
+vote replay, exact-body changes, malformed frames, incomplete/cloned custody,
+signed payout corruption, stale source context and target-bound independent Batch
+fulfillment. Native host close signing and controlled crash/reorg evidence are
+covered by the later checkpoints above; complete final qualification remains open;
+see [ADR 005](adr/005-bilateral-cooperative-terminal-close.md).
+
+The preceding 93-test inventory added two `current_close_geometry*` tests against
+the preceding manifest-matching ELFs, measuring 14 current transactions and four
+rejected attempts to bypass maturity with ordinary state signatures. Their
+baseline costs remain historical after the new ELF build.
+
+An earlier harness inventory contained **89 registered CKB-VM tests**, including
 parameterized negative matrices: 77 at checkpoint `9202e341`, five earlier
 closeout regressions, two alpha Factory authority/overflow negatives and five
 Factory delegated-authority regressions.
@@ -184,8 +228,8 @@ child finalisation, and retained-parent retirement. The separate current
 publication-reliability run records real fee/RBF/reconciliation/reorg and
 service-health behavior; see [its runbook](runbooks/current-publication-reliability.md).
 
-The original checkpoint passed full repository CI with 77 VM cases. Current
-closeout coverage raises the registered VM count to 82; PR checks evaluate that
+The original checkpoint passed full repository CI with 77 VM cases. The initial
+closeout raised the registered VM count to 82; PR checks evaluated that
 new head separately, without relabelling the original evidence. The expanded
 historical five-case native matrix and its nine-scenario, 65-assertion evidence ledger also
 completed on a development node; source freshness and budget qualification are

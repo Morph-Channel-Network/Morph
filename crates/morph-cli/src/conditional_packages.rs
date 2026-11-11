@@ -48,13 +48,18 @@ mod tests {
     fn fixture_is_linked_to_complete_signed_current_custody() {
         let package = fixture_package().unwrap();
         let summary = package.validate().unwrap();
-        assert_eq!(summary.source.capability["kind"], "ckb_conditional");
+        assert!(summary.source.capability.conditional().is_some());
         assert_eq!(summary.transfer_count, 1);
         assert_eq!(summary.total_capacity, "50000000000");
         assert_eq!(summary.resolved_capacities, ["24000000000", "26000000000"]);
         assert_eq!(
             summary.batch_lock_hash,
-            summary.source.capability["batch_lock_hash"]
+            summary
+                .source
+                .capability
+                .conditional()
+                .unwrap()
+                .batch_lock_hash
         );
     }
     #[test]

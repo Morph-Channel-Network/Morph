@@ -1,0 +1,23 @@
+{
+  "reduced": {
+    "cross_child_history_rejected": null,
+    "shadow_spent_child_rejected": true,
+    "terminal_factory": false,
+    "initial_exit_required_before_parent_vote": true,
+    "private_exit_signatures_absent_from_parent": true
+  },
+  "retained": {
+    "cross_child_history_rejected": true,
+    "shadow_spent_child_rejected": true,
+    "terminal_factory": false,
+    "initial_exit_required_before_parent_vote": true,
+    "private_exit_signatures_absent_from_parent": true
+  },
+  "terminal": {
+    "cross_child_history_rejected": true,
+    "shadow_spent_child_rejected": true,
+    "terminal_factory": true,
+    "initial_exit_required_before_parent_vote": true,
+    "private_exit_signatures_absent_from_parent": true
+  }
+}

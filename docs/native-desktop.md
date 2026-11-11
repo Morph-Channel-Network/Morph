@@ -25,13 +25,17 @@ creates a local linker shim under `target/native-libs`; it never changes system
 libraries. `make` supplies that directory to the linker. Distribution packages
 should depend on the normal system runtime packages.
 
-Start the Hub in one terminal:
+The local wallet works independently of Hub. Open **Wallet** to create or restore a wallet, then choose a public, local or custom CKB connection. New wallets default to a Testnet public preset; connection requires explicit verification. See [local wallet](runbooks/local-wallet.md) and the [current UI review with native screenshots](native-ui-refinement-2026-11-10.md).
+
+For a disposable **real development-chain** demonstration, run `CKB_BIN=/absolute/path/to/ckb scripts/native-wallet-showcase.sh`. It funds a new wallet, sends 120 CKB to another development wallet, asserts receipt and opens the ordinary desktop. No fake balance or activity mode is installed in the product.
+
+For channel records and operator workflows, start the Hub in one terminal:
 
 ```sh
 cargo run -p morph-cli -- hub serve \
   --listen 127.0.0.1:4617 \
   --pubkey "${MORPH_PUBKEY:?set the 66-character compressed public key}" \
-  --state-path target/morph-hub/node-state.json \
+  --state-path target/morph-hub/runtime/node.db \
   --rotate-auth-token-on-restart
 ```
 
@@ -51,6 +55,9 @@ for separately maintained external browser clients, without shipping one here.
 ```mermaid
 flowchart TB
     D["morph-desktop · native GPUI"] --> W["Bounded worker · typed jobs"]
+    D --> L["Separate local-wallet worker"]
+    L --> K["morph-wallet · encrypted custody + exact transaction review"]
+    K --> R["Pinned CKB RPC and Indexer"]
     W --> S["morph-sdk · bounded HTTP + stateless inspection"]
     S --> A["morph-hub-api · owned public DTOs"]
     S --> P["morph-packages · canonical packages and review"]
@@ -68,7 +75,8 @@ flowchart TB
 | `morph-hub-api` | Public requests, records, model/security/provenance and watch views | Private persisted store or signer snapshots |
 | `morph-packages` | Sole public codec, exact-body construction, signatures, summaries, private immutable artifact writes | A second signer journal or implicit chain trust |
 | `morph-sdk` | Typed API operations, canonical package validation, payer authorization and receipt verification | State-number reservations or automatic write retry |
-| `morph-desktop` | Read views, search, 23 workflows, file review/export and explicit confirmation | Funding wallet selection, channel keys, chain publication |
+| `morph-desktop` | Native views, 23 Hub workflows, local-wallet review/confirm | Channel signer journals or implicit funding authorization |
+| `morph-wallet` | Encrypted local key, invoice secrets, CKB/xUDT selection and exact payments | Channel state signatures, Factory authority or bypass of funding ceremonies |
 | `morph-xtask` | Protocol vectors, native Fiber/Gateway scenarios and source retirement checks | Production admission or release approval |
 
 CLI modules re-export the shared packages rather than maintaining a parallel

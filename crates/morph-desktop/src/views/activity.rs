@@ -1,34 +1,27 @@
 use super::*;
 
 impl Desktop {
-    pub(super) fn activity_tabs(&mut self, cx: &mut Context<Self>) -> Div {
-        div()
-            .flex()
-            .gap_2()
-            .child(
-                Button::new("session-activity")
-                    .label(self.t(Text::SessionTasks))
-                    .selected(!self.hub_activity)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.hub_activity = false;
-                        cx.notify()
-                    })),
-            )
-            .child(
-                Button::new("hub-activity")
-                    .label(self.t(Text::HubEvents))
-                    .selected(self.hub_activity)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.hub_activity = true;
-                        this.rebuild();
-                        cx.notify()
-                    })),
-            )
+    pub(super) fn activity_tabs(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        self.segments(
+            "activity-tabs",
+            vec![
+                self.t(Text::SessionTasks).into(),
+                self.t(Text::HubEvents).into(),
+            ],
+            usize::from(self.hub_activity),
+            |this, index, _, cx| {
+                this.hub_activity = index == 1;
+                this.rebuild();
+                cx.notify();
+            },
+            window,
+            cx,
+        )
     }
 
     pub(super) fn render_activity(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let mut view = div()
@@ -43,7 +36,7 @@ impl Desktop {
                 self.t(Text::Activity),
                 self.t(Text::TaskResultsStayHereWhileBackground),
             ))
-            .child(self.activity_tabs(cx));
+            .child(self.activity_tabs(window, cx));
         if !self.network_jobs.is_empty() {
             view = view.child(
                 Button::new("stop-network-wait")
@@ -58,27 +51,39 @@ impl Desktop {
                 self.t(Text::ConnectionEvidenceAndRecordActionsWill),
             ));
         }
-        let mut filters = div().flex().flex_wrap().gap_2();
-        for (i, filter) in ActivityFilter::ALL.into_iter().enumerate() {
-            let count = self
-                .activities
-                .iter()
-                .filter(|e| filter.matches(e.status))
-                .count();
-            filters = filters.child(
-                Button::new(("activity-filter", i))
-                    .small()
-                    .label(format!("{} {count}", filter.label(self.language)))
-                    .selected(self.activity_filter == filter)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.activity_filter = filter;
-                        cx.notify();
-                    })),
-            );
-        }
-        view = view
-            .child(filters)
-            .child(Input::new(&self.activity_search).id("activity-search"));
+        let labels = ActivityFilter::ALL
+            .into_iter()
+            .map(|filter| {
+                format!(
+                    "{} {}",
+                    filter.label(self.language),
+                    self.activities
+                        .iter()
+                        .filter(|e| filter.matches(e.status))
+                        .count()
+                )
+            })
+            .collect();
+        let selected = ActivityFilter::ALL
+            .iter()
+            .position(|f| *f == self.activity_filter)
+            .unwrap_or(0);
+        let filters = self.segments(
+            "activity-filter",
+            labels,
+            selected,
+            |this, index, _, cx| {
+                this.activity_filter = ActivityFilter::ALL[index];
+                cx.notify();
+            },
+            window,
+            cx,
+        );
+        view = view.child(filters).child(
+            Input::new(&self.activity_search)
+                .id("activity-search")
+                .cleanable(true),
+        );
         let tokens = self
             .activity_search
             .read(cx)
@@ -122,7 +127,10 @@ impl Desktop {
             ));
         }
         for (id, title, status, detail, resource, elapsed, output) in entries {
-            let mut card = d::panel()
+            let mut card = div()
+                .flex_1()
+                .min_w_0()
+                .pb_5()
                 .flex()
                 .flex_col()
                 .gap_3()
@@ -140,7 +148,11 @@ impl Desktop {
                         )
                         .child(d::badge(status.label(self.language), status_tone(status))),
                 )
-                .child(d::caption(detail));
+                .child(if matches!(status, Status::Failed | Status::Unknown) {
+                    self.diagnostic(("activity-diagnostic", id as usize), detail, window, cx)
+                } else {
+                    div().child(d::caption(detail))
+                });
             if !resource.is_empty() {
                 card = card.child(d::caption(p::short(&resource)))
             }
@@ -164,7 +176,41 @@ impl Desktop {
             if self.selected_activity == Some(id) && self.result.is_some() {
                 card = card.child(self.render_result_card(cx));
             }
-            view = view.child(card);
+            let tone = status_tone(status);
+            let icon = match status {
+                Status::Running => IconName::Activity,
+                Status::Done | Status::Reviewed => IconName::Check,
+                Status::Failed | Status::Unknown => IconName::CircleAlert,
+                Status::Stopped => IconName::X,
+            };
+            view = view.child(
+                div()
+                    .flex()
+                    .gap_4()
+                    .child(
+                        div()
+                            .w(px(36.))
+                            .flex_shrink_0()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .size(px(32.))
+                                    .rounded_full()
+                                    .bg(rgb(tone.background()))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        Icon::new(icon).size(px(15.)).text_color(rgb(tone.color())),
+                                    ),
+                            )
+                            .child(div().flex_1().min_h(px(10.)).w(px(1.)).bg(rgb(d::BORDER))),
+                    )
+                    .child(card),
+            );
         }
         view
     }

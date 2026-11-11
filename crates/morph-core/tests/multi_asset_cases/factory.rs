@@ -148,6 +148,65 @@ fn factory_authorization(
         authorization,
     )
 }
+
+#[test]
+fn factory_public_fuzz_corpus_matches_current_encoders() {
+    let mut frames = Vec::new();
+    for (assets, children, retained, members) in
+        [(2, 1, true, 2), (8, 4, true, 16), (8, 1, false, 16)]
+    {
+        let mut plan = plan(assets, children, retained);
+        plan.participants_commitment = factory_members(members);
+        let (commitment, authorization) = factory_authorization(&plan, members);
+        frames.push(serde_json::json!({
+            "target": "factory-materialisation",
+            "assets": assets, "children": children, "retained": retained, "members": members,
+            "frame_hex": hex::encode(plan.encode_witness(&commitment, &authorization).unwrap())
+        }));
+        for kind in [
+            factory::FACTORY_STATE_WITNESS_ROOT,
+            factory::FACTORY_STATE_WITNESS_ACTIVATE,
+            factory::FACTORY_STATE_WITNESS_UPDATE,
+        ] {
+            // FS corpus exercises framing, not authority: these are FM-domain
+            // signatures, deliberately not valid root/update approvals.
+            let points = if kind == factory::FACTORY_STATE_WITNESS_ROOT {
+                &[][..]
+            } else {
+                &plan.source_outpoints
+            };
+            let signatures = if kind == factory::FACTORY_STATE_WITNESS_ACTIVATE {
+                &[][..]
+            } else {
+                &authorization
+            };
+            frames.push(serde_json::json!({
+                "target": "factory-state", "kind": kind, "assets": assets, "members": members,
+                "frame_hex": hex::encode(encode_factory_multi_asset_state_witness(
+                    kind, &plan.source, points, signatures).unwrap())
+            }));
+        }
+    }
+    let value = serde_json::json!({
+        "schema": "morph.factory_public_fuzz_corpus.v1",
+        "provenance": "Synthetic current Core constructors. Public FS/FM frames only; no private child exits. FS is structural corpus with FM-domain signatures; FM verifies synthetic parent signatures, not physical transactions.",
+        "cases": frames
+    });
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/protocol/factory-public-frames.json");
+    if std::env::var("MORPH_UPDATE_FIXTURES").as_deref() == Ok("1") {
+        std::fs::write(
+            &path,
+            format!("{}\n", serde_json::to_string_pretty(&value).unwrap()),
+        )
+        .unwrap();
+    }
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(
+        saved, value,
+        "regenerate with MORPH_UPDATE_FIXTURES=1 cargo test -p morph-core --test multi_asset factory_public_fuzz_corpus_matches_current_encoders"
+    );
+}
 #[test]
 fn factory_partition_has_complete_child_exits_separate_carriers_and_n_of_n_authority() {
     for (assets, children, retained) in [(2, 1, true), (8, 4, true), (8, 1, false)] {

@@ -1,0 +1,38 @@
+{
+  "exact_activation_replay_reactivated": true,
+  "fiber_process_restart_acknowledged": true,
+  "final_mirrors": [
+    {
+      "channel_id": "0xc50421b8ab0f8d1bde9e4b486aff42817700a903ea000771d2fa303c3796ef20",
+      "forwarding": false,
+      "funding_context_id": "0x0a0ee178292243e518a1e9c67f22097c92b24c0d8528646e74b0ff0be3ee856a",
+      "funding_epoch": "0",
+      "morph_edge_id": "0xe407b08d7a444a2cc0e6183883f8c6c019e3749eece627949faa5fa4ccc49dcd",
+      "opaque_morph_commitment": "0x7aae3aa54a89939cadca87d4fd3595e7670f36d57af441535260d843a5b07f4e",
+      "provider_revision": "9",
+      "state": "disabled"
+    }
+  ],
+  "forwarding": false,
+  "journal_busy_disabled": true,
+  "journal_released_reactivated": true,
+  "morph_process_restarted": true,
+  "orphaned_activation_disabled": true,
+  "provider_revision_before_restart": "1",
+  "registered": true,
+  "reorg": {
+    "first_inclusion": {
+      "block_hash": "0x8fd43e1e47d615f537faf295c8fddfaa66252d3a54423cef22e7562ee98dae4c",
+      "block_number": 61,
+      "transaction_hash": "0x0a7316da042676bd8f44aa3714f248f27ee9e35fcc9739a76b838ee5a4613ca0"
+    },
+    "replayed_inclusion": {
+      "block_hash": "0x4cf8e214e7f4cb15c474dad5e343bc08a2e3f686a91e2b831f54a20b810393cc",
+      "block_number": 62,
+      "transaction_hash": "0x0a7316da042676bd8f44aa3714f248f27ee9e35fcc9739a76b838ee5a4613ca0"
+    },
+    "state_out_point": "0x0a7316da042676bd8f44aa3714f248f27ee9e35fcc9739a76b838ee5a4613ca0:0"
+  },
+  "reorg_preserved_backend_authority": true,
+  "spent_custody_disabled": true
+}

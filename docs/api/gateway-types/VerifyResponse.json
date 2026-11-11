@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "fiber_status": {
+      "type": "string"
+    },
+    "payment_hash": {
+      "type": "string"
+    },
+    "valid": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "valid",
+    "payment_hash",
+    "fiber_status"
+  ],
+  "title": "VerifyResponse",
+  "type": "object"
+}

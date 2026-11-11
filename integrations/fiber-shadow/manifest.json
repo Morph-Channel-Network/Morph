@@ -1,0 +1,9 @@
+{
+  "schema": "morph.fiber_shadow_patch.v1",
+  "fiber_revision": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+  "patch_sha256": "39af376d9455449743a7a13da07639ff920df2ae969be063934065d0b82eeda1",
+  "rust_toolchain": "1.95.0",
+  "profile": "morph.external_edges.shadow.v1",
+  "status": "experimental",
+  "forwarding": false
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "morph.native_showcase.v1",
+  "network": "devnet",
+  "genesis": "0x64fbe7063a6371844e4a9e92229dae08d3f2b6ae30660b66be9dbdaf14c5dd1a",
+  "rpc": "http://127.0.0.1:18414",
+  "funding_transaction": "0xbcfc5165b14b3d2a9db6ce4d2f0fd4aaf3784d043cb20196ae543f260f071a3d",
+  "payment_transaction": "0x65faade464a9d2f748f6535b457abaabe736d56a319d02edced0e67634a1e3a6",
+  "recipient_amount_shannons": "12000000000",
+  "wallet_address": "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqwaaz899tfn9vq8lra8ref5u3aqn95szqqqcxkyl"
+}

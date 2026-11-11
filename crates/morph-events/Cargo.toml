@@ -1,0 +1,26 @@
+[package]
+name = "morph-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Typed public events and durable at-least-once webhook consumption"
+
+[dependencies]
+morph-runtime-store = { path = "../morph-runtime-store" }
+morph-packages = { path = "../morph-packages" }
+blake2b-rs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+url = "2.5"
+hmac = "=0.13.0"
+sha2 = "=0.11.1"
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

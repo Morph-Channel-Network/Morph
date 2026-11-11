@@ -42,7 +42,7 @@ const PEER: &[Field] = &[
 ];
 const INVOICE: &[Field] = &[
     field("amount", Text::AmountIntegerBaseUnits, Kind::Text, ""),
-    field("description", Text::Description, Kind::Text, ""),
+    field("description", Text::OptionalDescription, Kind::Text, ""),
     field(
         "payment_preimage",
         Text::PaymentPreimageSetPreimageORHash,
@@ -248,6 +248,19 @@ pub fn payload(form: &Form, fields: &BTreeMap<String, String>, token_asset: &str
             .map(String::as_str)
             .unwrap_or("")
             .trim();
+        if form.operation == HubOperation::CreateInvoice && field.key == "description" {
+            value.insert(field.key.into(), Value::String(raw.into()));
+            continue;
+        }
+        if form.operation == HubOperation::CreateInvoice
+            && field.key == "payment_preimage"
+            && fields
+                .get("payment_hash")
+                .is_some_and(|v| !v.trim().is_empty())
+        {
+            value.insert(field.key.into(), Value::Null);
+            continue;
+        }
         let item = match field.kind {
             Kind::Optional | Kind::Secret if raw.is_empty() => Value::Null,
             Kind::Number => {
@@ -262,7 +275,7 @@ pub fn payload(form: &Form, fields: &BTreeMap<String, String>, token_asset: &str
                     "{} must be canonical decimal",
                     Language::English.t(field.label)
                 );
-                Value::from(n)
+                Value::String(n.to_string())
             }
             Kind::Pubkeys => {
                 let keys = raw

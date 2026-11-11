@@ -51,9 +51,10 @@ async fn settle(client: &PaymentGatewayClient, request: &SettleRequest) -> Resul
     for attempt in 0..40 {
         match client.settle(request).await {
             Ok(value) => return Ok(value),
-            Err(PaymentGatewayClientError::Http { status: 402, .. }) if attempt < 39 => {
-                tokio::time::sleep(Duration::from_millis(250)).await
-            }
+            Err(PaymentGatewayClientError::Http {
+                code: Some(morph_sdk::gateway::api::GatewayErrorCode::PaymentRequired),
+                ..
+            }) if attempt < 39 => tokio::time::sleep(Duration::from_millis(250)).await,
             Err(error) => return Err(error.into()),
         }
     }
@@ -66,9 +67,10 @@ async fn claim(
     for attempt in 0..40 {
         match client.claim_fair_offer(request).await {
             Ok(value) => return Ok(value),
-            Err(PaymentGatewayClientError::Http { status: 402, .. }) if attempt < 39 => {
-                tokio::time::sleep(Duration::from_millis(250)).await
-            }
+            Err(PaymentGatewayClientError::Http {
+                code: Some(morph_sdk::gateway::api::GatewayErrorCode::PaymentRequired),
+                ..
+            }) if attempt < 39 => tokio::time::sleep(Duration::from_millis(250)).await,
             Err(error) => return Err(error.into()),
         }
     }
@@ -101,16 +103,14 @@ pub async fn run(private_key: &morph_key_input::SecretString) -> Result<()> {
     let payee_client = PaymentGatewayClient::new(&payee_url)?;
     let payer_client = PaymentGatewayClient::new(&payer_url)?;
     let supported = payee_client.supported().await?;
-    ensure!(supported["payee"] == payee, "payee identity differs");
+    ensure!(supported.payee == payee, "payee identity differs");
     for capability in [
         "x402_exact",
         "biscuit_credentials",
         "fair_exchange_aes_256_gcm",
     ] {
         ensure!(
-            supported["capabilities"]
-                .as_array()
-                .is_some_and(|a| a.iter().any(|v| v == capability)),
+            supported.capabilities.iter().any(|v| v == capability),
             "missing capability {capability}"
         );
     }
@@ -140,7 +140,10 @@ pub async fn run(private_key: &morph_key_input::SecretString) -> Result<()> {
     ensure!(
         matches!(
             payee_client.settle(&settlement).await,
-            Err(PaymentGatewayClientError::Http { status: 402, .. })
+            Err(PaymentGatewayClientError::Http {
+                code: Some(morph_sdk::gateway::api::GatewayErrorCode::PaymentRequired),
+                ..
+            })
         ),
         "settlement must fail before Fiber reports paid"
     );
@@ -167,7 +170,7 @@ pub async fn run(private_key: &morph_key_input::SecretString) -> Result<()> {
     );
     let receipt = serde_json::to_value(&settled.receipt)?;
     ensure!(
-        receipt["terminal_receipt"]["status"] == "Settled",
+        settled.receipt.terminal_receipt.status == morph_core::TerminalPaymentStatus::Settled,
         "terminal receipt is not settled"
     );
     decode_byte32(&settled.payment_preimage)?;
@@ -179,10 +182,7 @@ pub async fn run(private_key: &morph_key_input::SecretString) -> Result<()> {
             resource: requirements.resource.clone(),
         })
         .await?;
-    ensure!(
-        credential["authorized"] == true,
-        "paid credential was rejected"
-    );
+    ensure!(credential.authorized, "paid credential was rejected");
     let plaintext = b"RGB++ Morph Payment Gateway fair-exchange result over real Fiber";
     let offer = payee_client
         .create_fair_offer(&FairExchangeOfferRequest {
@@ -229,9 +229,10 @@ pub async fn run(private_key: &morph_key_input::SecretString) -> Result<()> {
         (payer_client.payments(20).await?, "Success"),
     ] {
         ensure!(
-            index["payments"].as_array().is_some_and(|a| a
+            index
+                .payments
                 .iter()
-                .any(|v| v["payment_hash"] == requirements.payment_hash && v["status"] == status)),
+                .any(|v| v.payment_hash == requirements.payment_hash && v.status == status),
             "payment index lacks expected terminal entry {status}"
         );
     }

@@ -1,0 +1,41 @@
+# TYPE morph_watch_scan_coverage_ready gauge
+morph_watch_scan_coverage_ready 0
+# TYPE morph_watch_publication_ready gauge
+morph_watch_publication_ready 0
+# TYPE morph_watch_resources gauge
+morph_watch_resources 2
+# TYPE morph_watch_evidence_fresh gauge
+morph_watch_evidence_fresh 0
+# TYPE morph_watch_scan_completed gauge
+morph_watch_scan_completed 0
+# TYPE morph_watch_caught_up gauge
+morph_watch_caught_up 0
+# TYPE morph_watch_reorg_reset gauge
+morph_watch_reorg_reset 0
+# TYPE morph_watch_publication_confirmed gauge
+morph_watch_publication_confirmed 0
+# TYPE morph_watch_publication_ready_resources gauge
+morph_watch_publication_ready_resources 0
+# TYPE morph_watch_readiness_reason_resources gauge
+morph_watch_readiness_reason_resources{reason="evidence_unavailable"} 2
+morph_watch_readiness_reason_resources{reason="scan_failed"} 0
+morph_watch_readiness_reason_resources{reason="scan_behind"} 0
+morph_watch_readiness_reason_resources{reason="budget_expired"} 0
+morph_watch_readiness_reason_resources{reason="funding_not_prepared"} 0
+morph_watch_readiness_reason_resources{reason="source_not_observed"} 0
+morph_watch_readiness_reason_resources{reason="recovery_not_available"} 0
+morph_watch_readiness_reason_resources{reason="preflight_unavailable"} 0
+morph_watch_readiness_reason_resources{reason="source_consumed"} 0
+morph_watch_readiness_reason_resources{reason="budget_invalid"} 0
+morph_watch_readiness_reason_resources{reason="fee_headroom_insufficient"} 0
+morph_watch_readiness_reason_resources{reason="ready"} 0
+# TYPE morph_watch_budget_quoted_resources gauge
+morph_watch_budget_quoted_resources 0
+# TYPE morph_watch_min_fee_headroom_shannons gauge
+morph_watch_min_fee_headroom_shannons NaN
+# TYPE morph_watch_max_fee_shortfall_shannons gauge
+morph_watch_max_fee_shortfall_shannons NaN
+# TYPE morph_watch_min_execution_remaining_ms gauge
+morph_watch_min_execution_remaining_ms NaN
+# TYPE morph_watch_min_observation_ttl_ms gauge
+morph_watch_min_observation_ttl_ms NaN

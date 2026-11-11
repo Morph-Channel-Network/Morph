@@ -1,0 +1,13 @@
+{
+  "schema": "morph.gateway_business_metrics_checkpoint.v1",
+  "passed": true,
+  "tests_passed": 84,
+  "gateway_unit_tests": 55,
+  "metrics_series": 147,
+  "store_series": 14,
+  "source_and_generated_files_unchanged": true,
+  "checked_files": 64,
+  "native_chain_qualification": false,
+  "release_qualified": false,
+  "issues_closed": false
+}

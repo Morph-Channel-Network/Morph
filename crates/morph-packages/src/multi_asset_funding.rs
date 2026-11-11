@@ -318,7 +318,9 @@ pub fn creation_contents(
 
 /// Public immutable funding proposal. Every amount and the initial exit are
 /// derived from the packed transaction; no duplicate roots or amounts exist.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(deny_unknown_fields)]
 pub struct RootFundingDraft {
     pub schema: String,
@@ -421,7 +423,9 @@ impl RootFundingDraft {
 }
 
 /// Public coordination state. It contains no signer authority or reservation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(deny_unknown_fields)]
 pub struct RootFundingCollection {
     pub schema: String,
@@ -429,13 +433,15 @@ pub struct RootFundingCollection {
     pub exit_signatures: Vec<crate::multi_asset_signatures::SignatureMessage>,
     pub creation_signatures: Vec<crate::multi_asset_signatures::SignatureMessage>,
 }
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, clap::ValueEnum)]
+#[derive(
+    Debug, Clone, Copy, serde::Serialize, serde::Deserialize, clap::ValueEnum, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RootFundingTarget {
     Exit,
     Creation,
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RootFundingInspection {
     pub transaction_hash: String,
     pub chain_id: String,
@@ -448,17 +454,17 @@ pub struct RootFundingInspection {
     pub participant_lock_hashes: [String; 2],
     pub vault_outpoints: Vec<RootFundingPoint>,
     pub assets: Vec<crate::multi_asset_packages::MultiAssetPackageBalance>,
-    pub payouts: Vec<serde_json::Value>,
-    pub capability: serde_json::Value,
+    pub payouts: Vec<crate::summaries::PayoutSummary>,
+    pub capability: crate::capability_summary::CapabilitySummary,
     pub input_count: usize,
     pub output_count: usize,
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RootFundingPoint {
     pub tx_hash: String,
     pub index: u32,
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RootCollectionSummary {
     #[serde(flatten)]
     pub root: RootFundingInspection,
@@ -466,7 +472,7 @@ pub struct RootCollectionSummary {
     pub creation_signature_count: usize,
     pub ready_to_export: bool,
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RootFundingExport {
     pub schema: String,

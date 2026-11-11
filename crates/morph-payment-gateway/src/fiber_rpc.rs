@@ -59,14 +59,27 @@ impl FiberRpcClient {
         })
     }
 
+    /// Configured endpoint identity only; not a cryptographic Fiber node identity.
+    pub(crate) fn endpoint(&self) -> &str {
+        self.url.as_str()
+    }
+
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, FiberRpcError> {
+        self.request(method, json!([params])).await
+    }
+
+    pub(crate) async fn node_info(&self) -> Result<Value, FiberRpcError> {
+        self.request("node_info", json!([])).await
+    }
+
+    async fn request(&self, method: &str, params: Value) -> Result<Value, FiberRpcError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let body = json!({
             "jsonrpc": "2.0",
             "id": id,
             "method": method,
             // jsonrpsee positional RPCs take one typed parameter.
-            "params": [params],
+            "params": params,
         });
         let mut request = self.client.post(self.url.clone()).json(&body);
         if let Some(token) = &self.bearer_token {

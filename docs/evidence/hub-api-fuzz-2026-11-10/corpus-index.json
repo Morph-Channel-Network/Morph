@@ -1,0 +1,188 @@
+[
+  {
+    "selector": 0,
+    "type": "ApiInfo",
+    "json_bytes": 53,
+    "file": "corpus/seed-0.bin"
+  },
+  {
+    "selector": 1,
+    "type": "Liveness",
+    "json_bytes": 30,
+    "file": "corpus/seed-1.bin"
+  },
+  {
+    "selector": 2,
+    "type": "Readiness",
+    "json_bytes": 67,
+    "file": "corpus/seed-2.bin"
+  },
+  {
+    "selector": 3,
+    "type": "HubView",
+    "json_bytes": 2333,
+    "file": "corpus/seed-3.bin"
+  },
+  {
+    "selector": 4,
+    "type": "EventView",
+    "json_bytes": 426,
+    "file": "corpus/seed-4.bin"
+  },
+  {
+    "selector": 5,
+    "type": "EventPageRequest",
+    "json_bytes": 24,
+    "file": "corpus/seed-5.bin"
+  },
+  {
+    "selector": 6,
+    "type": "EventPageRequest",
+    "json_bytes": 153,
+    "file": "corpus/seed-6.bin"
+  },
+  {
+    "selector": 7,
+    "type": "EventPage",
+    "json_bytes": 148,
+    "file": "corpus/seed-7.bin"
+  },
+  {
+    "selector": 8,
+    "type": "EventPage",
+    "json_bytes": 672,
+    "file": "corpus/seed-8.bin"
+  },
+  {
+    "selector": 9,
+    "type": "StateArchive",
+    "json_bytes": 255,
+    "file": "corpus/seed-9.bin"
+  },
+  {
+    "selector": 10,
+    "type": "StateArchive",
+    "json_bytes": 22159,
+    "file": "corpus/seed-10.bin"
+  },
+  {
+    "selector": 11,
+    "type": "RestoreArchiveRequest",
+    "json_bytes": 22258,
+    "file": "corpus/seed-11.bin"
+  },
+  {
+    "selector": 12,
+    "type": "RestorePreview",
+    "json_bytes": 538,
+    "file": "corpus/seed-12.bin"
+  },
+  {
+    "selector": 13,
+    "type": "ConnectPeerRequest",
+    "json_bytes": 103,
+    "file": "corpus/seed-13.bin"
+  },
+  {
+    "selector": 14,
+    "type": "CreateInvoiceRequest",
+    "json_bytes": 236,
+    "file": "corpus/seed-14.bin"
+  },
+  {
+    "selector": 15,
+    "type": "DecodeInvoiceRequest",
+    "json_bytes": 43,
+    "file": "corpus/seed-15.bin"
+  },
+  {
+    "selector": 16,
+    "type": "EmptyRequest",
+    "json_bytes": 2,
+    "file": "corpus/seed-16.bin"
+  },
+  {
+    "selector": 17,
+    "type": "SettleInvoiceRequest",
+    "json_bytes": 89,
+    "file": "corpus/seed-17.bin"
+  },
+  {
+    "selector": 18,
+    "type": "OpenChannelRequest",
+    "json_bytes": 456,
+    "file": "corpus/seed-18.bin"
+  },
+  {
+    "selector": 19,
+    "type": "SpliceChannelRequest",
+    "json_bytes": 138,
+    "file": "corpus/seed-19.bin"
+  },
+  {
+    "selector": 20,
+    "type": "PublishStateRequest",
+    "json_bytes": 129,
+    "file": "corpus/seed-20.bin"
+  },
+  {
+    "selector": 21,
+    "type": "OpenFactoryRequest",
+    "json_bytes": 215,
+    "file": "corpus/seed-21.bin"
+  },
+  {
+    "selector": 22,
+    "type": "AdvanceFactoryRequest",
+    "json_bytes": 40,
+    "file": "corpus/seed-22.bin"
+  },
+  {
+    "selector": 23,
+    "type": "MaterialiseChildRequest",
+    "json_bytes": 381,
+    "file": "corpus/seed-23.bin"
+  },
+  {
+    "selector": 24,
+    "type": "StoredConditionalBatchPackage",
+    "json_bytes": 8572,
+    "file": "corpus/seed-24.bin"
+  },
+  {
+    "selector": 25,
+    "type": "StoredMultiAssetPackage",
+    "json_bytes": 4467,
+    "file": "corpus/seed-25.bin"
+  },
+  {
+    "selector": 26,
+    "type": "RootFundingDraft",
+    "json_bytes": 5958,
+    "file": "corpus/seed-26.bin"
+  },
+  {
+    "selector": 27,
+    "type": "RootFundingCollection",
+    "json_bytes": 7480,
+    "file": "corpus/seed-27.bin"
+  },
+  {
+    "selector": 28,
+    "type": "RootFundingExport",
+    "json_bytes": 10692,
+    "file": "corpus/seed-28.bin"
+  },
+  {
+    "selector": 29,
+    "type": "RootReceiptRequest",
+    "json_bytes": 382,
+    "file": "corpus/seed-29.bin"
+  },
+  {
+    "selector": 30,
+    "type": "ApiErrorBody",
+    "json_bytes": 92,
+    "file": "corpus/seed-30.bin"
+  }
+]

@@ -14,6 +14,7 @@ default = []
 devnet = []
 
 [dependencies]
+schemars.workspace = true
 anyhow.workspace = true
 ckb-types.workspace = true
 clap.workspace = true

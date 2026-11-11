@@ -1,0 +1,72 @@
+[
+  {
+    "asset_count": 2,
+    "assets": "devnet xUDT Types; each with business/reserve CKB",
+    "challenge_blocks": 64,
+    "fee": "200000",
+    "cooperative_close": {
+      "transaction_hash": "0x0da1d23b9593304140b6d59fcff3eb366db397654c8ffe086bda7f062e6f580c",
+      "metrics": {
+        "estimated_cycles": 12203398,
+        "tx_size_bytes": 3548
+      },
+      "observed_confirmations": 1
+    },
+    "reorg_replay": {
+      "transaction_hash": "0x0da1d23b9593304140b6d59fcff3eb366db397654c8ffe086bda7f062e6f580c",
+      "observed_confirmations": 1
+    },
+    "replacement_hashes": [
+      "0xb857db2f366d401c6a22fb7f48d5fe5ac8263bf467a8b414d5304c623bfbfecf",
+      "0x0da1d23b9593304140b6d59fcff3eb366db397654c8ffe086bda7f062e6f580c"
+    ],
+    "payout_count": 6,
+    "competing_publication_hash": "0x17c60c142d4885756fea74b844b286f7c14ab338a73b6832bfe3a3958bbb21ed",
+    "final_unilateral_hash": "0x2141a64108c43d574f2827b8a866529e45ff1b89214cb5581a24036bfab62c7b",
+    "final_branch": "ordinary_unilateral_fallback_after_two_controlled_rollbacks",
+    "checks": {
+      "all_custody_consumed": true,
+      "old_approval_exportable": true,
+      "missing_fee_preflight_rejected": true,
+      "wrong_fee_owner_rejected": true,
+      "unilateral_package_retained": true,
+      "source_race_rejected": true,
+      "journals_unchanged_after_reorg_and_fallback": true
+    }
+  },
+  {
+    "asset_count": 8,
+    "assets": "devnet xUDT Types; each with business/reserve CKB",
+    "challenge_blocks": 64,
+    "fee": "200000",
+    "cooperative_close": {
+      "transaction_hash": "0x3b10b7445ae9a47d6bba3dbf2460518c058aa94967759710815c32f2d7337a32",
+      "metrics": {
+        "estimated_cycles": 13988452,
+        "tx_size_bytes": 8294
+      },
+      "observed_confirmations": 1
+    },
+    "reorg_replay": {
+      "transaction_hash": "0x3b10b7445ae9a47d6bba3dbf2460518c058aa94967759710815c32f2d7337a32",
+      "observed_confirmations": 1
+    },
+    "replacement_hashes": [
+      "0xf149f475a81e42bb20798bf94fae92957ec20ec33148ad3c1d0b72d69d4e15f7",
+      "0x3b10b7445ae9a47d6bba3dbf2460518c058aa94967759710815c32f2d7337a32"
+    ],
+    "payout_count": 18,
+    "competing_publication_hash": "0x3c0364433ce5603bcf247528328f5b2e9e9fced128b8e4b6e4720871d9d45a7c",
+    "final_unilateral_hash": "0x7512bec81207a5376ec12a9f957e0e29d85ec621c7271ff88abc5b0f16edd529",
+    "final_branch": "ordinary_unilateral_fallback_after_two_controlled_rollbacks",
+    "checks": {
+      "all_custody_consumed": true,
+      "old_approval_exportable": true,
+      "missing_fee_preflight_rejected": true,
+      "wrong_fee_owner_rejected": true,
+      "unilateral_package_retained": true,
+      "source_race_rejected": true,
+      "journals_unchanged_after_reorg_and_fallback": true
+    }
+  }
+]

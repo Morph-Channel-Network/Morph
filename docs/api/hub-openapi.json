@@ -1,0 +1,1933 @@
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "description": "Scoped Hub bearer token; never put it in the URL.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "One current unpublished API. Scopes are exact grants. Explicit server-enabled unauthenticated loopback is a development override; administrative import also requires allow-state-restore and remains empty-bootstrap-only. This document covers Hub HTTP, not Payment Gateway or chain readiness. Structural schemas do not replace domain validation. No signer state is restored through these endpoints.",
+    "title": "Morph Hub API",
+    "version": "1"
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/channels": {
+      "post": {
+        "operationId": "OpenChannel",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/OpenChannelRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/channels/{id}/finalise": {
+      "post": {
+        "operationId": "FinaliseChannel",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/channels/{id}/publish": {
+      "post": {
+        "operationId": "PublishChannel",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/PublishStateRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/channels/{id}/splice": {
+      "post": {
+        "operationId": "SpliceChannel",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/SpliceChannelRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/conditional-batches": {
+      "post": {
+        "operationId": "ImportBatch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/StoredConditionalBatchPackage.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/event-log": {
+      "post": {
+        "operationId": "EventLog",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/EventPageRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/EventPage.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "Events",
+        "parameters": [
+          {
+            "description": "Last observed event ID. Current bounded in-memory history; not durable event delivery.",
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "x-event-data-schema": {
+                  "$ref": "hub-types/EventView.json"
+                }
+              }
+            },
+            "description": "Server-sent morph-hub-event records; each data value is EventView JSON. Keepalive comments have no data."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/factories": {
+      "post": {
+        "operationId": "OpenFactory",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/OpenFactoryRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/factories/{id}/advance": {
+      "post": {
+        "operationId": "AdvanceFactory",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/AdvanceFactoryRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/factories/{id}/materialise-child": {
+      "post": {
+        "operationId": "MaterialiseChild",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/MaterialiseChildRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "Health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/Liveness.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/invoices": {
+      "post": {
+        "operationId": "CreateInvoice",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/CreateInvoiceRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "sign"
+      }
+    },
+    "/api/invoices/decode": {
+      "post": {
+        "operationId": "DecodeInvoice",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/DecodeInvoiceRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/invoices/{id}/receive": {
+      "post": {
+        "operationId": "ReceiveInvoice",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/EmptyRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/invoices/{id}/settle": {
+      "post": {
+        "operationId": "SettleInvoice",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/SettleInvoiceRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/meta": {
+      "get": {
+        "operationId": "Meta",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiInfo.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "operationId": "Metrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "maxLength": 65536,
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bounded Prometheus text exposition"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/multi-asset-packages": {
+      "post": {
+        "operationId": "ImportRecovery",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/StoredMultiAssetPackage.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/multi-asset-packages/{id}": {
+      "get": {
+        "operationId": "RecoveryPackage",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/StoredMultiAssetPackage.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/peers": {
+      "post": {
+        "operationId": "ConnectPeer",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/ConnectPeerRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/readiness": {
+      "get": {
+        "operationId": "Readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/Readiness.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/Readiness.json"
+                }
+              }
+            },
+            "description": "At least one configured scope is not ready"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/root-fundings": {
+      "post": {
+        "operationId": "ImportRoot",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/RootFundingDraft.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/root-fundings/{id}": {
+      "get": {
+        "operationId": "RootCollection",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/RootFundingCollection.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/root-fundings/{id}/export": {
+      "get": {
+        "operationId": "RootExport",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/RootFundingExport.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/root-fundings/{id}/signatures": {
+      "post": {
+        "operationId": "RootSignature",
+        "parameters": [
+          {
+            "description": "Exact resource identifier. Canonical lowercase 0x-prefixed 32 bytes.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/RootReceiptRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "write"
+      }
+    },
+    "/api/state": {
+      "get": {
+        "operationId": "State",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "read"
+      }
+    },
+    "/api/state-file": {
+      "get": {
+        "operationId": "ExportState",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/StateArchive.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "restore"
+      },
+      "put": {
+        "operationId": "RestoreState",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-morph-api-version",
+            "required": true,
+            "schema": {
+              "const": "1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public request identity. Exact retries keep this key, method, path, body and revision. Never a secret.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 32,
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reviewed durable projection revision, canonical decimal 0..9223372036854775806. A stale fresh request fails; an exact replay returns the historical response.",
+            "in": "header",
+            "name": "x-morph-expected-revision",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/RestoreArchiveRequest.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/HubView.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": true,
+        "x-morph-required-scope": "restore"
+      }
+    },
+    "/api/state-file/preview": {
+      "post": {
+        "operationId": "PreviewRestore",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "hub-types/StateArchive.json"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/RestorePreview.json"
+                }
+              }
+            },
+            "description": "Successful current representation"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "hub-types/ApiErrorBody.json"
+                }
+              }
+            },
+            "description": "Typed API failure; malformed transport can close the connection before API dispatch."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-morph-durable-mutation": false,
+        "x-morph-required-scope": "restore"
+      }
+    }
+  }
+}

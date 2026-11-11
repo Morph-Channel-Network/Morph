@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, anyhow, ensure};
 use ckb_types::{bytes::Bytes, packed, prelude::*};
 use clap::Subcommand;
-use k256::ecdsa::{Signature, signature::hazmat::PrehashSigner};
 use morph_core::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -17,7 +16,7 @@ use crate::multi_asset_packages::{
     StoredMultiAssetPackage, canonical_hex, decode_hex, write_package,
 };
 use crate::multi_asset_session::payout_summary;
-use crate::multi_asset_signatures::{SIGNATURE_SCHEMA, SignatureMessage, channel_signing_key};
+use crate::multi_asset_signatures::{SIGNATURE_SCHEMA, SignatureMessage};
 use crate::multi_asset_splice_transaction::{TransactionKind, write_transaction};
 #[cfg(feature = "devnet")]
 use crate::persistence::try_lock_private_path;
@@ -44,7 +43,14 @@ pub enum FundingSessionCommand {
     Sign {
         #[arg(long, value_enum)]
         target: FundingTarget,
-        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        #[arg(long)]
+        signer_config: PathBuf,
+    },
+    /// Development-only local participant signer (requires the devnet feature).
+    SignLocal {
+        #[arg(long, value_enum)]
+        target: FundingTarget,
+        #[arg(long = "private-key-file", env = "MORPH_CHANNEL_PRIVATE_KEY_FILE", hide_env_values = true, value_name = "PATH", value_parser = crate::participant_signer::development_key_file)]
         private_key: morph_key_input::SecretString,
     },
     AddSignature {
@@ -95,6 +101,25 @@ struct FundingJournal {
     creation_signatures: Vec<ParticipantSignature>,
 }
 impl FundingJournal {
+    fn external_payload(&self) -> Result<morph_packages::signer_protocol::Payload> {
+        let mut collection =
+            crate::multi_asset_funding::RootFundingCollection::new(self.draft.clone())?;
+        let (creation, exit) = self.draft.digests()?;
+        collection.creation_signatures = self
+            .creation_signatures
+            .iter()
+            .map(|s| SignatureMessage::new(&creation, s))
+            .collect();
+        collection.exit_signatures = self
+            .exit_signatures
+            .iter()
+            .map(|s| SignatureMessage::new(&exit, s))
+            .collect();
+        collection.validate()?;
+        Ok(morph_packages::signer_protocol::Payload::Root {
+            collection: Box::new(collection),
+        })
+    }
     fn digest(&self, target: FundingTarget) -> Result<Bytes32> {
         let (creation, exit) = self.draft.digests()?;
         Ok(match target {
@@ -292,6 +317,32 @@ impl FundingJournal {
     }
 }
 
+pub(crate) fn external_authority(
+    bytes: &[u8],
+    target: morph_packages::signer_protocol::Target,
+    rpc: &crate::rpc::CkbRpcClient,
+) -> Result<(morph_packages::signer_protocol::Payload, String)> {
+    use morph_packages::signer_protocol::Target;
+    let target = match target {
+        Target::RootExit => FundingTarget::Exit,
+        Target::RootCreation => FundingTarget::Creation,
+        _ => return Err(anyhow!("not a root signing target")),
+    };
+    let journal: FundingJournal = serde_json::from_slice(bytes)?;
+    journal.validate()?;
+    journal.eligible(target)?;
+    ensure!(
+        journal.reserved(target),
+        "external root signing requires an already persisted reservation"
+    );
+    journal.verify_artifacts()?;
+    let (_, exit) = journal.draft.evidence()?;
+    journal
+        .admission
+        .require_fresh_with_rpc(&exit, &journal.draft.transaction()?, rpc)?;
+    Ok((journal.external_payload()?, journal.local_pubkey))
+}
+
 fn read(path: &Path) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     File::open(path)?
@@ -361,14 +412,35 @@ pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {
     match command {
         FundingSessionCommand::Init { .. } => Err(anyhow!("funding session already initialized")),
         FundingSessionCommand::Inspect => journal.summary(),
-        FundingSessionCommand::Sign {
-            target,
-            private_key,
-        } => {
+        command
+        @ (FundingSessionCommand::Sign { .. } | FundingSessionCommand::SignLocal { .. }) => {
+            let (target, signer) = match command {
+                FundingSessionCommand::Sign {
+                    target,
+                    signer_config,
+                } => (
+                    target,
+                    crate::participant_signer::Prepared::external(
+                        &signer_config,
+                        path,
+                        &decode_hex(&journal.local_pubkey, 33)?,
+                    )?,
+                ),
+                FundingSessionCommand::SignLocal {
+                    target,
+                    private_key,
+                } => (
+                    target,
+                    crate::participant_signer::Prepared::local(
+                        &private_key,
+                        &decode_hex(&journal.local_pubkey, 33)?,
+                    )?,
+                ),
+                _ => return Err(anyhow!("invalid signing command")),
+            };
             journal.verify_artifacts()?;
             journal.verify_fresh_admission()?;
             let local = decode_hex(&journal.local_pubkey, 33)?;
-            let key = channel_signing_key(&private_key, &local)?;
             journal.eligible(target)?;
             let digest = journal.digest(target)?;
             if let Some(signature) = journal
@@ -383,17 +455,21 @@ pub fn run(path: &Path, command: FundingSessionCommand) -> Result<Value> {
                 FundingTarget::Creation => journal.creation_reserved = true,
             }
             save(path, &journal)?;
+            #[cfg(all(test, target_os = "linux"))]
+            crate::participant_signer::tests::checkpoint("reserved");
             journal.verify_artifacts()?;
             journal.verify_fresh_admission()?;
-            let signature: Signature = key
-                .sign_prehash(&digest)
-                .map_err(|_| anyhow!("root signing failed"))?;
-            let signature = ParticipantSignature {
-                pubkey_sec1: local,
-                signature: signature.to_bytes().to_vec(),
+            let signing_target = match target {
+                FundingTarget::Exit => morph_packages::signer_protocol::Target::RootExit,
+                FundingTarget::Creation => morph_packages::signer_protocol::Target::RootCreation,
             };
+            let signature = signer.sign(signing_target, &digest, || journal.external_payload())?;
+            #[cfg(all(test, target_os = "linux"))]
+            crate::participant_signer::tests::checkpoint("received");
             journal.record(target, signature.clone())?;
             save(path, &journal)?;
+            #[cfg(all(test, target_os = "linux"))]
+            crate::participant_signer::tests::checkpoint("recorded");
             journal.verify_artifacts()?;
             journal.verify_fresh_admission()?;
             message(&digest, &signature)
@@ -557,7 +633,7 @@ mod tests {
         for i in 0..2 {
             let receipt = run(
                 &paths[i],
-                FundingSessionCommand::Sign {
+                FundingSessionCommand::SignLocal {
                     target,
                     private_key: keys[i].clone().into(),
                 },
@@ -565,7 +641,7 @@ mod tests {
             .unwrap();
             let repeated = run(
                 &paths[i],
-                FundingSessionCommand::Sign {
+                FundingSessionCommand::SignLocal {
                     target,
                     private_key: keys[i].clone().into(),
                 },
@@ -586,6 +662,144 @@ mod tests {
         }
         receipts
     }
+    #[cfg(target_os = "linux")]
+    #[path = "funding_fault_tests.rs"]
+    mod fault_tests;
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn external_root_signer_requires_reserved_authority_and_recovers_a_lost_real_signature() {
+        use morph_packages::signer_protocol::Target;
+        use std::io::{Read, Write};
+        use std::os::unix::{fs::PermissionsExt, net::UnixStream};
+        let draft = crate::multi_asset_funding::tests::admitted_draft_fixture();
+        let (_, recovery) = draft.evidence().unwrap();
+        let rpc =
+            crate::admission_channel::tests::MockRpc::start(recovery.state.header.chain_id, 100);
+        let transaction = draft.transaction().unwrap();
+        let capacity = transaction
+            .raw()
+            .outputs()
+            .into_iter()
+            .map(|o| u64::from(o.capacity()))
+            .sum::<u64>()
+            + 1000;
+        // Controlled live-cell fixture, not actual chain evidence. Each exact
+        // input is explicitly installed; unknown/replaced inputs fail closed.
+        for input in transaction.raw().inputs() {
+            rpc.set_live_cell(
+                &input.previous_output(),
+                &transaction
+                    .raw()
+                    .outputs()
+                    .get(0)
+                    .unwrap()
+                    .as_builder()
+                    .capacity(capacity)
+                    .build(),
+            );
+        }
+        let (dir, paths, keys, _) = fixture_with_draft(draft, Some(&rpc.url));
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let (config, socket, key_file) = crate::participant_signer::tests::configuration(
+            dir.path(),
+            &paths[0],
+            &rpc.url,
+            &recovery,
+            &[1; 32],
+        );
+        let original = read(&paths[0]).unwrap();
+        let mut journal: FundingJournal = serde_json::from_slice(&original).unwrap();
+        let request = crate::participant_signer::tests::request(
+            &config,
+            Target::RootExit,
+            journal.external_payload().unwrap(),
+        );
+        let mut child = crate::participant_signer::tests::start(&config, &key_file, &socket);
+        assert!(
+            morph_signer::ipc::exchange(&socket, &request, std::time::Duration::from_secs(3))
+                .is_err()
+        );
+        assert!(!child.0.wait().unwrap().success());
+        assert_eq!(read(&paths[0]).unwrap(), original);
+
+        // Persist the real reservation but deliberately lose the generated reply.
+        journal.exit_reserved = true;
+        save(&paths[0], &journal).unwrap();
+        let reserved = read(&paths[0]).unwrap();
+        let request = crate::participant_signer::tests::request(
+            &config,
+            Target::RootExit,
+            journal.external_payload().unwrap(),
+        );
+        let mut child = crate::participant_signer::tests::start(&config, &key_file, &socket);
+        let mut stream = UnixStream::connect(&socket).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let bytes = request.encode().unwrap();
+        stream
+            .write_all(&(bytes.len() as u32).to_be_bytes())
+            .unwrap();
+        stream.write_all(&bytes).unwrap();
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        let mut prefix = [0; 4];
+        stream.read_exact(&mut prefix).unwrap();
+        assert!(u32::from_be_bytes(prefix) > 0); // Service has actually signed.
+        drop(stream); // Caller never records or uses any receipt bytes.
+        let _ = child.0.wait().unwrap();
+        assert_eq!(read(&paths[0]).unwrap(), reserved);
+        assert!(
+            serde_json::from_slice::<FundingJournal>(&reserved)
+                .unwrap()
+                .exit_signatures
+                .is_empty()
+        );
+
+        // Restart both authority reader and key process; only the same reserved
+        // target is signed, then the ordinary host path verifies/records/fsyncs.
+        let mut child = crate::participant_signer::tests::start(&config, &key_file, &socket);
+        let receipt = run(
+            &paths[0],
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Exit,
+                signer_config: config.clone(),
+            },
+        )
+        .unwrap();
+        assert!(child.0.wait().unwrap().success());
+        let saved: FundingJournal = serde_json::from_slice(&read(&paths[0]).unwrap()).unwrap();
+        assert!(saved.exit_reserved && saved.exit_signatures.len() == 1);
+        assert_eq!(
+            receipt["signing_digest"],
+            canonical_hex(&journal.digest(FundingTarget::Exit).unwrap())
+        );
+        // Cached receipt needs no new external process or additional key call.
+        assert_eq!(
+            run(
+                &paths[0],
+                FundingSessionCommand::Sign {
+                    target: FundingTarget::Exit,
+                    signer_config: config.clone()
+                }
+            )
+            .unwrap(),
+            receipt
+        );
+        collect(&paths, &keys, dir.path(), FundingTarget::Exit);
+        let mut child = crate::participant_signer::tests::start(&config, &key_file, &socket);
+        run(
+            &paths[0],
+            FundingSessionCommand::Sign {
+                target: FundingTarget::Creation,
+                signer_config: config,
+            },
+        )
+        .unwrap();
+        assert!(child.0.wait().unwrap().success());
+        let saved: FundingJournal = serde_json::from_slice(&read(&paths[0]).unwrap()).unwrap();
+        assert!(saved.creation_reserved && saved.creation_signatures.len() == 1);
+    }
+
     #[test]
     fn initial_ceremony_requires_full_exit_before_creation_and_exports_exact_custody() {
         let (dir, paths, keys, _) = fixture();
@@ -593,7 +807,7 @@ mod tests {
         assert!(
             run(
                 &paths[0],
-                FundingSessionCommand::Sign {
+                FundingSessionCommand::SignLocal {
                     target: FundingTarget::Creation,
                     private_key: keys[0].clone().into()
                 }
@@ -603,7 +817,7 @@ mod tests {
         assert!(
             run(
                 &paths[0],
-                FundingSessionCommand::Sign {
+                FundingSessionCommand::SignLocal {
                     target: FundingTarget::Exit,
                     private_key: keys[1].clone().into()
                 }
@@ -664,7 +878,7 @@ mod tests {
         assert!(
             run(
                 &paths[0],
-                FundingSessionCommand::Sign {
+                FundingSessionCommand::SignLocal {
                     target: FundingTarget::Creation,
                     private_key: keys[0].clone().into()
                 }
@@ -725,7 +939,7 @@ mod tests {
         save(&paths[0], &journal).unwrap();
         let receipt = run(
             &paths[0],
-            FundingSessionCommand::Sign {
+            FundingSessionCommand::SignLocal {
                 target: FundingTarget::Exit,
                 private_key: keys[0].clone().into(),
             },
@@ -746,7 +960,7 @@ mod tests {
         assert!(
             run(
                 &paths[0],
-                FundingSessionCommand::Sign {
+                FundingSessionCommand::SignLocal {
                     target: FundingTarget::Exit,
                     private_key: keys[0].clone().into()
                 }
@@ -781,7 +995,7 @@ mod tests {
         let (dir, paths, keys, _) = fixture();
         run(
             &paths[0],
-            FundingSessionCommand::Sign {
+            FundingSessionCommand::SignLocal {
                 target: FundingTarget::Exit,
                 private_key: keys[0].clone().into(),
             },
@@ -800,7 +1014,7 @@ mod tests {
             FundingSessionCommand::Export {
                 store_dir: store.clone(),
             },
-            FundingSessionCommand::Sign {
+            FundingSessionCommand::SignLocal {
                 target: FundingTarget::Creation,
                 private_key: keys[0].clone().into(),
             },
@@ -828,7 +1042,7 @@ mod tests {
         assert!(journal.eligible_for_handoff().is_err());
         let local = run(
             &paths[0],
-            FundingSessionCommand::Sign {
+            FundingSessionCommand::SignLocal {
                 target: FundingTarget::Creation,
                 private_key: keys[0].clone().into(),
             },
@@ -836,7 +1050,7 @@ mod tests {
         .unwrap();
         let peer = run(
             &paths[1],
-            FundingSessionCommand::Sign {
+            FundingSessionCommand::SignLocal {
                 target: FundingTarget::Creation,
                 private_key: keys[1].clone().into(),
             },
@@ -947,7 +1161,7 @@ mod tests {
         let before = read(&paths[0]).unwrap();
         let error = run(
             &paths[0],
-            FundingSessionCommand::Sign {
+            FundingSessionCommand::SignLocal {
                 target: FundingTarget::Creation,
                 private_key: keys[0].clone().into(),
             },
@@ -981,7 +1195,7 @@ mod tests {
         let before = read(&paths[0]).unwrap();
         let error = run(
             &paths[0],
-            FundingSessionCommand::Sign {
+            FundingSessionCommand::SignLocal {
                 target: FundingTarget::Exit,
                 private_key: keys[0].clone().into(),
             },
@@ -995,7 +1209,7 @@ mod tests {
         let before = read(&paths[0]).unwrap();
         let error = run(
             &paths[0],
-            FundingSessionCommand::Sign {
+            FundingSessionCommand::SignLocal {
                 target: FundingTarget::Creation,
                 private_key: keys[0].clone().into(),
             },

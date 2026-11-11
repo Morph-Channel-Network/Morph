@@ -1,0 +1,27 @@
+{
+  "scope": "hub-api only; not a full 24-target long campaign",
+  "command": [
+    "timeout",
+    "--signal=KILL",
+    "180s",
+    "target/debug/morph-fuzz",
+    "--worker",
+    "hub-api",
+    "--output",
+    "target/fuzz-campaigns/hub-api-long-20261110",
+    "--seed",
+    "332043276360",
+    "--cases",
+    "10000",
+    "--seconds",
+    "180"
+  ],
+  "exit_code": 0,
+  "status": "pass",
+  "binary_hash": "12722fedbd20b739babe3d9d4cb5e52df29ae0df34765df9032e7c8700f6edf2",
+  "lockfile_hash": "42a3a1472aa759ef303905c169f78bf086f77414595e49f445b4528f15b23dea",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "wall_limit_seconds": 180,
+  "result": "long-result.json",
+  "log": "long.log"
+}

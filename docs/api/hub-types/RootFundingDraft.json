@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Public immutable funding proposal. Every amount and the initial exit are\nderived from the packed transaction; no duplicate roots or amounts exist.",
+  "properties": {
+    "participants": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "transaction_hex": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "transaction_hex",
+    "participants"
+  ],
+  "title": "RootFundingDraft",
+  "type": "object"
+}

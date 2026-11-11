@@ -7,6 +7,41 @@ object over the same custody primitives. Unsupported prior bytes are rejected.
 See [current capability coverage](current-protocol-coverage.md) for migration,
 negative tests, measured limits and the remaining release gates.
 
+## Cooperative terminal close (consensus checkpoint, 2026-11-10)
+
+`multi_asset_close.rs` defines the sole `MORPHMC!` format. It is implemented in
+StateType and Vault-lock, but the durable host close lifecycle and operational
+commands are not yet available. See [ADR 005](adr/005-bilateral-cooperative-terminal-close.md).
+The State layout, ordinary vote domain and unilateral challenge path remain
+unchanged; new ELF identities require new deployment and evidence.
+
+| Offset | Field | Bytes |
+| --- | --- | ---: |
+| 0 | `MORPHMC!` | 8 |
+| 8 | Format 1, little endian | 2 |
+| 10 | Reserved zero | 2 |
+| 12 | Inner current witness length, little endian | 4 |
+| 16 | Complete raw transaction hash | 32 |
+| 48 | Target bound Settling State, number greater than zero | 318 |
+| 366 | Exactly two sorted participant signatures, current bilateral encoding | 198 |
+| 564 | Existing `MORPHMA!` manifest/descriptor/OutPoints/scripts witness | Variable |
+
+Maximum total frame size is 10,624 bytes. It resides in input-0 WitnessArgs
+`output_type`; it has no alternative legacy reader. Signatures authorize
+`blake2b256(CKB_MORPH_MULTI_ASSET_CLOSE_V1 || target_state_digest || raw_tx_hash)`
+with CKB personalization. The target retains the source's immutable context;
+progress cannot regress and equal numbers require byte-identical headers.
+
+Input 0 is the authentic bound State; inputs 1 through N are the exact ordered
+Vault set. No State successor is allowed. Existing complete asset/reserve/carrier
+payout checks run using the validated **target** header, including conditional
+Batch identity. Remaining fee inputs/change have no Type or cell data; arbitrary
+lock programs still execute normally. Transactions are bounded below 64 inputs
+and outputs, with at most 64 cell dependencies and 64 header dependencies each.
+These scanner limits are not resource admission. Both StateType and Vault-lock
+verify the same frame. Unknown/malformed frames and ordinary signature replay
+fail closed. New error codes 70/71 do not reuse retired discriminants.
+
 ## State and Vault Authority
 
 State layout 2 is an independent 318-byte encoding. It contains no single-Vault
@@ -166,9 +201,9 @@ The reservation is persisted before calling the signer and the signature is
 persisted before stdout returns its receipt. A crashed process releases the OS
 lock. Initialization refuses an existing session rather than resetting history.
 
-Each participant runs its own session and supplies the path to its protected
-signing-key file through `MORPH_CHANNEL_PRIVATE_KEY_FILE`; see
-[key input](runbooks/key-input.md). `--local-pubkey` is the
+Each participant runs its own session and selects a fixed external service with
+`--signer-config`; the isolated service alone receives its protected key file.
+See [external signing](runbooks/external-participant-signer.md). `--local-pubkey` is the
 canonical `0x`-prefixed compressed 33-byte key. Review `inspect` output, including
 all proposed per-asset allocations and payout-lock identities, before `sign`.
 
@@ -177,7 +212,7 @@ morph-cli multi-asset-session --session alice.json propose \
   --descriptor-hex "$DESCRIPTOR_HEX" > proposal.json
 morph-cli multi-asset-session --session bob.json accept --proposal proposal.json
 morph-cli multi-asset-session --session alice.json inspect
-morph-cli multi-asset-session --session alice.json sign --target update > alice-signature.json
+morph-cli multi-asset-session --session alice.json sign --target update --signer-config /srv/morph/alice/signer.json > alice-signature.json
 morph-cli multi-asset-session --session alice.json add-signature --target update \
   --signature bob-signature.json
 morph-cli multi-asset-session --session alice.json commit --store-dir recovery
@@ -250,7 +285,7 @@ input for later disputes.
 ```sh
 morph-cli devnet --devnet-only multi-asset-watch \
   --store-dir recovery --channel-id "$CHANNEL_ID" --from-block "$CREATION_BLOCK" \
-  --cursor-file operator-a/cursor.json --alert-file operator-a/alerts.jsonl \
+  --cursor-file operator-a/cursor.db --alert-file operator-a/alerts.jsonl \
   --publication-profile publication-profile.json --attempt-log operator-a/attempts.jsonl \
   --fee-out-point FEE_TX_HASH:0 --max-fee 100000000 --timeout-secs 30 wallet
 ```

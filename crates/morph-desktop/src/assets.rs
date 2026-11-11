@@ -8,6 +8,8 @@ gpui_kit::assets::icon_assets!(
         ArrowLeft,
         ArrowLeftRight,
         ArrowRight,
+        ArrowUpRight,
+        Check,
         ChevronRight,
         ChevronDown,
         CircleAlert,

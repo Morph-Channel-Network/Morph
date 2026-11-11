@@ -1,0 +1,18 @@
+# TYPE morph_watch_scan_coverage_ready gauge
+morph_watch_scan_coverage_ready 0
+# TYPE morph_watch_publication_ready gauge
+morph_watch_publication_ready 0
+# TYPE morph_watch_resources gauge
+morph_watch_resources 2
+# TYPE morph_watch_evidence_fresh gauge
+morph_watch_evidence_fresh 0
+# TYPE morph_watch_scan_completed gauge
+morph_watch_scan_completed 0
+# TYPE morph_watch_caught_up gauge
+morph_watch_caught_up 0
+# TYPE morph_watch_reorg_reset gauge
+morph_watch_reorg_reset 0
+# TYPE morph_watch_publication_confirmed gauge
+morph_watch_publication_confirmed 0
+# TYPE morph_watch_publication_ready_resources gauge
+morph_watch_publication_ready_resources 0

@@ -1,5 +1,6 @@
 [package]
 name = "morph-xtask"
+default-run = "morph-xtask"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,9 +9,15 @@ publish = false
 description = "Rust acceptance and interoperability runners for Morph"
 
 [dependencies]
+morph-events = { path = "../morph-events" }
+morph-runtime-store = { path = "../morph-runtime-store" }
+hmac = "=0.13.0"
+sha2-current = { package = "sha2", version = "=0.11.1" }
+morph-script-common = { path = "../../contracts/morph-script-common" }
 anyhow.workspace = true
 base64.workspace = true
 clap.workspace = true
+ckb-types.workspace = true
 hex.workspace = true
 k256.workspace = true
 morph-core = { path = "../morph-core" }
@@ -24,3 +31,6 @@ zeroize.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,3 +1,4 @@
+use morph_hub_api::endpoints::Endpoint;
 use morph_hub_api::*;
 use morph_packages::{
     conditional_packages::StoredConditionalBatchPackage,
@@ -30,15 +31,19 @@ pub enum HubClientError {
     InvalidPackage(String),
     #[error("Hub read failed; reconnect or refresh")]
     Transport,
-    #[error("Mutation outcome unknown; refresh the Hub and reconcile before submitting again")]
-    OutcomeUnknown,
+    #[error(
+        "Mutation outcome unknown; retry identical request with its saved context or reconcile before a new request"
+    )]
+    OutcomeUnknown { mutation: MutationContext },
+    #[error("invalid or unsupported mutation context")]
+    InvalidMutationContext,
     #[error("Hub returned an invalid or oversized response")]
     InvalidResponse,
-    #[error("HTTP {status}: {message} (code {code}, request {request_id})")]
+    #[error("HTTP {status}: {message} (code {code:?}, request {request_id})")]
     Api {
         status: u16,
         message: String,
-        code: String,
+        code: Option<ApiErrorCode>,
         request_id: String,
         retry_after_seconds: Option<u64>,
     },
@@ -51,6 +56,7 @@ pub struct HubClient {
     base: Url,
     http: Client,
     token: Option<Arc<Zeroizing<String>>>,
+    mutation: Option<MutationContext>,
 }
 impl std::fmt::Debug for HubClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -90,6 +96,7 @@ impl HubClient {
             base,
             http,
             token: None,
+            mutation: None,
         })
     }
     pub fn with_token(mut self, token: String) -> Result<Self, HubClientError> {
@@ -103,19 +110,65 @@ impl HubClient {
         self.token = Some(Arc::new(Zeroizing::new(token)));
         Ok(self)
     }
+    /// Explicitly retry the identical request with its original public context.
+    /// Never use this context for another body, route or changed proposal.
+    pub fn with_mutation(mut self, context: MutationContext) -> Result<Self, HubClientError> {
+        if !context.valid() {
+            return Err(HubClientError::InvalidMutationContext);
+        }
+        self.mutation = Some(context);
+        Ok(self)
+    }
+    /// Bind a new mutation to the exact projection the user reviewed.
+    /// Do not fetch a newer revision at confirmation time.
+    pub fn with_expected_revision(self, revision: u64) -> Result<Self, HubClientError> {
+        let mut id = [0u8; 16];
+        getrandom::fill(&mut id).map_err(|_| HubClientError::Transport)?;
+        self.with_mutation(MutationContext {
+            idempotency_key: hex::encode(id),
+            expected_revision: revision,
+        })
+    }
+    pub async fn api_info(&self) -> Result<ApiInfo, HubClientError> {
+        let info: ApiInfo = self
+            .request_inner(Method::GET, "api/meta", None, None)
+            .await?;
+        if info.api_version != mutation::API_VERSION {
+            return Err(HubClientError::InvalidMutationContext);
+        }
+        Ok(info)
+    }
+    /// Durable, source-bound pagination; unlike SSE this does not use the UI ring buffer.
+    pub async fn event_log(&self, request: &EventPageRequest) -> Result<EventPage, HubClientError> {
+        let page: EventPage = self.post("api/event-log", request).await?;
+        if !page.valid_for(request) {
+            return Err(HubClientError::InvalidResponse);
+        }
+        Ok(page)
+    }
+    pub async fn liveness(&self) -> Result<Liveness, HubClientError> {
+        self.request(Method::GET, "api/health", None).await
+    }
+    /// A 503 readiness report is usable observation data, not an API error.
+    /// It never grants permission to mutate or sign.
+    pub async fn readiness(&self) -> Result<Readiness, HubClientError> {
+        self.request(Method::GET, "api/readiness", None).await
+    }
     pub async fn state(&self) -> Result<HubView, HubClientError> {
         self.request(Method::GET, "api/state", None).await
     }
-    pub async fn state_file(&self) -> Result<Value, HubClientError> {
+    pub async fn state_file(&self) -> Result<StateArchive, HubClientError> {
         self.request(Method::GET, "api/state-file", None).await
     }
-    pub async fn preview_restore(&self, state: &Value) -> Result<RestorePreview, HubClientError> {
-        self.request(Method::POST, "api/state-file/preview", Some(state))
-            .await
+    pub async fn preview_restore(
+        &self,
+        state: &StateArchive,
+    ) -> Result<RestorePreview, HubClientError> {
+        self.post("api/state-file/preview", state).await
     }
     pub async fn restore(
         &self,
-        state: &Value,
+        state: &StateArchive,
         confirmation_hash: &str,
     ) -> Result<HubView, HubClientError> {
         self.request(
@@ -256,7 +309,10 @@ impl HubClient {
             "root-fundings",
             id,
             "signatures",
-            &json!({"target":target,"receipt":receipt}),
+            &RootReceiptRequest {
+                target,
+                receipt: receipt.clone(),
+            },
         )
         .await
     }
@@ -294,25 +350,63 @@ impl HubClient {
         path: &str,
         body: Option<&Value>,
     ) -> Result<T, HubClientError> {
-        let mutation = method != Method::GET;
-        let uncertain = || {
-            if mutation {
-                HubClientError::OutcomeUnknown
-            } else {
-                HubClientError::Transport
-            }
+        let endpoint = Endpoint::resolve(method.as_str(), &format!("/{path}"))
+            .ok_or(HubClientError::InvalidUrl)?;
+        let context = if endpoint.mutates() {
+            Some(match &self.mutation {
+                Some(context) => context.clone(),
+                None => {
+                    let info = self.api_info().await?;
+                    let mut id = [0u8; 16];
+                    getrandom::fill(&mut id).map_err(|_| HubClientError::Transport)?;
+                    MutationContext {
+                        idempotency_key: hex::encode(id),
+                        expected_revision: info.revision,
+                    }
+                }
+            })
+        } else {
+            None
+        };
+        self.request_inner(method, path, body, context.as_ref())
+            .await
+    }
+    async fn request_inner<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+        context: Option<&MutationContext>,
+    ) -> Result<T, HubClientError> {
+        let mutation = context.is_some();
+        let uncertain = || match context {
+            Some(context) => HubClientError::OutcomeUnknown {
+                mutation: context.clone(),
+            },
+            None => HubClientError::Transport,
         };
         let url = self
             .base
             .join(path)
             .map_err(|_| HubClientError::InvalidUrl)?;
-        let mut request = self.http.request(method, url);
+        let mut request = self
+            .http
+            .request(method, url)
+            .header(mutation::API_VERSION_HEADER, mutation::API_VERSION);
+        if let Some(context) = context {
+            request = request
+                .header(mutation::IDEMPOTENCY_HEADER, &context.idempotency_key)
+                .header(
+                    mutation::REVISION_HEADER,
+                    context.expected_revision.to_string(),
+                );
+        }
         if let Some(token) = &self.token {
             request = request.bearer_auth(token.as_str());
         }
         if let Some(body) = body {
             let bytes = serde_json::to_vec(body).map_err(|_| HubClientError::InvalidResponse)?;
-            if bytes.len() > MAX_BODY {
+            if bytes.len() > 1024 * 1024 {
                 return Err(HubClientError::InvalidResponse);
             }
             request = request
@@ -337,7 +431,7 @@ impl HubClient {
             .is_some_and(|n| n > MAX_BODY as u64)
         {
             return Err(if mutation {
-                HubClientError::OutcomeUnknown
+                uncertain()
             } else {
                 HubClientError::InvalidResponse
             });
@@ -346,22 +440,41 @@ impl HubClient {
         while let Some(chunk) = response.chunk().await.map_err(|_| uncertain())? {
             if bytes.len().saturating_add(chunk.len()) > MAX_BODY {
                 return Err(if mutation {
-                    HubClientError::OutcomeUnknown
+                    uncertain()
                 } else {
                     HubClientError::InvalidResponse
                 });
             }
             bytes.extend_from_slice(&chunk);
         }
+        if path == "api/readiness" && matches!(status.as_u16(), 200 | 503) {
+            let report: Readiness =
+                serde_json::from_slice(&bytes).map_err(|_| HubClientError::InvalidResponse)?;
+            if report.ready != status.is_success()
+                || report.service.label() != "hub"
+                || !report.consistent()
+            {
+                return Err(HubClientError::InvalidResponse);
+            }
+            return serde_json::from_slice(&bytes).map_err(|_| HubClientError::InvalidResponse);
+        }
         if !status.is_success() {
             let error = serde_json::from_slice::<ApiErrorBody>(&bytes).ok();
+            if mutation
+                && (error.is_none()
+                    || error
+                        .as_ref()
+                        .is_some_and(|e| e.code == ApiErrorCode::CommitOutcomeUnknown))
+            {
+                return Err(uncertain());
+            }
             return Err(HubClientError::Api {
                 status: status.as_u16(),
                 message: error
                     .as_ref()
                     .map(|e| e.error.clone())
                     .unwrap_or_else(|| "request rejected".into()),
-                code: error.as_ref().map(|e| e.code.clone()).unwrap_or_default(),
+                code: error.as_ref().map(|e| e.code),
                 request_id: error
                     .map(|e| e.request_id)
                     .filter(|s| !s.is_empty())
@@ -371,7 +484,7 @@ impl HubClient {
         }
         serde_json::from_slice(&bytes).map_err(|_| {
             if mutation {
-                HubClientError::OutcomeUnknown
+                uncertain()
             } else {
                 HubClientError::InvalidResponse
             }
@@ -421,23 +534,37 @@ pub enum HubOperation {
     Restore,
 }
 impl HubOperation {
-    pub fn required_scope(self) -> AuthScope {
+    pub fn endpoint(self) -> Endpoint {
         match self {
-            Self::ExportRecovery | Self::InspectRoot | Self::ExportRoot => AuthScope::Read,
-            Self::ExportState | Self::PreviewRestore | Self::Restore => AuthScope::Restore,
-            Self::CreateInvoice => AuthScope::Sign,
-            _ => AuthScope::Write,
+            Self::Peer => Endpoint::ConnectPeer,
+            Self::CreateInvoice => Endpoint::CreateInvoice,
+            Self::DecodeInvoice => Endpoint::DecodeInvoice,
+            Self::SettleInvoice => Endpoint::SettleInvoice,
+            Self::ReceiveInvoice => Endpoint::ReceiveInvoice,
+            Self::OpenChannel => Endpoint::OpenChannel,
+            Self::SpliceChannel => Endpoint::SpliceChannel,
+            Self::PublishChannel => Endpoint::PublishChannel,
+            Self::FinaliseChannel => Endpoint::FinaliseChannel,
+            Self::OpenFactory => Endpoint::OpenFactory,
+            Self::AdvanceFactory => Endpoint::AdvanceFactory,
+            Self::MaterialiseChild => Endpoint::MaterialiseChild,
+            Self::ImportRecovery => Endpoint::ImportRecovery,
+            Self::ExportRecovery => Endpoint::RecoveryPackage,
+            Self::ImportBatch => Endpoint::ImportBatch,
+            Self::ImportRoot => Endpoint::ImportRoot,
+            Self::InspectRoot => Endpoint::RootCollection,
+            Self::ExportRoot => Endpoint::RootExport,
+            Self::ExportState => Endpoint::ExportState,
+            Self::PreviewRestore => Endpoint::PreviewRestore,
+            Self::Restore => Endpoint::RestoreState,
+            Self::RootExitSignature | Self::RootCreationSignature => Endpoint::RootSignature,
         }
     }
+    pub fn required_scope(self) -> AuthScope {
+        self.endpoint().scope()
+    }
     pub fn mutates(self) -> bool {
-        !matches!(
-            self,
-            Self::ExportRecovery
-                | Self::InspectRoot
-                | Self::ExportRoot
-                | Self::ExportState
-                | Self::PreviewRestore
-        )
+        self.endpoint().mutates()
     }
 }
 #[derive(Debug)]
@@ -494,15 +621,11 @@ impl HubClient {
             InspectRoot => return document(self.root(id).await?),
             ExportRoot => return document(self.export_root(id).await?),
             ExportState => return document(self.state_file().await?),
-            PreviewRestore => return document(self.preview_restore(body).await?),
+            PreviewRestore => return document(self.preview_restore(&from(body)?).await?),
             Restore => {
-                self.restore(
-                    &body["state"],
-                    body["confirmation_hash"].as_str().ok_or_else(|| {
-                        HubClientError::InvalidPackage("missing restore confirmation hash".into())
-                    })?,
-                )
-                .await?
+                let request: RestoreArchiveRequest = from(body)?;
+                self.restore(&request.state, &request.confirmation_hash)
+                    .await?
             }
         };
         Ok(HubReply::State(Box::new(state)))
