@@ -1,0 +1,23 @@
+{
+  "schema": "morph.publication_profile",
+  "operator_id": "watchtower-a",
+  "fee": {
+    "min_fee_rate": 1000,
+    "max_fee_rate": 200000000,
+    "max_fee": 200000000,
+    "estimator_multiplier_bps": 12500,
+    "replacement_multiplier_bps": 12500,
+    "max_attempts": 3,
+    "bump_after_ms": 1000,
+    "require_rbf": true
+  },
+  "window": {
+    "configured_challenge_blocks": 64,
+    "conservative_block_ms": 10000,
+    "canonical_confirmation_blocks": 4,
+    "reorg_budget_blocks": 6,
+    "failover_budget_blocks": 3,
+    "safety_margin_blocks": 6,
+    "max_measurement_age_secs": 604800
+  }
+}

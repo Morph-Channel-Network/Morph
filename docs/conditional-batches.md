@@ -2,6 +2,8 @@
 
 Status: current unpublished implementation, 2026-11-11. See [ADR 007](adr/007-typed-conditional-settlement.md). Qualification belongs to an exact source/artifact candidate; earlier W1 reports cover the earlier encoding.
 
+All ten `current-local-no-value` executions returned exit 0 on signed implementation `bc4be3ff`. See [the exact-candidate record and descriptor-label erratum](evidence/typed-conditions-bc4be3ff/README.md), which distinguish that execution from later reporting corrections.
+
 ## One State, separate asset lanes
 
 A 318-byte layout-2 State commits descriptor **6**. Capability `Ordinary` has no pending conditions. Capability `Conditional` pins one Batch executor and **1–8 asset-sorted Batches**, with one Batch per selected manifest asset and **1–8 transfers per Batch**. CKB, one UDT and several UDTs share this sole custody, signing and recovery implementation. There is no old CKB-only reader or executor.

@@ -792,7 +792,7 @@ jq -n \
     watcher_environment_probe_passed: $watcher_env_probe,
     distinct_operator_signing_identities: true,
     state_header_bytes: 318,
-    descriptor_version: 5,
+    descriptor_version: 6,
     independent_current_funding_journals: true,
     immutable_signed_evidence: {
       package_signing_digest: $package_signing_digest,

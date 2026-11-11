@@ -4,28 +4,24 @@
 controlled-devnet candidate with no real assets. Selecting the shared-foundation
 architecture does not approve a mainnet release.
 
-November 10 worktree checkpoint: `contracts.json` now pins the rebuilt
-StateType/Vault-lock cooperative-close verifier (`MORPHMC!`). The other six ELF
-identities are unchanged. Full VM regression and focused close tests are recorded
-in `docs/evidence/cooperative-close-verifier-2026-11-10/`. The monotonic close
-journal, external signer role, native transaction flow and final local candidate
-qualification are still pending. The following Core snapshot checkpoint shares
-the source/target predicate with the host and refreshes the same two ELF hashes
-again (sizes unchanged), with all 100 VM tests passing. Its evidence is in
-`docs/evidence/cooperative-close-journal-2026-11-10/`; this is not native close
-qualification. This manifest refresh does not admit a new
-operational close flow or reuse the preceding candidate's native evidence.
+The November 11 implementation includes exact-transaction cooperative close
+(`MORPHMC!`), durable close signing/operation tracking and asset-bound conditional
+settlement. `contracts.json` pins the corresponding eight ELF identities. The
+signed implementation `bc4be3ff` completed the ten local no-value gates; see
+`docs/evidence/typed-conditions-bc4be3ff/README.md` for exact source/artifact
+identities, outcomes and the original descriptor-label erratum. Later reporting
+corrections are not another full executed candidate or deployment approval.
 
 Bilateral custody and Factory custody use distinct authority objects on the same
 bounded asset, Vault-set, persistence, signing and recovery foundation:
 
 | Boundary | Current implementation |
 | --- | --- |
-| Bilateral State | 318 bytes; descriptor 5; one to eight Vaults |
+| Bilateral State | 318 bytes; descriptor 6; one to eight Vaults |
 | Factory State | 306 bytes; two to sixteen committed members |
 | Full Factory authorization | Exact-transaction N-of-N root, update, custody and materialisation |
 | Reduced Factory authorization | One touched member; localized compact proofs; independent asset conservation |
-| CKB conditions | At most eight preimage/refund transfers; separate Batch executor at transaction input 0 |
+| CKB/UDT conditions | One to eight asset-sorted Batches, each with at most eight preimage/refund transfers; each Batch resolves at transaction input 0 |
 | Batch identity | 104 bytes, including the exact funding context |
 | Child recovery | Independent initial-exit journals and public possession receipts; private exits stay with child parties |
 | Operational recovery | Stable journals, canonical reconciliation, same-path handoff, reorg-aware watch service |

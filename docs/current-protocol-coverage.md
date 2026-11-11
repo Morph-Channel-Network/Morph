@@ -5,6 +5,10 @@ coverage ledger, not a new independent audit or release approval. Full CI,
 release/report refresh, independent review and real-asset qualification remain
 separate gates in [mainnet readiness](mainnet-readiness.md).
 
+## Current exact-candidate result (2026-11-11)
+
+All ten `current-local-no-value` executions returned exit 0 on signed code `bc4be3ff` with clean unchanged source. The original receipt records `conditional_udt_qualified=true`; 110 VM tests, the preserved ordinary native matrix and eight-Type/64-condition native fulfillment/refund/reorg evidence are bound to the same contracts/client artifacts. [Exact record and descriptor-label erratum](evidence/typed-conditions-bc4be3ff/README.md). The later reporting correction is not another full ten-gate candidate. The implementation checkpoint below retains its earlier preflight measurements.
+
 ## Typed-conditions implementation checkpoint (2026-11-11)
 
 Descriptor 6 replaces the unpublished CKB-only conditional encoding with 1–8

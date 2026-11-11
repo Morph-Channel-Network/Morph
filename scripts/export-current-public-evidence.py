@@ -436,6 +436,18 @@ The original private run directory must not be uploaded as a substitute.
 """
 
 
+def descriptor_version(source_commit, reported):
+    source = subprocess.check_output([
+        "git", "show",
+        f"{source_commit}:contracts/morph-script-common/src/multi_asset.rs",
+    ], cwd=ROOT)
+    versions = re.findall(rb"pub const MULTI_ASSET_DESCRIPTOR_VERSION: u16 = ([0-9]+);", source)
+    require(len(versions) == 1, "current descriptor source is ambiguous")
+    require(type(reported) is int and reported == int(versions[0]),
+            "descriptor evidence differs from source-commit verifier")
+    return reported
+
+
 def export(run, output, expected_commit=None, ci_log=None):
     reader = Reader(run.resolve(strict=True))
     original = reader.read("source-provenance.json")
@@ -443,6 +455,7 @@ def export(run, output, expected_commit=None, ci_log=None):
     manifest = dict(line.split("=", 1) for line in manifest_raw.decode().splitlines())
     origin = provenance(original, manifest, expected_commit)
     facts = reader.read("evidence.json")
+    version = descriptor_version(origin["source_commit"], facts["descriptor_version"])
     smoke = reader.read("scenarios/smoke/summary.json")
     assertion = reader.read("scenarios/summary-check.json")
     stateful = reader.read("scenarios/summary.json")
@@ -500,7 +513,7 @@ def export(run, output, expected_commit=None, ci_log=None):
     public_publication["fee"]["require_rbf"] = publication["fee"]["require_rbf"]
     files = {
         "checkpoint.json": {"schema": "morph.public_checkpoint_evidence.v1", **origin,
-            "genesis_hash": digest(facts["genesis_hash"], True), "descriptor_version": integer(facts["descriptor_version"]),
+            "genesis_hash": digest(facts["genesis_hash"], True), "descriptor_version": version,
             "cli_sha256": digest(facts["cli_sha256"]), "release_manifest_sha256": sha256(release_raw),
             "release_manifest_matches_captured": True, "contracts": elf_hashes,
             "scope": "Controlled development-node local evidence; not independent attestation or production approval.",

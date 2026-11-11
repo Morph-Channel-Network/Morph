@@ -513,7 +513,7 @@ run_morph_stateful_on_fiber_ckb() {
   ) >"$LOG_DIR/morph-stateful-on-fiber-ckb.log" 2>&1
   jq -e --slurpfile observed "$OUT_DIR/fiber-coexistence-genesis.json" \
     --arg rpc "$FIBER_CKB_RPC_URL" \
-    '.rpc_url == $rpc and .genesis_hash == $observed[0].result and .descriptor_version == 5' \
+    '.rpc_url == $rpc and .genesis_hash == $observed[0].result and .descriptor_version == 6' \
     "$current_dir/evidence.json" >/dev/null || fail "current runner did not use Fiber's exact chain"
   log "current Morph matrix -> $current_dir/scenarios/smoke/matrix.json"
 }

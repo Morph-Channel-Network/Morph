@@ -262,6 +262,7 @@ def verify(public, bundle, ci_receipt, envelope_path, desktop_bundle):
     spec = importlib.util.spec_from_file_location("local_evidence_rules", ROOT / "scripts/export-current-public-evidence.py")
     rules = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(rules)
+    rules.descriptor_version(head, checkpoint["descriptor_version"])
     require({item["id"] for item in acceptance["audit_families"]} == rules.AUDIT_FAMILIES
             and len(acceptance["audit_families"]) == len(rules.AUDIT_FAMILIES)
             and {item["scenario_id"] for item in acceptance["scenarios"]} == rules.SCENARIOS

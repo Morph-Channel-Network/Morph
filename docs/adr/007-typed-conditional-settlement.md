@@ -1,6 +1,6 @@
 # ADR 007: asset-bound conditional settlement over the current Vault set
 
-Status: accepted for implementation, 2026-11-11. Qualification is not yet complete.
+Status: implemented and locally qualified, 2026-11-11, on signed code `bc4be3ff`. See [exact-candidate evidence](../evidence/typed-conditions-bc4be3ff/README.md). Real assets and release remain unapproved.
 
 ## Decision
 
