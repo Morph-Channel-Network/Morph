@@ -1,16 +1,17 @@
-# Morph current custody — 4.0.0-alpha.1
+# Morph current custody — 4.1.0
 
 `morph-current-custody` is the sole current protocol family. This is a
 controlled-devnet candidate with no real assets. Selecting the shared-foundation
 architecture does not approve a mainnet release.
 
-The November 11 implementation includes exact-transaction cooperative close
-(`MORPHMC!`), durable close signing/operation tracking and asset-bound conditional
-settlement. `contracts.json` pins the corresponding eight ELF identities. The
-signed implementation `bc4be3ff` completed the ten local no-value gates; see
-`docs/evidence/typed-conditions-bc4be3ff/README.md` for exact source/artifact
-identities, outcomes and the original descriptor-label erratum. Later reporting
-corrections are not another full executed candidate or deployment approval.
+The 4.1.0 source includes exact-transaction cooperative close (`MORPHMC!`),
+durable close signing/operation tracking, asset-bound CKB/UDT conditions and
+compact descriptor-7 custody evidence. `contracts.json` pins all eight ELF
+identities. The optimization implementation `991f7e3` completed the ten local
+no-value gates; see `docs/evidence/model-cost-991f7e3/README.md` for its original
+source/artifact identities. The 4.1.0 tag has its own source-bound build and
+qualification evidence attached to the GitHub release; historical receipts are
+not relabelled as tests of the versioned release. See `docs/releases/v4.1.0.md`.
 
 Bilateral custody and Factory custody use distinct authority objects on the same
 bounded asset, Vault-set, persistence, signing and recovery foundation:

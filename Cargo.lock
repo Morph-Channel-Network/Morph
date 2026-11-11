@@ -5102,7 +5102,7 @@ dependencies = [
 
 [[package]]
 name = "morph-cli"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "ckb-crypto",
@@ -5137,7 +5137,7 @@ dependencies = [
 
 [[package]]
 name = "morph-core"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "blake2b-rs",
  "ckb-jsonrpc-types",
@@ -5157,7 +5157,7 @@ dependencies = [
 
 [[package]]
 name = "morph-desktop"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "gpui-kit",
@@ -5182,7 +5182,7 @@ dependencies = [
 
 [[package]]
 name = "morph-events"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "blake2b-rs",
  "hex",
@@ -5218,7 +5218,7 @@ dependencies = [
 
 [[package]]
 name = "morph-fiber-adapter"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "axum",
  "hex",
@@ -5236,7 +5236,7 @@ dependencies = [
 
 [[package]]
 name = "morph-hub-api"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "morph-observability",
  "morph-packages",
@@ -5248,7 +5248,7 @@ dependencies = [
 
 [[package]]
 name = "morph-key-input"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "hex",
@@ -5259,7 +5259,7 @@ dependencies = [
 
 [[package]]
 name = "morph-observability"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "morph-packages",
  "rustix",
@@ -5270,7 +5270,7 @@ dependencies = [
 
 [[package]]
 name = "morph-packages"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "ckb-types",
@@ -5287,7 +5287,7 @@ dependencies = [
 
 [[package]]
 name = "morph-payment-gateway"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5319,7 +5319,7 @@ dependencies = [
 
 [[package]]
 name = "morph-runtime-store"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "aes-gcm",
  "blake2b-rs",
@@ -5346,7 +5346,7 @@ dependencies = [
 
 [[package]]
 name = "morph-sdk"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "getrandom 0.3.4",
@@ -5366,7 +5366,7 @@ dependencies = [
 
 [[package]]
 name = "morph-signer"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "ckb-types",
@@ -5413,7 +5413,7 @@ dependencies = [
 
 [[package]]
 name = "morph-wallet"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5436,7 +5436,7 @@ dependencies = [
 
 [[package]]
 name = "morph-xtask"
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

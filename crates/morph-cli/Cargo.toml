@@ -16,10 +16,10 @@ devnet = ["morph-packages/devnet", "dep:morph-fiber-adapter", "dep:tokio"]
 
 [dependencies]
 tokio = { workspace = true, optional = true }
-morph-fiber-adapter = { version = "4.0.0-alpha.1", path = "../morph-fiber-adapter", optional = true }
+morph-fiber-adapter = { version = "4.1.0", path = "../morph-fiber-adapter", optional = true }
 morph-events = { path = "../morph-events" }
-morph-observability = { version = "4.0.0-alpha.1", path = "../morph-observability" }
-morph-key-input = { version = "4.0.0-alpha.1", path = "../morph-key-input" }
+morph-observability = { version = "4.1.0", path = "../morph-observability" }
+morph-key-input = { version = "4.1.0", path = "../morph-key-input" }
 morph-runtime-store = { path = "../morph-runtime-store" }
 morph-signer = { path = "../morph-signer" }
 zeroize.workspace = true
@@ -32,9 +32,9 @@ clap.workspace = true
 getrandom.workspace = true
 hex.workspace = true
 k256.workspace = true
-morph-core = { version = "4.0.0-alpha.1", path = "../morph-core" }
-morph-packages = { version = "4.0.0-alpha.1", path = "../morph-packages" }
-morph-hub-api = { version = "4.0.0-alpha.1", path = "../morph-hub-api" }
+morph-core = { version = "4.1.0", path = "../morph-core" }
+morph-packages = { version = "4.1.0", path = "../morph-packages" }
+morph-hub-api = { version = "4.1.0", path = "../morph-hub-api" }
 morph-script-common = { version = "0.1.0", path = "../../contracts/morph-script-common" }
 reqwest.workspace = true
 serde.workspace = true
@@ -46,6 +46,6 @@ url = "2.5"
 [dev-dependencies]
 tempfile = "3"
 morph-payment-gateway = { path = "../morph-payment-gateway" }
-morph-packages = { version = "4.0.0-alpha.1", path = "../morph-packages", features = ["devnet"] }
+morph-packages = { version = "4.1.0", path = "../morph-packages", features = ["devnet"] }
 morph-sdk = { path = "../morph-sdk" }
 tokio.workspace = true

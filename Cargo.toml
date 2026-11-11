@@ -29,11 +29,11 @@ members = [
 exclude = ["vendor/*"]
 
 [workspace.package]
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["Arthur Zhang"]
-repository = "https://github.com/a19q3/Morph"
+repository = "https://github.com/Morph-Channel-Network/Morph"
 rust-version = "1.95.0"
 description = "CKB-native off-chain channels, factories, and operator tooling"
 readme = "README.md"

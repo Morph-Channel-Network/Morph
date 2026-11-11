@@ -1,0 +1,15 @@
+{
+  "schema": "morph.market_price_snapshot.v1",
+  "retrieved_at_utc": "2026-11-11T17:14:21.850366+00:00",
+  "retrieved_at_shanghai": "2026-11-12T01:14:21.850366+08:00",
+  "url": "https://api.coingecko.com/api/v3/simple/price?ids=nervos-network&vs_currencies=usd,cny&include_last_updated_at=true",
+  "response": {
+    "nervos-network": {
+      "usd": 0.00096216,
+      "cny": 0.00641942,
+      "last_updated_at": 1794417257
+    }
+  },
+  "provider_updated_at_utc": "2026-11-11T17:14:17+00:00",
+  "note": "One observation, not a daily close or guaranteed execution price. CNY is provider direct quote, not a separately assumed USD/CNY FX rate."
+}

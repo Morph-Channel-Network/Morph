@@ -10,9 +10,9 @@ description = "Shared public DTOs for Morph Hub native and headless clients"
 publish = false
 
 [dependencies]
-morph-observability = { version = "4.0.0-alpha.1", path = "../morph-observability" }
+morph-observability = { version = "4.1.0", path = "../morph-observability" }
 schemars.workspace = true
-morph-packages = { version = "4.0.0-alpha.1", path = "../morph-packages" }
+morph-packages = { version = "4.1.0", path = "../morph-packages" }
 serde.workspace = true
 
 serde_json.workspace = true

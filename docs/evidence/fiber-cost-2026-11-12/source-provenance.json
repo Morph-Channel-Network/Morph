@@ -1,0 +1,42 @@
+[
+  {
+    "name": "fiber_channel",
+    "repository": "nervosnetwork/fiber",
+    "commit": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+    "path": "crates/fiber-lib/src/fiber/channel.rs",
+    "sha256": "ddd43e21aff5f5a7a791613e0996751c362757cedd5064c31c6d25a968e42ca2",
+    "matches_pinned_commit": true
+  },
+  {
+    "name": "fiber_fee",
+    "repository": "nervosnetwork/fiber",
+    "commit": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+    "path": "crates/fiber-lib/src/fiber/fee.rs",
+    "sha256": "4940203add21f2fd4d90f4f3761abd17eaad016e13c0ccacccc4fe8e6a853005",
+    "matches_pinned_commit": true
+  },
+  {
+    "name": "fiber_config",
+    "repository": "nervosnetwork/fiber",
+    "commit": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+    "path": "crates/fiber-lib/src/fiber/config.rs",
+    "sha256": "c90bcd7a7e23282f7cddb283bb2d6e56e653a27a0c36d6df22fe68ce0e44101d",
+    "matches_pinned_commit": true
+  },
+  {
+    "name": "fiber_contracts",
+    "repository": "nervosnetwork/fiber",
+    "commit": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+    "path": "crates/fiber-lib/src/ckb/contracts.rs",
+    "sha256": "53bad1fd1693ca9d5cd714d464884c094ffea5b777dd63a3dfcdb8664ef7dbf5",
+    "matches_pinned_commit": true
+  },
+  {
+    "name": "fiber_watchtower",
+    "repository": "nervosnetwork/fiber",
+    "commit": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+    "path": "crates/fiber-lib/src/watchtower/actor.rs",
+    "sha256": "24a9576c400bc1e2eea6a6f5aab1e0f6147e8bacdd9d0e4514d1c6dd2005fb72",
+    "matches_pinned_commit": true
+  }
+]

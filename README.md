@@ -4,9 +4,10 @@ Morph Channel is a CKB-native production off-chain channel and factory
 implementation. Two participants, or a small factory of participants, move
 channel state off chain while CKB keeps the enforceable evidence on chain.
 
-Source version: **v4.0.0-alpha.1**. This controlled-devnet prerelease uses
+Source version: **v4.1.0**. This controlled-devnet release uses
 one current channel implementation and one Factory authority. Recovery and
-release evidence are tracked in the [migration ledger](docs/unified-protocol-migration.md).
+release evidence are tracked in the [4.1.0 release record](docs/releases/v4.1.0.md)
+and the [migration ledger](docs/unified-protocol-migration.md).
 Mainnet and real assets remain outside the release scope.
 
 The short version is:
@@ -18,8 +19,12 @@ The short version is:
 - factories can hold shared reserve rights and materialise child channels;
 - one signed state can bind up to eight Vaults, with separate conservation
   for CKB and each xUDT type;
-- a signed state can carry up to eight hash/time-locked CKB transfers, with a
-  cooperative consolidation path and a script-enforced Batch Cell fallback.
+- a signed state can carry up to eight asset-bound conditional Batches, each
+  with up to eight hash/time-locked CKB or UDT transfers, cooperative
+  consolidation and a script-enforced Batch Cell fallback;
+- exact-transaction cooperative close can retire the complete State/Vault set
+  without a dispute-window wait;
+- a native GPUI client provides a local CKB/UDT wallet and operator workflows.
 
 Production engineering is the release bar. Every release carries executable
 protocol checks, CKB-VM contract tests, deterministic contract artefacts under

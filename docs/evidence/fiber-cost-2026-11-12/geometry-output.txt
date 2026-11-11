@@ -1,0 +1,3 @@
+fiber ckb funding_occupied_ckb=61 commitment_occupied_ckb=98 commitment_bytes=456 shutdown_bytes=528
+fiber udt funding_occupied_ckb=142 commitment_occupied_ckb=179 commitment_bytes=594 shutdown_bytes=767
+morph root_state=464 child_state=496 ckb_vault=157 udt_vault=238 wallet_ckb=61 wallet_udt=142 factory_udt_vault=186

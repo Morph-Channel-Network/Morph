@@ -10,7 +10,7 @@ description = "Bounded service measurements and expiring readiness observations;
 [dependencies]
 serde.workspace = true
 schemars.workspace = true
-morph-packages = { version = "4.0.0-alpha.1", path = "../morph-packages" }
+morph-packages = { version = "4.1.0", path = "../morph-packages" }
 
 [dev-dependencies]
 serde_json.workspace = true
