@@ -562,3 +562,8 @@ With one engineering lane, prioritize #16, the #15 tail, #29 and initial #32 con
 - Dependency migration conditions: `Makefile:5`; release boundaries: `docs/mainnet-readiness.md`.
 
 This is an issue/evidence triage snapshot. Implementation changes, new test runs or subsequent issue edits can change the queue. Closure requires acceptance reconciliation for the declared scope, not the presence of a test name or a green unrelated workflow.
+
+
+## 2026-11-11 W1 completion checkpoint
+
+The signed code candidate `1003299952a1ef0d3fba1f3900b49e2104c6623e` passed all nine required `w1-local-no-value` gates with unchanged source. The current completion scope supersedes this document's historical W1 prerequisites: see [W1 acceptance](w1-acceptance.md), [completion report](w1-completion-2026-11-11.md) and [machine-checked evidence](evidence/w1-local-10032999/README.md). #28/#29/#31/#32/#35/#37/#43/#44/#51/#55 are complete for that scope and are being reconciled with this result. Forwarding/provider-loss, future clients/HSM, public-network and independent-review records are not silently counted as passed. The later evidence-only commit is distinct from the executed code identity. Release remains separate.

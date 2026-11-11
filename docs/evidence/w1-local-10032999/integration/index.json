@@ -1,0 +1,280 @@
+{
+  "bindings": {
+    "cargo-lock": "179b0b9c561f4074efd1e157e261275291cc7e067f038f328c35f922cdf77d02",
+    "deployment-manifest": "47060e4f7f5c79ad26a6051aaf22bf7eed4ae34dd75217147b20542e34bdf067",
+    "elf-morph-batch-lock": "6eeae2e11c017ec12034da9c00e33dd928f7339c75f135933d6d824157f7ee20",
+    "elf-morph-devnet-xudt": "6dfce05c6e5d355778f316de2d656b1399eb702b3d147e88ff8d32c50c9725b4",
+    "elf-morph-factory-type": "5863526907d4a939bb1d4bdbc0dfd4a6a0dbe64ca395e34abd231f60aa587f4c",
+    "elf-morph-factory-vault-lock": "1d31cb27b0681540098b7ad0ae92987965b2abcd6908c0f694cbfb4612feffea",
+    "elf-morph-sponsor-lock": "9ddaa4336839705277a4b7044a2bb04d3d0def29a91f5c8a8e47328e88269046",
+    "elf-morph-state-lock": "543522adf198697281aec7a748e4554a971f8d4d955a0c2101624ddbd93951ed",
+    "elf-morph-state-type": "b4d9df26d91df8292008052582f912913412c2f3d7f4c4aa2ca1232dad8f9788",
+    "elf-morph-vault-lock": "6cf397ed87e21a1be0a531e246fab391b24b1a4650182ce40b4db681496bfb28",
+    "envelope": "148b511a5e2e3103e36a9890d4f9f3deb18d48f6d0775817656838fff376100d",
+    "events": "0dc15fc55b6f11fc3fe8ede6f706c81ea04dbff9fc1acc50b479bea221b291d3",
+    "fiber-patch": "39af376d9455449743a7a13da07639ff920df2ae969be063934065d0b82eeda1",
+    "fiber-pin": "5499cbad404226c3159ddc345860ff4db5d5546123f012b0a6b0251b7f9e8843",
+    "gateway-api": "9393a270790815dec73c5c189cfbd671a97074b82760f0134065aaf929e2a3de",
+    "gateway-version": "ab39b77ab35652c6a26e9c14934ed8c47060b96c6a0ca8387b72fbe3a7d1afb8",
+    "hub-api": "12de8f377bc971815a44a041289d36e1fea9697764101ae309a2b86756d3aa16",
+    "hub-version": "13b425778ac994b77b36045bc1ccc0c2cc8ad6602c03a8a014d5294cb9e906cc",
+    "node": "de85611732b2347782f60171520dc5319b2437b5d0449a8ccbeddb939b61e252",
+    "runtime": "14e396b62f5f7aa4fbd7afd8f27cc18b1340fbd6635b065d51d353e5bf7a0b2b",
+    "runtime-sql": "7d03bc9badefe851ff135d917bc87f902ed802e83c531db3cfe2cce3a433e962",
+    "rust-toolchain": "e3a213e0d222e94d213cafbc20932eb3f76c643b4dd63756acf95192df2aa310",
+    "signer": "4a6b1c915753277c013b0571d3a591968c535162ad4c52924d4b5306da0f1479",
+    "w1-scope": "9a3751f889fa4ee361ea8f4b6d2c04d5dab6b33abbf5f719917742e07a3b7378"
+  },
+  "full_w1_qualified": true,
+  "gates": {
+    "ci": {
+      "command_sha256": "2870fe9d41a576f5e2a73d8952eaea58af3e440d5ef2f1304be28c3674caa8fc",
+      "execution_sha256": "03d77c43c755bbd0b34b8b8ef34144f362832da1b4708e952beea6622331e546",
+      "exit_code": 0,
+      "finished_at": 1794364685,
+      "replay": {
+        "test-results": {
+          "pointer": "/result_lines",
+          "projected": false,
+          "report": "native/ci-results.json",
+          "source_report_sha256": "0f46dcfa77a65e84a082e77073b4b531ebc69cb2c2d99dcc105aaaa30e877c25"
+        }
+      },
+      "report_sha256": [
+        "03d77c43c755bbd0b34b8b8ef34144f362832da1b4708e952beea6622331e546",
+        "0f46dcfa77a65e84a082e77073b4b531ebc69cb2c2d99dcc105aaaa30e877c25"
+      ],
+      "started_at": 1794364349,
+      "status": "pass"
+    },
+    "contracts-package": {
+      "command_sha256": "47f007c7e60c04d257a8d6ea73f25dcf7063439caa108e90615bd2b19940eab0",
+      "execution_sha256": "c62f922739df0a9b7b45a706e3b36e2e217fe41cf9c78df8fff7e5b056fd6944",
+      "exit_code": 0,
+      "finished_at": 1794367174,
+      "replay": {},
+      "report_sha256": [
+        "c62f922739df0a9b7b45a706e3b36e2e217fe41cf9c78df8fff7e5b056fd6944"
+      ],
+      "started_at": 1794367153,
+      "status": "pass"
+    },
+    "cooperative-close": {
+      "command_sha256": "4a191368e937b40cf6032286ed0699e930e3746eafac6de2eac9b6b2ef393b22",
+      "execution_sha256": "b7bb8bc73be8b9dc0389b6d64753416ba81b3794786d2ec3ac332d5c41264065",
+      "exit_code": 0,
+      "finished_at": 1794365376,
+      "replay": {
+        "roles": {
+          "pointer": "/signers/cooperative-close/roles",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "ea59b818dfe01fecb128fdfc1c623e7af96980140525f97b212b4a231ca7be5c"
+        }
+      },
+      "report_sha256": [
+        "b7bb8bc73be8b9dc0389b6d64753416ba81b3794786d2ec3ac332d5c41264065",
+        "ea59b818dfe01fecb128fdfc1c623e7af96980140525f97b212b4a231ca7be5c"
+      ],
+      "started_at": 1794365260,
+      "status": "pass"
+    },
+    "desktop-package": {
+      "command_sha256": "3a492dd9fc7014860bf0351e0b1bfde2125519bd8e8bbb624a7602ef3efa6b0e",
+      "execution_sha256": "b7e332ec0e1aeeebbd933cec371ad2bcc4166a0fdf20be48acb5ec9f00e06000",
+      "exit_code": 0,
+      "finished_at": 1794367830,
+      "replay": {},
+      "report_sha256": [
+        "b7e332ec0e1aeeebbd933cec371ad2bcc4166a0fdf20be48acb5ec9f00e06000"
+      ],
+      "started_at": 1794367175,
+      "status": "pass"
+    },
+    "future-clients": {
+      "command_sha256": "959d0a5d518d3123e28518c67e1d3b8bca6dc0be88f2ee7e219b3aee4b2e8867",
+      "execution_sha256": null,
+      "exit_code": null,
+      "finished_at": 1794364349,
+      "replay": {},
+      "report_sha256": [],
+      "started_at": 1794364349,
+      "status": "deferred"
+    },
+    "fuzz": {
+      "command_sha256": "14008d79ab2af02ba846634120c4979966c052c938359427020240913d92ca52",
+      "execution_sha256": "6aa2f4e573343009606e93a525fa0c6ed82d515eaf4c37a3e0ae0d440e86b27b",
+      "exit_code": 0,
+      "finished_at": 1794366360,
+      "replay": {
+        "campaigns": {
+          "pointer": "/fuzz",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "8b5d45939fb2d0da29ffacf046e6ab205e1f203fb2a62575a6ee218a234fde94"
+        }
+      },
+      "report_sha256": [
+        "6aa2f4e573343009606e93a525fa0c6ed82d515eaf4c37a3e0ae0d440e86b27b",
+        "8b5d45939fb2d0da29ffacf046e6ab205e1f203fb2a62575a6ee218a234fde94"
+      ],
+      "started_at": 1794365377,
+      "status": "pass"
+    },
+    "independent-review": {
+      "command_sha256": "2a98b4b5e89c473d8332a2428a3bad9a541e81b7ec344dccf680c05d69f90ae1",
+      "execution_sha256": null,
+      "exit_code": null,
+      "finished_at": 1794364349,
+      "replay": {},
+      "report_sha256": [],
+      "started_at": 1794364349,
+      "status": "deferred"
+    },
+    "live-routing": {
+      "command_sha256": "b14c6a7fc51009bd6d555ca018d95b1a551089b14c106c8660116b138396f2d5",
+      "execution_sha256": null,
+      "exit_code": null,
+      "finished_at": 1794364349,
+      "replay": {},
+      "report_sha256": [],
+      "started_at": 1794364349,
+      "status": "deferred"
+    },
+    "native": {
+      "command_sha256": "173b9afece65450b448d61de608d8d93ebd3302081aa9522e484f84534642397",
+      "execution_sha256": "01db886c2d113be5b2f56540ea0d5378a3b0a91ad02016a52800be94f05434ef",
+      "exit_code": 0,
+      "finished_at": 1794365144,
+      "replay": {
+        "assertions": {
+          "pointer": "/scenarios",
+          "projected": false,
+          "report": "native/acceptance.json",
+          "source_report_sha256": "dd5dd94488c9ec1bd7fbfa29deebd5eec7a1bc6d6e24e454285032c9dedff80f"
+        },
+        "transactions": {
+          "pointer": "/transactions",
+          "projected": false,
+          "report": "native/transactions.json",
+          "source_report_sha256": "b1ccc3fe0975c6bcddc85e2b13f85d002b4f3c48f7fc32b8400c7dd2b8a76b4b"
+        }
+      },
+      "report_sha256": [
+        "01db886c2d113be5b2f56540ea0d5378a3b0a91ad02016a52800be94f05434ef",
+        "b1ccc3fe0975c6bcddc85e2b13f85d002b4f3c48f7fc32b8400c7dd2b8a76b4b",
+        "dd5dd94488c9ec1bd7fbfa29deebd5eec7a1bc6d6e24e454285032c9dedff80f"
+      ],
+      "started_at": 1794364686,
+      "status": "pass"
+    },
+    "public-network": {
+      "command_sha256": "eae1a06e4497f28a3b6a24ddefbb37dc7f2f58566f776f8a4d20a97b7d306db0",
+      "execution_sha256": null,
+      "exit_code": null,
+      "finished_at": 1794364349,
+      "replay": {},
+      "report_sha256": [],
+      "started_at": 1794364349,
+      "status": "deferred"
+    },
+    "qualification": {
+      "command_sha256": "9b16f0909d573ad292c2d236fc3851ac33c6252113511a9b7d1ff7201ddda91f",
+      "execution_sha256": "23d24ebd90c0af0201aa0a063e61d62488d88c51d6bc00876fe1cb6e7549cceb",
+      "exit_code": 0,
+      "finished_at": 1794367834,
+      "replay": {
+        "qualified-artifacts": {
+          "pointer": "/counts",
+          "projected": true,
+          "report": "integration/artifact-results.json",
+          "source_report_sha256": "c2f94613cb71b0cec63c654121b5308c97187d9c03143faf20163e9b81a1994a"
+        }
+      },
+      "report_sha256": [
+        "23d24ebd90c0af0201aa0a063e61d62488d88c51d6bc00876fe1cb6e7549cceb",
+        "c2f94613cb71b0cec63c654121b5308c97187d9c03143faf20163e9b81a1994a"
+      ],
+      "started_at": 1794367832,
+      "status": "pass"
+    },
+    "shadow-service": {
+      "command_sha256": "1d24dd5498b38d95f6d1f95f5edd6c343fb31190e4a70252c8e9287adf1fad10",
+      "execution_sha256": "f3a2d18af69362d8eeeab55312c894d2f2ff7378f1309d239dc6cfee783dd2e6",
+      "exit_code": 0,
+      "finished_at": 1794367152,
+      "replay": {
+        "shadow": {
+          "pointer": "/shadow",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "8b5d45939fb2d0da29ffacf046e6ab205e1f203fb2a62575a6ee218a234fde94"
+        }
+      },
+      "report_sha256": [
+        "8b5d45939fb2d0da29ffacf046e6ab205e1f203fb2a62575a6ee218a234fde94",
+        "f3a2d18af69362d8eeeab55312c894d2f2ff7378f1309d239dc6cfee783dd2e6"
+      ],
+      "started_at": 1794366361,
+      "status": "pass"
+    },
+    "signer-lifecycle": {
+      "command_sha256": "5f6bdef40b729da92455a72f5e6d855c1a137b6d6b0e674af05a15ecc6533e80",
+      "execution_sha256": "277f510451297a84e0970e76ce03970a448bbf1c4e8c513102ba8218d20a65ce",
+      "exit_code": 0,
+      "finished_at": 1794365259,
+      "replay": {
+        "roles": {
+          "pointer": "/signers/signer-lifecycle/roles",
+          "projected": true,
+          "report": "integration/runtime-results.json",
+          "source_report_sha256": "2f10225a6d7d6e3526c75a090bb3e4402c8e52db76aea7e0f1ace78f8558368d"
+        }
+      },
+      "report_sha256": [
+        "277f510451297a84e0970e76ce03970a448bbf1c4e8c513102ba8218d20a65ce",
+        "2f10225a6d7d6e3526c75a090bb3e4402c8e52db76aea7e0f1ace78f8558368d"
+      ],
+      "started_at": 1794365145,
+      "status": "pass"
+    }
+  },
+  "profile": "w1-local-no-value",
+  "schema": "morph.public_integration_index.v1",
+  "schemas": {
+    "events": "morph.event.v1",
+    "gateway-version": "morph.gateway-api.v1",
+    "hub-version": "morph.hub-api.v1",
+    "runtime": "morph.runtime-store.v1",
+    "signer": "morph.participant_signer.v1"
+  },
+  "scope": "controlled-devnet-no-real-assets",
+  "source_commit": "1003299952a1ef0d3fba1f3900b49e2104c6623e",
+  "source_tree_sha256": "10439fc8230f5d601c13c5175cd47af42855d19ea9b9004be1bd0423d115d474",
+  "validation": {
+    "artifact_count": 16,
+    "candidate_sha256": "480fada0119cfcfe21b560157190a63cc389f08c9cc86ff784f46e017e80763a",
+    "deployment_authorized": false,
+    "gate_status": {
+      "ci": "pass",
+      "contracts-package": "pass",
+      "cooperative-close": "pass",
+      "desktop-package": "pass",
+      "future-clients": "deferred",
+      "fuzz": "pass",
+      "independent-review": "deferred",
+      "live-routing": "deferred",
+      "native": "pass",
+      "public-network": "deferred",
+      "qualification": "pass",
+      "shadow-service": "pass",
+      "signer-lifecycle": "pass"
+    },
+    "independent_attestation": false,
+    "manifest_sha256": "944e74731b2ab756f1d526968b318142d4c28e26cc8633b3de172f2df8b44273",
+    "plan_sha256": "e3be382af0e7b02686b078f1ae337b447616a624ba77878c155615350b299462",
+    "qualified_declared_plan": true,
+    "schema": "morph.integration_validation.v1",
+    "scope": "controlled-devnet-no-real-assets"
+  }
+}

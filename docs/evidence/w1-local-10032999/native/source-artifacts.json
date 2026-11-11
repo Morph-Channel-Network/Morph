@@ -1,0 +1,122 @@
+{
+  "schema": "morph.public_evidence_sources.v1",
+  "source_commit": "1003299952a1ef0d3fba1f3900b49e2104c6623e",
+  "artifacts": [
+    {
+      "path": "evidence.json",
+      "size_bytes": 191061,
+      "sha256": "6a34d2c7140b0b075749b5ef155d5f3459470b999b924b3b1eb46d62fa2fc3ba"
+    },
+    {
+      "path": "scenarios/smoke/acceptance.json",
+      "size_bytes": 26866,
+      "sha256": "5a054e4b9f88ff789b3fb23cf74c687d7bcd0afc0d7ccb2158d0c5353f8bfe87"
+    },
+    {
+      "path": "scenarios/smoke/contracts.json",
+      "size_bytes": 2242,
+      "sha256": "47060e4f7f5c79ad26a6051aaf22bf7eed4ae34dd75217147b20542e34bdf067"
+    },
+    {
+      "path": "scenarios/smoke/eight-asset-acceptance.json",
+      "size_bytes": 34553,
+      "sha256": "a4a4292d073cb922e8a54c7cf746a3f834008636bc5e9da07285d3b1a9750ff3"
+    },
+    {
+      "path": "scenarios/smoke/factory-acceptance.json",
+      "size_bytes": 161462,
+      "sha256": "5f1744c1f5e859c2c0f54342c512d52aeef36e3b42a7f2c24935d03739776236"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/child-reduced-latest-0.json",
+      "size_bytes": 819,
+      "sha256": "55454cbf3390f7246edc574ecea06483fae038ce1866937a4114f0b484dec17e"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/child-reduced-latest-1.json",
+      "size_bytes": 819,
+      "sha256": "55454cbf3390f7246edc574ecea06483fae038ce1866937a4114f0b484dec17e"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/child-retained-latest-0.json",
+      "size_bytes": 819,
+      "sha256": "047926a58d6c47e23f4a77391be2f254dd84b6e5ae6afee9337badc6e4598d47"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/child-retained-latest-1.json",
+      "size_bytes": 819,
+      "sha256": "047926a58d6c47e23f4a77391be2f254dd84b6e5ae6afee9337badc6e4598d47"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/child-terminal-latest-0.json",
+      "size_bytes": 1872,
+      "sha256": "a324a497fa8452ad6999283441ebff19493cfaef7cd5e0bcd1a0724e4dd3d941"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/child-terminal-latest-1.json",
+      "size_bytes": 1872,
+      "sha256": "a324a497fa8452ad6999283441ebff19493cfaef7cd5e0bcd1a0724e4dd3d941"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/factory-child-reduced.json",
+      "size_bytes": 6269,
+      "sha256": "1b6976e5b6058590cf0dc0128943ea816150686f7b6034b634fd02330be273ed"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/factory-child-retained.json",
+      "size_bytes": 6464,
+      "sha256": "ed890e2c0fbea5dc5a177c00820551a360351041b173428828055a0f372c491d"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/factory-child-terminal.json",
+      "size_bytes": 2366,
+      "sha256": "7efa9095278938ae8c93b7eb646678b3e08649f139a377f0d53ca3024ff7f170"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/factory-deposit.json",
+      "size_bytes": 6269,
+      "sha256": "d5c2903db67d7677ed61140e21c32de1edcaaf47466a1e6ee9254d842477815f"
+    },
+    {
+      "path": "scenarios/smoke/ledger-evidence/factory-escape.json",
+      "size_bytes": 6269,
+      "sha256": "dfa889297a3b771c63f4d3e904db522c5de186fd33ef32ea9bc0be1e4b48b308"
+    },
+    {
+      "path": "scenarios/smoke/publication-profile.json",
+      "size_bytes": 597,
+      "sha256": "32f12c95cf12900ef8de6dd6fe0c54ab0705f8837906faeff97d39d57976a670"
+    },
+    {
+      "path": "scenarios/smoke/shared-acceptance.json",
+      "size_bytes": 21808,
+      "sha256": "988f9bdb3c634d6ba46182e03cfedb185d6397295bbf763537c0b34832604094"
+    },
+    {
+      "path": "scenarios/smoke/summary.json",
+      "size_bytes": 106538,
+      "sha256": "d5224d22630b9993519c76742853589a54dacb067c63fd78763857fb77046e87"
+    },
+    {
+      "path": "scenarios/smoke/watch-service-acceptance.json",
+      "size_bytes": 58068,
+      "sha256": "61fa0bf39ad939a0b27683a10382e23b8afda1397e50556d8a5e6c5c0ae4c078"
+    },
+    {
+      "path": "scenarios/summary-check.json",
+      "size_bytes": 11700,
+      "sha256": "3de0965109105fea6d91072c6702f5e7b962d189928608aa9f17b54d783e6bc5"
+    },
+    {
+      "path": "scenarios/summary.json",
+      "size_bytes": 177584,
+      "sha256": "2fee3072a30d9d7af68bd29ed85428bf438149ab3a20ae8a8f191160caf2ef7d"
+    },
+    {
+      "path": "source-provenance.json",
+      "size_bytes": 585,
+      "sha256": "b86e75ad5202ad72f94cf5cfad9e5539a4d9a9e5331965a3e932db7ab0f5adcc"
+    }
+  ],
+  "stateful_manifest_sha256": "f4d04265e86066f0b2890f47b0171e0c7b1aa70a18c499f1955fdb5a0691031c"
+}
