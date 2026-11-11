@@ -15,6 +15,63 @@ fn current_factory_release_accepts_one_member_and_separate_asset_lanes() {
     assert_eq!(proof.payout_count(), 2);
     assert_eq!(proof.touched_participant(), [1; 32]);
 }
+
+#[test]
+fn reduced_dictionary_references_and_shared_right_identity_are_canonical() {
+    use morph_script_common::script_table::{self, ScriptTable};
+    let (plan, key) = fixture_with_unlisted_change(false);
+    let raw = plan.encode_witness(&sign(&plan, &key)).unwrap();
+    let proof = FactoryReducedReleaseWitness::parse(&raw).unwrap();
+    let start = proof.retained().as_bytes().as_ptr() as usize - raw.as_ptr() as usize
+        + proof.retained().as_bytes().len();
+    let len = u32::from_le_bytes(raw[28..32].try_into().unwrap()) as usize;
+    let table = ScriptTable::parse(&raw[start..start + len]).unwrap();
+    let payout_offsets: Vec<_> = (0..proof.payout_count())
+        .map(|i| proof.payout(i).unwrap().as_bytes().as_ptr() as usize - raw.as_ptr() as usize)
+        .collect();
+    for mutation in 0..4 {
+        let mut bad = raw.clone();
+        match mutation {
+            0 => bad[34..36].copy_from_slice(&(table.count() as u16).to_le_bytes()),
+            1 => bad[payout_offsets[0] + 65..payout_offsets[0] + 67]
+                .copy_from_slice(&(table.count() as u16).to_le_bytes()),
+            2 => bad[start + len] = table.count() as u8,
+            _ => bad[8..10].copy_from_slice(&1u16.to_le_bytes()),
+        }
+        assert!(FactoryReducedReleaseWitness::parse(&bad).is_err());
+    }
+    let extra = script(&[255; 40], 250);
+    let mut entries: Vec<_> = (0..table.count())
+        .map(|i| table.script(i).unwrap())
+        .collect();
+    entries.push(&extra);
+    let expanded = script_table::encode(&entries).unwrap();
+    let expanded_view = ScriptTable::parse(&expanded).unwrap();
+    let remap = |i: usize| expanded_view.index_of(table.script(i).unwrap()).unwrap();
+    let mut bad = raw.clone();
+    let factory = u16::from_le_bytes(raw[34..36].try_into().unwrap()) as usize;
+    bad[34..36].copy_from_slice(&(remap(factory) as u16).to_le_bytes());
+    let count = u16::from_le_bytes(raw[32..34].try_into().unwrap()) as usize;
+    for i in 0..count {
+        bad[start + len + i] = remap(raw[start + len + i] as usize) as u8;
+    }
+    for offset in payout_offsets {
+        let i = u16::from_le_bytes(raw[offset + 65..offset + 67].try_into().unwrap()) as usize;
+        bad[offset + 65..offset + 67].copy_from_slice(&(remap(i) as u16).to_le_bytes());
+    }
+    bad[28..32].copy_from_slice(&(expanded.len() as u32).to_le_bytes());
+    bad.splice(start..start + len, expanded);
+    assert!(
+        FactoryReducedReleaseWitness::parse(&bad).is_err(),
+        "no unused dictionary entries"
+    );
+    let mut changed = plan;
+    changed.rights[0].after.right.id.participant = [9; 32];
+    assert!(
+        changed.encode_unsigned().is_err(),
+        "never discard a different after identity"
+    );
+}
 #[test]
 fn current_factory_release_rejects_unlisted_right_mutation_even_with_recomputed_roots() {
     let (plan, _) = fixture_with_unlisted_change(true);

@@ -74,8 +74,8 @@ fn deploy_contract(
 ) -> ckb_testtool::ckb_types::packed::Script {
     let out_point = context.deploy_cell(contract_bin(name));
     context
-        .build_script(&out_point, args.into())
-        .expect("contract script")
+        .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.into())
+        .expect("immutable contract script")
 }
 
 fn put_u64(raw: &mut [u8], offset: usize, value: u64) {

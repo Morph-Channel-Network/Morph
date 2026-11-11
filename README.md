@@ -83,7 +83,7 @@ Implemented locally:
   identity remains through splices;
 - a fail-closed operator value-limit policy with a runbook
   (`docs/runbooks/value-limits.md`), checked by `morph-cli value-limit-check`;
-- asset-bound CKB/UDT batches (explicit descriptor-6 capability): up to eight
+- asset-bound CKB/UDT batches (explicit descriptor-7 capability): up to eight
   independent Batches with one to eight transfers each using SHA-256 or CKB Blake2b preimages, canonical absolute-block
   refunds, whole-Vault Batch Cell materialisation, and exact two-party payout;
 - a native host lifecycle for arming a batch, recording preimages,

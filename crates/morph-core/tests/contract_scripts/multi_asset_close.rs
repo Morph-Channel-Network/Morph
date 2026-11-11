@@ -143,6 +143,8 @@ fn cooperative_close_current_complete_custody_without_delay() {
         .context
         .verify_tx(&tx, MAX_CYCLES)
         .expect("maximum-script complete close");
+    assert!(cycles < 7_200_000);
+    assert!(tx.data().as_slice().len() <= 16_400);
     eprintln!(
         "cooperative-close maximum-scripts bytes={} cycles={cycles}",
         tx.data().as_slice().len()
@@ -213,8 +215,54 @@ fn cooperative_close_rejects_roles_body_and_frame_malleation() {
 
 #[test]
 #[ignore = "requires built current ELFs"]
+fn close_delegation_cannot_use_a_vault_group_witness_as_authority() {
+    let mut f = build(1, false);
+    let source = point(&f.activation, 0);
+    let tx = terminal_from(&mut f, source);
+    let valid = tx.witnesses().get(0).unwrap();
+    let args = WitnessArgs::from_slice(&valid.raw_data()).unwrap();
+    let mut frame = args.output_type().to_opt().unwrap().raw_data().to_vec();
+    let parsed = close_wire::MultiAssetCloseWitness::parse(&frame).unwrap();
+    let signature_offset = 48 + wire::MULTI_ASSET_STATE_HEADER_LEN + 4 + 33;
+    assert!(parsed.evidence().manifest().count() == 1);
+    frame[signature_offset..signature_offset + 64]
+        .copy_from_slice(&signature(&signing_key(1), &[201; 32]));
+    let invalid = args
+        .as_builder()
+        .output_type(Some(Bytes::from(frame)).pack())
+        .build()
+        .as_bytes()
+        .pack();
+    f.context
+        .verify_tx(
+            &tx.clone()
+                .as_advanced_builder()
+                .set_witnesses(vec![valid.clone(), invalid.clone()])
+                .build(),
+            MAX_CYCLES,
+        )
+        .unwrap();
+    let bad = tx
+        .as_advanced_builder()
+        .set_witnesses(vec![invalid, valid])
+        .build();
+    let err = f.context.verify_tx(&bad, MAX_CYCLES).unwrap_err();
+    let detail = err
+        .root_cause()
+        .downcast_ref::<ckb_testtool::ckb_script::TransactionScriptError>()
+        .unwrap();
+    assert_eq!(detail.originating_script().to_string(), "Inputs[0].Type");
+    assert!(matches!(
+        detail.script_error(),
+        ckb_testtool::ckb_script::ScriptError::ValidationFailure(_, 24)
+    ));
+}
+
+#[test]
+#[ignore = "requires built current ELFs"]
 fn cooperative_close_fresh_signatures_cannot_waive_custody_or_payouts() {
-    let mut fixture = build(2, false);
+    // Morph must reject even when the asset Type supplies no conservation check.
+    let mut fixture = build_initial_profile_with_types(2, false, false, false, false, true);
     let source = point(&fixture.activation, 0);
     let tx = terminal_from(&mut fixture, source);
     for mutation in 0..7 {
@@ -267,7 +315,7 @@ fn cooperative_close_fresh_signatures_cannot_waive_custody_or_payouts() {
             .set_outputs_data(data)
             .build();
         let bad = authorize_close(&fixture.package, bad);
-        rejects(&fixture.context, &bad, &[71, 50, 66, 65, 63, 64, 32]);
+        rejects(&fixture.context, &bad, &[71, 50, 66, 65, 63, 64]);
     }
 }
 

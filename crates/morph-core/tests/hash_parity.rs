@@ -150,7 +150,8 @@ fn compact_right_proofs_match_the_current_script_locality_primitive() {
         let b = factory_right_sparse_proof_compact(&before, &before[index].id).unwrap();
         let a = factory_right_sparse_proof_compact(&after, &after[index].id).unwrap();
         let mut raw = encoded(&b.right);
-        raw.extend_from_slice(&encoded(&a.right));
+        assert_eq!(b.right.id, a.right.id);
+        raw.extend_from_slice(&a.right.quantity.to_le_bytes());
         for proof in [&b, &a] {
             raw.extend_from_slice(&(proof.siblings.len() as u16).to_le_bytes());
             for sibling in &proof.siblings {

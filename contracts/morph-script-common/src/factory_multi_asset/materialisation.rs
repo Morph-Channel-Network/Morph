@@ -7,7 +7,7 @@ use crate::{
     BilateralSignatureWitness, FactorySignatureWitness, blake2b256, read_u16, read_u32, read_u64,
 };
 
-pub const FACTORY_MATERIALISATION_PREFIX_LEN: usize = 204;
+pub const FACTORY_MATERIALISATION_PREFIX_LEN: usize = 208;
 pub const FACTORY_CHILD_PREFIX_LEN: usize = 334;
 pub const FACTORY_MATERIALISATION_MAX_INTENT_LEN: usize = FACTORY_MATERIALISATION_PREFIX_LEN
     + 2 * (4 + 8 * 97)
@@ -89,9 +89,9 @@ pub struct FactoryMaterialisationIntent<'a> {
 }
 impl<'a> FactoryMaterialisationIntent<'a> {
     pub fn parse(raw: &'a [u8]) -> Result<Self> {
-        if raw.len() < 204
+        if raw.len() < FACTORY_MATERIALISATION_PREFIX_LEN
             || raw.len() > FACTORY_MATERIALISATION_MAX_INTENT_LEN
-            || read_u16(raw, 0) != 1
+            || read_u16(raw, 0) != 2
             || !(1..=4).contains(&read_u16(raw, 2))
             || read_u16(raw, 202) != 0
         {
@@ -100,18 +100,13 @@ impl<'a> FactoryMaterialisationIntent<'a> {
         let count = read_u16(raw, 2) as usize;
         let source_len = read_u32(raw, 168) as usize;
         let retained_len = read_u32(raw, 172) as usize;
-        let refund_len = read_u32(raw, 192) as usize;
-        let factory_len = read_u32(raw, 196) as usize;
+        let refund_index = read_u32(raw, 192);
+        let factory_index = read_u32(raw, 196) as usize;
         let type_count = read_u16(raw, 200) as usize;
-        if source_len > 4 + 8 * 97
-            || retained_len > 4 + 8 * 97
-            || refund_len > 512
-            || factory_len != 117
-            || type_count > 8
-        {
+        if source_len > 780 || retained_len > 780 || type_count > 8 {
             return mismatch();
         }
-        let mut offset = 204;
+        let mut offset = FACTORY_MATERIALISATION_PREFIX_LEN;
         let source = MultiAssetVaultManifest::parse(take(raw, &mut offset, source_len)?)?;
         let source_points = take(raw, &mut offset, source.count() * 36)?;
         asset::multi_asset_outpoint_set_commitment(
@@ -128,18 +123,29 @@ impl<'a> FactoryMaterialisationIntent<'a> {
                 retained_len,
             )?)?)
         };
-        let refund = take(raw, &mut offset, refund_len)?;
-        let factory_lock = take(raw, &mut offset, factory_len)?;
-        asset::multi_asset_script_occupied_bytes(factory_lock)?;
+        let table = crate::script_table::ScriptTable::parse(take(
+            raw,
+            &mut offset,
+            read_u32(raw, 204) as usize,
+        )?)?;
+        let factory_lock = table.script(factory_index)?;
+        if factory_lock.len() != 117 {
+            return mismatch();
+        }
+        let mut used = 1u64 << factory_index;
+        let refund = if refund_index == u32::MAX {
+            &raw[..0]
+        } else {
+            let value = table.script(refund_index as usize)?;
+            used |= 1u64 << refund_index;
+            value
+        };
         let mut types = [None; 8];
         let mut previous = None;
         for slot in types.iter_mut().take(type_count) {
-            let len = read_u32(take(raw, &mut offset, 4)?, 0) as usize;
-            if len > 512 {
-                return mismatch();
-            }
-            let script = take(raw, &mut offset, len)?;
-            asset::multi_asset_script_occupied_bytes(script)?;
+            let index = take(raw, &mut offset, 1)?[0] as usize;
+            let script = table.script(index)?;
+            used |= 1u64 << index;
             let hash = blake2b256(&[script]);
             if previous.is_some_and(|value| value >= hash) {
                 return mismatch();
@@ -149,14 +155,16 @@ impl<'a> FactoryMaterialisationIntent<'a> {
         }
         let mut children = [None; 4];
         for slot in children.iter_mut().take(count) {
-            let prefix = take(raw, &mut offset, 334)?;
+            let prefix = take(raw, &mut offset, FACTORY_CHILD_PREFIX_LEN)?;
             let len = read_u32(prefix, 330) as usize;
             if len > asset::MULTI_ASSET_MAX_WITNESS_LEN {
                 return mismatch();
             }
             let header = MultiAssetStateHeader::parse(&prefix[12..330])?;
-            let evidence = MultiAssetWitness::parse(take(raw, &mut offset, len)?)?;
+            let evidence =
+                MultiAssetWitness::parse_with_table(take(raw, &mut offset, len)?, Some(&table))?;
             evidence.validate_header(&header)?;
+            used |= evidence.scripts().dictionary_usage();
             *slot = Some(FactoryMaterialisationChild {
                 state_output_index: read_u32(prefix, 0) as usize,
                 carrier_capacity: read_u64(prefix, 4),
@@ -169,7 +177,7 @@ impl<'a> FactoryMaterialisationIntent<'a> {
                 ],
             });
         }
-        if offset != raw.len() {
+        if offset != raw.len() || used != table.complete_usage() {
             return mismatch();
         }
         let intent = Self {
@@ -220,6 +228,18 @@ impl<'a> FactoryMaterialisationIntent<'a> {
     }
     pub fn refund_script(&self) -> &'a [u8] {
         self.refund
+    }
+    pub fn type_script(&self, asset: asset::MultiAssetId) -> Result<Option<&'a [u8]>> {
+        if asset.kind == 0 {
+            return Ok(None);
+        }
+        self.types
+            .iter()
+            .flatten()
+            .copied()
+            .find(|script| blake2b256(&[script]) == asset.type_hash)
+            .map(Some)
+            .ok_or(ScriptError::FactoryMultiAssetPartitionMismatch)
     }
     pub fn factory_lock_script(&self) -> &'a [u8] {
         self.factory_lock
@@ -441,7 +461,7 @@ impl<'a> FactoryMaterialisationWitness<'a> {
         if raw.len() < 24
             || raw.len() > FACTORY_MATERIALISATION_MAX_WITNESS_LEN
             || &raw[..8] != FACTORY_MATERIALISATION_MAGIC
-            || read_u16(raw, 8) != 1
+            || read_u16(raw, 8) != 2
             || read_u16(raw, 10) != 0
             || read_u16(raw, 22) != 0
         {
@@ -522,8 +542,9 @@ impl<'a> FactoryMaterialisationView<'a> {
     /// Read-only bounded view; authorization remains the authentic Factory
     /// Type's responsibility, exactly as for the outer materialisation frame.
     pub fn from_intent_bytes(intent: &'a [u8]) -> Result<Self> {
-        if !(204..=FACTORY_MATERIALISATION_MAX_INTENT_LEN).contains(&intent.len())
-            || read_u16(intent, 0) != 1
+        if !(FACTORY_MATERIALISATION_PREFIX_LEN..=FACTORY_MATERIALISATION_MAX_INTENT_LEN)
+            .contains(&intent.len())
+            || read_u16(intent, 0) != 2
             || !(1..=4).contains(&read_u16(intent, 2))
             || read_u16(intent, 202) != 0
         {
@@ -548,7 +569,7 @@ impl<'a> FactoryMaterialisationView<'a> {
         if raw.len() < 24
             || raw.len() > FACTORY_MATERIALISATION_MAX_WITNESS_LEN
             || &raw[..8] != FACTORY_MATERIALISATION_MAGIC
-            || read_u16(raw, 8) != 1
+            || read_u16(raw, 8) != 2
             || read_u16(raw, 10) != 0
             || read_u16(raw, 22) != 0
         {
@@ -558,14 +579,15 @@ impl<'a> FactoryMaterialisationView<'a> {
         let siglen = read_u32(raw, 16) as usize;
         let count = read_u16(raw, 20) as usize;
         if !(1..=4).contains(&count)
-            || !(204..=FACTORY_MATERIALISATION_MAX_INTENT_LEN).contains(&len)
+            || !(FACTORY_MATERIALISATION_PREFIX_LEN..=FACTORY_MATERIALISATION_MAX_INTENT_LEN)
+                .contains(&len)
             || siglen > 2068
             || 24 + len + siglen + count * 66 != raw.len()
         {
             return mismatch();
         }
         let intent = &raw[24..24 + len];
-        if read_u16(intent, 0) != 1
+        if read_u16(intent, 0) != 2
             || read_u16(intent, 2) as usize != count
             || read_u16(intent, 202) != 0
         {
@@ -580,21 +602,20 @@ impl<'a> FactoryMaterialisationView<'a> {
     pub fn child_by_anchor(&self, wanted: &[u8]) -> Result<FactoryMaterialisationChild<'a>> {
         let source = self.source_context()?;
         let retained = read_u32(self.intent, 172) as usize;
-        let refund = read_u32(self.intent, 192) as usize;
-        let factory = read_u32(self.intent, 196) as usize;
         let type_count = read_u16(self.intent, 200) as usize;
-        if retained > 780 || refund > 512 || factory != 117 || type_count > 8 {
+        if retained > 780 || type_count > 8 {
             return mismatch();
         }
-        let mut offset = 204 + source.source.as_bytes().len() + source.points.len();
-        take(self.intent, &mut offset, retained + refund + factory)?;
-        for _ in 0..type_count {
-            let len = read_u32(take(self.intent, &mut offset, 4)?, 0) as usize;
-            if !(53..=512).contains(&len) {
-                return mismatch();
-            }
-            take(self.intent, &mut offset, len)?;
-        }
+        let mut offset = FACTORY_MATERIALISATION_PREFIX_LEN
+            + source.source.as_bytes().len()
+            + source.points.len();
+        take(self.intent, &mut offset, retained)?;
+        let table = crate::script_table::ScriptTable::parse(take(
+            self.intent,
+            &mut offset,
+            read_u32(self.intent, 204) as usize,
+        )?)?;
+        take(self.intent, &mut offset, type_count)?;
         let mut result = None;
         for _ in 0..self.count {
             let prefix = take(self.intent, &mut offset, 334)?;
@@ -608,7 +629,7 @@ impl<'a> FactoryMaterialisationView<'a> {
                     return mismatch();
                 }
                 let header = MultiAssetStateHeader::parse(&prefix[12..330])?;
-                let evidence = MultiAssetWitness::parse(evidence)?;
+                let evidence = MultiAssetWitness::parse_with_table(evidence, Some(&table))?;
                 evidence.validate_header(&header)?;
                 result = Some(FactoryMaterialisationChild {
                     state_output_index: read_u32(prefix, 0) as usize,
@@ -640,9 +661,9 @@ pub struct FactoryMaterialisationSource<'a> {
 }
 impl<'a> FactoryMaterialisationSource<'a> {
     fn parse(raw: &'a [u8]) -> Result<Self> {
-        if raw.len() < 204
+        if raw.len() < FACTORY_MATERIALISATION_PREFIX_LEN
             || raw.len() > FACTORY_MATERIALISATION_MAX_INTENT_LEN
-            || read_u16(raw, 0) != 1
+            || read_u16(raw, 0) != 2
             || read_u16(raw, 202) != 0
         {
             return mismatch();
@@ -651,7 +672,7 @@ impl<'a> FactoryMaterialisationSource<'a> {
         if len > 780 {
             return mismatch();
         }
-        let mut offset = 204;
+        let mut offset = FACTORY_MATERIALISATION_PREFIX_LEN;
         let source = MultiAssetVaultManifest::parse(take(raw, &mut offset, len)?)?;
         let points = take(raw, &mut offset, source.count() * 36)?;
         Ok(Self {

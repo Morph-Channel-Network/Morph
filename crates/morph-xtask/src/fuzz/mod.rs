@@ -95,6 +95,36 @@ fn mutate(seed: &[u8], state: &mut u64, case: u64) -> Vec<u8> {
 fn hash(bytes: &[u8]) -> String {
     hex::encode(morph_core::blake2b256(bytes))
 }
+fn save_attempt(a: &Args, name: &str, phase: &str, case: u64, bytes: &[u8]) -> Result<()> {
+    fs::write(a.output.join("current.bin"), bytes)?;
+    fs::write(
+        a.output.join("current.json"),
+        serde_json::to_vec(&json!({
+            "phase":phase,"case":case,"seed":a.seed,"target":name,"input_hash":hash(bytes)
+        }))?,
+    )?;
+    Ok(())
+}
+fn failed_worker_result(
+    dir: &std::path::Path,
+    name: &str,
+    timed_out: bool,
+    code: Option<i32>,
+) -> serde_json::Value {
+    let metadata = fs::read(dir.join("current.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_slice::<serde_json::Value>(&raw).ok());
+    // A kill between the two writes must not attribute new bytes to old metadata.
+    let input_available = metadata.as_ref().is_some_and(|meta| {
+        meta["target"] == name
+            && fs::read(dir.join("current.bin"))
+                .ok()
+                .is_some_and(|raw| raw.len() <= MAX_INPUT && meta["input_hash"] == hash(&raw))
+    });
+    json!({"status":"fail","target":name,"timeout":timed_out,"exit":code,
+        "phase":metadata.as_ref().and_then(|m|m["phase"].as_str()).unwrap_or("interrupted_metadata"),
+        "input_available":input_available,"reproducer":input_available.then_some("current.bin"),"metadata":"current.json"})
+}
 fn worker(a: &Args, name: &str) -> Result<()> {
     limits(a.seconds)?;
     if let Some(path) = &a.replay {
@@ -110,6 +140,7 @@ fn worker(a: &Args, name: &str) -> Result<()> {
     ensure!(!seeds.is_empty(), "empty target corpus");
     let mut corpus = vec![];
     for (i, seed) in seeds.iter().enumerate() {
+        save_attempt(a, name, "seed_validation", i as u64, seed)?;
         ensure!(
             seed.len() <= MAX_INPUT && targets::check(name, seed)?,
             "canonical seed rejected: {name}/{i}"
@@ -127,13 +158,7 @@ fn worker(a: &Args, name: &str) -> Result<()> {
         let base = &seeds[((case / 10) as usize) % seeds.len()];
         let bytes = mutate(base, &mut state, case);
         // Persist the exact attempted bytes before parsing, also for abort/OOM/SIGKILL.
-        fs::write(a.output.join("current.bin"), &bytes)?;
-        fs::write(
-            a.output.join("current.json"),
-            serde_json::to_vec(
-                &json!({"case":case,"seed":a.seed,"target":name,"input_hash":hash(&bytes)}),
-            )?,
-        )?;
+        save_attempt(a, name, "mutation", case, &bytes)?;
         if targets::check(name, &bytes)
             .with_context(|| format!("target={name} seed={} case={case}", a.seed))?
         {
@@ -167,6 +192,10 @@ fn run(a: &Args) -> Result<()> {
     for name in targets::NAMES {
         let dir = a.output.join(name);
         fs::create_dir(&dir)?;
+        fs::write(
+            dir.join("current.json"),
+            serde_json::to_vec(&json!({"phase":"corpus_preparation","target":name,"seed":a.seed}))?,
+        )?;
         let log = fs::File::create(dir.join("worker.log"))?;
         let mut child = Command::new(&exe)
             .args(["--worker", name, "--output"])
@@ -200,7 +229,7 @@ fn run(a: &Args) -> Result<()> {
         let result = if pass {
             serde_json::from_slice::<serde_json::Value>(&fs::read(dir.join("result.json"))?)?
         } else {
-            json!({"status":"fail","target":name,"timeout":timed_out,"exit":status.code(),"reproducer":"current.bin","metadata":"current.json"})
+            failed_worker_result(&dir, name, timed_out, status.code())
         };
         println!("{name}: {}", if pass { "pass" } else { "FAIL" });
         results.push(result);
@@ -255,5 +284,29 @@ mod tests {
             assert_eq!(x, mutate(b"current-format", &mut b, i));
             assert!(x.len() <= MAX_INPUT);
         }
+    }
+    #[test]
+    fn failure_reports_never_invent_or_misattribute_a_reproducer() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path();
+        fs::write(
+            path.join("current.json"),
+            br#"{"phase":"corpus_preparation","target":"manifest"}"#,
+        )?;
+        let row = failed_worker_result(path, "manifest", true, None);
+        ensure!(row["phase"] == "corpus_preparation" && row["reproducer"].is_null());
+        fs::write(path.join("current.bin"), b"first")?;
+        fs::write(
+            path.join("current.json"),
+            serde_json::to_vec(
+                &json!({"phase":"seed_validation","target":"manifest","input_hash":hash(b"first")}),
+            )?,
+        )?;
+        ensure!(failed_worker_result(path, "manifest", true, None)["reproducer"] == "current.bin");
+        fs::write(path.join("current.bin"), b"second")?;
+        ensure!(failed_worker_result(path, "manifest", true, None)["reproducer"].is_null());
+        fs::write(path.join("current.json"), b"{")?;
+        ensure!(failed_worker_result(path, "manifest", true, None)["reproducer"].is_null());
+        Ok(())
     }
 }

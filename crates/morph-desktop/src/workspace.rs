@@ -191,7 +191,7 @@ impl Record {
     }
     pub fn is_batch(&self) -> bool {
         self.page == Page::Recovery
-            && self.row.document["schema"] == "morph.conditional_batch_package.v2"
+            && self.row.document["schema"] == "morph.conditional_batch_package.v3"
     }
     pub fn is_recovery(&self) -> bool {
         self.page == Page::Recovery && self.row.document.get("package_id").is_some()

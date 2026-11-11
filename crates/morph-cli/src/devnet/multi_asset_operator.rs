@@ -569,9 +569,9 @@ fn activation_evidence(
         let child = factory
             .child_by_anchor(header.funding_anchor())
             .map_err(invalid)?;
-        let mut original = morph_core::MultiAssetRecoveryPackage::decode_contents(
+        let mut original = morph_core::MultiAssetRecoveryPackage::decode_evidence(
             child.header.as_bytes(),
-            child.evidence.as_bytes(),
+            &child.evidence,
             child.carrier_capacity,
         )?;
         ensure!(

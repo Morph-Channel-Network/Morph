@@ -394,12 +394,14 @@ fn current_conditional_descriptor_rejects_other_asset_or_reserve_funding_pending
 #[test]
 fn current_descriptor_rejects_old_version_unknown_capability_and_trailing_bytes() {
     let (_, raw) = fixture();
-    let mut old = raw.clone();
-    write_u16(&mut old, 0, 4);
-    assert_eq!(
-        MultiAssetSettlementDescriptor::parse(&old),
-        Err(ScriptError::MultiAssetEncoding)
-    );
+    for version in 1..MULTI_ASSET_DESCRIPTOR_VERSION {
+        let mut old = raw.clone();
+        write_u16(&mut old, 0, version);
+        assert_eq!(
+            MultiAssetSettlementDescriptor::parse(&old),
+            Err(ScriptError::MultiAssetEncoding)
+        );
+    }
     let mut unknown = raw.clone();
     unknown[3] = 2;
     assert!(MultiAssetSettlementDescriptor::parse(&unknown).is_err());

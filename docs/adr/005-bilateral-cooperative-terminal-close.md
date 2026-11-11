@@ -281,7 +281,7 @@ test exists against the new path.
 The baseline tests verify current ordinary/conditional/splice geometry and
 that even two valid ordinary state signatures cannot remove current `since`.
 They do **not** validate the new close boundary; the separate `cooperative_close*`
-tests now cover that verifier. Its frame is capped at 10,624 bytes, with at most
+tests now cover that verifier. Its frame is bounded by `MULTI_ASSET_CLOSE_MAX_LEN` (see ADR 008 for the current compact encoding), with at most
 63 transaction inputs/outputs and 64 cell/header dependencies each. These are
 parser/scanner ceilings, not admitted experiment sizes. Intended-wallet and
 real-asset cycles, full signing lifecycle and final candidate qualification

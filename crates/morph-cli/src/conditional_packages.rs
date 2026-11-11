@@ -29,7 +29,7 @@ use morph_core::{
 
 #[cfg(test)]
 #[allow(unused_imports)]
-use morph_script_common::CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN;
+use morph_script_common::CONDITIONAL_BATCH_RESOLUTION_WITNESS_MAX_LEN;
 
 #[cfg(test)]
 #[allow(unused_imports)]

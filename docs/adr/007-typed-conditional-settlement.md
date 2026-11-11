@@ -59,6 +59,7 @@ conditions, but it cannot change their Type, quantity, payer or refund deadline.
 
 ## Reset policy
 
-The State descriptor version advances to 6; Batch terms and resolution versions
-advance as well. Existing disposable development states must be recreated.
+This ADR introduced descriptor 6. ADR 008 supersedes its byte encoding with
+descriptor 7, counted terms version 5 and resolutions version 3, preserving
+the asset/value/admission semantics here. Existing disposable development states must be recreated.
 There is no in-place upgrade, compatibility reader or dual protocol family.

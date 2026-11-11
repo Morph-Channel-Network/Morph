@@ -119,7 +119,7 @@ impl Draft {
             .input_type(
                 Some(Bytes::from(decode_hex(
                     &package.resolution_witness_hex,
-                    morph_script_common::CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN,
+                    morph_script_common::CONDITIONAL_BATCH_RESOLUTION_WITNESS_MAX_LEN,
                 )?))
                 .pack(),
             )

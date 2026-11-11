@@ -20,7 +20,7 @@ fn typed_fixture_shape(
     transfer_count: usize,
     maximum_scripts: bool,
 ) -> TypedFixture {
-    assert!(matches!(transfer_count, 2 | 8));
+    assert!((1..=8).contains(&transfer_count));
     let mut base = build_profile(typed_count, false, plain, maximum_scripts);
     let executor = deploy_contract(&mut base.context, "morph-batch-lock", vec![]);
     let initial_amounts = base
@@ -67,17 +67,20 @@ pub(super) fn arm_all_assets(
     settlement: &mut morph_core::MultiAssetSettlement,
     transfer_count: usize,
 ) -> Vec<ConditionalBatch> {
-    assert!(matches!(transfer_count, 2 | 8));
+    assert!((1..=8).contains(&transfer_count));
     let locks = settlement.participant_lock_hashes;
     let mut batches = Vec::new();
     for (asset_index, payout) in settlement.payouts.iter_mut().enumerate() {
-        let amounts: [u128; 2] = if payout.asset == VaultAsset::Ckb {
+        let mut amounts: [u128; 2] = if payout.asset == VaultAsset::Ckb {
             [1_000_000_000, 2_000_000_000]
         } else if transfer_count == 8 {
             [20, 32]
         } else {
             [20, 30]
         };
+        if transfer_count == 1 {
+            amounts[1] = 0;
+        }
         for (payer, amount) in amounts.iter().enumerate() {
             if payout.asset == VaultAsset::Ckb {
                 payout.values[payer].business_ckb -= u64::try_from(*amount).unwrap();
@@ -112,7 +115,7 @@ pub(super) fn arm_all_assets(
                         &[71 + i as u8; 32],
                     )
                     .unwrap(),
-                    amount: amounts[i % 2] / (transfer_count / 2) as u128,
+                    amount: amounts[i % 2] / (transfer_count / 2).max(1) as u128,
                     refund_after_block: 500 + i as u64 * 100,
                 })
                 .collect(),
@@ -387,6 +390,8 @@ fn typed_conditions_maximum_eight_assets_sixty_four_conditions_and_script_bounds
         assert_eq!(f.batches.len(), 8);
         assert_eq!(f.terminal.outputs().len(), 9);
         let finalise_cycles = f.base.context.verify_tx(&f.terminal, MAX_CYCLES).unwrap();
+        assert!(finalise_cycles < 9_000_000);
+        assert!(f.terminal.data().as_slice().len() <= 15_400);
         eprintln!(
             "typed-max finalise cycles={finalise_cycles} bytes={}",
             f.terminal.data().as_slice().len()
@@ -401,9 +406,55 @@ fn typed_conditions_maximum_eight_assets_sixty_four_conditions_and_script_bounds
             );
             let fulfill_cycles = f.base.context.verify_tx(&fulfill, MAX_CYCLES).unwrap();
             let refund_cycles = f.base.context.verify_tx(&refund, MAX_CYCLES).unwrap();
+            assert!(fulfill_cycles < 220_000 && refund_cycles < 170_000);
+            assert!(fulfill.data().as_slice().len() <= 2_800);
+            assert_eq!(
+                fulfill.data().as_slice().len() - refund.data().as_slice().len(),
+                256
+            );
             eprintln!(
                 "typed-max asset={index} fulfill_cycles={fulfill_cycles} refund_cycles={refund_cycles} bytes={}",
                 fulfill.data().as_slice().len()
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires built current ELFs; sparse/full byte-cycle regression matrix"]
+fn counted_conditions_one_four_eight_transfers_and_one_eight_assets() {
+    for (typed, plain) in [(0, true), (1, false), (8, false)] {
+        for transfers in [1, 4, 8] {
+            let mut f = typed_fixture_shape(typed, plain, transfers, false);
+            let cycles = f.base.context.verify_tx(&f.terminal, 9_000_000).unwrap();
+            let mut inputs: Vec<_> = f.terminal.inputs().into_iter().collect();
+            inputs[0] = inputs[0].clone().as_builder().since(0u64).build();
+            let close = super::close::authorize_close(
+                &f.base.package,
+                f.terminal
+                    .clone()
+                    .as_advanced_builder()
+                    .set_inputs(inputs)
+                    .build(),
+            );
+            let close_cycles = f.base.context.verify_tx(&close, 13_000_000).unwrap();
+            let index = f.batches.len() - 1;
+            let fulfill = resolution(&mut f, index, vec![true; transfers], 0);
+            let refund = resolution(
+                &mut f,
+                index,
+                vec![false; transfers],
+                absolute_block_since(1200).unwrap(),
+            );
+            let fulfill_cycles = f.base.context.verify_tx(&fulfill, 220_000).unwrap();
+            let refund_cycles = f.base.context.verify_tx(&refund, 170_000).unwrap();
+            assert_eq!(
+                fulfill.data().as_slice().len() - refund.data().as_slice().len(),
+                32 * transfers
+            );
+            eprintln!(
+                "COUNTED_COST {}",
+                serde_json::json!({"assets": typed + usize::from(plain), "plain":plain,"transfers":transfers,"finalise_cycles":cycles,"finalise_bytes":f.terminal.data().as_slice().len(),"close_cycles":close_cycles,"close_bytes":close.data().as_slice().len(),"fulfill_cycles":fulfill_cycles,"fulfill_bytes":fulfill.data().as_slice().len(),"refund_cycles":refund_cycles,"refund_bytes":refund.data().as_slice().len()})
             );
         }
     }
@@ -561,7 +612,8 @@ fn typed_batch_rejects_early_refund_wrong_preimage_and_cross_batch_witness() {
     let mut witness =
         WitnessArgs::from_slice(&fulfilled.witnesses().get(0).unwrap().raw_data()).unwrap();
     let mut raw = witness.input_type().to_opt().unwrap().raw_data().to_vec();
-    raw[4 + CONDITIONAL_BATCH_DESCRIPTOR_LEN + 1] ^= 1;
+    let descriptor_len = ConditionalBatchDescriptor::encoded_len(&raw[4..]).unwrap();
+    raw[4 + descriptor_len + 1] ^= 1;
     witness = witness
         .as_builder()
         .input_type(Some(Bytes::from(raw)).pack())

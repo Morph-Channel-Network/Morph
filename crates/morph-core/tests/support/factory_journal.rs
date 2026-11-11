@@ -200,9 +200,9 @@ pub fn reduced_child_request() -> (
     let children = (0..intent.child_count())
         .map(|index| {
             let child = intent.child(index).unwrap();
-            let mut recovery = MultiAssetRecoveryPackage::decode_contents(
+            let mut recovery = MultiAssetRecoveryPackage::decode_evidence(
                 child.header.as_bytes(),
-                child.evidence.as_bytes(),
+                &child.evidence,
                 child.carrier_capacity,
             )
             .unwrap();

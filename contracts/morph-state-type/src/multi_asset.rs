@@ -80,7 +80,7 @@ pub fn validate(
             if let Some(raw) =
                 morph_script_common::multi_asset_splice_runtime::splice_evidence(0, Source::Input)?
             {
-                morph_script_common::multi_asset_splice_runtime::verify_splice(&raw)?;
+                morph_script_common::multi_asset_splice_runtime::verify_splice_gate(&raw)?;
                 signatures(&header, Source::Input)?;
             } else if let Some(factory_origin) = factory_origin {
                 let raw =

@@ -17,14 +17,14 @@ use morph_core::{
     ParticipantSignature, StateAuthorization, VaultAsset, asset_registry_commitment,
     derive_conditional_payment_hash, multi_asset_outpoint_commitment,
 };
-use morph_script_common::CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN;
+use morph_script_common::CONDITIONAL_BATCH_RESOLUTION_WITNESS_MAX_LEN;
 use serde::{Deserialize, Serialize};
 
 use crate::multi_asset_packages::{
     MultiAssetPackageSummary, StoredMultiAssetPackage, canonical_hex, decode_hex, read_bounded_json,
 };
 
-pub const CONDITIONAL_BATCH_PACKAGE_SCHEMA: &str = "morph.conditional_batch_package.v2";
+pub const CONDITIONAL_BATCH_PACKAGE_SCHEMA: &str = "morph.conditional_batch_package.v3";
 pub const MAX_PACKAGE_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -260,7 +260,7 @@ impl StoredConditionalBatchPackage {
         ensure!(
             decode_hex(
                 &self.resolution_witness_hex,
-                CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN
+                CONDITIONAL_BATCH_RESOLUTION_WITNESS_MAX_LEN
             )? == witness,
             "resolution_witness_hex does not match the complete canonical resolutions"
         );

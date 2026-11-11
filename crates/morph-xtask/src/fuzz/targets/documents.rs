@@ -125,7 +125,7 @@ fn canonical(document: &Value) -> Result<Value> {
         Some("morph.multi_asset_recovery_package.v1") => {
             typed::<multi_asset_packages::StoredMultiAssetPackage>(document)?
         }
-        Some("morph.conditional_batch_package.v2") => {
+        Some("morph.conditional_batch_package.v3") => {
             typed::<conditional_packages::StoredConditionalBatchPackage>(document)?
         }
         Some("morph.multi_asset_root_draft.v1") => {

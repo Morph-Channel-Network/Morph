@@ -42,7 +42,7 @@ The Batch must be transaction **input 0**, and its lock group must have exactly 
 
 A resolution covers every signed transfer exactly once. Fulfill verifies a 32-byte preimage using CKB-personalized Blake2b-256 or SHA-256. Refund returns value to the payer and requires mature canonical **absolute block** `since`; relative, timestamp and epoch clocks are rejected. Checked arithmetic enforces both capacities and per-Type u128 quantities.
 
-The current `morph.conditional_batch_package.v2` contains:
+The current `morph.conditional_batch_package.v3` contains:
 
 - the complete authenticated signed `source_package` and explicit selected `batch_id`;
 - ordered decisions, resolution witness and canonical decimal `input_since`;
@@ -81,12 +81,12 @@ journal's actual current package; a caller cannot provide an arbitrary baseline.
 
 | Object | Sole current encoding |
 | --- | --- |
-| State | 318 bytes, layout 2, descriptor 6 |
-| Conditional trailer | Version 2; 40-byte prefix plus `batch_count * 957` bytes, maximum 7,696 |
-| Per-asset Batch terms | Version 4; 957 bytes; asset ID 33 bytes; two lock/capacity/u128 participants; eight bounded transfer slots |
+| State | 318 bytes, layout 2, descriptor 7 |
+| Conditional trailer | Version 3; 40-byte prefix plus actual Batch terms, maximum 7,696 |
+| Per-asset Batch terms | Version 5; `221 + 92*n` bytes for 1–8 transfers (313–957); asset ID 33 bytes; two lock/capacity/u128 participants; no unused slots |
 | Transfer | 92 bytes; amount u128; canonical absolute-block refund since |
 | Batch lock args | 104 bytes: channel 32 + funding context 32 + state number 8 + terms commitment 32 |
-| Resolution | Version 2, complete fixed-size vector; unused bytes remain zero |
+| Resolution | Version 3; 4-byte prefix + exact terms + one decision per transfer: fulfill `1 + preimage32`, refund `2` only. No padding or omitted decisions |
 | Batch ID derivation | `CKB_MORPH_CONDITIONAL_BATCH_ID_V2`, including exact asset |
 
 These are incompatible unpublished development changes. Recreate disposable chains, fixtures and sessions. There is no in-place conversion or old-schema fallback.

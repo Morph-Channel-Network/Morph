@@ -47,7 +47,7 @@ fail closed. New error codes 70/71 do not reuse retired discriminants.
 State layout 2 is an independent 318-byte encoding. It contains no single-Vault
 materialisation field, single-Vault OutPoint field, or duplicate content root.
 All integers use little endian order. Protocol version 1, signature scheme 1,
-bilateral mode 1, descriptor version 6, and layout version 2 are required.
+bilateral mode 1, descriptor version 7, and layout version 2 are required.
 
 | Byte offset | Field | Bytes |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ is `CKB_MORPH_MULTI_ASSET_STATE_V1` followed by all 318 bytes. Historical
 414-byte packages and snapshots with single-Vault header fields are rejected.
 Replace development state after this change; there is no conversion parser.
 
-Each Vault uses 116-byte args: `MORPHMV!`, u16 encoding version 1, u16 reserved
+Each Vault uses 116-byte args: `MORPHMV!`, u16 encoding version 2, u16 reserved
 zero, funding anchor (32), canonical relative-block `since` (8), exact StateType
 Script hash (32), and exact StateLock Script hash (32). All Vaults share one
 lock. The scripts independently require the authentic State input and the
@@ -114,11 +114,11 @@ produce no Cell. A funded typed Vault has a positive quantity and exactly
 
 | Object | Encoding |
 | --- | --- |
-| Manifest | u16 version 1, u8 count, u8 reserved; N entries of asset ID (33), Vault lock hash (32), allocation (32). Length `4 + N*97`. |
-| Settlement descriptor | u16 version 6, u8 count, u8 capability; two sorted nonzero payout lock hashes (64), carrier-refund lock hash (32); N entries of asset ID (33) and two allocations (64). Ordinary length `100 + N*97`; capability 1 appends a 40-byte version-2 executor/count prefix and 1–8 asset-sorted 957-byte version-4 Batch terms. |
-| Recovery witness | `MORPHMA!` (8), u16 version 1, u16 flags 0, u32 manifest length, u32 descriptor length, u16 OutPoint count, u16 reserved, u32 scripts length; manifest, descriptor, OutPoints, script evidence. |
+| Manifest | u16 version 2, u8 count, u8 reserved; N entries of asset ID (33), Vault lock hash (32), allocation (32). Length `4 + N*97`. |
+| Settlement descriptor | u16 version 7, u8 count, u8 capability; two sorted nonzero payout lock hashes (64), carrier-refund lock hash (32); N entries of asset ID (33) and two allocations (64). Ordinary length `100 + N*97`; capability 1 appends a 40-byte version-3 executor/count prefix and 1–8 asset-sorted version-5 Batch terms (`221 + 92*n` bytes each). |
+| Recovery witness | `MORPHMA!` (8), u16 version 2, u16 flags 0, u32 manifest length, u32 descriptor length, u16 OutPoint count, u16 reserved, u32 scripts length; manifest, descriptor, OutPoints, script evidence. |
 | OutPoints | N canonical 36-byte CKB OutPoints in manifest asset order; zero entries only for an unbound State. Duplicates and zero transaction hashes are rejected. |
-| Script evidence | Six scripts (payout 0, payout 1, carrier refund, Vault Lock, State Type, State Lock), followed by each xUDT Type Script in asset order. Each is a u32 length and complete canonical Molecule Script, bounded to 512 bytes. |
+| Script evidence | Six scripts (payout 0, payout 1, carrier refund, Vault Lock, State Type, State Lock), followed by each xUDT Type Script in asset order. Roles are u8 dictionary indices. The role prefix is `scope:u8, count:u8, table_len:u16`. Scope 0 embeds one sorted unique table (`count:u16, reserved:u16=0`, then `len:u16 + Script`); scope 1 requires the enclosing Factory table and `table_len=0`. Scripts are canonical Molecule bytes, each bounded to 512 bytes. Standalone packages require scope 0; parent children require scope 1; unused table entries and trailing bytes are rejected. |
 
 Content commitment hashes `CKB_MORPH_MULTI_ASSET_VAULT_SET_V1 || manifest`.
 Descriptor commitment hashes `CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1 || descriptor`.
@@ -129,6 +129,8 @@ Type hash list. Funding-context identity has its own
 `CKB_MORPH_MULTI_ASSET_FUNDING_CONTEXT_V1` domain and binds chain ID, channel ID,
 funding anchor, content-set root, and OutPoint-set root.
 
+State/Factory authority Type Scripts use immutable data hash modes (0/2/4); native deployments use Data1. Upgradeable Type-hash authority selection is rejected so delegated verification cannot be replaced after funding. Asset and wallet Script hash-mode rules remain separate. See [ADR 008](adr/008-bounded-cost-and-current-encoding.md).
+
 Script evidence proves actual lock/Type identities and occupied bytes before
 funding or accepting a signed state. State/Vault args must agree on anchor,
 challenge delay, StateType, and StateLock. Every Vault and payout reserve must
@@ -137,9 +139,9 @@ and its plain refund output.
 
 Capability tag 0 means ordinary settlement. Tag 1 requires the current
 asset-bound conditional trailer, with 1–8 strictly asset-ordered Batches of
-1–8 transfers. Unknown tags, descriptor 5 and older, malformed conditional
+1–8 transfers. Unknown tags, descriptor 6 and older, malformed conditional
 shapes and trailing bytes are rejected. The trailer commits one executor
-code/hash type and every 957-byte asset-bearing Batch. Each Batch's 104-byte
+code/hash type and every complete count-based asset-bearing Batch. Each Batch's 104-byte
 args bind channel, exact funding context, state number and its complete terms.
 Pending CKB consumes only its Vault's business lane; pending UDT consumes only
 that exact Type's u128 quantity and preserves signed capacities. Both possible
@@ -377,7 +379,7 @@ morph-cli devnet --devnet-only multi-asset-transact \
   --fee 100000000 --max-fee 100000000 --dry-run wallet
 ```
 
-Current release evidence must use rebuilt descriptor-6 artifacts and current
+Current release evidence must use rebuilt descriptor-7 artifacts and current
 reports. Historical descriptor-4 reports and old deployment hashes do not
 qualify this boundary. See [the coverage ledger](current-protocol-coverage.md)
 for current host/CKB-VM evidence and reproduction commands.
@@ -390,7 +392,7 @@ activation and update roles. Root and update have distinct exact-transaction
 signing domains; a header-only vote cannot authorize UPDATE. Activation binds
 the complete sibling set without member keys and preserves carrier capacity.
 
-`MORPHFM!` authorizes N-of-N materialisation. `MORPHFR!` version 1 is the sole
+`MORPHFM!` authorizes N-of-N materialisation. `MORPHFR!` version 2 is the sole
 current reduced/funded transition frame: ReducedRights, ReducedDeposit,
 ReducedRelease, ReducedChild and FullCustody. Pure metadata remains the one
 FS UPDATE path. Source, retained and child manifests use the shared custody

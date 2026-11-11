@@ -1,11 +1,20 @@
 # Current protocol capabilities and verification
 
-Status: local implementation evidence, 2026-11-05. This is a migration and
+Status: local implementation evidence, 2026-11-11. This is a migration and
 coverage ledger, not a new independent audit or release approval. Full CI,
 release/report refresh, independent review and real-asset qualification remain
 separate gates in [mainnet readiness](mainnet-readiness.md).
 
-## Current exact-candidate result (2026-11-11)
+## Current resource-optimization implementation (2026-11-11)
+
+Descriptor 7 uses counted terms/resolutions, canonical Script dictionaries and
+authenticated close/splice delegation, preserving the typed-condition semantics.
+The rebuilt VM inventory has **114 passing tests** with explicit byte/cycle
+regression bounds. Exact new candidate qualification is pending; the previous
+receipt below cannot be promoted to these ELFs. See [costs and evidence](model-resource-optimization.md)
+and [ADR 008](adr/008-bounded-cost-and-current-encoding.md).
+
+## Previous exact-candidate result: descriptor 6 (2026-11-11)
 
 All ten `current-local-no-value` executions returned exit 0 on signed code `bc4be3ff` with clean unchanged source. The original receipt records `conditional_udt_qualified=true`; 110 VM tests, the preserved ordinary native matrix and eight-Type/64-condition native fulfillment/refund/reorg evidence are bound to the same contracts/client artifacts. [Exact record and descriptor-label erratum](evidence/typed-conditions-bc4be3ff/README.md). The later reporting correction is not another full ten-gate candidate. The implementation checkpoint below retains its earlier preflight measurements.
 
@@ -14,7 +23,7 @@ All ten `current-local-no-value` executions returned exit 0 on signed code `bc4b
 Descriptor 6 replaces the unpublished CKB-only conditional encoding with 1–8
 asset-bound Batches, each containing up to eight conditions. Terms are version
 4/957 bytes; public recovery is `morph.conditional_batch_package.v2`. Old W1
-records below remain historical. The rebuilt current VM inventory has **110
+records below remain historical. That checkpoint's rebuilt VM inventory has **110
 passing tests**, including conditional initial funding/activation/initial exit, typed splice
 creation/recovery/terminal claims, mixed assets, full-u128 resolution and maximum-script
 8-asset/64-condition shapes. A real-node preflight exercised eight fulfillments,
@@ -28,7 +37,7 @@ and [current operator/limits](conditional-batches.md).
 ## One custody model, explicit capabilities
 
 Morph now has one current channel State/Vault-set implementation. Plain CKB,
-one token and several tokens use the same 318-byte State and descriptor 6.
+one token and several tokens use the same 318-byte State and descriptor 7.
 Conditional CKB/UDT settlement is an explicit capability of that descriptor. A Factory is a
 different authority object: a 306-byte Factory State controls shared custody
 and rights, then creates independently enforceable bilateral children.
@@ -54,7 +63,7 @@ The former 346-byte channel, 302-byte Factory, single-Vault descriptors,
 485/469-byte splice and `MORPHW!!` kinds 1–8 codecs and contract dispatch have
 been removed. Unsupported bytes are rejected; development state must be reset
 as described in [the upgrade runbook](runbooks/upgrade-and-migration.md).
-The current typed 957-byte Batch terms replace the earlier CKB-only terms.
+The current typed count-based Batch terms replace the earlier CKB-only terms.
 Shared signature primitives and compact Merkle algorithms remain in use.
 
 ## Operation mapping
@@ -63,7 +72,7 @@ Shared signature primitives and compact Merkle algorithms remain in use.
 | --- | --- |
 | Plain CKB or single-xUDT channel | Same current State/Vault-set lifecycle as several assets. |
 | Channel resize/re-anchor | One 200-byte exact-transaction splice bridge, new creation and initial recovery authorizations. |
-| CKB conditional batch | Descriptor-5 capability tag 1; Batch args bind channel, funding context, state number and complete terms. |
+| CKB conditional batch | Descriptor-7 capability tag 1; Batch args bind channel, funding context, state number and complete terms. |
 | Factory root and custody activation | `MORPHFS!` format 2: transaction-bound root approval; activation is permissionless and value-neutral. |
 | Full-consent Factory metadata | Sole `MORPHFS!` UPDATE path; a distinct update domain signs header commitment and exact raw transaction hash. |
 | Flat ten-right, sparse one-right and compact multi-right updates | Sole `MORPHFR!` `ReducedRights` operation, with 1–10 compact before/after proof pairs. |

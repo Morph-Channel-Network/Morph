@@ -293,6 +293,28 @@ fn factory_partition_rejects_cross_asset_minting_reserve_subsidies_and_custody_o
     bad.children[1] = bad.children[0].clone();
     assert!(bad.validate_contents().is_err());
 }
+
+#[test]
+fn materialisation_rejects_an_unused_shared_dictionary_script() {
+    use morph_script_common::script_table::{self, ScriptTable};
+    let plan = plan(2, 1, false);
+    let mut raw = plan.encode_intent().unwrap();
+    let start = factory::FACTORY_MATERIALISATION_PREFIX_LEN
+        + plan.source.encode().unwrap().len()
+        + plan.source_outpoints.len() * 36;
+    let len = u32::from_le_bytes(raw[204..208].try_into().unwrap()) as usize;
+    let table = ScriptTable::parse(&raw[start..start + len]).unwrap();
+    let extra = script(250, &[255; 458]); // 511 bytes, sorts after these fixture Scripts.
+    let mut entries: Vec<_> = (0..table.count())
+        .map(|i| table.script(i).unwrap())
+        .collect();
+    assert!(entries.last().unwrap() < &&extra[..]);
+    entries.push(&extra);
+    let expanded = script_table::encode(&entries).unwrap();
+    raw[204..208].copy_from_slice(&(expanded.len() as u32).to_le_bytes());
+    raw.splice(start..start + len, expanded);
+    assert!(factory::FactoryMaterialisationIntent::parse(&raw).is_err());
+}
 #[test]
 fn factory_partition_accepts_outside_child_parties_but_preserves_parent_and_exit_authority() {
     let mut plan = plan(2, 1, true);

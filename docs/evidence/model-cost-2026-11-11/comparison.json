@@ -1,0 +1,3068 @@
+{
+  "schema": "morph.model_cost_comparison.v1",
+  "baseline_source": "bc4be3ff03cb4448f8e16dc95a832e4d6922ce71",
+  "status": "measured implementation; exact-candidate qualification is tracked separately",
+  "qualified_source_commit": null,
+  "observations": {
+    "before_transactions": 162,
+    "after_transactions": 162,
+    "before_groups": 628,
+    "after_groups": 628,
+    "each_group_sum_equals_total": true
+  },
+  "compiled_protocol_source_sha256": {
+    "contracts/README.md": "de66d9c983ac08ea9035754d4bc43b77599556923cd0207b8c80efbf2751590c",
+    "contracts/morph-batch-lock/Cargo.toml": "e202598d20ddb00ff2f0446ff2aa310965fd6c679340cb0107a088b9b4506816",
+    "contracts/morph-batch-lock/src/main.rs": "6911a0739bc225a0aa71c0583c93772d61f973d14ea0bbfa7e37c6757589e1a9",
+    "contracts/morph-devnet-xudt/Cargo.toml": "f52055458dfe09ae326a52a8a939c978803a0944914e584295b08cd75f6945aa",
+    "contracts/morph-devnet-xudt/src/main.rs": "0bc7be60e286d40fe33eb5e6009fae3d7d08ec2796c92aced11ea2d31ba191e9",
+    "contracts/morph-factory-type/Cargo.toml": "06f496fb7f1e1ff3ba60cb66917d60cf701ac56e9c1a89bf3d333f0e25b9941f",
+    "contracts/morph-factory-type/src/main.rs": "af5b4734d19818f30237b8dd5947e75450c8e5b8a68347611da4adde8a3608ad",
+    "contracts/morph-factory-vault-lock/Cargo.toml": "ba42aaef2826ac020090b2f49ede30b596ce444ffc14bdf018311f9f3c15a952",
+    "contracts/morph-factory-vault-lock/src/main.rs": "ef562268e421535410eb7dc73f7dbd9e7aac9559f129e403ed9aaf1693a788e2",
+    "contracts/morph-script-common/Cargo.toml": "eeb5a0fe0702d8ff21b5922ba81b4729977f2e3b936aaf761008285cc4f72db9",
+    "contracts/morph-script-common/src/crypto_vectors.rs": "fa9e16f172df0728aa1ba25db1edbe353117123cc57ed45fd5411090fe6049dd",
+    "contracts/morph-script-common/src/factory_empty_hashes.rs": "7d648e6d828eebf5c724ca58b9d2cfdbdcbcf14895f561dcd6be997f2a572b5c",
+    "contracts/morph-script-common/src/factory_multi_asset.rs": "677dfd6b8809a3593e023165dc1a849696f5f2eb213106b85bd28055c1985d82",
+    "contracts/morph-script-common/src/factory_multi_asset/materialisation.rs": "f192556a8b2580d807f7c96d182c8cda8a6e187db065f04e81f89c776196065b",
+    "contracts/morph-script-common/src/factory_multi_asset/reduced.rs": "d777c91d3598221cd448d9df6ba6bd4a2aae15ff5d69a1816fd5c2f10b8f8e4e",
+    "contracts/morph-script-common/src/factory_multi_asset/state.rs": "7665390c887617e4c5415ba47aea1e7b34e3342ed557dc8c662ee46e79558ab9",
+    "contracts/morph-script-common/src/factory_multi_asset_runtime.rs": "8a7bc4e4d1535328e0d89f42267f1f0bc8a4e69bd98b80f71fe49e5ef263beab",
+    "contracts/morph-script-common/src/lib.rs": "3ab7e97543290c400b5d9290e699cad51cdb35783cdc2ee738551bf4d06a9a9b",
+    "contracts/morph-script-common/src/multi_asset.rs": "20bc852577140dd178bac1839b2aaf4842d65971c23f9db9ef2cc6812e1a5e68",
+    "contracts/morph-script-common/src/multi_asset_close.rs": "e6595e16b45c8cb11ff9cd7a76e970f6bb972d22b1fd358a7bbb8d96b560c055",
+    "contracts/morph-script-common/src/multi_asset_close_runtime.rs": "9e0389b328c3d18acbc278f3c28a780f8a0cfe73d170fabd84c1e9042b9ce2bf",
+    "contracts/morph-script-common/src/multi_asset_conditional.rs": "90930db6c7e7f235bf3ef654865468c35a48c2a80237f34ffe399a37498a4de0",
+    "contracts/morph-script-common/src/multi_asset_runtime.rs": "5e02b7fa71dca19f3785c6c33086ada9bc4af703f6e671d4eda5320a36b69f10",
+    "contracts/morph-script-common/src/multi_asset_splice.rs": "f8e5a2a3cc47e8697cb31c7fe4fdd89b0e2c447ac36a2a6367a0509fc1f75f45",
+    "contracts/morph-script-common/src/multi_asset_splice_runtime.rs": "f43d20c35ced3b9d6da5602fe63aafbe8286c67523b762baba761b67062e5874",
+    "contracts/morph-script-common/src/script_table.rs": "d1588bb08260408ce70903cfc11ee8663e8e60ee2da2190b235e0acdeb65ef2d",
+    "contracts/morph-sponsor-lock/Cargo.toml": "097858b657eb3c46a6033c908ed1c00a247102cc7db101ce58c6fabfbaf16eba",
+    "contracts/morph-sponsor-lock/src/main.rs": "c7fb8593ab7fea0000bfe725c43718f0c13019cada0558527f684e8ffa1ed9a6",
+    "contracts/morph-state-lock/Cargo.toml": "dd9cb2b5e7261147001333484774f22c59f9dce5684bf246fc8819053737f20b",
+    "contracts/morph-state-lock/src/main.rs": "5cff294f280e539e6638f41e6c522dbc0034e3094abe6db34a5c61a81fc05dc8",
+    "contracts/morph-state-type/Cargo.toml": "00ac7c6a351379c538a0e430e17a75f19fc0c288b0425f85564b8a22071d4436",
+    "contracts/morph-state-type/src/main.rs": "e2b9e048aa2af71bc1f27c7f3dc14f7afc30c10e05e060cc4d9cf3b842607f2c",
+    "contracts/morph-state-type/src/multi_asset.rs": "40b17c78aa962cbc4658f6e97948ee389ccbafadf906fd49fc8324f0771792a1",
+    "contracts/morph-vault-lock/Cargo.toml": "18bf2a25260b5d04ebf3ddabd954f6b9384eae5fa023a4e4ca9def7c599fc6a5",
+    "contracts/morph-vault-lock/src/main.rs": "4f0c81c00db8bfbd58dd732042dfbe5494b366957583b59f793f27aa5574ba3d",
+    "contracts/morph-vault-lock/src/multi_asset.rs": "b69d6d34f5fa028259ee5ad9c253ce5fb84164e85444c558a8be5cf3f0363c33",
+    "crates/morph-core/src/backend.rs": "013aa74fb849619a70fda4207397d4d245518ce196a57f261b91aac3169af87b",
+    "crates/morph-core/src/bridge.rs": "e1e37a2476866cdceb948720f45a5a3587a469c5da9cbf70f7b9ac81c76cdad8",
+    "crates/morph-core/src/conditional.rs": "7df700158cd464b1373cc14c895f3cf09093a67bf21dd52ddfb61429960a2c1c",
+    "crates/morph-core/src/factory_backend.rs": "562ba07e8234d18acbac773c4d6dd9d00f85d966812ad48e75a9a04f79cc1edb",
+    "crates/morph-core/src/factory_multi_asset.rs": "3262c76e51ce271aa186cd1e6cca4a91c6d00d2f29759550dd3d8e27c14e6fc6",
+    "crates/morph-core/src/factory_multi_asset_reduced.rs": "a5a6d44d71aab19742daa9c25db18d8df361396dcb09395921e64e00a990d251",
+    "crates/morph-core/src/hash.rs": "ed74cb55a3de3467d0189691b2b8fcd1ae05a14513fb070944f4ffdebd6d99e8",
+    "crates/morph-core/src/lib.rs": "c4dfd357eca9217d5a2a1722cd94a93ba4f310b05011a0f5b8bbdb463952b658",
+    "crates/morph-core/src/multi_asset.rs": "76e80edf6ccd701cf744a5473d3922c0c1c9608f16e16f0e2cb9475fec120d8e",
+    "crates/morph-core/src/multi_asset_backend.rs": "788e9303def1f9531b429c3ff91ae2cdbfa88e928564eb77e51d8039d3d39b59",
+    "crates/morph-core/src/multi_asset_backend/close.rs": "9b20a6fe72b950443286c8054436283e546a82293b2678c31d6e733415a28c1b",
+    "crates/morph-core/src/multi_asset_close.rs": "16e2a86a40be0bb7e184b210738cea47884c7e7f354465f4d57127f41bbf4435",
+    "crates/morph-core/src/multi_asset_splice.rs": "9fd844e82c4c602681ea0976edd55fa4dc160d7c0bb5db26a670dd23d08af99e",
+    "crates/morph-core/src/node.rs": "50e047d9f5a6e043f3002164aa9e201c1a54923b0bb5edf7c8b140e1040fbc7b",
+    "crates/morph-core/src/payment.rs": "33c57aad2edf5ddfbcfb34741981d105238874509f7deee111c70031d9fbcf71",
+    "crates/morph-core/src/payment_gateway.rs": "d748764cd6ade0064599c739af7db8d062ac0cd45d597bf8de8ce1e60f2d91b3",
+    "crates/morph-core/src/policy.rs": "3fea6f85cb6467c3920d86bd0a78e630c6ef334799a04b63cd4054f7092653d7",
+    "crates/morph-core/src/rgbpp.rs": "47382122bb95129ba9d444fe422feeb3422e4789ecbe918a0cd58c73b9c2e5ed",
+    "crates/morph-core/src/types.rs": "ea1956f2c3a23fc75f50f0e2e1cc6f09674859a50bd2f3cc7acbd0b31a62aa67",
+    "crates/morph-core/src/validation.rs": "54af971a8f5bca3d8805f861b5ad5a1c368fe76fe0a35f5d97af3e9931a14078",
+    "crates/morph-core/tests/contract_scripts.rs": "e63b65d2706ecd1f60a5f035e0beb40df8da7d1a1b2bde02c11cc7a4d4cbf7f7",
+    "crates/morph-core/tests/contract_scripts/current_boundaries.rs": "c05f0b2106aec364a646412f1ed7244fec6955d9c66c044b15c20233595474cc",
+    "crates/morph-core/tests/contract_scripts/factory_multi_asset.rs": "557fb936b802b7f7f29b31f1b5dd6756388a76ca1fdea520cd1dcde82ecb6e52",
+    "crates/morph-core/tests/contract_scripts/factory_multi_asset_delegation.rs": "c171ef2dae0dfd5ea315ec2429f1e074466d014f98590966e20266b95e325ca3",
+    "crates/morph-core/tests/contract_scripts/factory_multi_asset_reduced.rs": "eeab59cb1107f28929b75607e037e04171434df3a85dcd5b60316bbad2c24dc5",
+    "crates/morph-core/tests/contract_scripts/multi_asset.rs": "714a17612815c2f34be1df4277bb009606d8279eed90a3f5b1a735c9307d92a0",
+    "crates/morph-core/tests/contract_scripts/multi_asset_close.rs": "034a59c96fb7a5363641ece7f11e751835d9761a3fcd194ff2a8a98191f98be2",
+    "crates/morph-core/tests/contract_scripts/multi_asset_close_costs.rs": "4b145422ad1e277c71d4db5965cf086c0285e7debf14a63daccd08bc8a307361",
+    "crates/morph-core/tests/contract_scripts/multi_asset_conditional.rs": "e26112a76c52dc1b53d1e30f5d9d9dddec5165790d701dc43f91b7a8451b1ca3",
+    "crates/morph-core/tests/contract_scripts/typed_conditional.rs": "f7a848957fb286087c06724562de16d370b06a5e6b46e34b08a9e98d6e6ae91c"
+  },
+  "contract_manifest_sha256": "787b9f45bbd51940affc6236783b709efe5a3f76484639de2cf8794fabd07103",
+  "descriptor": 7,
+  "current_test_script_hash_mode": "immutable Data1; baseline helpers used Type-ID code lookup",
+  "limits": [
+    "Synthetic VM wallets and assets do not qualify arbitrary assets or real wallets.",
+    "Fixtures generate varying OutPoints/signatures. Compare shapes, not exact cycle equality.",
+    "Rows select the baseline largest serialized transaction and the corresponding current transaction, not the maximum cycles or all transactions in a suite.",
+    "Cycle and byte savings are separate; no fee reduction proportional to cycles is claimed."
+  ],
+  "before_elf_bytes": 807592,
+  "after_elf_bytes": 742920,
+  "rows": [
+    {
+      "test": "cooperative_close_current_complete_custody_without_delay",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 512,
+        "measurement": 32,
+        "total_cycles": 12183088,
+        "transaction_hash": "0x4059027078dcb5280f6ed96e5d2acdfd2c5d02b91ff5061ca2b0beeb75839835",
+        "tx_bytes": 16727,
+        "witness_bytes": 5175,
+        "test_filter": "cooperative_close_current_complete_custody_without_delay"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 32,
+        "total_cycles": 6661313,
+        "transaction_hash": "0x32b249016f5df374a852f60e6b6d7315a75ce8b45f1aaa78b9241c8f401a61ff",
+        "tx_bytes": 16207,
+        "witness_bytes": 4655,
+        "test_filter": "cooperative_close_current_complete_custody_without_delay"
+      },
+      "byte_reduction_percent": 3.11,
+      "cycle_reduction_percent": 45.32,
+      "before_groups": [
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 6324414,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 5737169,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            4,
+            5
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            6,
+            7
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            8,
+            9
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            10,
+            11
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            12,
+            13
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            14,
+            15
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 692000,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 5847628,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            4,
+            5
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            6,
+            7
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            8,
+            9
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            10,
+            11
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            12,
+            13
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            14,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "test": "current_close_geometry_and_fresh_votes_do_not_bypass_delay",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 108,
+        "measurement": 38,
+        "total_cycles": 25004007,
+        "transaction_hash": "0xcb3c58f13b914faf4bd0adfb263e2c4a4834f4535d0b0dca6bae644f7c5c8b27",
+        "tx_bytes": 12228,
+        "witness_bytes": 6577,
+        "test_filter": "current_close_geometry_and_fresh_votes_do_not_bypass_delay"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 54,
+        "measurement": 38,
+        "total_cycles": 14538493,
+        "transaction_hash": "0x0b7e29d2cac85fedc5c4069bd3f31cb5c668068f5457c7e856dff07a1cb6e99e",
+        "tx_bytes": 12166,
+        "witness_bytes": 6515,
+        "test_filter": "current_close_geometry_and_fresh_votes_do_not_bypass_delay"
+      },
+      "byte_reduction_percent": 0.51,
+      "cycle_reduction_percent": 41.86,
+      "before_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 6305640,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            9
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            9
+          ],
+          "output_indices": [
+            1
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            10
+          ],
+          "output_indices": [
+            2
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            10
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            11
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            11
+          ],
+          "output_indices": [
+            3
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 6300322,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            12
+          ],
+          "output_indices": [
+            4
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            12
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            13
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            14
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 12181550,
+          "input_indices": [],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            13
+          ],
+          "output_indices": [
+            5
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            14
+          ],
+          "output_indices": [
+            6
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            15
+          ],
+          "output_indices": [
+            7
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            15
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            16
+          ],
+          "output_indices": [
+            8
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            16
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 1044410,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            9
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 6434654,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            9
+          ],
+          "output_indices": [
+            1
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            10
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 6842634,
+          "input_indices": [],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            10
+          ],
+          "output_indices": [
+            2
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            11
+          ],
+          "output_indices": [
+            3
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            12
+          ],
+          "output_indices": [
+            4
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            11
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            13
+          ],
+          "output_indices": [
+            5
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            12
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            14
+          ],
+          "output_indices": [
+            6
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            15
+          ],
+          "output_indices": [
+            7
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            13
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            16
+          ],
+          "output_indices": [
+            8
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            14
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            15
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "test": "current_close_geometry_with_pending_batch",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 54,
+        "measurement": 6,
+        "total_cycles": 2023047,
+        "transaction_hash": "0x66dabcee01c6badf9b62c8d52d6f92ed51de9923c187878363e18585ac668d8b",
+        "tx_bytes": 3252,
+        "witness_bytes": 2231,
+        "test_filter": "current_close_geometry_with_pending_batch"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 6,
+        "total_cycles": 1228816,
+        "transaction_hash": "0x7125ab04fa2047bf3fb5a4c096edc2ac1cfab9c6ce79daf6ff639f6653c02101",
+        "tx_bytes": 2553,
+        "witness_bytes": 1532,
+        "test_filter": "current_close_geometry_with_pending_batch"
+      },
+      "byte_reduction_percent": 21.49,
+      "cycle_reduction_percent": 39.26,
+      "before_groups": [
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 996872,
+          "input_indices": [
+            1,
+            2
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1001774,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 589509,
+          "input_indices": [
+            1,
+            2
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 614873,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        }
+      ]
+    },
+    {
+      "test": "factory_multi_asset_maximum_script_profile_has_a_measured_cycle_bound",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 19968,
+        "measurement": 4,
+        "total_cycles": 52221221,
+        "transaction_hash": "0x5c15c53366d40f827556250f04760947caa4134e6ab01c0a51319834a1a29341",
+        "tx_bytes": 75098,
+        "witness_bytes": 42165,
+        "test_filter": "factory_multi_asset_maximum_script_profile_has_a_measured_cycle_bound"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 4,
+        "total_cycles": 51068016,
+        "transaction_hash": "0x633ad57e1250ebc9765229836788fc426f6bab20ef2fd3634912bb7629ad7217",
+        "tx_bytes": 53472,
+        "witness_bytes": 20539,
+        "test_filter": "factory_multi_asset_maximum_script_profile_has_a_measured_cycle_bound"
+      },
+      "byte_reduction_percent": 28.8,
+      "cycle_reduction_percent": 2.21,
+      "before_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            9
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 1279799,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            1,
+            10,
+            19,
+            28,
+            37
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            11,
+            20,
+            29,
+            38
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1335044,
+          "input_indices": [],
+          "output_indices": [
+            9
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            3,
+            12,
+            21,
+            30,
+            39
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            4,
+            13,
+            22,
+            31,
+            40
+          ]
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 45509721,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            5,
+            14,
+            23,
+            32,
+            41
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            6,
+            15,
+            24,
+            33,
+            42
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1343447,
+          "input_indices": [],
+          "output_indices": [
+            18
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            7,
+            16,
+            25,
+            34,
+            43
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1356406,
+          "input_indices": [],
+          "output_indices": [
+            27
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            8,
+            17,
+            26,
+            35,
+            44
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1367285,
+          "input_indices": [],
+          "output_indices": [
+            36
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            9
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 832681,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            1,
+            10,
+            19,
+            28,
+            37
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            11,
+            20,
+            29,
+            38
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            3,
+            12,
+            21,
+            30,
+            39
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            4,
+            13,
+            22,
+            31,
+            40
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1196571,
+          "input_indices": [],
+          "output_indices": [
+            18
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            5,
+            14,
+            23,
+            32,
+            41
+          ]
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 45398045,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1186330,
+          "input_indices": [],
+          "output_indices": [
+            9
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            6,
+            15,
+            24,
+            33,
+            42
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            7,
+            16,
+            25,
+            34,
+            43
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            8,
+            17,
+            26,
+            35,
+            44
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1217484,
+          "input_indices": [],
+          "output_indices": [
+            36
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1207374,
+          "input_indices": [],
+          "output_indices": [
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "test": "factory_multi_asset_reduced_release_maximum_eight_types_sixteen_members_executes",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 3584,
+        "measurement": 4,
+        "total_cycles": 48060344,
+        "transaction_hash": "0x96f2584491dc3a8a5b3904579e5eec6af91df90139acc56e786baf96e5d19bf6",
+        "tx_bytes": 32985,
+        "witness_bytes": 17193,
+        "test_filter": "factory_multi_asset_reduced_release_maximum_eight_types_sixteen_members_executes"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 4,
+        "total_cycles": 46051979,
+        "transaction_hash": "0x9e23cf6e7cb2f698d60044b1a7dffcad21bb818b6926fd5ba3bcf54d7274c5a7",
+        "tx_bytes": 28519,
+        "witness_bytes": 12727,
+        "test_filter": "factory_multi_asset_reduced_release_maximum_eight_types_sixteen_members_executes"
+      },
+      "byte_reduction_percent": 13.54,
+      "cycle_reduction_percent": 4.18,
+      "before_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            9
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 737573,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            1,
+            9
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            10
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            3,
+            11
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            4,
+            12
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            5,
+            13
+          ]
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 47293252,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            6,
+            14
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            7,
+            15
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            8,
+            16
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            9
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 666683,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            1,
+            9
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            10
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            3,
+            11
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            4,
+            12
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            5,
+            13
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            6,
+            14
+          ]
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 45355765,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            7,
+            15
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            8,
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "test": "factory_multi_asset_transition_full_consent_funded_splice_in_and_signature_roles",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 4,
+        "total_cycles": 7996575,
+        "transaction_hash": "0x7dc6dd98a0502d501136c10b94c2bd89a218f4397f7fc81145aa2fd3d917b42b",
+        "tx_bytes": 3307,
+        "witness_bytes": 1805,
+        "test_filter": "factory_multi_asset_transition_full_consent_funded_splice_in_and_signature_roles"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 4,
+        "total_cycles": 8107961,
+        "transaction_hash": "0xcd296e0858737e12a86b6c172381c388085ca024cb108733cda480525fb274e9",
+        "tx_bytes": 3312,
+        "witness_bytes": 1810,
+        "test_filter": "factory_multi_asset_transition_full_consent_funded_splice_in_and_signature_roles"
+      },
+      "byte_reduction_percent": -0.15,
+      "cycle_reduction_percent": -1.39,
+      "before_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            3,
+            4
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 166542,
+          "input_indices": [
+            1,
+            2
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 7803522,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            2,
+            3
+          ],
+          "output_indices": [
+            2
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            3,
+            4
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 176389,
+          "input_indices": [
+            1,
+            2
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 7905028,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            2,
+            3
+          ],
+          "output_indices": [
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "test": "factory_multi_asset_transition_full_custody_executes",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 54,
+        "measurement": 4,
+        "total_cycles": 8082168,
+        "transaction_hash": "0xfb974f71380d20d46dfa436bb0eff2b82f0b2c49b1ea1476eec9489ce7c10ad8",
+        "tx_bytes": 3790,
+        "witness_bytes": 2051,
+        "test_filter": "factory_multi_asset_transition_full_custody_executes"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 4,
+        "total_cycles": 8181201,
+        "transaction_hash": "0xaf8d6e16f0f0dda471d651098194927fc713fa7e9f8f972d295afcb0129cc52d",
+        "tx_bytes": 3743,
+        "witness_bytes": 2004,
+        "test_filter": "factory_multi_asset_transition_full_custody_executes"
+      },
+      "byte_reduction_percent": 1.24,
+      "cycle_reduction_percent": -1.23,
+      "before_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            3
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 179792,
+          "input_indices": [
+            1,
+            2
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 7875865,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            4
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 188527,
+          "input_indices": [
+            1,
+            2
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            3
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 7966130,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "test": "factory_multi_asset_transition_reduced_child_maximum_bounded_shape_executes",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 24181,
+        "measurement": 4,
+        "total_cycles": 61262071,
+        "transaction_hash": "0xf9bd6404ff2a65843da79999ea27218b93adf165df4230edc1eea6ba989c3d3a",
+        "tx_bytes": 85535,
+        "witness_bytes": 52602,
+        "test_filter": "factory_multi_asset_transition_reduced_child_maximum_bounded_shape_executes"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 117,
+        "measurement": 4,
+        "total_cycles": 57592493,
+        "transaction_hash": "0xb9a7c35e1e7d2a1ae32548ce076a2c96d3555c48fe6a685701d8528cd38a2bf5",
+        "tx_bytes": 58905,
+        "witness_bytes": 25972,
+        "test_filter": "factory_multi_asset_transition_reduced_child_maximum_bounded_shape_executes"
+      },
+      "byte_reduction_percent": 31.13,
+      "cycle_reduction_percent": 5.99,
+      "before_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            9
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 1498398,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            1,
+            10,
+            19,
+            28,
+            37
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            11,
+            20,
+            29,
+            38
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            3,
+            12,
+            21,
+            30,
+            39
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            4,
+            13,
+            22,
+            31,
+            40
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            5,
+            14,
+            23,
+            32,
+            41
+          ]
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 53938910,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1432685,
+          "input_indices": [],
+          "output_indices": [
+            9
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            6,
+            15,
+            24,
+            33,
+            42
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1464381,
+          "input_indices": [],
+          "output_indices": [
+            36
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1455099,
+          "input_indices": [],
+          "output_indices": [
+            27
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            7,
+            16,
+            25,
+            34,
+            43
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1443079,
+          "input_indices": [],
+          "output_indices": [
+            18
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            8,
+            17,
+            26,
+            35,
+            44
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            9
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-vault-lock",
+          "kind": "Lock",
+          "cycles": 974887,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            1,
+            10,
+            19,
+            28,
+            37
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            11,
+            20,
+            29,
+            38
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1267105,
+          "input_indices": [],
+          "output_indices": [
+            9
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            3,
+            12,
+            21,
+            30,
+            39
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1277985,
+          "input_indices": [],
+          "output_indices": [
+            18
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            4,
+            13,
+            22,
+            31,
+            40
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            5,
+            14,
+            23,
+            32,
+            41
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1288297,
+          "input_indices": [],
+          "output_indices": [
+            27
+          ]
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 51455215,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            6,
+            15,
+            24,
+            33,
+            42
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            7,
+            16,
+            25,
+            34,
+            43
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1299473,
+          "input_indices": [],
+          "output_indices": [
+            36
+          ]
+        },
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Type",
+          "cycles": 2110,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            8,
+            17,
+            26,
+            35,
+            44
+          ]
+        }
+      ]
+    },
+    {
+      "test": "factory_multi_asset_transition_ten_right_metadata_preserves_flat_profile_atomic_capacity",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 5,
+        "total_cycles": 48705242,
+        "transaction_hash": "0xfb76603b16541e3bed46a75b26fec5fbc729f40979cf9359164bacd162e61138",
+        "tx_bytes": 14600,
+        "witness_bytes": 13253,
+        "test_filter": "factory_multi_asset_transition_ten_right_metadata_preserves_flat_profile_atomic_capacity"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 5,
+        "total_cycles": 46917748,
+        "transaction_hash": "0x61e43b611f0d05427327a9dc7fc79079218e7301fb3a9de7430a6049f1c5a37f",
+        "tx_bytes": 13618,
+        "witness_bytes": 12271,
+        "test_filter": "factory_multi_asset_transition_ten_right_metadata_preserves_flat_profile_atomic_capacity"
+      },
+      "byte_reduction_percent": 6.73,
+      "cycle_reduction_percent": 3.67,
+      "before_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            1
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 48692603,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "fixture-wallet/type",
+          "kind": "Lock",
+          "cycles": 2110,
+          "input_indices": [
+            1
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-factory-type",
+          "kind": "Type",
+          "cycles": 46905097,
+          "input_indices": [
+            0
+          ],
+          "output_indices": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "test": "multi_asset_maximum_candidate_set_full_lifecycle",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 54,
+        "measurement": 4,
+        "total_cycles": 2159123,
+        "transaction_hash": "0x0e48cf73e787ab1df52351d8547d3126bb60aa40faff5b906d56281fd3407284",
+        "tx_bytes": 7003,
+        "witness_bytes": 3237,
+        "test_filter": "multi_asset_maximum_candidate_set_full_lifecycle"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 4,
+        "total_cycles": 1980088,
+        "transaction_hash": "0xd74782c938b7256dfb714a1ad328ba524f082dbccb4cf5f12a323f695f819e3f",
+        "tx_bytes": 6941,
+        "witness_bytes": 3175,
+        "test_filter": "multi_asset_maximum_candidate_set_full_lifecycle"
+      },
+      "byte_reduction_percent": 0.89,
+      "cycle_reduction_percent": 8.29,
+      "before_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 1025678,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 1011940,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            4,
+            5
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            6,
+            7
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            8,
+            9
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            10,
+            11
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            12,
+            13
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13872,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            14,
+            15
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 926058,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 932345,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            4,
+            5
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            6,
+            7
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            8,
+            9
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            10,
+            11
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            12,
+            13
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 13893,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            14,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "test": "typed_conditions_maximum_eight_assets_sixty_four_conditions_and_script_bounds",
+      "selection": "same ordinal transaction as baseline largest serialized body",
+      "before": {
+        "duplicate_script_bytes_in_witness": 512,
+        "measurement": 28,
+        "total_cycles": 24396623,
+        "transaction_hash": "0x15eda315bcaad13372db169c1f2b8feaa47871648bd5f6221f168448b98710c0",
+        "tx_bytes": 15827,
+        "witness_bytes": 12307,
+        "test_filter": "typed_conditions_maximum_eight_assets_sixty_four_conditions_and_script_bounds"
+      },
+      "after": {
+        "duplicate_script_bytes_in_witness": 0,
+        "measurement": 28,
+        "total_cycles": 7398369,
+        "transaction_hash": "0xfdff94641fbffcfef67294a23259083f11d6ece0e1917194d93b27ec2889f7e8",
+        "tx_bytes": 15307,
+        "witness_bytes": 11787,
+        "test_filter": "typed_conditions_maximum_eight_assets_sixty_four_conditions_and_script_bounds"
+      },
+      "byte_reduction_percent": 3.29,
+      "cycle_reduction_percent": 69.67,
+      "before_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10529,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 12146551,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            1
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 12137615,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            2
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            3
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            4
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            5
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            6
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12741,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            7
+          ]
+        }
+      ],
+      "after_groups": [
+        {
+          "script": "morph-state-lock",
+          "kind": "Lock",
+          "cycles": 10541,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-vault-lock",
+          "kind": "Lock",
+          "cycles": 3637326,
+          "input_indices": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            1
+          ],
+          "output_indices": [
+            0
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            2
+          ],
+          "output_indices": [
+            1
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            3
+          ],
+          "output_indices": [
+            2
+          ]
+        },
+        {
+          "script": "morph-state-type",
+          "kind": "Type",
+          "cycles": 3648430,
+          "input_indices": [
+            0
+          ],
+          "output_indices": []
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            4
+          ],
+          "output_indices": [
+            3
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            5
+          ],
+          "output_indices": [
+            4
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            6
+          ],
+          "output_indices": [
+            5
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            7
+          ],
+          "output_indices": [
+            6
+          ]
+        },
+        {
+          "script": "morph-devnet-xudt",
+          "kind": "Type",
+          "cycles": 12759,
+          "input_indices": [
+            8
+          ],
+          "output_indices": [
+            7
+          ]
+        }
+      ]
+    }
+  ]
+}

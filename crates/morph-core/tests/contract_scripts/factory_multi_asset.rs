@@ -514,6 +514,8 @@ fn factory_multi_asset_maximum_script_profile_has_a_measured_cycle_bound() {
         .context
         .verify_tx(&fixture.materialisation, 70_000_000)
         .expect("maximum-script Factory materialisation");
+    assert!(cycles < 53_000_000);
+    assert!(fixture.materialisation.data().as_slice().len() <= 54_000);
     eprintln!(
         "Factory maximum scripts assets=8 children=4 participants=16 cycles={cycles} bytes={}",
         fixture.materialisation.data().as_slice().len()

@@ -4,7 +4,7 @@
 use crate::{
     Bytes32, FactoryParticipantSignature, MultiAssetError, MultiAssetManifest, MultiAssetOutPoint,
     MultiAssetRecoveryPackage, MultiAssetResult, MultiAssetTypeScript, blake2b256,
-    encode_multi_asset_outpoints, encode_multi_asset_signatures, encode_multi_asset_witness,
+    encode_multi_asset_outpoints, encode_multi_asset_signatures,
 };
 use morph_script_common::factory_multi_asset as wire;
 use morph_script_common::{BilateralSignatureWitness, ScriptError};
@@ -68,8 +68,22 @@ impl FactoryMultiAssetMaterialisation {
             .map(MultiAssetManifest::encode)
             .transpose()?
             .unwrap_or_default();
+        let mut scripts = vec![self.factory_vault_lock.as_slice()];
+        if !self.carrier_refund_lock.is_empty() {
+            scripts.push(self.carrier_refund_lock.as_slice());
+        }
+        scripts.extend(
+            self.type_scripts
+                .iter()
+                .map(|entry| entry.script.as_slice()),
+        );
+        for child in &self.children {
+            scripts.extend(child.recovery.scripts.roles(&child.recovery.manifest)?);
+        }
+        let dictionary = morph_script_common::script_table::encode(&scripts)?;
+        let table = morph_script_common::script_table::ScriptTable::parse(&dictionary)?;
         let mut raw = Vec::new();
-        raw.extend_from_slice(&1u16.to_le_bytes());
+        raw.extend_from_slice(&2u16.to_le_bytes());
         raw.extend_from_slice(&(self.children.len() as u16).to_le_bytes());
         raw.extend_from_slice(&self.chain_id);
         raw.extend_from_slice(&self.factory_id);
@@ -81,26 +95,31 @@ impl FactoryMultiAssetMaterialisation {
         raw.extend_from_slice(&(retained.len() as u32).to_le_bytes());
         raw.extend_from_slice(&self.factory_carrier_capacity.to_le_bytes());
         raw.extend_from_slice(&self.external_carrier_contribution.to_le_bytes());
-        raw.extend_from_slice(&(self.carrier_refund_lock.len() as u32).to_le_bytes());
-        raw.extend_from_slice(&(self.factory_vault_lock.len() as u32).to_le_bytes());
+        let refund = if self.carrier_refund_lock.is_empty() {
+            u32::MAX
+        } else {
+            table.index_of(&self.carrier_refund_lock)? as u32
+        };
+        raw.extend_from_slice(&refund.to_le_bytes());
+        raw.extend_from_slice(&(table.index_of(&self.factory_vault_lock)? as u32).to_le_bytes());
         raw.extend_from_slice(&(self.type_scripts.len() as u16).to_le_bytes());
         raw.extend_from_slice(&0u16.to_le_bytes());
+        raw.extend_from_slice(&(dictionary.len() as u32).to_le_bytes());
         raw.extend_from_slice(&source);
         raw.extend_from_slice(&encode_multi_asset_outpoints(&self.source_outpoints)?);
         raw.extend_from_slice(&retained);
-        raw.extend_from_slice(&self.carrier_refund_lock);
-        raw.extend_from_slice(&self.factory_vault_lock);
+        raw.extend_from_slice(&dictionary);
         for entry in &self.type_scripts {
-            raw.extend_from_slice(&(entry.script.len() as u32).to_le_bytes());
-            raw.extend_from_slice(&entry.script);
+            raw.push(table.index_of(&entry.script)? as u8);
         }
         for child in &self.children {
             let recovery = &child.recovery;
-            let witness = encode_multi_asset_witness(
+            let witness = crate::multi_asset::encode_multi_asset_witness_with_table(
                 &recovery.manifest,
                 &recovery.settlement,
                 &recovery.outpoints,
                 &recovery.scripts,
+                Some(&table),
             )?;
             raw.extend_from_slice(&child.state_output_index.to_le_bytes());
             raw.extend_from_slice(&recovery.state_carrier_capacity.to_le_bytes());
@@ -190,7 +209,7 @@ pub fn encode_factory_materialisation_public_witness(
     }
     let signatures = encode_factory_all_participant_signatures(authorization)?;
     let mut raw = wire::FACTORY_MATERIALISATION_MAGIC.to_vec();
-    raw.extend_from_slice(&1u16.to_le_bytes());
+    raw.extend_from_slice(&2u16.to_le_bytes());
     raw.extend_from_slice(&0u16.to_le_bytes());
     raw.extend_from_slice(&(intent.len() as u32).to_le_bytes());
     raw.extend_from_slice(&(signatures.len() as u32).to_le_bytes());

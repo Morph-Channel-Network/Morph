@@ -291,3 +291,10 @@ transactions containing malformed/missing/unknown/future projection data must
 fail to reopen without rewriting records, revision or database bytes. This does
 not simulate whole-store rollback or prove every semantic record relationship.
 See [Gateway API evidence](../evidence/gateway-api-fuzz-2026-11-10/README.md).
+
+Fuzz failure reports distinguish `corpus_preparation`, `seed_validation` and
+`mutation`. Startup/seed-generation timeouts still fail the campaign; when no
+parser input was attempted, `input_available=false` and `reproducer=null` are
+explicit. A seed is saved before its first validation, and a failure references
+`current.bin` only when its hash matches `current.json`. Interrupted two-file
+writes never attribute new bytes to old metadata. Resource limits are unchanged.

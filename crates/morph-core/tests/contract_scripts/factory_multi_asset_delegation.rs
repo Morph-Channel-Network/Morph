@@ -159,6 +159,47 @@ fn factory_vault_delegation_uses_global_frame_and_requires_type_authorization() 
 }
 
 #[test]
+#[ignore = "requires built current ELFs"]
+fn factory_authority_rejects_upgradeable_type_hash_code_selection() {
+    let mut f = GateFixture::build(0);
+    let args = f.base().factory_type.args().raw_data();
+    let code = f
+        .context_mut()
+        .deploy_cell(contract_bin("morph-factory-type"));
+    // Context's default constructs a Type-ID-selected code Script. Assets and
+    // wallets may use it, but it cannot be the delegated Factory authority.
+    let ty = f.context_mut().build_script(&code, args).unwrap();
+    assert_eq!(ty.hash_type().as_slice(), &[1]);
+    let lock = f.base().template.locks[0].clone();
+    let input = f.context_mut().create_cell(
+        CellOutput::new_builder()
+            .capacity(CELL_CAPACITY)
+            .lock(lock.clone())
+            .build(),
+        Bytes::new(),
+    );
+    let tx = f.context_mut().complete_tx(
+        TransactionBuilder::default()
+            .input(CellInput::new(input, 0))
+            .output(
+                CellOutput::new_builder()
+                    .capacity(CELL_CAPACITY)
+                    .lock(lock)
+                    .type_(Some(ty).pack())
+                    .build(),
+            )
+            .output_data(Bytes::from(vec![0; 306]).pack())
+            .build(),
+    );
+    gate_rejects(
+        f.context(),
+        &tx,
+        "Outputs[0].Type",
+        ScriptError::UnsupportedProtocolProfile,
+    );
+}
+
+#[test]
 #[ignore = "requires make build-contracts"]
 fn factory_vault_delegation_rejects_foreign_missing_and_aliased_source_types() {
     for profile in 0..3 {

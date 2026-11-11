@@ -35,7 +35,7 @@ stateDiagram-v2
   Successor --> Active: activate new context
 ```
 
-The sole channel header is 318 bytes, State layout 2, descriptor 6. Direct
+The sole channel header is 318 bytes, State layout 2, descriptor 7. Direct
 StateType args are `anchor || since` (40 bytes); Factory child args are
 `anchor || FactoryTypeHash || since` (72 bytes). One shared parser validates
 both shapes and the canonical relative clock. Unsupported historical headers,

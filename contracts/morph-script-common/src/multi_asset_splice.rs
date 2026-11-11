@@ -410,6 +410,11 @@ impl<'a> MultiAssetSpliceWitness<'a> {
         &self.flows
     }
     pub fn validate_old_header(&self, old: &MultiAssetStateHeader) -> Result<()> {
+        self.validate_old_context(old)?;
+        self.header
+            .verify_signatures(old.participants_commitment(), &self.signatures)
+    }
+    pub fn validate_old_context(&self, old: &MultiAssetStateHeader) -> Result<()> {
         self.header.validate_transition(
             old,
             &self.new_header,
@@ -425,7 +430,6 @@ impl<'a> MultiAssetSpliceWitness<'a> {
         {
             return Err(ScriptError::VaultOutPointMismatch);
         }
-        self.header
-            .verify_signatures(old.participants_commitment(), &self.signatures)
+        Ok(())
     }
 }

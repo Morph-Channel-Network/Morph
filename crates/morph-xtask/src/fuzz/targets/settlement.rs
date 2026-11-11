@@ -82,8 +82,7 @@ pub(super) fn resolution(bytes: &[u8]) -> Result<bool> {
         return Ok(false);
     };
     // Decode via the host codec as well; reconstruct each actual resolution.
-    let batch =
-        ConditionalBatch::decode_descriptor(&raw[4..4 + script::CONDITIONAL_BATCH_DESCRIPTOR_LEN])?;
+    let batch = ConditionalBatch::decode_descriptor(witness.descriptor().map_err(error)?.raw())?;
     let mut resolutions = BTreeMap::new();
     for (i, transfer) in batch.transfers.iter().enumerate() {
         let item = witness.resolution(i).map_err(error)?;
@@ -247,7 +246,9 @@ mod tests {
             ensure!(resolution(seed)?, "resolution seed rejected");
         }
         let mut preimage = seeds[0].clone();
-        preimage[8 + 4 + script::CONDITIONAL_BATCH_DESCRIPTOR_LEN + 1] ^= 1;
+        let descriptor_len =
+            script::ConditionalBatchDescriptor::encoded_len(&preimage[12..]).map_err(error)?;
+        preimage[12 + descriptor_len + 1] ^= 1;
         ensure!(!resolution(&preimage)?, "wrong preimage accepted");
         let mut immature = seeds[1].clone();
         immature[..8].copy_from_slice(&499u64.to_le_bytes());

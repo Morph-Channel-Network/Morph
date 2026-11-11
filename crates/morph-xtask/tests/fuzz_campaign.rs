@@ -63,7 +63,22 @@ fn real_worker_deadlines_fail_campaign_and_retain_last_attempt() {
     for row in report["targets"].as_array().unwrap() {
         assert_eq!(row["status"], "fail");
         let dir = out.join(row["target"].as_str().unwrap());
-        assert!(dir.join("current.bin").exists());
         assert!(dir.join("current.json").exists());
+        if row["input_available"] == true {
+            assert_eq!(row["reproducer"], "current.bin");
+            let bytes = fs::read(dir.join("current.bin")).unwrap();
+            let metadata: serde_json::Value =
+                serde_json::from_slice(&fs::read(dir.join("current.json")).unwrap()).unwrap();
+            assert_eq!(
+                metadata["input_hash"],
+                hex::encode(morph_core::blake2b256(&bytes))
+            );
+            assert!(matches!(
+                metadata["phase"].as_str(),
+                Some("seed_validation" | "mutation")
+            ));
+        } else {
+            assert!(row["reproducer"].is_null());
+        }
     }
 }

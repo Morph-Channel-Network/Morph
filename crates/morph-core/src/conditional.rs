@@ -2,19 +2,18 @@
 //!
 //! A batch is signed once as part of a current Morph state. Fulfilled
 //! transfers are then authorised by preimages; refunds are authorised only by
-//! canonical absolute-block `since` values. The fixed-size wire profile keeps
+//! canonical absolute-block `since` values. The bounded count-based wire profile keeps
 //! host and CKB-script parsing identical and bounded.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use morph_script_common::{
-    CONDITIONAL_BATCH_DESCRIPTOR_LEN, CONDITIONAL_BATCH_DESCRIPTOR_VERSION,
-    CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN, CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION,
-    CONDITIONAL_HASH_CKB_BLAKE2B, CONDITIONAL_HASH_SHA256, CONDITIONAL_PARTICIPANT_COUNT,
-    CONDITIONAL_RESOLUTION_FULFILL, CONDITIONAL_RESOLUTION_LEN, CONDITIONAL_RESOLUTION_REFUND,
-    CONDITIONAL_TRANSFER_LEN, CONDITIONAL_TRANSFER_MAX_COUNT, ConditionalBatchDescriptor,
-    ConditionalBatchResolutionWitness, absolute_block_since, conditional_payment_hash, write_u16,
-    write_u64, write_u128,
+    CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN, CONDITIONAL_BATCH_DESCRIPTOR_VERSION,
+    CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION, CONDITIONAL_HASH_CKB_BLAKE2B,
+    CONDITIONAL_HASH_SHA256, CONDITIONAL_PARTICIPANT_COUNT, CONDITIONAL_RESOLUTION_FULFILL,
+    CONDITIONAL_RESOLUTION_REFUND, CONDITIONAL_TRANSFER_LEN, CONDITIONAL_TRANSFER_MAX_COUNT,
+    ConditionalBatchDescriptor, ConditionalBatchResolutionWitness, absolute_block_since,
+    conditional_payment_hash, write_u16, write_u64, write_u128,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -108,7 +107,7 @@ impl ConditionalBatch {
         self.encode_descriptor().map(|_| ())
     }
 
-    pub fn encode_descriptor(&self) -> ConditionalResult<[u8; CONDITIONAL_BATCH_DESCRIPTOR_LEN]> {
+    pub fn encode_descriptor(&self) -> ConditionalResult<Vec<u8>> {
         if is_zero(&self.batch_id)
             || is_zero(&self.application_context_commitment)
             || self.transfers.is_empty()
@@ -147,7 +146,11 @@ impl ConditionalBatch {
             }
         }
 
-        let mut raw = [0u8; CONDITIONAL_BATCH_DESCRIPTOR_LEN];
+        let mut raw = vec![
+            0u8;
+            CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN
+                + self.transfers.len() * CONDITIONAL_TRANSFER_LEN
+        ];
         write_u16(&mut raw, 0, CONDITIONAL_BATCH_DESCRIPTOR_VERSION);
         raw[2] = CONDITIONAL_PARTICIPANT_COUNT;
         raw[3] = CONDITIONAL_TRANSFER_MAX_COUNT;
@@ -251,7 +254,7 @@ impl ConditionalBatch {
     pub fn encode_resolution_witness(
         &self,
         resolutions: &BTreeMap<Bytes32, ConditionalResolution>,
-    ) -> ConditionalResult<[u8; CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN]> {
+    ) -> ConditionalResult<Vec<u8>> {
         let descriptor = self.encode_descriptor()?;
         if resolutions.len() != self.transfers.len() {
             return Err(ConditionalError::MissingResolution);
@@ -263,25 +266,24 @@ impl ConditionalBatch {
             .collect::<Vec<_>>();
         transfer_ids.sort();
 
-        let mut raw = [0u8; CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN];
+        let mut raw = vec![0u8; 4];
         write_u16(&mut raw, 0, CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION);
         raw[2] = transfer_ids.len() as u8;
-        raw[4..4 + CONDITIONAL_BATCH_DESCRIPTOR_LEN].copy_from_slice(&descriptor);
-        for (index, transfer_id) in transfer_ids.iter().enumerate() {
+        raw.extend_from_slice(&descriptor);
+        for transfer_id in &transfer_ids {
             let resolution = resolutions
                 .get(transfer_id)
                 .ok_or(ConditionalError::MissingResolution)?;
-            let offset = conditional_resolution_offset(index);
             match resolution {
                 ConditionalResolution::Fulfill { preimage } => {
                     if is_zero(preimage) {
                         return Err(ConditionalError::InvalidPreimage);
                     }
-                    raw[offset] = CONDITIONAL_RESOLUTION_FULFILL;
-                    raw[offset + 1..offset + 33].copy_from_slice(preimage);
+                    raw.push(CONDITIONAL_RESOLUTION_FULFILL);
+                    raw.extend_from_slice(preimage);
                 }
                 ConditionalResolution::Refund => {
-                    raw[offset] = CONDITIONAL_RESOLUTION_REFUND;
+                    raw.push(CONDITIONAL_RESOLUTION_REFUND);
                 }
             }
         }
@@ -422,10 +424,6 @@ fn conditional_transfer_offset(index: usize) -> usize {
     4 + 2 * 32 + 1 + 7 + 33 + 2 * (32 + 8 + 16) + index * CONDITIONAL_TRANSFER_LEN
 }
 
-fn conditional_resolution_offset(index: usize) -> usize {
-    4 + CONDITIONAL_BATCH_DESCRIPTOR_LEN + index * CONDITIONAL_RESOLUTION_LEN
-}
-
 fn copy32(raw: &[u8]) -> ConditionalResult<Bytes32> {
     raw.try_into().map_err(|_| ConditionalError::Encoding)
 }
@@ -488,10 +486,88 @@ mod tests {
     }
 
     #[test]
+    fn counted_terms_and_sparse_decisions_preserve_exact_value_and_reject_padding() {
+        for count in [1usize, 2, 4, 8] {
+            let mut batch = fixture();
+            batch.transfers = (0..count)
+                .map(|index| {
+                    let algorithm = if index % 2 == 0 {
+                        ConditionalHashAlgorithm::Sha256
+                    } else {
+                        ConditionalHashAlgorithm::CkbBlake2b
+                    };
+                    ConditionalTransferSpec {
+                        transfer_id: [index as u8 + 1; 32],
+                        payer_lock_hash: batch.participants[index % 2].settlement_lock_hash,
+                        hash_algorithm: algorithm,
+                        payment_hash: derive_conditional_payment_hash(
+                            algorithm,
+                            &[index as u8 + 7; 32],
+                        )
+                        .unwrap(),
+                        amount: 25,
+                        refund_after_block: 500 + index as u64,
+                    }
+                })
+                .collect();
+            let descriptor = batch.encode_descriptor().unwrap();
+            assert_eq!(
+                descriptor.len(),
+                CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN + count * CONDITIONAL_TRANSFER_LEN
+            );
+            let mut padded = descriptor.clone();
+            padded.push(0);
+            assert!(ConditionalBatch::decode_descriptor(&padded).is_err());
+            for mask in [0u8, u8::MAX, 0b01010101] {
+                let mut fulfilled = 0usize;
+                let decisions = batch
+                    .transfers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| {
+                        let value = if mask & (1 << i) != 0 {
+                            fulfilled += 1;
+                            ConditionalResolution::Fulfill {
+                                preimage: [i as u8 + 7; 32],
+                            }
+                        } else {
+                            ConditionalResolution::Refund
+                        };
+                        (t.transfer_id, value)
+                    })
+                    .collect();
+                let raw = batch.encode_resolution_witness(&decisions).unwrap();
+                assert_eq!(raw.len(), 4 + descriptor.len() + count + 32 * fulfilled);
+                let values = batch
+                    .resolve(&decisions, absolute_block_since(1000).unwrap())
+                    .unwrap();
+                assert_eq!(
+                    values[0].capacity + values[1].capacity,
+                    batch.total_capacity().unwrap()
+                );
+                let mut extra = raw.clone();
+                extra.push(0);
+                assert!(ConditionalBatchResolutionWitness::parse(&extra).is_err());
+                assert!(ConditionalBatchResolutionWitness::parse(&raw[..raw.len() - 1]).is_err());
+            }
+            let mut retired = descriptor.clone();
+            write_u16(&mut retired, 0, 4);
+            assert!(ConditionalBatch::decode_descriptor(&retired).is_err());
+            let mut bad_count = descriptor;
+            bad_count[68] = 9;
+            assert!(ConditionalBatch::decode_descriptor(&bad_count).is_err());
+        }
+    }
+
+    #[test]
     fn descriptor_round_trip_is_canonical() {
         let batch = fixture();
         let raw = batch.encode_descriptor().unwrap();
-        assert_eq!(raw.len(), CONDITIONAL_BATCH_DESCRIPTOR_LEN);
+        assert_eq!(
+            raw.len(),
+            CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN
+                + batch.transfers.len() * CONDITIONAL_TRANSFER_LEN
+        );
         assert_eq!(ConditionalBatch::decode_descriptor(&raw).unwrap(), batch);
         assert_eq!(batch.total_capacity().unwrap(), 365);
     }

@@ -17,7 +17,7 @@ bounded asset, Vault-set, persistence, signing and recovery foundation:
 
 | Boundary | Current implementation |
 | --- | --- |
-| Bilateral State | 318 bytes; descriptor 6; one to eight Vaults |
+| Bilateral State | 318 bytes; descriptor 7; one to eight Vaults |
 | Factory State | 306 bytes; two to sixteen committed members |
 | Full Factory authorization | Exact-transaction N-of-N root, update, custody and materialisation |
 | Reduced Factory authorization | One touched member; localized compact proofs; independent asset conservation |

@@ -21,7 +21,7 @@ flowchart LR
 
 | Area | Current implementation | Remaining qualification |
 | --- | --- | --- |
-| Channels | 318-byte layout-2 State, descriptor 6, 1–8 Vaults, exact provenance, complete-set finalisation and independent per-Type accounting. | Independent review and deployment-specific resource/asset qualification. |
+| Channels | 318-byte layout-2 State, descriptor 7, 1–8 Vaults, exact provenance, complete-set finalisation and independent per-Type accounting. | Independent review and deployment-specific resource/asset qualification. |
 | Funding and splice | Independent durable signers, exit-before-creation ceremony, exact-transaction root/splice authorizations, wallet-group funding, keyless replay and canonical same-path handoff. | Current fresh-node report/CI refresh, terminal abort tracking and production recovery rehearsal. |
 | Conditional CKB/UDT | Explicit descriptor capability, shared bounded Batch terms/executor, context-bound 104-byte Batch args, cooperative consolidation and script-enforced preimage/refund fallback. | Local candidate `bc4be3ff` qualified; routed integration and production operational evidence remain separate. |
 | Factory authority | Current 306-byte State; transaction-bound root/update, complete custody activation, full-consent materialisation and funded custody changes. | Current transition/child acceptance and release evidence must be evaluated together; independent review remains open. |
@@ -34,7 +34,7 @@ flowchart LR
 The former envelope-kind package commands and separate single-Vault physical
 implementations are removed. Flat, sparse and compact reduced-right operations
 are represented by one current compact frame; they are not parallel roadmap
-profiles. The current typed 957-byte Batch terms and generic signature/Merkle
+profiles. The current typed count-based Batch terms and generic signature/Merkle
 primitives are used inside the current capabilities.
 
 ## Protocol work still separate from consolidation

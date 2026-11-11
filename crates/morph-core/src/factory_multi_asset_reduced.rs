@@ -102,11 +102,19 @@ impl FactoryMultiAssetReducedRelease {
         {
             return invalid();
         }
+        let own_types = self.operation != FactoryTransitionOperation::ReducedChild;
+        let mut scripts = vec![self.factory_lock_script.as_slice()];
+        if own_types {
+            scripts.extend(self.type_scripts.iter().map(|s| s.script.as_slice()));
+        }
+        scripts.extend(self.payouts.iter().map(|p| p.lock_script.as_slice()));
+        let table_bytes = morph_script_common::script_table::encode(&scripts)?;
+        let table = morph_script_common::script_table::ScriptTable::parse(&table_bytes)?;
         let source = self.source.encode()?;
         let retained = self.retained.encode()?;
         let mut raw = Vec::with_capacity(wire::FACTORY_REDUCED_RELEASE_PREFIX_LEN);
         raw.extend_from_slice(wire::FACTORY_REDUCED_RELEASE_MAGIC);
-        raw.extend_from_slice(&1u16.to_le_bytes());
+        raw.extend_from_slice(&2u16.to_le_bytes());
         raw.extend_from_slice(&(self.operation as u16).to_le_bytes());
         raw.extend_from_slice(&(self.members.len() as u16).to_le_bytes());
         raw.extend_from_slice(&self.signer_index.to_le_bytes());
@@ -114,9 +122,16 @@ impl FactoryMultiAssetReducedRelease {
         raw.extend_from_slice(&(self.payouts.len() as u16).to_le_bytes());
         raw.extend_from_slice(&(source.len() as u32).to_le_bytes());
         raw.extend_from_slice(&(retained.len() as u32).to_le_bytes());
-        raw.extend_from_slice(&(self.factory_lock_script.len() as u32).to_le_bytes());
-        raw.extend_from_slice(&(self.type_scripts.len() as u16).to_le_bytes());
-        raw.extend_from_slice(&0u16.to_le_bytes());
+        raw.extend_from_slice(&(table_bytes.len() as u32).to_le_bytes());
+        raw.extend_from_slice(
+            &(if own_types {
+                self.type_scripts.len() as u16
+            } else {
+                0
+            })
+            .to_le_bytes(),
+        );
+        raw.extend_from_slice(&(table.index_of(&self.factory_lock_script)? as u16).to_le_bytes());
         raw.extend_from_slice(&self.old_state.tx_hash);
         raw.extend_from_slice(&self.old_state.index.to_le_bytes());
         raw.extend_from_slice(&self.transaction_hash);
@@ -133,10 +148,11 @@ impl FactoryMultiAssetReducedRelease {
         raw.extend_from_slice(&source);
         raw.extend_from_slice(&encode_multi_asset_outpoints(&self.source_outpoints)?);
         raw.extend_from_slice(&retained);
-        raw.extend_from_slice(&self.factory_lock_script);
-        for script in &self.type_scripts {
-            raw.extend_from_slice(&(script.script.len() as u32).to_le_bytes());
-            raw.extend_from_slice(&script.script);
+        raw.extend_from_slice(&table_bytes);
+        if own_types {
+            for script in &self.type_scripts {
+                raw.push(table.index_of(&script.script)? as u8);
+            }
         }
         for payout in &self.payouts {
             let mut asset = [0; 33];
@@ -145,13 +161,15 @@ impl FactoryMultiAssetReducedRelease {
             let mut allocation = [0; 32];
             payout.value.wire().encode(&mut allocation)?;
             raw.extend_from_slice(&allocation);
-            raw.extend_from_slice(&(payout.lock_script.len() as u16).to_le_bytes());
+            raw.extend_from_slice(&(table.index_of(&payout.lock_script)? as u16).to_le_bytes());
             raw.extend_from_slice(&payout.output_index.to_le_bytes());
-            raw.extend_from_slice(&payout.lock_script);
         }
         for right in &self.rights {
+            if right.before.right.id != right.after.right.id {
+                return invalid();
+            }
             encode_right(&mut raw, &right.before.right);
-            encode_right(&mut raw, &right.after.right);
+            raw.extend_from_slice(&right.after.right.quantity.to_le_bytes());
             encode_proof(&mut raw, &right.before)?;
             encode_proof(&mut raw, &right.after)?;
         }

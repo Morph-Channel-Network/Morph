@@ -30,7 +30,7 @@ refunds and wallet withdrawals are released value, not a second custody bundle.
 | Schema | Verification before extraction |
 | --- | --- |
 | `morph.multi_asset_recovery_package.v1` | Complete current State/Vault evidence, two participant signatures and exact OutPoint commitments |
-| `morph.conditional_batch_package.v2` | Its complete signed current source package, bounded conditions, complete resolution witness, preimages and refund clock |
+| `morph.conditional_batch_package.v3` | Its complete signed current source package, bounded conditions, complete resolution witness, preimages and refund clock |
 | `morph.multi_asset_root_funding.v1` | Signed initial exit and exact-transaction root creation authorisation |
 | `morph.multi_asset_splice_funding.v1` | Required signed old recovery, new exit, creation and bridge authorisations, and the exact raw transaction |
 | `morph.factory_transition_package.v1` | Exact transaction and its canonical current Factory transition frame, signatures and localised proofs |

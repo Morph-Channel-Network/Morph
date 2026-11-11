@@ -17,8 +17,8 @@ pub const MULTI_ASSET_FUNDING_CONTEXT_DOMAIN: &[u8] = b"CKB_MORPH_MULTI_ASSET_FU
 pub const MULTI_ASSET_STATE_LAYOUT_VERSION: u16 = 2;
 /// Sole current descriptor. Earlier descriptors, including CKB-only version 5,
 /// are rejected; development funding must be recreated.
-pub const MULTI_ASSET_DESCRIPTOR_VERSION: u16 = 6;
-pub const MULTI_ASSET_ENCODING_VERSION: u16 = 1;
+pub const MULTI_ASSET_DESCRIPTOR_VERSION: u16 = 7;
+pub const MULTI_ASSET_ENCODING_VERSION: u16 = 2;
 /// Candidate resource bounds; release requires worst-case CKB-VM budget evidence.
 pub const MULTI_ASSET_MAX_VAULTS: usize = 8;
 pub const MULTI_ASSET_MAX_OUTPUTS: usize = 2 * MULTI_ASSET_MAX_VAULTS + 1;
@@ -381,6 +381,7 @@ impl MultiAssetPayoutEntry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MultiAssetSettlementDescriptor<'a> {
     raw: &'a [u8],
+    conditional: Option<crate::multi_asset_conditional::MultiAssetConditional<'a>>,
 }
 
 impl<'a> MultiAssetSettlementDescriptor<'a> {
@@ -399,14 +400,14 @@ impl<'a> MultiAssetSettlementDescriptor<'a> {
         if raw.len() < base_len {
             return Err(ScriptError::MultiAssetEncoding);
         }
-        match raw[3] {
-            MULTI_ASSET_SETTLEMENT_ORDINARY if raw.len() == base_len => {}
-            MULTI_ASSET_SETTLEMENT_CONDITIONAL => {
-                crate::multi_asset_conditional::MultiAssetConditional::parse(&raw[base_len..])?;
-            }
+        let conditional = match raw[3] {
+            MULTI_ASSET_SETTLEMENT_ORDINARY if raw.len() == base_len => None,
+            MULTI_ASSET_SETTLEMENT_CONDITIONAL => Some(
+                crate::multi_asset_conditional::MultiAssetConditional::parse(&raw[base_len..])?,
+            ),
             _ => return Err(ScriptError::MultiAssetEncoding),
-        }
-        let descriptor = Self { raw };
+        };
+        let descriptor = Self { raw, conditional };
         if zero(descriptor.lock_hash(0)?)
             || descriptor.lock_hash(0)? >= descriptor.lock_hash(1)?
             || zero(descriptor.carrier_refund_lock())
@@ -468,12 +469,7 @@ impl<'a> MultiAssetSettlementDescriptor<'a> {
     pub fn conditional(
         &self,
     ) -> Result<Option<crate::multi_asset_conditional::MultiAssetConditional<'a>>> {
-        if self.raw[3] == crate::multi_asset_conditional::MULTI_ASSET_SETTLEMENT_ORDINARY {
-            return Ok(None);
-        }
-        let offset =
-            MULTI_ASSET_DESCRIPTOR_PREFIX_LEN + self.count() * MULTI_ASSET_PAYOUT_ENTRY_LEN;
-        crate::multi_asset_conditional::MultiAssetConditional::parse(&self.raw[offset..]).map(Some)
+        Ok(self.conditional)
     }
     pub fn lock_hash(&self, participant: usize) -> Result<&'a [u8]> {
         if participant >= 2 {
@@ -802,6 +798,16 @@ pub fn multi_asset_script_occupied_bytes(raw: &[u8]) -> Result<u64> {
     Ok(33 + (raw.len() - 53) as u64)
 }
 
+/// Authority delegation requires immutable code identity. Asset and wallet
+/// Scripts retain their separate supported hash-type rules.
+pub fn require_immutable_authority_script(raw: &[u8]) -> Result<()> {
+    multi_asset_script_occupied_bytes(raw)?;
+    if !matches!(raw[48], 0 | 2 | 4) {
+        return Err(ScriptError::UnsupportedProtocolProfile);
+    }
+    Ok(())
+}
+
 pub fn multi_asset_occupied_capacity(
     lock: &[u8],
     type_script: Option<&[u8]>,
@@ -820,11 +826,13 @@ pub fn multi_asset_occupied_capacity(
 
 /// Scripts are ordered: participant 0, participant 1, carrier refund, Vault,
 /// State Type, State Lock, then each xUDT Type Script in manifest asset order.
-/// Each has a u32 length.
+/// Role indices resolve through one canonical bounded Script dictionary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MultiAssetScripts<'a> {
     raw: &'a [u8],
     count: usize,
+    roles: [Option<&'a [u8]>; 6 + MULTI_ASSET_MAX_VAULTS],
+    dictionary_usage: u64,
 }
 
 impl<'a> MultiAssetScripts<'a> {
@@ -833,29 +841,53 @@ impl<'a> MultiAssetScripts<'a> {
         manifest: &MultiAssetVaultManifest,
         descriptor: &MultiAssetSettlementDescriptor,
     ) -> Result<Self> {
+        Self::parse_with_table(raw, manifest, descriptor, None)
+    }
+    pub fn parse_with_table(
+        raw: &'a [u8],
+        manifest: &MultiAssetVaultManifest,
+        descriptor: &MultiAssetSettlementDescriptor,
+        shared: Option<&crate::script_table::ScriptTable<'a>>,
+    ) -> Result<Self> {
         let mut typed = 0;
         for i in 0..manifest.count() {
             typed += usize::from(manifest.entry(i)?.asset.kind == 1);
         }
-        let scripts = Self {
-            raw,
-            count: 6 + typed,
-        };
-        let mut offset = 0usize;
-        for _ in 0..scripts.count {
-            if raw.len().saturating_sub(offset) < 4 {
-                return Err(ScriptError::MultiAssetEncoding);
-            }
-            let len = read_u32(raw, offset) as usize;
-            if !(53..=MULTI_ASSET_MAX_SCRIPT_LEN).contains(&len) || raw.len() - offset - 4 < len {
-                return Err(ScriptError::MultiAssetEncoding);
-            }
-            multi_asset_script_occupied_bytes(&raw[offset + 4..offset + 4 + len])?;
-            offset += 4 + len;
-        }
-        if offset != raw.len() {
+        let count = 6 + typed;
+        if raw.len() < 4 + count || raw[1] as usize != count || raw[0] != u8::from(shared.is_some())
+        {
             return Err(ScriptError::MultiAssetEncoding);
         }
+        let len = read_u16(raw, 2) as usize;
+        let inline;
+        let table = if let Some(table) = shared {
+            if len != 0 || raw.len() != 4 + count {
+                return Err(ScriptError::MultiAssetEncoding);
+            }
+            *table
+        } else {
+            if raw.len() != 4 + count + len {
+                return Err(ScriptError::MultiAssetEncoding);
+            }
+            inline = crate::script_table::ScriptTable::parse(&raw[4 + count..])?;
+            inline
+        };
+        let mut roles = [None; 6 + MULTI_ASSET_MAX_VAULTS];
+        let mut dictionary_usage = 0u64;
+        for (i, slot) in roles.iter_mut().enumerate().take(count) {
+            let index = raw[4 + i] as usize;
+            *slot = Some(table.script(index)?);
+            dictionary_usage |= 1u64 << index;
+        }
+        if shared.is_none() && dictionary_usage != table.complete_usage() {
+            return Err(ScriptError::MultiAssetEncoding);
+        }
+        let scripts = Self {
+            raw,
+            count,
+            roles,
+            dictionary_usage,
+        };
         for i in 0..2 {
             if blake2b256(&[scripts.script(i)?]) != descriptor.lock_hash(i)? {
                 return Err(ScriptError::MultiAssetCommitmentMismatch);
@@ -867,6 +899,7 @@ impl<'a> MultiAssetScripts<'a> {
         let vault_script = scripts.script(3)?;
         let args = MultiAssetVaultArgs::parse(&vault_script[53..])?;
         let state_type = scripts.script(4)?;
+        require_immutable_authority_script(state_type)?;
         let state_lock = scripts.script(5)?;
         let state_type_hash = blake2b256(&[state_type]);
         let state_lock_hash = blake2b256(&[state_lock]);
@@ -890,7 +923,7 @@ impl<'a> MultiAssetScripts<'a> {
         for i in 0..manifest.count() {
             let vault = manifest.entry(i)?;
             let payout = descriptor.entry(i)?;
-            if blake2b256(&[scripts.script(3)?]) != vault.lock_hash {
+            if vault_lock_hash != vault.lock_hash {
                 return Err(ScriptError::MultiAssetCommitmentMismatch);
             }
             let type_script = if vault.asset.kind == 1 {
@@ -936,19 +969,14 @@ impl<'a> MultiAssetScripts<'a> {
     pub fn as_bytes(&self) -> &'a [u8] {
         self.raw
     }
+    pub fn dictionary_usage(&self) -> u64 {
+        self.dictionary_usage
+    }
     pub fn script(&self, index: usize) -> Result<&'a [u8]> {
         if index >= self.count {
             return Err(ScriptError::IndexOutOfBounds);
         }
-        let mut offset = 0;
-        for i in 0..=index {
-            let len = read_u32(self.raw, offset) as usize;
-            if i == index {
-                return Ok(&self.raw[offset + 4..offset + 4 + len]);
-            }
-            offset += 4 + len;
-        }
-        Err(ScriptError::IndexOutOfBounds)
+        self.roles[index].ok_or(ScriptError::IndexOutOfBounds)
     }
 }
 
@@ -963,6 +991,12 @@ pub struct MultiAssetWitness<'a> {
 
 impl<'a> MultiAssetWitness<'a> {
     pub fn parse(raw: &'a [u8]) -> Result<Self> {
+        Self::parse_with_table(raw, None)
+    }
+    pub fn parse_with_table(
+        raw: &'a [u8],
+        shared: Option<&crate::script_table::ScriptTable<'a>>,
+    ) -> Result<Self> {
         if raw.len() < MULTI_ASSET_WITNESS_PREFIX_LEN
             || raw.len() > MULTI_ASSET_MAX_WITNESS_LEN
             || &raw[..8] != MULTI_ASSET_WITNESS_MAGIC
@@ -997,8 +1031,12 @@ impl<'a> MultiAssetWitness<'a> {
             }
             multi_asset_outpoint_set_commitment(&manifest.commitment(), count, outpoints)?;
         }
-        let scripts =
-            MultiAssetScripts::parse(&raw[descriptor_end + count * 36..], &manifest, &descriptor)?;
+        let scripts = MultiAssetScripts::parse_with_table(
+            &raw[descriptor_end + count * 36..],
+            &manifest,
+            &descriptor,
+            shared,
+        )?;
         Ok(Self {
             raw,
             manifest,
@@ -1044,6 +1082,8 @@ impl<'a> MultiAssetWitness<'a> {
         }
         if let Some(conditional) = self.descriptor.conditional()? {
             let funding_context = header.funding_context_id()?;
+            let vault_lock_hash = blake2b256(&[self.scripts.script(3)?]);
+            let state_lock_hash = blake2b256(&[self.scripts.script(5)?]);
             for batch_index in 0..conditional.count() {
                 let batch = conditional.batch(batch_index)?;
                 let asset = batch.asset()?;
@@ -1056,8 +1096,8 @@ impl<'a> MultiAssetWitness<'a> {
                 if lock.as_slice() == self.descriptor.lock_hash(0)?
                     || lock.as_slice() == self.descriptor.lock_hash(1)?
                     || lock.as_slice() == self.descriptor.carrier_refund_lock()
-                    || lock == blake2b256(&[self.scripts.script(3)?])
-                    || lock == blake2b256(&[self.scripts.script(5)?])
+                    || lock == vault_lock_hash
+                    || lock == state_lock_hash
                 {
                     return Err(ScriptError::ConditionalBatchLockMismatch);
                 }

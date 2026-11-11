@@ -134,6 +134,7 @@ impl FactoryCustody {
             return Err(FactoryBackendError::InvalidCustody);
         }
         let state_type = canonical_script(&self.state_type)?;
+        asset::require_immutable_authority_script(&self.state_type)?;
         let state_lock = canonical_script(&self.state_lock)?;
         let vault_lock = canonical_script(&self.vault_lock)?;
         let type_args = state_type.args().raw_data();
@@ -918,9 +919,9 @@ impl FactorySigningRequest {
             .children()?
             .ok_or(FactoryBackendError::InvalidDelivery)?;
         let child = children.intent()?.child(usize::from(child_index))?;
-        let mut recovery = crate::MultiAssetRecoveryPackage::decode_contents(
+        let mut recovery = crate::MultiAssetRecoveryPackage::decode_evidence(
             child.header.as_bytes(),
-            child.evidence.as_bytes(),
+            &child.evidence,
             child.carrier_capacity,
         )?;
         recovery.authorization.signatures = (0..2)

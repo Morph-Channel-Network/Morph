@@ -213,6 +213,70 @@ fn multi_asset_maximum_candidate_shape_has_bounded_evidence() {
 }
 
 #[test]
+fn custody_dictionary_rejects_wrong_scope_unused_entries_and_role_substitution() {
+    use morph_script_common::script_table::{self, ScriptTable};
+    let package = fixture(2);
+    let raw = encode_multi_asset_witness(
+        &package.manifest,
+        &package.settlement,
+        &package.outpoints,
+        &package.scripts,
+    )
+    .unwrap();
+    let evidence = wire::MultiAssetWitness::parse(&raw).unwrap();
+    let scripts = evidence.scripts().as_bytes();
+    let start = scripts.as_ptr() as usize - raw.as_ptr() as usize;
+    let count = scripts[1] as usize;
+    let table_start = start + 4 + count;
+    let table = ScriptTable::parse(&raw[table_start..]).unwrap();
+    // Repeated roles (the carrier refund may be participant 0) are intentional.
+    assert!(table.count() < count);
+    for mutate in 0..5 {
+        let mut bad = raw.clone();
+        match mutate {
+            0 => bad[start] = 1, // A private exit cannot depend on a parent table.
+            1 => bad[start + 4] = table.count() as u8,
+            2 => bad.swap(start + 4, start + 5), // Payout identities remain committed.
+            3 => bad[8..10].copy_from_slice(&1u16.to_le_bytes()),
+            _ => bad.push(0),
+        }
+        assert!(wire::MultiAssetWitness::parse(&bad).is_err());
+    }
+    let extra = script(250, &[1]);
+    let mut entries: Vec<_> = (0..table.count())
+        .map(|i| table.script(i).unwrap())
+        .collect();
+    entries.push(&extra);
+    let expanded = script_table::encode(&entries).unwrap();
+    let expanded_view = ScriptTable::parse(&expanded).unwrap();
+    let mut bad = raw[..table_start].to_vec();
+    for i in 0..count {
+        bad[start + 4 + i] = expanded_view
+            .index_of(evidence.scripts().script(i).unwrap())
+            .unwrap() as u8;
+    }
+    bad[start + 2..start + 4].copy_from_slice(&(expanded.len() as u16).to_le_bytes());
+    bad.extend_from_slice(&expanded);
+    let len = bad.len() - start;
+    bad[24..28].copy_from_slice(&(len as u32).to_le_bytes());
+    assert!(
+        wire::MultiAssetWitness::parse(&bad).is_err(),
+        "unused dictionary entries are not canonical"
+    );
+    let shared = encode_multi_asset_witness_with_table(
+        &package.manifest,
+        &package.settlement,
+        &package.outpoints,
+        &package.scripts,
+        Some(&table),
+    )
+    .unwrap();
+    assert!(wire::MultiAssetWitness::parse(&shared).is_err());
+    wire::MultiAssetWitness::parse_with_table(&shared, Some(&table)).unwrap();
+    assert!(wire::MultiAssetWitness::parse_with_table(&raw, Some(&table)).is_err());
+}
+
+#[test]
 fn multi_asset_domains_and_state_digests_match_host() {
     use morph_core::hash;
     assert_eq!(

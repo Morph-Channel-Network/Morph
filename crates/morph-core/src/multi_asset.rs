@@ -581,7 +581,16 @@ pub fn encode_multi_asset_witness(
     points: &[MultiAssetOutPoint],
     scripts: &MultiAssetRecoveryScripts,
 ) -> MultiAssetResult<Vec<u8>> {
-    let scripts = scripts.encode(manifest)?;
+    encode_multi_asset_witness_with_table(manifest, settlement, points, scripts, None)
+}
+pub fn encode_multi_asset_witness_with_table(
+    manifest: &MultiAssetManifest,
+    settlement: &MultiAssetSettlement,
+    points: &[MultiAssetOutPoint],
+    scripts: &MultiAssetRecoveryScripts,
+    shared: Option<&morph_script_common::script_table::ScriptTable<'_>>,
+) -> MultiAssetResult<Vec<u8>> {
+    let scripts = scripts.encode_with_table(manifest, shared)?;
     let manifest = manifest.encode()?;
     let descriptor = settlement.encode()?;
     let outpoints = encode_multi_asset_outpoints(points)?;
@@ -596,7 +605,7 @@ pub fn encode_multi_asset_witness(
     raw.extend_from_slice(&descriptor);
     raw.extend_from_slice(&outpoints);
     raw.extend_from_slice(&scripts);
-    wire::MultiAssetWitness::parse(&raw)?;
+    wire::MultiAssetWitness::parse_with_table(&raw, shared)?;
     Ok(raw)
 }
 
@@ -654,6 +663,17 @@ fn occupied_capacity(
 
 impl MultiAssetRecoveryScripts {
     pub fn encode(&self, manifest: &MultiAssetManifest) -> MultiAssetResult<Vec<u8>> {
+        self.encode_with_table(manifest, None)
+    }
+    pub fn encode_with_table(
+        &self,
+        manifest: &MultiAssetManifest,
+        shared: Option<&morph_script_common::script_table::ScriptTable<'_>>,
+    ) -> MultiAssetResult<Vec<u8>> {
+        morph_script_common::script_table::encode_roles(&self.roles(manifest)?, shared)
+            .map_err(MultiAssetError::from)
+    }
+    pub fn roles(&self, manifest: &MultiAssetManifest) -> MultiAssetResult<Vec<&[u8]>> {
         let registry = manifest.registry()?;
         if self.type_scripts.len() != registry.xudt_types.len()
             || !self
@@ -664,8 +684,7 @@ impl MultiAssetRecoveryScripts {
         {
             return Err(MultiAssetError::ScriptIdentity);
         }
-        let mut raw = Vec::new();
-        for script in self
+        let scripts = self
             .participant_locks
             .iter()
             .map(Vec::as_slice)
@@ -680,12 +699,8 @@ impl MultiAssetRecoveryScripts {
                     .iter()
                     .map(|entry| entry.script.as_slice()),
             )
-        {
-            canonical_script_occupied_bytes(script)?;
-            raw.extend_from_slice(&(script.len() as u32).to_le_bytes());
-            raw.extend_from_slice(script);
-        }
-        Ok(raw)
+            .collect::<Vec<_>>();
+        Ok(scripts)
     }
     pub fn validate(
         &self,
@@ -802,6 +817,16 @@ impl MultiAssetRecoveryPackage {
     /// Decode unsigned proposal evidence only. Never use this as authenticated
     /// recovery evidence; `decode` and `validate` require complete signatures.
     pub fn decode_contents(header: &[u8], witness: &[u8], carrier: u64) -> MultiAssetResult<Self> {
+        let evidence = wire::MultiAssetWitness::parse(witness)?;
+        Self::decode_evidence(header, &evidence, carrier)
+    }
+    /// Reconstruct unsigned contents from an already parsed parent-owned view.
+    /// Export always uses a complete standalone dictionary, never shared indices.
+    pub fn decode_evidence(
+        header: &[u8],
+        evidence: &wire::MultiAssetWitness<'_>,
+        carrier: u64,
+    ) -> MultiAssetResult<Self> {
         fn bytes32(bytes: &[u8]) -> MultiAssetResult<Bytes32> {
             bytes
                 .try_into()
@@ -809,7 +834,6 @@ impl MultiAssetRecoveryPackage {
         }
         let state = wire::MultiAssetStateHeader::parse(header)?;
         let base = state;
-        let evidence = wire::MultiAssetWitness::parse(witness)?;
         evidence.validate_header(&state)?;
         let vaults = MultiAssetManifest::decode(evidence.manifest().as_bytes())?.vaults;
         let mut type_index = 6;
