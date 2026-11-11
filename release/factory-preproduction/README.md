@@ -9,9 +9,9 @@ durable close signing/operation tracking, asset-bound CKB/UDT conditions and
 compact descriptor-7 custody evidence. `contracts.json` pins all eight ELF
 identities. The optimization implementation `991f7e3` completed the ten local
 no-value gates; see `docs/evidence/model-cost-991f7e3/README.md` for its original
-source/artifact identities. The 4.1.0 tag has its own source-bound build and
-qualification evidence attached to the GitHub release; historical receipts are
-not relabelled as tests of the versioned release. See `docs/releases/v4.1.0.md`.
+source/artifact identities. The 4.1.0 tag has its own source-bound build record attached to the GitHub
+release. The owner requested no repeated acceptance for this version/documentation
+publication; the existing qualification remains tied to its original source. See `docs/releases/v4.1.0.md`.
 
 Bilateral custody and Factory custody use distinct authority objects on the same
 bounded asset, Vault-set, persistence, signing and recovery foundation:

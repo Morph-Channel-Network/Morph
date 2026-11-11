@@ -1,12 +1,12 @@
 # Current channels and Factory custody
 
-Status: current unpublished implementation, 2026-11-05. Plain CKB, one xUDT and
-multiple xUDT types share one channel State/Vault-set lifecycle. The current
-Factory uses the same custody primitives with its own rights authority; it is
-not a second channel settlement implementation. Repository-wide CI, acceptance
-report refresh and release qualification remain in progress. See the
-[wire reference](multi-asset-wire.md), [coverage ledger](current-protocol-coverage.md)
-and [mainnet gates](mainnet-readiness.md).
+Status: **4.1.0**, controlled devnet with no real assets. Plain CKB, one xUDT
+and multiple xUDT Types share one State/Vault-set lifecycle. Factory uses the
+same custody primitives under its distinct rights authority. The existing
+`991f7e3` implementation qualification is preserved; repeated acceptance for the
+version/documentation publication was skipped at the owner’s request. See the
+[release record](releases/v4.1.0.md), [wire](multi-asset-wire.md) and
+[deployment gates](mainnet-readiness.md).
 
 ## What is shared
 
@@ -31,6 +31,8 @@ stateDiagram-v2
   Active --> Settling: publish signed recovery
   Settling --> Settling: higher signed state number
   Settling --> Closed: mature delay + whole-set finalisation
+  Active --> Closed: exact-body cooperative close
+  Settling --> Closed: exact-body cooperative close
   Active --> Successor: exact-TX splice + new creation and initial exit
   Successor --> Active: activate new context
 ```
@@ -134,12 +136,11 @@ uses the same canonical watcher as bounded passes; independent hosts/RPCs,
 pooled publication, terminal abort tracking and production resilience still
 require evidence. See the [watch service runbook](runbooks/current-watch-service.md).
 
-Actual-node Factory acceptance also verifies reduced escape, public proof
-refresh, independent child exits and parent retirement. The [coverage ledger](current-protocol-coverage.md) records 77 current CKB-VM
-cases, host/property negatives and resource measurements up to 8 assets,
-4 children and 16 members. These are local accepted fixtures, with test
-asset/wallet code, not a universal execution or fee guarantee. Public-network
-latency/reorg/fee evidence, independent release rebuild, external review and
-real-asset value limits remain open. Cooperative channel close without the
-challenge delay, typed conditional execution and member rotation remain separate
-protocol work; none is implied by this consolidation.
+Actual-node Factory acceptance verifies reduced escape, public proof refresh,
+independent child exits and parent retirement. The [coverage ledger](current-protocol-coverage.md)
+and [source-bound evidence](evidence/model-cost-991f7e3/README.md) record 114 VM
+cases and the local native/fault matrix. Eight-asset/four-child/sixteen-member
+fixture measurements are not universal asset or fee guarantees. Exact-body
+cooperative close and typed conditional execution are implemented; member
+rotation, live routing, independent/public-network evidence and real-asset
+admission remain separate. See [the roadmap](roadmap.md).

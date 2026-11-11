@@ -24,7 +24,9 @@ supporting a wider or threshold-based profile.
 The current participant backend snapshot requires `close`, including explicit
 null when no cooperative close is prepared. Missing close history is rejected,
 not migrated into fresh signing authority. The Core close state machine is
-implemented; disk/key-service and operational close integration remain pending.
+implemented together with durable signing, isolated close review and native
+operational submission/reconciliation. Additional API/desktop close adapters
+remain separate.
 Do not edit an old active journal to insert null or remove a close reservation.
 Use saved unilateral recovery for existing disposable custody before replacing
 development state; a consistent old snapshot cannot establish fresh authority.

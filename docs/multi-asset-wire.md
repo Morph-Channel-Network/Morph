@@ -1,17 +1,19 @@
 # Current State and Vault-Set Wire Profile
 
-Status: current unpublished implementation, 2026-11-05. The shared parsers in
+Status: 4.1.0 current encoding; controlled devnet, 2026-11-12. The shared parsers in
 `morph-script-common` are the executable wire definition. This is the sole
 current channel custody implementation; the Factory is a separate authority
 object over the same custody primitives. Unsupported prior bytes are rejected.
 See [current capability coverage](current-protocol-coverage.md) for migration,
 negative tests, measured limits and the remaining release gates.
 
-## Cooperative terminal close (consensus checkpoint, 2026-11-10)
+## Cooperative terminal close
 
 `multi_asset_close.rs` defines the sole `MORPHMC!` format. It is implemented in
-StateType and Vault-lock, but the durable host close lifecycle and operational
-commands are not yet available. See [ADR 005](adr/005-bilateral-cooperative-terminal-close.md).
+StateType with authenticated Vault-lock delegation. Durable host signing,
+exact-body native CLI operations and canonical operation tracking are implemented;
+additional API/desktop adapters remain separate. See [ADR 005](adr/005-bilateral-cooperative-terminal-close.md)
+and [the close runbook](runbooks/cooperative-close.md).
 The State layout, ordinary vote domain and unilateral challenge path remain
 unchanged; new ELF identities require new deployment and evidence.
 
@@ -38,8 +40,9 @@ payout checks run using the validated **target** header, including conditional
 Batch identity. Remaining fee inputs/change have no Type or cell data; arbitrary
 lock programs still execute normally. Transactions are bounded below 64 inputs
 and outputs, with at most 64 cell dependencies and 64 header dependencies each.
-These scanner limits are not resource admission. Both StateType and Vault-lock
-verify the same frame. Unknown/malformed frames and ordinary signature replay
+These scanner limits are not resource admission. StateType runs full verification;
+the Vault gate authenticates that mandatory immutable verifier, the same global
+frame/body, complete source and terminal retirement. Unknown/malformed frames and ordinary signature replay
 fail closed. New error codes 70/71 do not reuse retired discriminants.
 
 ## State and Vault Authority
@@ -238,10 +241,10 @@ The private Rust snapshot is not a JavaScript interchange format.
 Keep one authoritative session per signer/funding context. Never clone an
 active signer journal into concurrent authorities or restore an older snapshot;
 local file locking cannot detect deliberate file rollback or separate stores.
-Retain complete recovery packages separately for watchtower use. The SDK's
-`createMultiAssetProposal`, `inspectMultiAssetProposal`, and
-`inspectMultiAssetProposalSignature` validate proposal content and signatures
-independently, but are stateless helpers and do not implement a signing journal.
+Retain complete recovery packages separately for watchtower use. The Rust SDK's
+`inspection::inspect` and `inspection::inspect_signature` reuse shared package
+codecs to validate content and signatures independently. They are stateless
+review helpers, not a signing journal.
 Current payment/conditional services use this backend; SDK helpers remain
 stateless. Factory signing has a separate durable rights/custody authority,
 with the shared current custody validators.
@@ -266,7 +269,9 @@ A cursor contains mandatory `from_block`, contiguous `next_block` and
 context. Its origin must match the configured origin and cannot start after
 any known canonical retained funding transaction. Unsupported/missing fields
 are rejected. Changing origin requires a fresh watch cursor, not a signer
-journal reset. New cursor writes use private fsynced atomic replacement.
+journal reset. The cursor is current SQLite state. Cursor, private alert intent,
+public typed outbox and egress permission commit in one watch-family transaction;
+there is no JSON cursor fallback.
 
 At startup, each poll boundary and between scanned blocks, canonical hash and
 parent linkage are checked. A missing/mismatched checkpoint or a block changing
@@ -313,9 +318,9 @@ canonical lowercase hex for the header, recovery witness, and bilateral
 signature witness, decimal-string carrier capacity, and a canonical bounded
 `cell_deps` list with exact OutPoints and Code or DepGroup kinds. Dependency
 liveness and approved deployed code require chain checks before broadcast.
-Rust and TypeScript
-share a signed fixture with token amounts above JavaScript's safe integer
-range; all exposed monetary quantities and state numbers remain strings.
+The CLI, Rust SDK and GPUI share current signed fixtures with full-u128 token
+amounts; all exposed monetary quantities and state numbers remain canonical
+decimal strings. No TypeScript client or numeric compatibility reader exists.
 
 ```sh
 cargo run -p morph-cli -- print-multi-asset-fixture

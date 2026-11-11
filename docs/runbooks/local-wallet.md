@@ -104,5 +104,5 @@ is an explicit disclosure. Wallet pages remain useful while locked; unlock when
 sending or when explicitly requested.
 
 A complete disposable demonstration is available through
-`scripts/native-wallet-showcase.sh`; see the [UI report](../native-ui-refinement-2026-11-10.md)
+`scripts/native-wallet-showcase.sh`; see the [UI report](../native-desktop.md)
 for prerequisites, the public development password and retained transaction evidence.

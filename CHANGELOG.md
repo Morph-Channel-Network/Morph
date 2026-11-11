@@ -37,8 +37,10 @@ mainnet deployment or real assets.
   resolution 3, conditional package v3 and FM/FR frame 2 as the sole current
   encodings. Recreate disposable development state; no backward readers or
   signer-authority rollback/unfreeze are added.
-- Carry the current 114-case VM boundary and ten-gate W1/typed-condition
-  qualification workflow into the exact versioned candidate. Include dated
+- Preserve the executed 114-case VM / ten-gate W1 and typed-condition evidence
+  with its original source identity. The owner skipped repeated acceptance for
+  this version/documentation publication; release builds have separate provenance.
+  Include dated
   Morph/Fiber resource and fiat-cost comparisons with observed versus inferred
   values, returned capacity versus fees, and public evidence checksums.
 
