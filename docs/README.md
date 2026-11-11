@@ -1,7 +1,7 @@
 # Morph 4.1.0 documentation
 
-Start with the [release record](releases/v4.1.0.md): it covers the major changes
-since 3.0, all closed GitHub issues and the rebuilt native Hub. This index is for
+Start with the [release highlights](releases/v4.1.0.md) and the
+[native Hub guide](native-desktop.md). This index is for
 the sole current implementation. Historical audit/evidence artifacts retain their
 original commit and scope; they are not current setup instructions.
 
@@ -29,6 +29,8 @@ original commit and scope; they are not current setup instructions.
 
 Superseded UI plans/reviews, old-envelope tutorials and interim W1 execution-order/progress documents
 were consolidated into the current client guide, this index and the 4.1.0
-release record. Obsolete draft screenshots were removed; real native wallet
+release overview. Obsolete draft screenshots were removed; real native wallet
 and current refinement evidence remain. Immutable captured evidence is not
 rewritten to pretend it describes a later source.
+
+The [closed-issue snapshot](releases/v4.1.0-closed-issues.json) retains issue-level delivery details.

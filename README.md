@@ -6,7 +6,7 @@ Factory can organize shared reserves and create independently recoverable child
 channels. CKB scripts enforce signed state, complete custody and exact settlement.
 
 **Version 4.1.0** · tag [`v4.1.0`](https://github.com/Morph-Channel-Network/Morph/releases/tag/v4.1.0)
-· [Changes since 3.0 and all closed issues](docs/releases/v4.1.0.md)
+· [Release highlights](docs/releases/v4.1.0.md)
 
 The current envelope permits controlled devnet use with **no real assets**.
 Publishing this version does not widen that deployment policy.
@@ -45,20 +45,15 @@ are accounted separately. Parent disappearance does not remove a child's saved
 bilateral recovery. Reduced operations do not unilaterally retire the Factory's
 last retained floor or collective carrier.
 
-## The rebuilt Hub
+## Morph Hub
 
-The Hub is now a native client plus a separate Rust API, with one set of codecs
-and explicit authority boundaries. No JavaScript, TypeScript, Node, browser UI
-or WebView is shipped.
+A native GPUI desktop app for your wallet and channel workspace:
 
-| Before | Now |
-| --- | --- |
-| Browser frontend and TypeScript SDK | GPUI desktop and typed Rust SDK |
-| Parallel UI/API/package shapes | `morph-hub-api` DTOs and `morph-packages` codecs shared by service, SDK and UI |
-| Engineering forms expose most inputs | Contextual tasks, existing-object selection, retained drafts and exact review/confirm |
-| Wallet and channel concepts mixed | Independent encrypted local wallet; channel signing remains in its own ceremony |
-| Transient requests appear successful | Explicit stale/offline/unknown states and same-endpoint reconciliation; no blind mutation retries |
-| JSON is the main interaction | Structured balances, provenance, operations and activity; JSON is a technical detail view |
+- Create or restore a local CKB/UDT wallet, send and receive assets, and browse
+  balances and transaction history.
+- Manage channel and Factory records, invoices, recovery documents and activity.
+- Review the exact transaction before confirming it.
+- Choose public CKB services, a local node, or custom RPC/indexer settings.
 
 Chinese/English switch without clearing drafts. Text scales from 90–150% with
 responsive layout. Navigation animation follows measured geometry; restrained
@@ -138,15 +133,14 @@ make package-desktop
 client checks, bounded mutation smoke, fixtures and VM tests. The optional full
 candidate workflow is documented in [local qualification](docs/runbooks/local-candidate-qualification.md).
 These commands are reproduction instructions, not a claim they ran again for
-every documentation/version change. The [release record](docs/releases/v4.1.0.md#verification-and-release-provenance)
-separates previous executed acceptance from release-time builds and the owner's
-instruction to skip repeated acceptance.
+every documentation/version change. The [release evidence](https://github.com/Morph-Channel-Network/Morph/releases/download/v4.1.0/morph-v4.1.0-evidence.tar.gz)
+records the source, builds and performed acceptance.
 
 ## Read next
 
 - [Documentation index](docs/README.md) — current guides, architecture, operations and historical evidence.
 - [Current model](docs/multi-asset-channels.md), [wire reference](docs/multi-asset-wire.md) and [implementation boundaries](docs/implementation.md).
-- [4.1.0 release record](docs/releases/v4.1.0.md) — milestones since 3.0, all 21 closed issues and Hub reconstruction.
+- [4.1.0 highlights](docs/releases/v4.1.0.md) — Morph Hub, wallet, channels and payments.
 - [Resources and Fiber cost comparison](docs/model-resource-optimization.md) — bytes/cycles, returned capacity, fees and dated prices.
 - [Deployment envelope](docs/preproduction-envelope.md) and [mainnet readiness](docs/mainnet-readiness.md) — admitted shapes and remaining real-asset gates.
 - [Security fixes](SECURITY-FIXES.md) and [contribution/agent guide](AGENTS.md).
