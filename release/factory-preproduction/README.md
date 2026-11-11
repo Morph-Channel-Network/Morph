@@ -1,19 +1,28 @@
-# Morph current custody — 4.0.0-alpha.1
+# Morph current custody — 4.1.0
 
 `morph-current-custody` is the sole current protocol family. This is a
 controlled-devnet candidate with no real assets. Selecting the shared-foundation
 architecture does not approve a mainnet release.
+
+The 4.1.0 source includes exact-transaction cooperative close (`MORPHMC!`),
+durable close signing/operation tracking, asset-bound CKB/UDT conditions and
+compact descriptor-7 custody evidence. `contracts.json` pins all eight ELF
+identities. The optimization implementation `991f7e3` completed the ten local
+no-value gates; see `docs/evidence/model-cost-991f7e3/README.md` for its original
+source/artifact identities. The 4.1.0 tag has its own source-bound build record attached to the GitHub
+release. The owner requested no repeated acceptance for this version/documentation
+publication; the existing qualification remains tied to its original source. See `docs/releases/v4.1.0.md`.
 
 Bilateral custody and Factory custody use distinct authority objects on the same
 bounded asset, Vault-set, persistence, signing and recovery foundation:
 
 | Boundary | Current implementation |
 | --- | --- |
-| Bilateral State | 318 bytes; descriptor 5; one to eight Vaults |
+| Bilateral State | 318 bytes; descriptor 7; one to eight Vaults |
 | Factory State | 306 bytes; two to sixteen committed members |
 | Full Factory authorization | Exact-transaction N-of-N root, update, custody and materialisation |
 | Reduced Factory authorization | One touched member; localized compact proofs; independent asset conservation |
-| CKB conditions | At most eight preimage/refund transfers; separate Batch executor at transaction input 0 |
+| CKB/UDT conditions | One to eight asset-sorted Batches, each with at most eight preimage/refund transfers; each Batch resolves at transaction input 0 |
 | Batch identity | 104 bytes, including the exact funding context |
 | Child recovery | Independent initial-exit journals and public possession receipts; private exits stay with child parties |
 | Operational recovery | Stable journals, canonical reconciliation, same-path handoff, reorg-aware watch service |

@@ -1,0 +1,22 @@
+{
+  "schema": "morph.shadow_native_evidence.v1",
+  "passed": true,
+  "observations": 6,
+  "source_unchanged": true,
+  "sha256": {
+    "morph-cli": "0157478100fd3bbb9154cfcfcb437a8937363a867108c5e5292f711ed389ff3f",
+    "contracts.json": "47060e4f7f5c79ad26a6051aaf22bf7eed4ae34dd75217147b20542e34bdf067",
+    "source-before.json": "dc5c788e6c2ee3377bb52d1339a1243d6e051a022d4bf0407ba0eebbb03f028a",
+    "source-after.json": "dc5c788e6c2ee3377bb52d1339a1243d6e051a022d4bf0407ba0eebbb03f028a",
+    "deployment.json": "9a38aeb618e0fea27255b262c11fc1076dcf82f70b073e3fb038a6cb68884353",
+    "factory.json": "f5286fbb035c124502ade36180c69b09cfb2328dfee027f2eac80a92d0d8bbc2",
+    "splice.json": "ce196d1a7bc864be0f9b12c4194d4c5fc9708548a0fa3414dde0d00105eb3299",
+    "public-observations.json": "0970498e584277f0bfd7c49a1866483973050d3bbe6061bdf1a7494e0b2d7de7"
+  },
+  "boundaries": [
+    "controlled no-value chain; prebuilt manifest-matched ELFs",
+    "observer only; no provider hook or durable Morph service exercised",
+    "Factory child splice and external-child provider admission not exercised",
+    "not full CI or release qualification"
+  ]
+}

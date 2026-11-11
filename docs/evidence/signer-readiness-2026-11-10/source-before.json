@@ -1,0 +1,10 @@
+{
+  "crates/morph-cli/src/main.rs": "80e9f127660cb7bbc4e5e02b658824f0e0bd531fb31eaf688f02e669058df974",
+  "crates/morph-cli/src/participant_signer.rs": "838558db9a1ff4f22e8e039e6aaa06cedf15e2261fba5b1797042f311a0dfca6",
+  "crates/morph-cli/src/participant_signer/readiness.rs": "fb2d59817ef4aa81895c51ecdb908360dc644256abb728e986d89fdcec8d54ea",
+  "crates/morph-cli/src/participant_signer/readiness/tests.rs": "301c874e8cb46c1cabf651327fecb93c1ed0164148f1368b702c82275b47b54f",
+  "crates/morph-cli/tests/participant_signer_readiness.rs": "3f814d1ba2171e0d698a7dbdab9ef284b2168e20292d31a1fe8e8a6825acc590",
+  "crates/morph-signer/src/ipc.rs": "fe7f3f5547821c097398264ea2bd10b60a4c5b574ab3fe2ac0fbe2e97ef53ec0",
+  "crates/morph-signer/src/ipc/tests.rs": "764be46dcdbcb94a27b15622dc5a86eb5741844a6d932dfea905d96e7ed0b058",
+  ".github/workflows/verification-campaign.yml": "5b504f82b002e121043ed047281b1b2c738528b6adf51e8fc7bb96558357fd03"
+}

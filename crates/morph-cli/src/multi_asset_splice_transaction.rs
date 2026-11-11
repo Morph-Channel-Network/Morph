@@ -32,11 +32,31 @@ use crate::multi_asset_packages::{canonical_hex, decode_hex};
 
 #[cfg(test)]
 pub(crate) fn fixture_draft(current: &MultiAssetRecoveryPackage) -> SpliceDraft {
+    fixture_draft_at(
+        current,
+        MultiAssetOutPoint {
+            tx_hash: [44; 32],
+            index: 0,
+        },
+        vec![
+            packed::CellDep::new_builder()
+                .out_point(
+                    packed::OutPoint::new_builder()
+                        .tx_hash([77u8; 32].pack())
+                        .build(),
+                )
+                .build(),
+        ],
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_draft_at(
+    current: &MultiAssetRecoveryPackage,
+    old: MultiAssetOutPoint,
+    deps: Vec<packed::CellDep>,
+) -> SpliceDraft {
     use ckb_types::{bytes::Bytes, core::TransactionBuilder};
-    let old = MultiAssetOutPoint {
-        tx_hash: [44; 32],
-        index: 0,
-    };
     let next = SpliceTerms {
         schema: "morph.multi_asset_splice_terms.v1".to_string(),
         descriptor_hex: canonical_hex(&current.settlement.encode().unwrap()),
@@ -62,15 +82,7 @@ pub(crate) fn fixture_draft(current: &MultiAssetRecoveryPackage) -> SpliceDraft 
             withdrawal: MultiAssetValue::default(),
         })
         .collect::<Vec<_>>();
-    let mut tx = TransactionBuilder::default().cell_dep(
-        packed::CellDep::new_builder()
-            .out_point(
-                packed::OutPoint::new_builder()
-                    .tx_hash([77u8; 32].pack())
-                    .build(),
-            )
-            .build(),
-    );
+    let mut tx = TransactionBuilder::default().cell_deps(deps);
     for point in std::iter::once(&old).chain(&current.outpoints) {
         tx = tx.input(
             packed::CellInput::new_builder()

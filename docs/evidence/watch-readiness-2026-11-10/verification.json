@@ -1,0 +1,17 @@
+{
+  "schema": "morph.watch_readiness_checkpoint.v1",
+  "passed": true,
+  "native_cli_sha256": "475b6ad8a9c7214b7f942eac4beeda7456fa2692ce07d362f62d0dd58c7c6372",
+  "native_runner_sha256": "a624d88dc122cd4a6ff0da683ad1004dfdf80fdaaa57f38ae3037d716b3d8502",
+  "native_source_unchanged": true,
+  "cli_unit_tests": 343,
+  "cli_integration_tests": 3,
+  "final_watch_tests": 19,
+  "post_native_changes": [
+    "once/loop CLI failure reporting",
+    "health probe clock read after final config binding check"
+  ],
+  "protection_ready": false,
+  "release_qualified": false,
+  "issues_closed": false
+}

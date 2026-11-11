@@ -62,44 +62,59 @@ impl Desktop {
                 Some("ordinary") => {
                     view = view.child(d::badge(self.t(Text::OrdinarySettlement), Tone::Neutral))
                 }
-                Some("ckb_conditional") => {
-                    let mut conditions = div()
-                        .flex()
-                        .flex_col()
-                        .gap_3()
-                        .child(d::badge(self.t(Text::ConditionalCKBSettlement), Tone::Info));
-                    if let Some(amount) = capability["pending_ckb"].as_str() {
-                        conditions = conditions.child(d::key_value(
-                            self.t(Text::PendingConditions),
-                            p::amount(amount, true, self.language),
-                        ));
-                    }
-                    if let Some(transfers) = capability["transfers"].as_array() {
-                        for (i, transfer) in transfers.iter().enumerate() {
-                            conditions = conditions.child(d::rule()).child(d::caption(format!(
-                                "{} {}",
-                                self.t(Text::Condition),
-                                i + 1
-                            )));
-                            if let Some(amount) = transfer["amount"].as_str() {
-                                conditions = conditions.child(d::key_value(
-                                    self.t(Text::Amount),
-                                    p::amount(amount, true, self.language),
-                                ));
-                            }
-                            if let Some(hash) = transfer["payment_hash"].as_str() {
+                Some("conditional") => {
+                    let mut conditions = div().flex().flex_col().gap_3().child(d::badge(
+                        self.t(Text::ConditionalAssetSettlement),
+                        Tone::Info,
+                    ));
+                    if let Some(batches) = capability["batches"].as_array() {
+                        for (batch_index, batch) in batches.iter().enumerate() {
+                            let is_ckb = batch["asset"]["kind"].as_str() == Some("ckb");
+                            conditions = conditions.child(d::rule());
+                            if let Some(hash) = batch["asset"]["type_hash"].as_str() {
                                 conditions = conditions.child(self.copyable_fact(
-                                    1200 + i,
-                                    self.t(Text::PaymentHash),
+                                    5015 + batch_index * 16,
+                                    self.t(Text::AssetType),
                                     hash.into(),
                                     cx,
                                 ));
+                            } else {
+                                conditions = conditions.child(d::caption("CKB"));
                             }
-                            if let Some(since) = transfer["refund_after_block"].as_str() {
+                            if let Some(amount) = batch["pending_amount"].as_str() {
                                 conditions = conditions.child(d::key_value(
-                                    self.t(Text::RefundSince),
-                                    since.to_owned(),
+                                    self.t(Text::PendingConditions),
+                                    p::amount(amount, is_ckb, self.language),
                                 ));
+                            }
+                            if let Some(transfers) = batch["transfers"].as_array() {
+                                for (index, transfer) in transfers.iter().enumerate() {
+                                    conditions = conditions.child(d::caption(format!(
+                                        "{} {}",
+                                        self.t(Text::Condition),
+                                        index + 1
+                                    )));
+                                    if let Some(amount) = transfer["amount"].as_str() {
+                                        conditions = conditions.child(d::key_value(
+                                            self.t(Text::Amount),
+                                            p::amount(amount, is_ckb, self.language),
+                                        ));
+                                    }
+                                    if let Some(hash) = transfer["payment_hash"].as_str() {
+                                        conditions = conditions.child(self.copyable_fact(
+                                            5000 + batch_index * 16 + index,
+                                            self.t(Text::PaymentHash),
+                                            hash.into(),
+                                            cx,
+                                        ));
+                                    }
+                                    if let Some(since) = transfer["refund_after_block"].as_str() {
+                                        conditions = conditions.child(d::key_value(
+                                            self.t(Text::RefundSince),
+                                            since.to_owned(),
+                                        ));
+                                    }
+                                }
                             }
                         }
                     }

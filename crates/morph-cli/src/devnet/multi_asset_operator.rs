@@ -234,81 +234,11 @@ fn settlement_outputs(
     header: &wire::MultiAssetStateHeader<'_>,
     carrier_capacity: u64,
 ) -> Result<Vec<(CellOutput, Bytes)>> {
-    witness.validate_header(header).map_err(invalid)?;
-    ensure!(
-        header.vaults_are_bound() && header.phase() == PHASE_SETTLING && header.state_number() > 0,
-        "finalisation outputs require bound positive settling evidence"
-    );
-    let mut outputs = Vec::new();
-    let mut type_index = 6;
-    for index in 0..witness.descriptor().count() {
-        let payout = witness.descriptor().entry(index).map_err(invalid)?;
-        if payout.asset.kind == 0
-            && let Some(conditional) = witness.descriptor().conditional().map_err(invalid)?
-        {
-            let lock = Script::from_slice(
-                &conditional
-                    .batch_script(
-                        header.channel_id(),
-                        &header.funding_context_id().map_err(invalid)?,
-                        header.state_number(),
-                    )
-                    .map_err(invalid)?,
-            )?;
-            outputs.push((
-                CellOutput::new_builder()
-                    .capacity(
-                        witness
-                            .manifest()
-                            .entry(index)
-                            .map_err(invalid)?
-                            .allocation
-                            .capacity()
-                            .map_err(invalid)?,
-                    )
-                    .lock(lock)
-                    .build(),
-                Bytes::new(),
-            ));
-            continue;
-        }
-        let ty = if payout.asset.kind == 1 {
-            let ty = script(witness, type_index)?;
-            type_index += 1;
-            Some(ty)
-        } else {
-            None
-        };
-        for participant in 0..2 {
-            let value = payout.allocations[participant];
-            let capacity = value.capacity().map_err(invalid)?;
-            if capacity == 0 {
-                continue;
-            }
-            let output_type = if value.amount > 0 { ty.clone() } else { None };
-            let data = if output_type.is_some() {
-                Bytes::from(value.amount.to_le_bytes().to_vec())
-            } else {
-                Bytes::new()
-            };
-            outputs.push((
-                CellOutput::new_builder()
-                    .capacity(capacity)
-                    .lock(script(witness, participant)?)
-                    .type_(output_type.pack())
-                    .build(),
-                data,
-            ));
-        }
-    }
-    outputs.push((
-        CellOutput::new_builder()
-            .capacity(carrier_capacity)
-            .lock(script(witness, 2)?)
-            .build(),
-        Bytes::new(),
-    ));
-    Ok(outputs)
+    Ok(morph_core::multi_asset_settlement_outputs(
+        witness,
+        header,
+        carrier_capacity,
+    )?)
 }
 
 pub(super) fn validate_vaults(
@@ -348,6 +278,118 @@ pub(super) fn validate_vaults(
         points.push(point);
     }
     Ok(points)
+}
+
+/// Signer pre-review of an exact close body. It does not execute incomplete
+/// participant/wallet witnesses; full VM preflight belongs before submission.
+pub(crate) fn validate_close_proposal(
+    rpc: &CkbRpcClient,
+    package: &morph_core::MultiAssetRecoveryPackage,
+    proposal: &morph_core::MultiAssetCloseProposal,
+    contracts_dir: &Path,
+    min_confirmations: u64,
+) -> Result<()> {
+    proposal.validate(package)?;
+    verify_chain_id(rpc, &package.state.header.chain_id)?;
+    let raw = proposal.raw_transaction()?;
+    let source = raw
+        .inputs()
+        .get(0)
+        .ok_or_else(|| anyhow!("missing close source"))?
+        .previous_output();
+    let (canonical, _) =
+        crate::rpc::canonical_transaction(rpc, source.tx_hash().unpack(), min_confirmations)?;
+    let index = u32::from(source.index()) as usize;
+    let cell = load_canonical_live_cell(rpc, source)?;
+    ensure!(
+        canonical.raw().outputs().get(index).as_ref() == Some(&cell.output)
+            && canonical
+                .raw()
+                .outputs_data()
+                .get(index)
+                .is_some_and(|d| d.raw_data() == cell.data),
+        "close source disagrees with canonical transaction"
+    );
+    ensure!(
+        cell.output
+            .type_()
+            .to_opt()
+            .is_some_and(|s| s.as_slice() == package.scripts.state_type)
+            && cell.output.lock().as_slice() == package.scripts.state_lock
+            && cell.data.as_ref() == proposal.source_state.encode()?.as_slice()
+            && cell.capacity == package.state_carrier_capacity,
+        "close source identity/data/carrier differs from review"
+    );
+    let witness_raw = morph_core::encode_multi_asset_witness(
+        &package.manifest,
+        &package.settlement,
+        &package.outpoints,
+        &package.scripts,
+    )?;
+    let witness = wire::MultiAssetWitness::parse(&witness_raw).map_err(invalid)?;
+    validate_vaults(rpc, &witness)?;
+    let dependencies = live_dependencies(rpc, &raw.cell_deps().into_iter().collect::<Vec<_>>())?;
+    for input in raw.inputs() {
+        let point = input.previous_output();
+        ensure!(
+            !dependencies.out_points.contains(point.as_slice())
+                && !raw
+                    .cell_deps()
+                    .into_iter()
+                    .any(|dep| dep.out_point() == point),
+            "close consumes a code dependency"
+        );
+    }
+    validate_resolved_code(
+        contracts_dir,
+        &witness,
+        &dependencies.cells,
+        &script(&witness, 0)?,
+    )?;
+    let mut input_capacity = cell.capacity;
+    for vault in &package.manifest.vaults {
+        input_capacity = input_capacity
+            .checked_add(vault.value.capacity()?)
+            .ok_or_else(|| anyhow!("close input capacity overflow"))?;
+    }
+    for input in raw.inputs().into_iter().skip(1 + package.outpoints.len()) {
+        let cell = load_canonical_live_cell(rpc, input.previous_output())?;
+        ensure!(
+            cell.output.type_().to_opt().is_none() && cell.data.is_empty(),
+            "close fees require plain inputs"
+        );
+        ensure!(
+            dependencies
+                .cells
+                .iter()
+                .any(|dep| code_matches(&cell.output.lock(), dep)),
+            "close fee input code is unresolved"
+        );
+        input_capacity = input_capacity
+            .checked_add(cell.capacity)
+            .ok_or_else(|| anyhow!("close input capacity overflow"))?;
+    }
+    let mut output_capacity = 0u64;
+    for output in raw.outputs() {
+        output_capacity = output_capacity
+            .checked_add(output.capacity().unpack())
+            .ok_or_else(|| anyhow!("close output capacity overflow"))?;
+    }
+    ensure!(
+        input_capacity >= output_capacity,
+        "close fees exceed external funding"
+    );
+    for hash in raw.header_deps() {
+        let hash: ckb_types::H256 = hash.unpack();
+        let header = rpc
+            .header_by_hash(hash.clone())?
+            .ok_or_else(|| anyhow!("close header dependency missing"))?;
+        ensure!(
+            header.hash == hash && rpc.block_hash_at(header.inner.number.value())? == Some(hash),
+            "close header dependency is not canonical"
+        );
+    }
+    Ok(())
 }
 
 fn recovery_witness(stored: &StoredMultiAssetPackage, signed: bool) -> Result<Bytes> {
@@ -527,9 +569,9 @@ fn activation_evidence(
         let child = factory
             .child_by_anchor(header.funding_anchor())
             .map_err(invalid)?;
-        let mut original = morph_core::MultiAssetRecoveryPackage::decode_contents(
+        let mut original = morph_core::MultiAssetRecoveryPackage::decode_evidence(
             child.header.as_bytes(),
-            child.evidence.as_bytes(),
+            &child.evidence,
             child.carrier_capacity,
         )?;
         ensure!(
@@ -727,6 +769,13 @@ pub(super) fn verify_chain_id(rpc: &CkbRpcClient, expected: &[u8]) -> Result<()>
 }
 
 pub fn transact(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
+    let budget_tip = if options.dry_run
+        && matches!(options.fee_authorization, FeeAuthorization::Sponsor { .. })
+    {
+        Some(rpc.tip_header()?.hash)
+    } else {
+        None
+    };
     ensure!(
         !matches!(options.fee_authorization, FeeAuthorization::Sponsor { .. })
             || matches!(options.operation, Operation::Publish),
@@ -994,9 +1043,67 @@ pub fn transact(rpc: &CkbRpcClient, options: Options) -> Result<Value> {
     // Both paths execute VM preflight before any submission.
     if options.dry_run {
         let metrics = transaction_metrics(rpc, &tx)?;
+        let publication_budget = if let (Some(policy), Some(runtime)) = (&sponsor_policy, &runtime)
+        {
+            let confirmations = if old_header.phase() == PHASE_SETTLING {
+                state_confirmations(rpc, &state_point)?
+            } else {
+                0
+            };
+            let runtime_blocks =
+                publication_runtime_budget_blocks(&runtime.profile, confirmations)?;
+            let execution_blocks = runtime_blocks
+                .checked_sub(runtime.profile.window.canonical_confirmation_blocks)
+                .context("publication confirmation reserve exhausted")?;
+            let floor = CellOutput::new_builder()
+                .lock(fee_lock.clone())
+                .build()
+                .occupied_capacity(Capacity::zero())?
+                .as_u64();
+            let remaining = policy
+                .max_total_fee()
+                .checked_sub(policy.already_spent())
+                .context("sponsor budget underflow")?;
+            let spendable = fee_cell
+                .capacity
+                .checked_sub(floor)
+                .context("sponsor change floor underflow")?;
+            let ceiling = runtime.profile.fee.max_fee;
+            ensure!(
+                budget_tip.as_ref() == Some(&rpc.tip_header()?.hash),
+                "chain advanced during publication quote"
+            );
+            // A replacement consumes the same Sponsor input; mutually exclusive
+            // candidates do not add their fee caps into a fictitious total.
+            Some(crate::publication::PublicationBudget::Verified {
+                observed_unix_ms: observation
+                    .as_ref()
+                    .context("missing fee observation")?
+                    .observed_unix_ms,
+                initial_fee: fee,
+                profile_fee_ceiling: ceiling,
+                operator_fee_cap: options.max_fee,
+                sponsor_remaining: remaining,
+                sponsor_per_tx: policy.max_fee_per_tx(),
+                capacity_after_change_floor: spendable,
+                full_fee_ceiling_supported: remaining
+                    .min(policy.max_fee_per_tx())
+                    .min(spendable)
+                    .min(options.max_fee)
+                    >= ceiling,
+                execution_blocks,
+                execution_ms: execution_blocks
+                    .checked_mul(runtime.profile.window.conservative_block_ms)
+                    .context("publication time budget overflow")?,
+                tx_size_bytes: metrics.tx_size_bytes,
+            })
+        } else {
+            None
+        };
         return Ok(
             json!({"schema":"morph.multi_asset_transaction.v1", "operation":operation, "resulting_state":resulting_state, "dry_run":true,
             "package":summary,"durable_package":durable,"fee":fee.to_string(),"fee_source":options.fee_authorization.name(),"metrics":metrics,
+            "publication_budget":publication_budget,
             "transaction": ckb_jsonrpc_types::Transaction::from(tx.data())}),
         );
     }
@@ -1547,6 +1654,7 @@ mod conditional_tests {
             outputs[0].0.lock().as_slice(),
             conditional
                 .batch_script(
+                    0,
                     header.channel_id(),
                     &header.funding_context_id().unwrap(),
                     header.state_number()
@@ -1575,7 +1683,14 @@ mod conditional_tests {
         assert!(outputs[3].0.type_().to_opt().is_none());
         assert!(outputs[3].1.is_empty());
         assert_eq!(
-            stored.validate().unwrap().capability["pending_ckb"],
+            stored
+                .validate()
+                .unwrap()
+                .capability
+                .conditional()
+                .unwrap()
+                .batches[0]
+                .pending_amount,
             "2000000000"
         );
     }

@@ -1,0 +1,56 @@
+[
+  {
+    "target": "gateway-api",
+    "command": [
+      "timeout",
+      "--signal=KILL",
+      "180s",
+      "target/debug/morph-fuzz",
+      "--worker",
+      "gateway-api",
+      "--output",
+      "target/fuzz-campaigns/gateway-api-long-20261110",
+      "--seed",
+      "332043276360",
+      "--cases",
+      "10000",
+      "--seconds",
+      "180"
+    ],
+    "exit_code": 0,
+    "status": "pass",
+    "wall_limit_seconds": 180,
+    "binary_hash": "d1a63ae3ac3833b4b34f860a95bf280bc29547b854ba3ed6b84bc7f546bb8e72",
+    "lockfile_hash": "42a3a1472aa759ef303905c169f78bf086f77414595e49f445b4528f15b23dea",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+    "result": "gateway-api-long-result.json",
+    "log": "gateway-api-long.log"
+  },
+  {
+    "target": "gateway-receipt",
+    "command": [
+      "timeout",
+      "--signal=KILL",
+      "180s",
+      "target/debug/morph-fuzz",
+      "--worker",
+      "gateway-receipt",
+      "--output",
+      "target/fuzz-campaigns/gateway-receipt-long-20261110",
+      "--seed",
+      "332043276360",
+      "--cases",
+      "10000",
+      "--seconds",
+      "180"
+    ],
+    "exit_code": 0,
+    "status": "pass",
+    "wall_limit_seconds": 180,
+    "binary_hash": "d1a63ae3ac3833b4b34f860a95bf280bc29547b854ba3ed6b84bc7f546bb8e72",
+    "lockfile_hash": "42a3a1472aa759ef303905c169f78bf086f77414595e49f445b4528f15b23dea",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+    "result": "gateway-receipt-long-result.json",
+    "log": "gateway-receipt-long.log"
+  }
+]

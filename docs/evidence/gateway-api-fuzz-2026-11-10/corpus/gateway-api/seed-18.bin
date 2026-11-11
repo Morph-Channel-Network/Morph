@@ -1,0 +1,1 @@
+{"asset":{"kind":"ckb","ckb_network_id":"0x0101010101010101010101010101010101010101010101010101010101010101","symbol":"CKB","decimals":8},"amount":"400","payer":"0xc3884ddf5c0e66af9bd067147e948641917a9fd9df768dc299172e35a613a6e8","resource":"/test","operation":"GET","plaintext_base64":"aGVsbG8=","description":null,"expires_in_seconds":"300","rgbpp_proof_commitment":null}

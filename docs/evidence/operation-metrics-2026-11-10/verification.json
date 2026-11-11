@@ -1,0 +1,16 @@
+{
+  "schema": "morph.operation_metrics_checkpoint.v1",
+  "passed": true,
+  "relevant_sources_unchanged": true,
+  "cli_unit_tests": 352,
+  "cli_integration_tests": 4,
+  "operation_tests_in_unit_run": 21,
+  "fixed_metric_series": 225,
+  "unavailable_nan_series": 224,
+  "record_schema": "morph.ckb_operation.v2",
+  "scope": "saved_operation_history",
+  "native_chain_qualification": false,
+  "release_qualified": false,
+  "issues_closed": false,
+  "cli_binary_sha256": "7624c96cc8ad1d343bb765a33d1c9228b9cc3e7addd5eace754fa5c208a04dea"
+}

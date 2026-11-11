@@ -1,7 +1,7 @@
 # Current publication reliability rehearsal
 
 This runs disposable no-value node acceptance for the current 318-byte State,
-descriptor 5 and complete Vault set. It is local evidence, not a production
+descriptor 7 and complete Vault set. It is local evidence, not a production
 latency distribution or independent-operator qualification.
 
 ```sh

@@ -2,6 +2,8 @@ mod assets;
 mod design;
 mod forms;
 mod i18n;
+#[cfg(test)]
+mod interaction_tests;
 mod localization;
 mod model;
 mod motion;
@@ -9,6 +11,7 @@ mod preferences;
 mod presentation;
 mod validation;
 mod views;
+mod wallet;
 mod worker;
 mod workspace;
 
@@ -45,12 +48,15 @@ struct Notice {
     detail: String,
 }
 struct Desktop {
+    wallet: Option<Entity<wallet::WalletPane>>,
     language: Language,
     scale_percent: u16,
     appearance_settings: bool,
     reduced_motion: bool,
     motion_generation: usize,
-    flux: Entity<motion::Flux>,
+    page_enter_started: Instant,
+    task_signal: Entity<motion::TaskSignal>,
+    aurora: Entity<motion::Aurora>,
     preferences: Option<preferences::Store>,
     locale_revision: u64,
     preference_dirty: bool,
@@ -65,6 +71,8 @@ struct Desktop {
     page: Page,
     active: Option<DraftKey>,
     task_domain: Option<usize>,
+    task_search: Entity<InputState>,
+    copied: Option<(u64, Instant)>,
     drafts: BTreeMap<DraftKey, Draft>,
     selected: Option<Record>,
     selection_missing: bool,
@@ -128,6 +136,7 @@ impl Desktop {
     }
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let language = Language::system();
+        window.set_rem_size(px(design::BASE_FONT_SIZE));
         gpui_kit::component::set_locale(language.code());
         design::language_font(language, cx);
         let endpoint = Self::input("http://127.0.0.1:4617", "http://127.0.0.1:4617", window, cx);
@@ -149,6 +158,12 @@ impl Desktop {
                 cx.notify();
             }
         });
+        let task_search = Self::input("", language.t(Text::SearchWorkflows), window, cx);
+        let task_search_subscription = cx.subscribe_in(&task_search, window, |_, _, e, _, cx| {
+            if matches!(e, InputEvent::Change) {
+                cx.notify();
+            }
+        });
         let worker = Worker::start();
         let files = Worker::start_files();
         let notice = worker
@@ -162,12 +177,15 @@ impl Desktop {
                 detail: e.to_string(),
             });
         let mut v = Self {
+            wallet: None,
             language,
             scale_percent: 100,
             appearance_settings: false,
             reduced_motion: false,
             motion_generation: 0,
-            flux: cx.new(|_| motion::Flux::default()),
+            page_enter_started: Instant::now(),
+            task_signal: cx.new(|_| motion::TaskSignal::default()),
+            aurora: cx.new(|_| motion::Aurora::default()),
             preferences: if cfg!(test) {
                 None
             } else {
@@ -197,6 +215,8 @@ impl Desktop {
             page: Page::Overview,
             active: None,
             task_domain: None,
+            task_search,
+            copied: None,
             drafts: BTreeMap::new(),
             selected: None,
             selection_missing: false,
@@ -239,7 +259,11 @@ impl Desktop {
             unknown_context: None,
             reconcile_ready: false,
             dialog_pending: false,
-            _subscriptions: vec![search_subscription, activity_subscription],
+            _subscriptions: vec![
+                search_subscription,
+                activity_subscription,
+                task_search_subscription,
+            ],
             _poll: None,
         };
         for (slot, input) in v.inspector.clone().into_iter().enumerate() {
@@ -287,6 +311,9 @@ impl Desktop {
             detail: detail.into(),
         });
         cx.notify()
+    }
+    fn state_revision(&self) -> u64 {
+        self.state.as_ref().map_or(0, |s| s.revision)
     }
     fn event_id(&self) -> u64 {
         self.state
@@ -406,6 +433,7 @@ impl Desktop {
             operation,
             id,
             body,
+            ..
         } = &work
         {
             let target = match operation {
@@ -516,6 +544,12 @@ impl Desktop {
         }
     }
     fn refresh(&mut self, manual: bool, cx: &mut Context<Self>) {
+        if manual && self.page == Page::Wallet {
+            if let Some(wallet) = self.wallet.clone() {
+                wallet.update(cx, |v, cx| v.refresh_from_shortcut(cx));
+            }
+            return;
+        }
         if !self.connected || self.foreground_busy() || (!manual && !self.network_jobs.is_empty()) {
             return;
         }
@@ -680,7 +714,10 @@ impl Desktop {
         )
     }
     fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
-        self.motion_generation = self.motion_generation.wrapping_add(1);
+        if self.page != page || self.selected.is_some() || self.technical {
+            self.motion_generation = self.motion_generation.wrapping_add(1);
+            self.page_enter_started = Instant::now();
+        }
         self.page = page;
         self.selected = None;
         self.selection_missing = false;
@@ -694,6 +731,7 @@ impl Desktop {
     }
     fn pick_record(&mut self, record: Record, window: &mut Window, cx: &mut Context<Self>) {
         self.motion_generation = self.motion_generation.wrapping_add(1);
+        self.page_enter_started = Instant::now();
         self.selected = Some(record.clone());
         self.selected_activity = None;
         self.selection_missing = false;
@@ -708,6 +746,45 @@ impl Desktop {
             cx,
         );
         self.result_target = ResultTarget::Record(record.page, record.id());
+    }
+    fn request_draft_secret(
+        &mut self,
+        key: &DraftKey,
+        hash: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(draft) = self.drafts.get(key) else {
+            return;
+        };
+        if draft
+            .fields
+            .iter()
+            .find(|(k, _)| *k == "payment_preimage")
+            .is_none_or(|(_, v)| !v.read(cx).value().is_empty())
+        {
+            return;
+        }
+        if draft
+            .fields
+            .iter()
+            .any(|(k, v)| *k == "payment_hash" && !v.read(cx).value().is_empty())
+        {
+            return;
+        }
+        let wallet = self
+            .wallet
+            .get_or_insert_with(|| {
+                cx.new(|cx| crate::wallet::WalletPane::new(self.language, window, cx))
+            })
+            .clone();
+        let requested = wallet.update(cx, |v, cx| v.request_payment_secret(key.clone(), hash, cx));
+        if !requested {
+            let message = self.t(Text::InvoiceWalletRequired).to_owned();
+            if let Some(d) = self.drafts.get_mut(key) {
+                d.error = Some(message);
+            }
+        }
     }
     fn start_task(
         &mut self,
@@ -734,7 +811,26 @@ impl Desktop {
             self.drafts.insert(key.clone(), d);
         }
         self.motion_generation = self.motion_generation.wrapping_add(1);
-        self.active = Some(key);
+        self.page_enter_started = Instant::now();
+        self.active = Some(key.clone());
+        let draft = &self.drafts[&key];
+        let focus = if forms::FORMS[form].needs_id && key.resource.is_empty() {
+            if draft.advanced_id {
+                &draft.id
+            } else {
+                &draft.target_search
+            }
+        } else if let Some((_, input)) = draft.fields.first() {
+            input
+        } else {
+            &draft.id
+        };
+        if !forms::FORMS[form].document || forms::FORMS[form].needs_id {
+            window.focus(&focus.read(cx).focus_handle(cx), cx);
+        }
+        if op == HubOperation::CreateInvoice {
+            self.request_draft_secret(&key, None, window, cx);
+        }
         self.page = Page::Actions;
         self.prepared = None;
         self.selected_activity = None;
@@ -765,6 +861,13 @@ impl Desktop {
         if existing {
             return;
         }
+        if op == HubOperation::SettleInvoice
+            && let Some(hash) = record.row.document["invoice"]["payment_hash"]
+                .as_str()
+                .or(record.row.document["payment_hash"].as_str())
+        {
+            self.request_draft_secret(&key, Some(hash.to_owned()), window, cx);
+        }
         let Some(d) = self.drafts.get(&key) else {
             return;
         };
@@ -775,6 +878,7 @@ impl Desktop {
             }
             if let Some(asset) = record.row.document["balances"]
                 .as_array()
+                .filter(|v| v.len() == 1)
                 .and_then(|v| v.first())
                 .and_then(|v| v.get("asset"))
                 && let Some(hash) = asset["type_hash"].as_str()
@@ -803,9 +907,10 @@ impl Desktop {
             && until > Instant::now()
         {
             return Some(format!(
-                "{} {}s",
+                "{} {} {}",
                 self.t(Text::TheServiceAskedYouToWait),
-                until.duration_since(Instant::now()).as_secs() + 1
+                until.duration_since(Instant::now()).as_secs() + 1,
+                self.t(Text::Seconds)
             ));
         }
         if self.unknown_context.is_some() && op.mutates() {
@@ -949,19 +1054,44 @@ impl Desktop {
         if let Some(d) = self.drafts.get_mut(&key) {
             d.validation_attempted = true;
         }
+        if op == HubOperation::CreateInvoice
+            && self.drafts.get(&key).is_some_and(|d| {
+                d.fields
+                    .iter()
+                    .filter(|(k, _)| matches!(*k, "payment_preimage" | "payment_hash"))
+                    .all(|(_, v)| v.read(cx).value().is_empty())
+            })
+        {
+            self.request_draft_secret(&key, None, window, cx);
+            cx.notify();
+            return;
+        }
         let issues = self.draft_issues(&key, cx);
         if !issues.is_empty() {
-            let first = forms::FORMS[key.form]
-                .fields
-                .iter()
-                .find(|f| issues.contains_key(f.key))
-                .map(|f| f.key);
+            let first = if issues.contains_key("resource") {
+                Some("resource")
+            } else if issues.contains_key("asset") {
+                Some("asset")
+            } else {
+                forms::FORMS[key.form]
+                    .fields
+                    .iter()
+                    .find(|f| issues.contains_key(f.key))
+                    .map(|f| f.key)
+            };
             let message = self
                 .t(Text::CheckTheHighlightedFieldsBeforeReviewing)
                 .to_owned();
             if let Some(d) = self.drafts.get_mut(&key) {
                 d.error = Some(message);
+                if first.is_some_and(|name| {
+                    matches!(name, "payment_hash" | "expiry_secs" | "channel_id")
+                }) {
+                    d.advanced_fields = true;
+                }
                 let input = match first {
+                    Some("asset") => Some(d.asset.clone()),
+                    Some("resource") => Some(d.id.clone()),
                     Some(name) => d
                         .fields
                         .iter()
@@ -973,6 +1103,9 @@ impl Desktop {
                 };
                 if let Some(input) = input {
                     window.focus(&input.read(cx).focus_handle(cx), cx);
+                }
+                if let Some(anchor) = first.and_then(|key| d.anchors.get(key)) {
+                    anchor.scroll_to(window, cx);
                 }
             }
             cx.notify();
@@ -1008,6 +1141,7 @@ impl Desktop {
                     }
                     self.enqueue(
                         Work::Execute {
+                            expected_revision: None,
                             operation: op,
                             id,
                             body,
@@ -1019,6 +1153,7 @@ impl Desktop {
                     return;
                 }
                 self.prepared = Some(Prepared {
+                    revision: self.state_revision(),
                     operation: op,
                     id,
                     body,
@@ -1049,6 +1184,7 @@ impl Desktop {
         };
         if self.active.as_ref() != Some(&p.key)
             || self.block_reason(p.operation).is_some()
+            || p.revision != self.state_revision()
             || p.event_id != self.event_id()
             || p.generation != self.generation
             || p.endpoint != self.connected_endpoint
@@ -1067,6 +1203,7 @@ impl Desktop {
         let pending = self.pending(JobKind::Execute(p.operation), false);
         self.enqueue(
             Work::Execute {
+                expected_revision: Some(p.revision),
                 operation: p.operation,
                 id: p.id,
                 body: p.body,
@@ -1100,7 +1237,7 @@ impl Desktop {
     fn update_output(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mut doc = self.result.clone().unwrap_or(Value::Null);
         if !self.raw_details {
-            redact(&mut doc)
+            redact(&mut doc, self.language)
         }
         let text = serde_json::to_string_pretty(&doc).unwrap_or_default();
         self.output
@@ -1230,14 +1367,45 @@ impl Desktop {
     }
     fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.poll_preferences(window, cx);
+        let delivery = self
+            .wallet
+            .clone()
+            .and_then(|wallet| wallet.update(cx, |v, _| v.take_secret_delivery()));
+        if let Some((key, result)) = delivery
+            && let Some(draft) = self.drafts.get_mut(&key)
+        {
+            match result {
+                Ok(secret) => {
+                    if let Some((_, field)) =
+                        draft.fields.iter().find(|(k, _)| *k == "payment_preimage")
+                    {
+                        field.update(cx, |v, cx| v.set_value(&*secret, window, cx));
+                    }
+                    draft.error = None;
+                }
+                Err(error) => draft.error = Some(error),
+            }
+            cx.notify();
+        }
+        if self
+            .copied
+            .is_some_and(|(_, at)| at.elapsed() >= Duration::from_secs(2))
+        {
+            self.copied = None;
+            cx.notify();
+        }
         if self.notice.as_ref().is_some_and(|n| {
             n.tone == design::Tone::Good && n.created.elapsed() > Duration::from_secs(8)
         }) {
             self.notice = None;
             cx.notify();
         }
-        if (self.connected || self.foreground_busy() || self.notice.is_some())
-            && self.last_paint.elapsed() >= Duration::from_secs(1)
+        // Repaint at the freshness boundary, not every second to animate a timestamp.
+        if self.connected
+            && self.last_checked.is_some_and(|checked| {
+                self.last_paint.saturating_duration_since(checked) < Duration::from_secs(15)
+                    && checked.elapsed() >= Duration::from_secs(15)
+            })
         {
             self.last_paint = Instant::now();
             cx.notify();
@@ -1279,8 +1447,7 @@ impl Desktop {
                 self.finish_activity(
                     p.activity,
                     Status::Failed,
-                    "File worker stopped; inspect the chosen destination before retrying a save."
-                        .into(),
+                    self.t(Text::FileWorkerStopped).into(),
                     None,
                 )
             }
@@ -1288,10 +1455,7 @@ impl Desktop {
             self.stop_network(cx);
             self.worker = None;
             self.last_checked = None;
-            self.connection_error = Some(
-                "Network worker stopped; restart the application and reconcile before writing."
-                    .into(),
-            );
+            self.connection_error = Some(self.t(Text::NetworkWorkerStopped).into());
         }
         cx.notify()
     }
@@ -1322,7 +1486,9 @@ impl Desktop {
             Err(e) => {
                 let unknown = matches!(p.kind, JobKind::Execute(op) if op.mutates())
                     && e.downcast_ref::<morph_sdk::HubClientError>()
-                        .is_some_and(|e| matches!(e, morph_sdk::HubClientError::OutcomeUnknown));
+                        .is_some_and(|e| {
+                            matches!(e, morph_sdk::HubClientError::OutcomeUnknown { .. })
+                        });
                 if unknown {
                     self.unknown_context = Some((p.endpoint.clone(), p.origin_node.clone()));
                     self.reconcile_ready = false;
@@ -1332,9 +1498,9 @@ impl Desktop {
                     .is_some_and(|err| match err {
                         morph_sdk::HubClientError::Transport
                         | morph_sdk::HubClientError::InvalidResponse
-                        | morph_sdk::HubClientError::OutcomeUnknown => true,
+                        | morph_sdk::HubClientError::OutcomeUnknown { .. } => true,
                         morph_sdk::HubClientError::Api { status, .. } => {
-                            matches!(*status, 401 | 403 | 409 | 412 | 500..=599)
+                            matches!(*status, 401 | 403 | 500..=599)
                         }
                         _ => false,
                     });
@@ -1396,7 +1562,7 @@ impl Desktop {
                         if p.kind == JobKind::Connect {
                             self.connected_endpoint = p.endpoint.clone()
                         }
-                        let changed = self.event_id() != state.events.last().map_or(0, |e| e.id);
+                        let changed = self.state_revision() != state.revision;
                         self.state = Some(*state);
                         self.connected = true;
                         self.connection_error = None;
@@ -1435,23 +1601,22 @@ impl Desktop {
                         }
                     }
                     HubReply::Document(value) => {
-                        if p.kind == JobKind::Execute(HubOperation::PreviewRestore) {
-                            if let (Some(key), Some(candidate)) =
+                        if p.kind == JobKind::Execute(HubOperation::PreviewRestore)
+                            && let (Some(key), Some(candidate)) =
                                 (p.draft.as_ref(), p.candidate.as_ref())
-                                && let Ok(preview) = serde_json::from_value::<
-                                    morph_sdk::api::RestorePreview,
-                                >(value.clone())
-                            {
-                                let plan = RestorePlan {
-                                    candidate: candidate.clone(),
-                                    preview,
-                                    event_id: self.event_id(),
-                                    generation: self.generation,
-                                    endpoint: self.connected_endpoint.clone(),
-                                };
-                                if let Some(d) = self.drafts.get_mut(key) {
-                                    d.restore = Some(plan)
-                                }
+                            && let Ok(preview) = serde_json::from_value::<
+                                morph_sdk::api::RestorePreview,
+                            >(value.clone())
+                        {
+                            let plan = RestorePlan {
+                                candidate: candidate.clone(),
+                                preview,
+                                event_id: self.event_id(),
+                                generation: self.generation,
+                                endpoint: self.connected_endpoint.clone(),
+                            };
+                            if let Some(d) = self.drafts.get_mut(key) {
+                                d.restore = Some(plan)
                             }
                         }
                         let title = if let JobKind::Execute(op) = p.kind {
@@ -1526,6 +1691,7 @@ impl Desktop {
                                 d.error = None;
                             }
                             self.prepared = Some(Prepared {
+                                revision: self.state_revision(),
                                 operation: op,
                                 id,
                                 body,
@@ -1840,7 +2006,7 @@ fn canonical_id(s: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
-fn redact(value: &mut Value) {
+fn redact(value: &mut Value, language: Language) {
     match value {
         Value::Object(fields) => {
             for (key, v) in fields {
@@ -1849,15 +2015,15 @@ fn redact(value: &mut Value) {
                     || key.ends_with("witness_hex")
                     || key == "transaction_hex"
                 {
-                    *v = Value::String("[private evidence hidden]".into())
+                    *v = Value::String(language.t(Text::PrivateEvidenceHidden).into())
                 } else {
-                    redact(v)
+                    redact(v, language)
                 }
             }
         }
         Value::Array(values) => {
             for v in values {
-                redact(v)
+                redact(v, language)
             }
         }
         _ => {}
@@ -1879,7 +2045,7 @@ fn main() {
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,
-                    size(px(1320.), px(880.)),
+                    size(px(1440.), px(960.)),
                     cx,
                 ))),
                 window_min_size: Some(size(px(780.), px(580.))),
@@ -1952,6 +2118,47 @@ mod ui_tests {
         .unwrap();
     }
     #[gpui_kit::test]
+    fn task_tiles_render_and_success_notice_does_not_move_content(cx: &mut TestAppContext) {
+        let (handle, view) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            design::install(cx);
+            gpui_kit::open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                        Default::default(),
+                        size(px(1320.), px(880.)),
+                    ))),
+                    ..Default::default()
+                },
+                cx,
+                |w, cx| cx.new(|cx| Desktop::new(w, cx)),
+            )
+            .unwrap()
+        });
+        cx.update_window(handle, |_, w, cx| {
+            view.update(cx, |v, cx| {
+                v.set_reduced_motion(true, cx);
+                v.navigate(Page::Actions, w, cx);
+            });
+            w.render_frame(cx);
+            let before = w.find(("task-area", 0_usize)).bounds();
+            view.update(cx, |v, cx| {
+                v.notice = Some(Notice {
+                    created: Instant::now(),
+                    tone: design::Tone::Good,
+                    title: "Saved".into(),
+                    detail: "Finished".into(),
+                });
+                cx.notify();
+            });
+            w.render_frame(cx);
+            assert_eq!(before, w.find(("task-area", 0_usize)).bounds());
+            w.click(("task-area", 0_usize), cx);
+            assert_eq!(view.read(cx).task_domain, Some(0));
+        })
+        .unwrap();
+    }
+    #[gpui_kit::test]
     fn native_input_and_drafts_are_isolated_by_task_context(cx: &mut TestAppContext) {
         let (handle, view) = cx.update(|cx| {
             gpui_kit::init(cx);
@@ -2017,7 +2224,7 @@ mod ui_tests {
             window.render_frame(cx);
             assert_eq!(field.entity_id(), id);
             assert!(field.read(cx).value().contains("draft-a"));
-            assert_eq!(window.rem_size(), px(21.));
+            assert_eq!(window.rem_size(), px(24.));
             view.update(cx, |this, cx| {
                 this.change_scale(-100, window, cx);
                 assert_eq!(this.scale_percent, 90);

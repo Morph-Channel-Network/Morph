@@ -1,15 +1,47 @@
 # Current protocol capabilities and verification
 
-Status: local implementation evidence, 2026-11-05. This is a migration and
+Status: local implementation evidence, 2026-11-11. This is a migration and
 coverage ledger, not a new independent audit or release approval. Full CI,
 release/report refresh, independent review and real-asset qualification remain
 separate gates in [mainnet readiness](mainnet-readiness.md).
 
+## Current resource-optimization implementation (2026-11-11)
+
+Descriptor 7 uses counted terms/resolutions, canonical Script dictionaries and
+authenticated close/splice delegation, preserving the typed-condition semantics.
+The rebuilt VM inventory has **114 passing tests** with explicit byte/cycle
+regression bounds. Signed implementation `991f7e3` passed all ten clean-candidate gates with unchanged
+source; see [the exact record](evidence/model-cost-991f7e3/README.md). Its native
+matrix has 88 transactions, 10 scenarios and 145 assertions; 780,000 bounded
+mutations and native signer/close/typed/reorg/shadow checks also passed. The prior
+receipt below remains historical and cannot be promoted to these ELFs. See [costs and evidence](model-resource-optimization.md)
+and [ADR 008](adr/008-bounded-cost-and-current-encoding.md).
+
+## Previous exact-candidate result: descriptor 6 (2026-11-11)
+
+All ten `current-local-no-value` executions returned exit 0 on signed code `bc4be3ff` with clean unchanged source. The original receipt records `conditional_udt_qualified=true`; 110 VM tests, the preserved ordinary native matrix and eight-Type/64-condition native fulfillment/refund/reorg evidence are bound to the same contracts/client artifacts. [Exact record and descriptor-label erratum](evidence/typed-conditions-bc4be3ff/README.md). The later reporting correction is not another full ten-gate candidate. The implementation checkpoint below retains its earlier preflight measurements.
+
+## Typed-conditions implementation checkpoint (2026-11-11)
+
+Descriptor 6 replaces the unpublished CKB-only conditional encoding with 1–8
+asset-bound Batches, each containing up to eight conditions. Terms are version
+4/957 bytes; public recovery is `morph.conditional_batch_package.v2`. Old W1
+records below remain historical. That checkpoint's rebuilt VM inventory has **110
+passing tests**, including conditional initial funding/activation/initial exit, typed splice
+creation/recovery/terminal claims, mixed assets, full-u128 resolution and maximum-script
+8-asset/64-condition shapes. A real-node preflight exercised eight fulfillments,
+removed all their confirmation credit by rollback, then exercised eight
+refund/mixed outcomes, without peer re-signing or provider RPC. Its actual-wallet
+terminal transaction measured 25,918,457 cycles/14,455 bytes; claim maxima were
+1,856,085 cycles/2,253 bytes. These preflight results do not replace the required
+clean-candidate `current-local-no-value` qualification. See [ADR 007](adr/007-typed-conditional-settlement.md)
+and [current operator/limits](conditional-batches.md).
+
 ## One custody model, explicit capabilities
 
 Morph now has one current channel State/Vault-set implementation. Plain CKB,
-one token and several tokens use the same 318-byte State and descriptor 5.
-Conditional CKB is an explicit capability of that descriptor. A Factory is a
+one token and several tokens use the same 318-byte State and descriptor 7.
+Conditional CKB/UDT settlement is an explicit capability of that descriptor. A Factory is a
 different authority object: a 306-byte Factory State controls shared custody
 and rights, then creates independently enforceable bilateral children.
 
@@ -24,9 +56,9 @@ flowchart TD
   C --> D["Private initial exits delivered to both child parties"]
   D --> B["Current bilateral State + Vault set"]
   B --> O["Ordinary settlement"]
-  B --> K["Explicit CKB conditional capability"]
+  B --> K["Explicit per-asset conditional capability"]
   O --> E["Complete-set unilateral finalisation"]
-  K --> X["Batch Cell: preimage or absolute-block refund"]
+  K --> X["1–8 Batch cells: preimages or absolute-block refunds"]
   X --> E
 ```
 
@@ -34,8 +66,8 @@ The former 346-byte channel, 302-byte Factory, single-Vault descriptors,
 485/469-byte splice and `MORPHW!!` kinds 1–8 codecs and contract dispatch have
 been removed. Unsupported bytes are rejected; development state must be reset
 as described in [the upgrade runbook](runbooks/upgrade-and-migration.md).
-The shared 828-byte Batch terms, signature primitives and compact Merkle
-algorithms remain because the current capabilities use them.
+The current typed count-based Batch terms replace the earlier CKB-only terms.
+Shared signature primitives and compact Merkle algorithms remain in use.
 
 ## Operation mapping
 
@@ -43,7 +75,7 @@ algorithms remain because the current capabilities use them.
 | --- | --- |
 | Plain CKB or single-xUDT channel | Same current State/Vault-set lifecycle as several assets. |
 | Channel resize/re-anchor | One 200-byte exact-transaction splice bridge, new creation and initial recovery authorizations. |
-| CKB conditional batch | Descriptor-5 capability tag 1; Batch args bind channel, funding context, state number and complete terms. |
+| CKB conditional batch | Descriptor-7 capability tag 1; Batch args bind channel, funding context, state number and complete terms. |
 | Factory root and custody activation | `MORPHFS!` format 2: transaction-bound root approval; activation is permissionless and value-neutral. |
 | Full-consent Factory metadata | Sole `MORPHFS!` UPDATE path; a distinct update domain signs header commitment and exact raw transaction hash. |
 | Flat ten-right, sparse one-right and compact multi-right updates | Sole `MORPHFR!` `ReducedRights` operation, with 1–10 compact before/after proof pairs. |
@@ -60,7 +92,51 @@ it does not enable a removed State format.
 
 ## Safety boundaries and current evidence
 
-The current contract harness contains **89 registered CKB-VM tests**, including
+The November 10 working-tree harness now has **100 registered CKB-VM tests**,
+all passing after the Core close snapshot/output-builder checkpoint. Two new
+tests export the actual Core-generated close witness to CKB-VM, including Batch
+fulfillment. The subsequent execution checkpoint adds six CLI tests (including a
+child-process entrypoint): three real host SIGKILL cuts, eight actual write/fsync/
+rename/directory-fsync failures, receipt-space exhaustion, cross-role rejection
+and canonical-source rejection. Its native two/eight-token runs use the actual
+secp wallet, independent participant services, exact fee replacements and keyless
+submission; two controlled rollbacks exercise exact replay and ordinary-state
+source races followed by unilateral finalisation. That CLI checkpoint passes 313
+tests. These native cases do not cover conditional Batch or a Factory child;
+their consensus coverage above remains separate. See
+[execution evidence](evidence/cooperative-close-execution-2026-11-10/README.md).
+
+The following #41 checkpoint adds the common exact-operation runtime and its
+first close adapter: durable send intent, canonical/depth/reorg observation,
+independent subscribers, offline byte export and atomic reference-only outbox.
+Its CLI suite passes 324 tests; the broader targeted integration command also
+covers the event library, Hub API, Gateway and their schemas. Other lifecycle
+adapters, autonomous scheduling, API/SDK/desktop operation integration and final
+qualification remain open. See [operation evidence](evidence/operation-runtime-2026-11-10/README.md).
+
+The later replacement checkpoint raises the CLI suite to **328 passing tests**.
+Explicit close fee-version links preserve older authority and attribute a winner
+only from fresh canonical evidence. Native two/eight-token runs now add an
+older-version-wins branch before ordinary fallback, for three intentional rollbacks;
+both directions of replacement are observed without crediting the losing body's
+confirmations. See [replacement evidence](evidence/operation-replacements-2026-11-10/README.md).
+
+The preceding verifier checkpoint had 98 registered CKB-VM tests.
+All 98 passed after rebuilding the cooperative-close verifier, followed by the
+five close tests with additional maximum-script/unbound/duplicate-source variants.
+The new `cooperative_close*` matrix covers fresh close authorization, original
+vote replay, exact-body changes, malformed frames, incomplete/cloned custody,
+signed payout corruption, stale source context and target-bound independent Batch
+fulfillment. Native host close signing and controlled crash/reorg evidence are
+covered by the later checkpoints above; complete final qualification remains open;
+see [ADR 005](adr/005-bilateral-cooperative-terminal-close.md).
+
+The preceding 93-test inventory added two `current_close_geometry*` tests against
+the preceding manifest-matching ELFs, measuring 14 current transactions and four
+rejected attempts to bypass maturity with ordinary state signatures. Their
+baseline costs remain historical after the new ELF build.
+
+An earlier harness inventory contained **89 registered CKB-VM tests**, including
 parameterized negative matrices: 77 at checkpoint `9202e341`, five earlier
 closeout regressions, two alpha Factory authority/overflow negatives and five
 Factory delegated-authority regressions.
@@ -184,8 +260,8 @@ child finalisation, and retained-parent retirement. The separate current
 publication-reliability run records real fee/RBF/reconciliation/reorg and
 service-health behavior; see [its runbook](runbooks/current-publication-reliability.md).
 
-The original checkpoint passed full repository CI with 77 VM cases. Current
-closeout coverage raises the registered VM count to 82; PR checks evaluate that
+The original checkpoint passed full repository CI with 77 VM cases. The initial
+closeout raised the registered VM count to 82; PR checks evaluated that
 new head separately, without relabelling the original evidence. The expanded
 historical five-case native matrix and its nine-scenario, 65-assertion evidence ledger also
 completed on a development node; source freshness and budget qualification are

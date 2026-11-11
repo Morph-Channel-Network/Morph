@@ -3,8 +3,7 @@ use super::*;
 impl Desktop {
     pub(super) fn primary_action(page: Page) -> Option<HubOperation> {
         match page {
-            Page::Channels => Some(HubOperation::OpenChannel),
-            Page::Factories => Some(HubOperation::OpenFactory),
+            Page::Channels => Some(HubOperation::ImportRoot),
             Page::Invoices => Some(HubOperation::CreateInvoice),
             Page::Recovery => Some(HubOperation::ImportRecovery),
             Page::Peers => Some(HubOperation::Peer),
@@ -12,14 +11,14 @@ impl Desktop {
         }
     }
 
-    pub(super) fn render_records(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+    pub(super) fn render_records(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let label = page_name(self.page, self.language);
         let records = self.filtered_records(cx);
         let mut header = div()
             .flex()
             .items_start()
             .gap_4()
-            .child(title_row(label, self.t(Text::SelectARecordToViewIts)).flex_1());
+            .child(title_row(label, self.t(Text::HubRecordsSavedSignaturesAndChain)).flex_1());
         if let Some(op) = Self::primary_action(self.page) {
             header = header.child(
                 Button::new("primary-record-action")
@@ -38,43 +37,47 @@ impl Desktop {
             .flex_col()
             .gap_4()
             .child(header);
-        if self.page == Page::Watch {
-            if let Some(s) = &self.state {
-                view = view.child(
-                    d::panel()
-                        .flex()
-                        .gap_4()
-                        .items_center()
-                        .child(d::badge(
-                            if s.watchtower.configured {
-                                self.t(Text::Configured)
-                            } else {
-                                self.t(Text::NotConfigured)
-                            },
-                            if s.watchtower.last_error.is_some() {
-                                Tone::Warning
-                            } else {
-                                Tone::Neutral
-                            },
-                        ))
-                        .child(d::caption(s.watchtower.last_error.clone().unwrap_or_else(
-                            || {
-                                self.t(Text::ObserverReportsAreSeparateFromIndependent)
-                                    .into()
-                            },
-                        ))),
-                );
-            }
+        if self.page == Page::Watch
+            && let Some(s) = &self.state
+        {
+            view = view.child(
+                d::panel()
+                    .flex()
+                    .gap_4()
+                    .items_center()
+                    .child(d::badge(
+                        if s.watchtower.configured {
+                            self.t(Text::Configured)
+                        } else {
+                            self.t(Text::NotConfigured)
+                        },
+                        if s.watchtower.last_error.is_some() {
+                            Tone::Warning
+                        } else {
+                            Tone::Neutral
+                        },
+                    ))
+                    .child(if let Some(error) = &s.watchtower.last_error {
+                        self.diagnostic("watch-error", error.clone(), window, cx)
+                    } else {
+                        d::caption(self.t(Text::ObserverReportsAreSeparateFromIndependent))
+                    }),
+            );
         }
         if self.page == Page::Events {
-            view = view.child(self.activity_tabs(cx));
+            view = view.child(self.activity_tabs(window, cx));
         }
         view = view.child(
             div()
                 .flex()
                 .gap_3()
                 .items_center()
-                .child(Input::new(&self.search).id("record-search"))
+                .child(
+                    div()
+                        .w_full()
+                        .max_w(px(460. * self.scale()))
+                        .child(Input::new(&self.search).id("record-search").cleanable(true)),
+                )
                 .child(d::caption(format!(
                     "{} · {}",
                     self.t(Text::Results),
@@ -93,58 +96,75 @@ impl Desktop {
             ));
         }
         let scale = self.scale();
+        let animated = self.motion_enabled(window, cx);
         let weak = cx.entity().downgrade();
         let lang = self.language;
         view.child(
-            uniform_list("workspace-records", records.len(), move |range, _, _| {
-                range
-                    .map(|i| {
-                        let r = records[i].clone();
-                        let weak = weak.clone();
-                        let name = record_title(&r, lang);
-                        let content = div()
-                            .w_full()
-                            .min_w_0()
-                            .flex()
-                            .items_center()
-                            .gap_4()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_2()
-                                    .overflow_hidden()
-                                    .child(
-                                        div()
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_ellipsis()
-                                            .whitespace_nowrap()
-                                            .child(name.clone()),
-                                    )
-                                    .child(d::caption(record_subtitle(&r, lang)))
-                                    .children(record_balance_hint(&r, lang).map(d::caption)),
+            uniform_list(
+                "workspace-records",
+                records.len(),
+                move |range, window, cx| {
+                    range
+                        .map(|i| {
+                            let r = records[i].clone();
+                            let weak = weak.clone();
+                            let name = record_title(&r, lang);
+                            let content = div()
+                                .w_full()
+                                .min_w_0()
+                                .flex()
+                                .items_center()
+                                .gap_4()
+                                .child(d::icon_tile(page_icon(r.page)))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_2()
+                                        .overflow_hidden()
+                                        .child(
+                                            div()
+                                                .text_base()
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_ellipsis()
+                                                .whitespace_nowrap()
+                                                .child(name.clone()),
+                                        )
+                                        .child(d::caption(record_subtitle(&r, lang)))
+                                        .children(record_balance_hint(&r, lang).map(d::caption)),
+                                )
+                                .child(Icon::new(IconName::ChevronRight).text_color(rgb(d::DIM)));
+                            let button = Button::new(("record", i))
+                                .ghost()
+                                .accessibility_label(format!("{} {name}", lang.t(Text::Open)))
+                                .w_full()
+                                .h(px(100. * scale))
+                                .px_4()
+                                .py_3()
+                                .rounded(px(12.))
+                                .border_1()
+                                .border_color(rgb(d::BORDER))
+                                .child(content)
+                                .on_click(move |_, window, cx| {
+                                    let _ = weak.update(cx, |this, cx| {
+                                        this.pick_record(r.clone(), window, cx)
+                                    });
+                                });
+                            div().h(px(110. * scale)).pb(px(10. * scale)).child(
+                                crate::motion::interactive(
+                                    button,
+                                    ("record", i),
+                                    animated,
+                                    window,
+                                    cx,
+                                ),
                             )
-                            .child(d::badge(r.source(lang), Tone::Neutral))
-                            .child(Icon::new(IconName::ChevronRight).text_color(rgb(d::DIM)));
-                        Button::new(("record", i))
-                            .ghost()
-                            .accessibility_label(format!("{} {name}", lang.t(Text::Open)))
-                            .w_full()
-                            .h(px(104. * scale))
-                            .px_4()
-                            .py_3()
-                            .border_b_1()
-                            .border_color(rgb(d::BORDER))
-                            .child(content)
-                            .on_click(move |_, window, cx| {
-                                let _ = weak
-                                    .update(cx, |this, cx| this.pick_record(r.clone(), window, cx));
-                            })
-                    })
-                    .collect::<Vec<_>>()
-            })
+                        })
+                        .collect::<Vec<_>>()
+                },
+            )
             .flex_1()
             .min_h_0(),
         )
@@ -270,7 +290,14 @@ impl Desktop {
                     .as_str()
                     .map(str::to_owned)
                     .unwrap_or_else(|| v[key].to_string());
-                facts = if key == "event" {
+                facts = if key == "message" {
+                    facts.child(self.service_message(("record-message", i), raw, window, cx))
+                } else if key == "network" {
+                    facts.child(d::key_value(
+                        self.t(label),
+                        p::network_name(&raw, self.language),
+                    ))
+                } else if key == "event" {
                     facts.child(d::key_value(
                         self.t(label),
                         p::event_name(&raw, self.language),
@@ -391,13 +418,7 @@ impl Desktop {
             );
         }
         let ops = match r.page {
-            Page::Channels => vec![
-                HubOperation::PublishChannel,
-                HubOperation::SpliceChannel,
-                HubOperation::FinaliseChannel,
-                HubOperation::CreateInvoice,
-            ],
-            Page::Factories => vec![HubOperation::AdvanceFactory, HubOperation::MaterialiseChild],
+            Page::Channels => vec![HubOperation::CreateInvoice],
             Page::Invoices => vec![HubOperation::ReceiveInvoice, HubOperation::SettleInvoice],
             Page::Recovery if r.is_recovery() => vec![HubOperation::ExportRecovery],
             _ => Vec::new(),
@@ -443,6 +464,8 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Div {
         let full = value.clone();
+        let copy_key = p::view_hash(&format!("{label}\0{value}"));
+        let copied = self.copied.is_some_and(|(key, _)| key == copy_key);
         let compact = if value.len() > 24
             && value.is_ascii()
             && value
@@ -477,13 +500,27 @@ impl Desktop {
             )
             .child(
                 Button::new(("copy-fact", index))
-                    .icon(IconName::Copy)
+                    .icon(if copied {
+                        IconName::Check
+                    } else {
+                        IconName::Copy
+                    })
                     .ghost()
                     .small()
-                    .tooltip(format!("{} · {}", self.t(Text::CopyCompleteValue), label))
+                    .tooltip(format!(
+                        "{} · {}",
+                        self.t(if copied {
+                            Text::Copied
+                        } else {
+                            Text::CopyCompleteValue
+                        }),
+                        label
+                    ))
                     .accessibility_label(format!("{} · {}", self.t(Text::Copy), label))
-                    .on_click(cx.listener(move |_, _, _, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(full.clone()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(full.clone()));
+                        this.copied = Some((copy_key, Instant::now()));
+                        cx.notify();
                     })),
             )
     }

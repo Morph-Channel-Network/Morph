@@ -1,0 +1,606 @@
+{
+  "$defs": {
+    "BackendSettlementEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "ckb_anchor": {
+          "additionalProperties": false,
+          "properties": {
+            "block_hash": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "block_number": {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            "confirmations": {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            },
+            "transaction": {
+              "$ref": "#/$defs/CkbOutPoint"
+            }
+          },
+          "required": [
+            "transaction",
+            "block_hash",
+            "block_number",
+            "confirmations"
+          ],
+          "type": "object"
+        },
+        "failure_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "morph_state": {
+          "additionalProperties": false,
+          "properties": {
+            "channel_id": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "funding_context_id": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "settlement_descriptor_commitment": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "state_header_commitment": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "state_number": {
+              "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+              "maxLength": 20,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^0-9]"
+              },
+              "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "channel_id",
+            "funding_context_id",
+            "state_number",
+            "state_header_commitment",
+            "settlement_descriptor_commitment"
+          ],
+          "type": "object"
+        },
+        "opaque_commitment": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "provider_id": {
+          "type": "string"
+        },
+        "rgbpp_proof_commitment": {
+          "anyOf": [
+            {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "settlement_id": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider_id",
+        "settlement_id",
+        "opaque_commitment",
+        "morph_state",
+        "ckb_anchor",
+        "rgbpp_proof_commitment"
+      ],
+      "type": "object"
+    },
+    "BitcoinNetwork": {
+      "enum": [
+        "mainnet",
+        "testnet",
+        "signet",
+        "regtest"
+      ],
+      "type": "string"
+    },
+    "CkbOutPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_hash": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tx_hash",
+        "index"
+      ],
+      "type": "object"
+    },
+    "GatewayAsset": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ckb": {
+              "additionalProperties": false,
+              "properties": {
+                "ckb_genesis_hash": {
+                  "maxLength": 66,
+                  "minLength": 66,
+                  "pattern": "^0x[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ckb_genesis_hash"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "ckb"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "xudt": {
+              "additionalProperties": false,
+              "properties": {
+                "ckb_genesis_hash": {
+                  "maxLength": 66,
+                  "minLength": 66,
+                  "pattern": "^0x[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "type_script_hash": {
+                  "maxLength": 66,
+                  "minLength": 66,
+                  "pattern": "^0x[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ckb_genesis_hash",
+                "type_script_hash"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "xudt"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "rgbpp": {
+              "$ref": "#/$defs/RgbppAssetId"
+            }
+          },
+          "required": [
+            "rgbpp"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "HttpOperation": {
+      "enum": [
+        "get",
+        "head",
+        "post",
+        "put",
+        "patch",
+        "delete"
+      ],
+      "type": "string"
+    },
+    "PaymentHashAlgorithm": {
+      "enum": [
+        "ckb_blake2b",
+        "sha256"
+      ],
+      "type": "string"
+    },
+    "PaymentIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "Canonical unsigned decimal string in 0..=340282366920938463463374607431768211455. Units are documented on the field.",
+          "maxLength": 39,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,37}|340282366920938463463374607431768211455|[1-2][0-9]{38}|3[0-3][0-9]{37}|340[0-1][0-9]{35}|3402[0-7][0-9]{34}|34028[0-1][0-9]{33}|340282[0-2][0-9]{32}|3402823[0-5][0-9]{31}|34028236[0-5][0-9]{30}|340282366[0-8][0-9]{29}|3402823669[0-1][0-9]{28}|340282366920[0-8][0-9]{26}|3402823669209[0-2][0-9]{25}|34028236692093[0-7][0-9]{24}|340282366920938[0-3][0-9]{23}|3402823669209384[0-5][0-9]{22}|34028236692093846[0-2][0-9]{21}|340282366920938463[0-3][0-9]{20}|3402823669209384634[0-5][0-9]{19}|34028236692093846346[0-2][0-9]{18}|340282366920938463463[0-2][0-9]{17}|3402823669209384634633[0-6][0-9]{16}|34028236692093846346337[0-3][0-9]{15}|340282366920938463463374[0-5][0-9]{14}|34028236692093846346337460[0-6][0-9]{12}|340282366920938463463374607[0-3][0-9]{11}|3402823669209384634633746074[0-2][0-9]{10}|34028236692093846346337460743[0-0][0-9]{9}|340282366920938463463374607431[0-6][0-9]{8}|3402823669209384634633746074317[0-5][0-9]{7}|34028236692093846346337460743176[0-7][0-9]{6}|340282366920938463463374607431768[0-1][0-9]{5}|3402823669209384634633746074317682[0-0][0-9]{4}|34028236692093846346337460743176821[0-0][0-9]{3}|340282366920938463463374607431768211[0-3][0-9]{2}|3402823669209384634633746074317682114[0-4][0-9]{1}|34028236692093846346337460743176821145[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "asset": {
+          "$ref": "#/$defs/GatewayAsset"
+        },
+        "channel_binding": {
+          "additionalProperties": false,
+          "properties": {
+            "channel_id": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "expected_settlement_descriptor_commitment": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "funding_context_id": {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "channel_id",
+            "funding_context_id",
+            "expected_settlement_descriptor_commitment"
+          ],
+          "type": "object"
+        },
+        "created_at_unix": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "expires_at_unix": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "hash_algorithm": {
+          "$ref": "#/$defs/PaymentHashAlgorithm"
+        },
+        "idempotency_key": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "nonce": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/HttpOperation"
+        },
+        "payee": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "payer": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "payment_hash": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "required_rgbpp_proof_commitment": {
+          "anyOf": [
+            {
+              "maxLength": 66,
+              "minLength": 66,
+              "pattern": "^0x[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent_id",
+        "payer",
+        "payee",
+        "asset",
+        "amount",
+        "payment_hash",
+        "hash_algorithm",
+        "resource",
+        "operation",
+        "nonce",
+        "idempotency_key",
+        "created_at_unix",
+        "expires_at_unix",
+        "required_rgbpp_proof_commitment",
+        "channel_binding"
+      ],
+      "type": "object"
+    },
+    "PaymentReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "type": "string"
+        },
+        "asset_id": {
+          "type": "string"
+        },
+        "credential": {
+          "type": "string"
+        },
+        "credential_expires_at": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "credential_id": {
+          "type": "string"
+        },
+        "fiber_status": {
+          "type": "string"
+        },
+        "intent": {
+          "$ref": "#/$defs/PaymentIntent",
+          "description": "Full canonical intent needed for independent receipt verification."
+        },
+        "operation": {
+          "type": "string"
+        },
+        "paid_at": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "payer": {
+          "type": "string"
+        },
+        "payment_hash": {
+          "type": "string"
+        },
+        "receipt_id": {
+          "type": "string"
+        },
+        "requirement_id": {
+          "type": "string"
+        },
+        "resource": {
+          "type": "string"
+        },
+        "terminal_receipt": {
+          "$ref": "#/$defs/TerminalSettlementReceipt",
+          "description": "Canonical, independently signed terminal settlement event."
+        }
+      },
+      "required": [
+        "receipt_id",
+        "credential_id",
+        "requirement_id",
+        "payment_hash",
+        "payer",
+        "asset_id",
+        "amount",
+        "resource",
+        "operation",
+        "paid_at",
+        "fiber_status",
+        "credential",
+        "credential_expires_at",
+        "intent",
+        "terminal_receipt"
+      ],
+      "type": "object"
+    },
+    "RgbppAssetId": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_code_hash": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "bitcoin_network": {
+          "$ref": "#/$defs/BitcoinNetwork"
+        },
+        "ckb_genesis_hash": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "xudt_type_script_hash": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ckb_genesis_hash",
+        "xudt_type_script_hash",
+        "bitcoin_network",
+        "binding_code_hash"
+      ],
+      "type": "object"
+    },
+    "TerminalPaymentStatus": {
+      "enum": [
+        "settled",
+        "cancelled",
+        "expired",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "TerminalSettlementReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/BackendSettlementEvidence"
+        },
+        "finalised_at_unix": {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "receipt_id": {
+          "maxLength": 66,
+          "minLength": 66,
+          "pattern": "^0x[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "signature": {
+          "maxLength": 130,
+          "minLength": 130,
+          "pattern": "^0x[0-9a-f]{128}$",
+          "type": "string"
+        },
+        "signature_scheme_id": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "signer_pubkey_sec1": {
+          "maxLength": 68,
+          "minLength": 68,
+          "pattern": "^0x[0-9a-f]{66}$",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/TerminalPaymentStatus"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "intent_id",
+        "status",
+        "evidence",
+        "finalised_at_unix",
+        "signer_pubkey_sec1",
+        "signature_scheme_id",
+        "signature"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "payment_preimage": {
+      "type": "string"
+    },
+    "receipt": {
+      "$ref": "#/$defs/PaymentReceipt"
+    }
+  },
+  "required": [
+    "receipt",
+    "payment_preimage"
+  ],
+  "title": "SettleResponse",
+  "type": "object"
+}

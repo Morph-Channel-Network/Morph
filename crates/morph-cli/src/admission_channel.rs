@@ -102,6 +102,7 @@ fn validate(
     );
     validate_conditions(
         &recovery.settlement,
+        None,
         &envelope,
         current_block,
         blake2b256(&std::fs::read(contracts.join("morph-batch-lock"))?),
@@ -111,21 +112,27 @@ fn validate(
 
 fn validate_conditions(
     settlement: &morph_core::MultiAssetSettlement,
+    previous: Option<&morph_core::MultiAssetSettlement>,
     envelope: &PreproductionEnvelope,
     current_block: Option<u64>,
     expected_batch: Bytes32,
 ) -> Result<()> {
-    if let MultiAssetSettlementCapability::CkbConditional {
+    if let MultiAssetSettlementCapability::Conditional {
         batch_code_hash,
         batch_hash_type,
-        batch,
+        batches,
     } = &settlement.capability
     {
-        batch.validate()?;
+        for batch in batches {
+            batch.validate()?;
+        }
         ensure!(
             envelope.conditional_batch.enabled
-                && envelope.conditional_batch.ckb_only
-                && batch.transfers.len() <= envelope.conditional_batch.max_transfers as usize,
+                && envelope.conditional_batch.asset_scope == "ckb_and_manifest_pinned_devnet_xudt"
+                && !batches.is_empty()
+                && batches.len() <= envelope.conditional_batch.max_batches as usize
+                && batches.iter().all(|batch| batch.transfers.len()
+                    <= envelope.conditional_batch.max_transfers as usize),
             "conditional capability exceeds experiment admission"
         );
         ensure!(
@@ -137,11 +144,19 @@ fn validate_conditions(
                 .checked_add(envelope.conditional_batch.max_refund_block_delta)
                 .context("conditional horizon overflow")?;
             ensure!(
-                batch
-                    .transfers
-                    .iter()
-                    .all(|transfer| transfer.refund_after_block > block
-                        && transfer.refund_after_block <= maximum),
+                batches.iter().all(|batch| {
+                    // An identical, already co-signed Batch is existing
+                    // authority. Its maturity must not block resolving another
+                    // asset. New or edited terms still need a fresh horizon.
+                    let retained = previous.is_some_and(|prior| matches!(
+                        &prior.capability,
+                        MultiAssetSettlementCapability::Conditional {
+                            batch_code_hash: code, batch_hash_type: kind, batches: old
+                        } if code == batch_code_hash && kind == batch_hash_type && old.contains(batch)
+                    ));
+                    retained || batch.transfers.iter().all(|transfer|
+                        transfer.refund_after_block > block && transfer.refund_after_block <= maximum)
+                }),
                 "conditional refund horizon exceeds experiment admission"
             );
         }
@@ -152,6 +167,7 @@ fn validate_conditions(
 /// Public policy for fixed-custody updates, shared by direct and Factory-origin
 /// parties. It needs no parent's private ledger or admission configuration.
 pub(crate) fn validate_conditional_horizon(
+    source: &MultiAssetRecoveryPackage,
     settlement: &morph_core::MultiAssetSettlement,
     current_block: u64,
     contracts: &Path,
@@ -179,7 +195,14 @@ pub(crate) fn validate_conditional_horizon(
         blake2b256(&std::fs::read(contracts.join("morph-batch-lock"))?) == expected,
         "public conditional policy Batch ELF changed"
     );
-    validate_conditions(settlement, &envelope, Some(current_block), expected)
+    source.validate()?;
+    validate_conditions(
+        settlement,
+        Some(&source.settlement),
+        &envelope,
+        Some(current_block),
+        expected,
+    )
 }
 
 pub(crate) fn validate_recovery_shape(
@@ -296,6 +319,21 @@ impl Binding {
             &config.rpc_url,
             std::time::Duration::from_secs(30),
         )?;
+        self.require_fresh_with_rpc(recovery, transaction, &rpc)
+    }
+    pub(crate) fn require_fresh_with_rpc(
+        &self,
+        recovery: &MultiAssetRecoveryPackage,
+        transaction: &packed::Transaction,
+        rpc: &crate::rpc::CkbRpcClient,
+    ) -> Result<()> {
+        self.require(recovery, transaction)?;
+        let config = crate::admission::read_verified_config(&self.config, &self.contracts)?;
+        ensure!(
+            crate::multi_asset_session_chain::rpc_endpoint(&config.rpc_url)?
+                == crate::multi_asset_session_chain::rpc_endpoint(rpc.endpoint())?,
+            "signer admission RPC differs from installed endpoint"
+        );
         validate(
             &self.config,
             &self.contracts,
@@ -303,7 +341,7 @@ impl Binding {
             Some(rpc.tip_header()?.number_value()?),
         )?;
         crate::admission::reserve_bilateral(
-            &rpc,
+            rpc,
             &self.config,
             &self.contracts,
             recovery.state.header.chain_id,
@@ -357,8 +395,13 @@ pub(crate) mod tests {
     /// unknown methods receive an immediate method-not-found response.
     pub(crate) struct MockRpc {
         pub(crate) url: String,
+        #[cfg(feature = "devnet")]
+        responses:
+            std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, serde_json::Value>>>,
         tip: std::sync::Arc<std::sync::atomic::AtomicU64>,
         stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        cells:
+            std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, serde_json::Value>>>,
         worker: Option<std::thread::JoinHandle<()>>,
     }
     impl MockRpc {
@@ -371,6 +414,15 @@ pub(crate) mod tests {
             let stop = std::sync::Arc::new(AtomicBool::new(false));
             let current = tip.clone();
             let stopping = stop.clone();
+            let cells =
+                std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::new()));
+            let live_cells = cells.clone();
+            let responses =
+                std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::<
+                    String,
+                    serde_json::Value,
+                >::new()));
+            let overrides = responses.clone();
             let worker = std::thread::spawn(move || {
                 for connection in listener.incoming() {
                     let Ok(mut stream) = connection else {
@@ -417,25 +469,49 @@ pub(crate) mod tests {
                         }
                         let body: serde_json::Value =
                             serde_json::from_slice(&request[header_end..header_end + length])?;
-                        let result = match body["method"].as_str() {
-                            Some("get_block_hash") if body["params"][0] == "0x0" => {
-                                serde_json::json!(crate::multi_asset_packages::canonical_hex(
-                                    &genesis
-                                ))
-                            }
-                            Some("get_blockchain_info") => {
-                                serde_json::json!({"chain":"ckb_dev","median_time":"0x0","epoch":"0x0","is_initial_block_download":false})
-                            }
-                            Some("get_tip_header") => {
-                                serde_json::json!({"hash":crate::multi_asset_packages::canonical_hex(&[42;32]),"number":format!("0x{:x}", current.load(Ordering::Relaxed)),"parent_hash":crate::multi_asset_packages::canonical_hex(&[41;32]),"timestamp":"0x0","epoch":"0x0"})
-                            }
-                            Some("get_transaction") => {
-                                serde_json::json!({"transaction":null,"cycles":null,"tx_status":{"status":"unknown","block_hash":null,"block_number":null,"tx_index":null,"reason":null}})
-                            }
-                            _ => {
-                                return Ok(
-                                    serde_json::json!({"jsonrpc":"2.0","id":body["id"],"error":{"code":-32601,"message":"bounded admission mock: unknown method"}}),
-                                );
+                        let lookup = serde_json::to_string(&serde_json::json!([
+                            body["method"],
+                            body["params"]
+                        ]))?;
+                        let matched = overrides.lock().unwrap().get(&lookup).cloned();
+                        let result = if let Some(value) = matched {
+                            value
+                        } else {
+                            match body["method"].as_str() {
+                                Some("get_block_hash") if body["params"][0] == "0x0" => {
+                                    serde_json::json!(crate::multi_asset_packages::canonical_hex(
+                                        &genesis
+                                    ))
+                                }
+                                Some("get_blockchain_info") => {
+                                    serde_json::json!({"chain":"ckb_dev","median_time":"0x0","epoch":"0x0","is_initial_block_download":false})
+                                }
+                                Some("get_tip_header") => {
+                                    serde_json::json!({"hash":crate::multi_asset_packages::canonical_hex(&[42;32]),"number":format!("0x{:x}", current.load(Ordering::Relaxed)),"parent_hash":crate::multi_asset_packages::canonical_hex(&[41;32]),"timestamp":"0x0","epoch":"0x0"})
+                                }
+                                Some("get_live_cell") => {
+                                    ensure!(
+                                        body["params"][1] == false && body["params"][2] == false,
+                                        "signer must request canonical outputs without data"
+                                    );
+                                    let key = serde_json::to_string(&body["params"][0])?;
+                                    live_cells
+                                        .lock()
+                                        .unwrap()
+                                        .get(&key)
+                                        .cloned()
+                                        .unwrap_or_else(
+                                            || serde_json::json!({"status":"unknown","cell":null}),
+                                        )
+                                }
+                                Some("get_transaction") => {
+                                    serde_json::json!({"transaction":null,"cycles":null,"tx_status":{"status":"unknown","block_hash":null,"block_number":null,"tx_index":null,"reason":null}})
+                                }
+                                _ => {
+                                    return Ok(
+                                        serde_json::json!({"jsonrpc":"2.0","id":body["id"],"error":{"code":-32601,"message":"bounded admission mock: unknown method"}}),
+                                    );
+                                }
                             }
                         };
                         Ok(serde_json::json!({"jsonrpc":"2.0","id":body["id"],"result":result}))
@@ -451,10 +527,33 @@ pub(crate) mod tests {
             });
             Self {
                 url: format!("http://{address}/"),
+                #[cfg(feature = "devnet")]
+                responses,
                 tip,
                 stop,
+                cells,
                 worker: Some(worker),
             }
+        }
+        pub(crate) fn set_live_cell(
+            &self,
+            point: &ckb_types::packed::OutPoint,
+            output: &ckb_types::packed::CellOutput,
+        ) {
+            let point =
+                serde_json::to_value(ckb_jsonrpc_types::OutPoint::from(point.clone())).unwrap();
+            let key = serde_json::to_string(&point).unwrap();
+            self.cells.lock().unwrap().insert(key, serde_json::json!({"status":"live","cell":{"output":ckb_jsonrpc_types::CellOutput::from(output.clone()),"data":null}}));
+        }
+        #[cfg(feature = "devnet")]
+        pub(crate) fn respond(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+            value: serde_json::Value,
+        ) {
+            let key = serde_json::to_string(&serde_json::json!([method, params])).unwrap();
+            self.responses.lock().unwrap().insert(key, value);
         }
         pub(crate) fn set_tip(&self, tip: u64) {
             self.tip.store(tip, std::sync::atomic::Ordering::Relaxed);
@@ -490,11 +589,13 @@ pub(crate) mod tests {
             let mut settlement = terms.creation(chain, authority).unwrap().settlement;
             settlement.payouts[0].values[0].business_ckb -= 1_000_000_000;
             let batch = ConditionalBatch {
+                asset: morph_core::VaultAsset::Ckb,
                 batch_id: [71; 32],
                 application_context_commitment: [72; 32],
                 participants: std::array::from_fn(|i| ConditionalParticipant {
                     settlement_lock_hash: settlement.participant_lock_hashes[i],
                     settled_capacity: settlement.payouts[0].values[i].capacity().unwrap(),
+                    settled_amount: 0,
                 }),
                 transfers: vec![ConditionalTransferSpec {
                     transfer_id: [73; 32],
@@ -505,10 +606,10 @@ pub(crate) mod tests {
                     refund_after_block,
                 }],
             };
-            settlement.capability = MultiAssetSettlementCapability::CkbConditional {
+            settlement.capability = MultiAssetSettlementCapability::Conditional {
                 batch_code_hash: blake2b256(&artifact("morph-batch-lock")),
                 batch_hash_type: 2,
-                batch: Box::new(batch),
+                batches: vec![batch],
             };
             terms.descriptor_hex =
                 crate::multi_asset_packages::canonical_hex(&settlement.encode().unwrap());
@@ -823,20 +924,23 @@ pub(crate) mod tests {
             .settlement;
         let locks = settlement.participant_lock_hashes;
         let batch_hash = [7; 32];
-        settlement.capability = MultiAssetSettlementCapability::CkbConditional {
+        settlement.capability = MultiAssetSettlementCapability::Conditional {
             batch_code_hash: batch_hash,
             batch_hash_type: 2,
-            batch: Box::new(ConditionalBatch {
+            batches: vec![ConditionalBatch {
+                asset: morph_core::VaultAsset::Ckb,
                 batch_id: [8; 32],
                 application_context_commitment: [9; 32],
                 participants: [
                     ConditionalParticipant {
                         settlement_lock_hash: locks[0],
                         settled_capacity: 1000,
+                        settled_amount: 0,
                     },
                     ConditionalParticipant {
                         settlement_lock_hash: locks[1],
                         settled_capacity: 1000,
+                        settled_amount: 0,
                     },
                 ],
                 transfers: vec![ConditionalTransferSpec {
@@ -847,30 +951,125 @@ pub(crate) mod tests {
                     amount: 1,
                     refund_after_block: 2116,
                 }],
-            }),
+            }],
         };
-        validate_conditions(&settlement, &envelope, Some(100), batch_hash).unwrap();
-        if let MultiAssetSettlementCapability::CkbConditional { batch, .. } =
+        validate_conditions(&settlement, None, &envelope, Some(100), batch_hash).unwrap();
+        if let MultiAssetSettlementCapability::Conditional { batches, .. } =
             &mut settlement.capability
         {
-            batch.transfers[0].refund_after_block = 2117;
+            batches[0].transfers[0].refund_after_block = 2117;
         }
         assert!(
-            validate_conditions(&settlement, &envelope, Some(100), batch_hash)
+            validate_conditions(&settlement, None, &envelope, Some(100), batch_hash)
                 .unwrap_err()
                 .to_string()
                 .contains("refund horizon")
         );
         // A late saved authorization remains valid protocol evidence. Admission
         // is applied only to a new proposal/signature, never package export.
-        if let MultiAssetSettlementCapability::CkbConditional { batch, .. } =
+        if let MultiAssetSettlementCapability::Conditional { batches, .. } =
             &mut settlement.capability
         {
-            batch.transfers[0].refund_after_block = 100;
+            batches[0].transfers[0].refund_after_block = 100;
         }
-        validate_conditions(&settlement, &envelope, None, batch_hash).unwrap();
-        assert!(validate_conditions(&settlement, &envelope, Some(100), batch_hash).is_err());
-        assert!(validate_conditions(&settlement, &envelope, None, [12; 32]).is_err());
+        validate_conditions(&settlement, None, &envelope, None, batch_hash).unwrap();
+        assert!(validate_conditions(&settlement, None, &envelope, Some(100), batch_hash).is_err());
+        assert!(validate_conditions(&settlement, None, &envelope, None, [12; 32]).is_err());
+    }
+
+    #[test]
+    fn conditional_admission_preserves_identical_mature_batches_while_another_asset_resolves() {
+        let envelope: PreproductionEnvelope = serde_json::from_str(include_str!(
+            "../../../release/factory-preproduction/envelope.json"
+        ))
+        .unwrap();
+        let mut prior = crate::conditional_packages::fixture_typed_source_package()
+            .unwrap()
+            .recovery()
+            .unwrap()
+            .settlement;
+        let payout = &mut prior.payouts[1];
+        payout.values[0].amount -= 1;
+        let second = ConditionalBatch {
+            asset: payout.asset.clone(),
+            batch_id: [41; 32],
+            application_context_commitment: [42; 32],
+            participants: std::array::from_fn(|i| ConditionalParticipant {
+                settlement_lock_hash: prior.participant_lock_hashes[i],
+                settled_capacity: payout.values[i].capacity().unwrap(),
+                settled_amount: payout.values[i].amount,
+            }),
+            transfers: vec![ConditionalTransferSpec {
+                transfer_id: [43; 32],
+                payer_lock_hash: prior.participant_lock_hashes[0],
+                hash_algorithm: ConditionalHashAlgorithm::Sha256,
+                payment_hash: derive_conditional_payment_hash(
+                    ConditionalHashAlgorithm::Sha256,
+                    &[44; 32],
+                )
+                .unwrap(),
+                amount: 1,
+                refund_after_block: 500,
+            }],
+        };
+        let MultiAssetSettlementCapability::Conditional {
+            batches,
+            batch_code_hash,
+            ..
+        } = &mut prior.capability
+        else {
+            panic!("typed fixture")
+        };
+        batches.push(second);
+        let expected = *batch_code_hash;
+        prior.encode().unwrap();
+        let mut target = prior.clone();
+        let MultiAssetSettlementCapability::Conditional { batches, .. } = &mut target.capability
+        else {
+            panic!("typed fixture")
+        };
+        let resolved = batches.remove(0);
+        target.payouts[0].values[1].amount += resolved.transfers[0].amount;
+        target.encode().unwrap();
+        validate_conditions(&target, Some(&prior), &envelope, Some(501), expected).unwrap();
+        // A new root/funding context cannot use the retained-state exemption.
+        assert!(validate_conditions(&target, None, &envelope, Some(501), expected).is_err());
+        for mutation in 0..7 {
+            let mut edited = target.clone();
+            let MultiAssetSettlementCapability::Conditional { batches, .. } =
+                &mut edited.capability
+            else {
+                panic!("typed fixture")
+            };
+            let batch = &mut batches[0];
+            match mutation {
+                0 => batch.batch_id = [51; 32],
+                1 => batch.application_context_commitment = [52; 32],
+                2 => batch.asset = VaultAsset::Xudt([53; 32]),
+                3 => batch.participants[0].settled_capacity += 1,
+                4 => batch.participants[0].settled_amount += 1,
+                5 => batch.transfers[0].payment_hash = [54; 32],
+                _ => batch.transfers[0].amount += 1,
+            }
+            assert!(
+                validate_conditions(&edited, Some(&prior), &envelope, Some(501), expected).is_err(),
+                "mutation {mutation}"
+            );
+        }
+        let MultiAssetSettlementCapability::Conditional { batches, .. } = &mut target.capability
+        else {
+            panic!("typed fixture")
+        };
+        batches[0].transfers[0].refund_after_block = 600;
+        validate_conditions(&target, Some(&prior), &envelope, Some(501), expected).unwrap();
+        let MultiAssetSettlementCapability::Conditional { batches, .. } = &mut target.capability
+        else {
+            panic!("typed fixture")
+        };
+        batches[0].transfers[0].refund_after_block = 501 + 2017;
+        assert!(
+            validate_conditions(&target, Some(&prior), &envelope, Some(501), expected).is_err()
+        );
     }
     #[test]
     fn allowlisted_type_still_requires_exact_reviewed_devnet_issuer_and_bounded_actual_fee() {

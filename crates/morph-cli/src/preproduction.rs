@@ -121,7 +121,8 @@ pub struct ChannelLimits {
 #[serde(deny_unknown_fields)]
 pub struct ConditionalBatchLimits {
     pub enabled: bool,
-    pub ckb_only: bool,
+    pub asset_scope: String,
+    pub max_batches: u32,
     pub max_transfers: u32,
     pub max_refund_block_delta: u64,
     pub allowed_hash_algorithms: Vec<String>,
@@ -316,8 +317,10 @@ impl PreproductionEnvelope {
             "conditional batch profile must be explicitly enabled"
         );
         ensure!(
-            self.conditional_batch.ckb_only,
-            "the current conditional Batch capability is CKB-only"
+            self.conditional_batch.asset_scope == "ckb_and_manifest_pinned_devnet_xudt"
+                && self.conditional_batch.max_batches
+                    == morph_script_common::multi_asset::MULTI_ASSET_MAX_VAULTS as u32,
+            "conditional batches must use the bounded admitted Vault asset set"
         );
         ensure!(
             self.conditional_batch.max_transfers == CONDITIONAL_TRANSFER_MAX_COUNT as u32,

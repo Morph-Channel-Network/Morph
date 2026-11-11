@@ -1,0 +1,30 @@
+{
+  "schema": "morph.scoped_verification_checkpoint.v1",
+  "native_exit_code": 0,
+  "close_test_entries_passed": 14,
+  "report_test_entries_passed": 11,
+  "python_test_entries_passed": 43,
+  "clippy": "passed",
+  "native_ledger_assertions_replayed": 27,
+  "ledger_public_projection": "passed against retained actual report",
+  "source_hash_kind": "post-native reporting implementation; not the final candidate",
+  "post_run_source_sha256": {
+    "crates/morph-cli/src/devnet/factory_child_close.rs": "ed0bcd8eae040f13f5904b3c43b2ba2e405f4b19bc266ef3d926d22a900230f0",
+    "crates/morph-cli/src/devnet/factory_child_acceptance.rs": "c25aca431ad8a158536f6d736f3eeeed405ee54adca4e37c665a7e9688cba7d2",
+    "scripts/devnet-external-signer-e2e.sh": "9799deb45a65242824261c28d55796621a45558de3dcf6bd434a5ba253359b8d",
+    "scripts/current-stateful-ledger.py": "f8122cc9cde8ebfb5b5d89f5656ebe8486264a3cef07f209db535e6e41f645bf",
+    "scripts/export-current-public-evidence.py": "d82d10933bc4e2a92e549c96ba6417c598c5fdf12658b784bb3fd81bea3facec",
+    "crates/morph-cli/src/smoke_report.rs": "6d37c21e80e5a6b22d85f1eb65a2915ebefdaaa86fbcc54404e2b3e21b32313e",
+    "scripts/tests/test_current_stateful_ledger.py": "5cc6e221e261c04ceac30c378f322597f42dc7a76b33747a60acb4cffa9a31a6",
+    "scripts/local-integration-evidence.py": "d1e59ac4c818e39a06f8d85377511ab01e169888c7f753956df0a949bb8a0460"
+  },
+  "private_log_sha256": {
+    "close_tests": "2bad6d8938f948cede263f54b2ebd91bb648dca27958c774d3ac3ab1af24b37b",
+    "report_tests": "4ecc0400b5bbc50eddb63ae03cd18ad992526dae89f3471c1dd33f59e6762aec",
+    "clippy": "19f09c84ff96214b827810d4f108bfb83159dad5326ed43769bf7ebbb177cbb4",
+    "python": "8eef50d8bc9028c5c1c79c60fe671077d1bd34280976f75987f4517c8f53d93b"
+  },
+  "full_ci_run": false,
+  "contracts_rebuilt": false,
+  "issues_closed": false
+}

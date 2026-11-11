@@ -3,6 +3,8 @@
 import hashlib
 import importlib.util
 import json
+import re
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -14,6 +16,15 @@ SPEC.loader.exec_module(PUBLIC)
 
 
 class PublicEvidenceBoundaries(unittest.TestCase):
+    def test_descriptor_label_must_match_the_executed_verifier_source(self):
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=PUBLIC.ROOT).decode().strip()
+        source = subprocess.check_output(["git", "show", f"{commit}:contracts/morph-script-common/src/multi_asset.rs"], cwd=PUBLIC.ROOT).decode()
+        current = int(re.search(r"MULTI_ASSET_DESCRIPTOR_VERSION: u16 = (\d+)", source).group(1))
+        self.assertEqual(PUBLIC.descriptor_version(commit, current), current)
+        for reported in (current - 1, current + 1, True, str(current), None):
+            with self.subTest(reported=reported), self.assertRaisesRegex(ValueError, "differs from source-commit"):
+                PUBLIC.descriptor_version(commit, reported)
+
     def test_public_budget_export_preserves_scoped_factory_exception_without_private_fields(self):
         policy = json.loads((PUBLIC.ROOT / "docs/devnet-stateful-budget.example.json").read_text())
         policy["private_key"] = "never-export-budget-key"

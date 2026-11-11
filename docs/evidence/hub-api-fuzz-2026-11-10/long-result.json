@@ -1,0 +1,166 @@
+{
+  "accepted": 2295,
+  "cases": 10000,
+  "corpus": [
+    {
+      "bytes": 54,
+      "ckb_blake2b256": "97e6ee9ad0866d818862c1ef759980475eb52f241c9724155ee70240de1f5994",
+      "file": "seed-0.bin"
+    },
+    {
+      "bytes": 31,
+      "ckb_blake2b256": "c0f0388164aa8a4f0a22b43b0b9acaadab8c73cee0d8efffc032ffb8e578f2c0",
+      "file": "seed-1.bin"
+    },
+    {
+      "bytes": 68,
+      "ckb_blake2b256": "0d6dcd0262216c30bf92f97a70d2655b461bf6b9562b710ec5d7c63e5bd5c91a",
+      "file": "seed-2.bin"
+    },
+    {
+      "bytes": 2334,
+      "ckb_blake2b256": "331d9c3d0cea1214713895e9cbe9ca283ba00bba3d2c2f971ac13fa508cb31e6",
+      "file": "seed-3.bin"
+    },
+    {
+      "bytes": 427,
+      "ckb_blake2b256": "3801599c1f5bb932a2df99c677bf8e1cd3394e6fb26ca658709171da054aacdd",
+      "file": "seed-4.bin"
+    },
+    {
+      "bytes": 25,
+      "ckb_blake2b256": "6811dd838efac1d76f7b606628ac99abdb58b31f0982ac6923e4ab5606a21d7f",
+      "file": "seed-5.bin"
+    },
+    {
+      "bytes": 154,
+      "ckb_blake2b256": "ac482a25659a8dfa8779af53251d41a44d91ee715af5b257eab44ad1a5aaa333",
+      "file": "seed-6.bin"
+    },
+    {
+      "bytes": 149,
+      "ckb_blake2b256": "929d731cf1dd5ae7cb13a740afc1fb86a1afa4d2cab396b9cfecdfa829453a9d",
+      "file": "seed-7.bin"
+    },
+    {
+      "bytes": 673,
+      "ckb_blake2b256": "ec55c70c9d552d50a256aefc50be22a1fc065d9b8b38e14b5bb7fffc6a89ba62",
+      "file": "seed-8.bin"
+    },
+    {
+      "bytes": 256,
+      "ckb_blake2b256": "8c52916ce02c294b3c5769eb7c06b5f8b61f0bc94f9ce680b3833377d15608c4",
+      "file": "seed-9.bin"
+    },
+    {
+      "bytes": 22160,
+      "ckb_blake2b256": "7cd47011b95f671448af882b1b58b9e36510eab63fd353eeb556846efd9f65bd",
+      "file": "seed-10.bin"
+    },
+    {
+      "bytes": 22259,
+      "ckb_blake2b256": "5c8014186520a5961b297deea63c991179fcea23b500a4952ad478c6756e6fb2",
+      "file": "seed-11.bin"
+    },
+    {
+      "bytes": 539,
+      "ckb_blake2b256": "d8573aa030b5d7904ce2e651a54d1ffae017b8b0942c5b885c456dd6b02a70be",
+      "file": "seed-12.bin"
+    },
+    {
+      "bytes": 104,
+      "ckb_blake2b256": "da9204090a8d5be1f07cc53dc4437858a1665d555619fb199810abfef349cf99",
+      "file": "seed-13.bin"
+    },
+    {
+      "bytes": 237,
+      "ckb_blake2b256": "7c8c8c606502b04254f1a03f1129de5d9726cd361a81d9f5dcc5cf522fc3a64a",
+      "file": "seed-14.bin"
+    },
+    {
+      "bytes": 44,
+      "ckb_blake2b256": "ed81d13f32140fa7f52b88d76816015595c6ab1a73b65b23c2aade8d1fa7ee7d",
+      "file": "seed-15.bin"
+    },
+    {
+      "bytes": 3,
+      "ckb_blake2b256": "9218fbfbcb92c37dcb409df10619624de54428bd9205f68d7832fca2891169ef",
+      "file": "seed-16.bin"
+    },
+    {
+      "bytes": 90,
+      "ckb_blake2b256": "3c6f85f029edae4e051dcf88a92c6eea61c274a05cd428c1aad2aa9af5146b33",
+      "file": "seed-17.bin"
+    },
+    {
+      "bytes": 457,
+      "ckb_blake2b256": "a8dc83fcdcd2a4aa5ab4c9e5106d0a22b54014b87ebd968d2cca31635baf7b14",
+      "file": "seed-18.bin"
+    },
+    {
+      "bytes": 139,
+      "ckb_blake2b256": "444e5266ddc45b3ed57ef849ed17bbd42adc7e36199e498b9ad772233590a9b0",
+      "file": "seed-19.bin"
+    },
+    {
+      "bytes": 130,
+      "ckb_blake2b256": "60c68989647300b168efc4dc37e074ca98979b4589efdc5b004bfe5f30eeb38a",
+      "file": "seed-20.bin"
+    },
+    {
+      "bytes": 216,
+      "ckb_blake2b256": "b34c3c455a5d81064039e82d26ee9ed52e9983d412e0b8f686411b733fd39357",
+      "file": "seed-21.bin"
+    },
+    {
+      "bytes": 41,
+      "ckb_blake2b256": "f0786d8f9b2b0b4f360a72a2756479eb61078cd6ec0803e8db07b6236510b54e",
+      "file": "seed-22.bin"
+    },
+    {
+      "bytes": 382,
+      "ckb_blake2b256": "ea2d367505800fc5b5280514e2ccd92e99dcf7fdefdd383157a8756e68cbd8b5",
+      "file": "seed-23.bin"
+    },
+    {
+      "bytes": 8573,
+      "ckb_blake2b256": "e7eb40a1b5c55d68bcb6fc7a5340fcce72a08f523d535dc6eebe3e3b6544d0c2",
+      "file": "seed-24.bin"
+    },
+    {
+      "bytes": 4468,
+      "ckb_blake2b256": "411d5d295ce0e9d765425f298e5f2867fb7225af598ff32e5cda47921d74c58c",
+      "file": "seed-25.bin"
+    },
+    {
+      "bytes": 5959,
+      "ckb_blake2b256": "57dc4f7b6090a6aa7f8f01376fefc264b1dfc588eee064c1b5e6bf8b73a39140",
+      "file": "seed-26.bin"
+    },
+    {
+      "bytes": 7481,
+      "ckb_blake2b256": "61e11708156163aba9380ad98745494a4b82b654e978813fde2dad216792cf1b",
+      "file": "seed-27.bin"
+    },
+    {
+      "bytes": 10693,
+      "ckb_blake2b256": "101e5f86dba418dc08bd388d917e712a07900f5901c7127259ef882d1b470ec1",
+      "file": "seed-28.bin"
+    },
+    {
+      "bytes": 383,
+      "ckb_blake2b256": "ca598c40e655315d36b4996336eeb7fd378e2a08f9a48d5c830d5eed09018c4c",
+      "file": "seed-29.bin"
+    },
+    {
+      "bytes": 93,
+      "ckb_blake2b256": "9abb998f1443e49d862bc2215259509f64fe9fc0770f18ef5be7a9e303dd1605",
+      "file": "seed-30.bin"
+    }
+  ],
+  "elapsed_ms": 2642,
+  "rejected": 7705,
+  "seed": 332043276360,
+  "status": "pass",
+  "target": "hub-api"
+}

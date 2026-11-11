@@ -1,0 +1,15 @@
+{
+  "schema": "morph.scoped_post_run_inventory.v1",
+  "qualification": false,
+  "files": {
+    "scripts/verify-integration-evidence.py": "784633c524187b621840acc585340199807967725225d750cd4e537f7cc4ff99",
+    "scripts/local-integration-evidence.py": "caefbd3fb5b5fb9f2f8fee28ce2c0142ca459b996fd1c115b526f5146d159239",
+    "scripts/qualify-local-candidate.sh": "535e4046719ca7d3afa201b5e76fab5c10ce2e33962a0ae696cc4aea73138533",
+    "scripts/tests/test_verify_integration_evidence.py": "2486cc03886929af76003b926df5a184322cee5cf4ebdf754c7017020b7e94fb",
+    "scripts/tests/test_local_integration_evidence.py": "b7b0902114a2139f98a17502dd3de778240cbe1ee665f6c3dd2588360fe539f4",
+    ".github/workflows/current-protocol-e2e.yml": "990311df9a215e47bb662c2dd354872f5e16dc8e5d3650fa8db9bd8969c577b9",
+    ".gitignore": "0cf2c6d22b07c6aad568df4a920de1e1968cb409b89bbd09da4481ad1a866501",
+    "Cargo.lock": "179b0b9c561f4074efd1e157e261275291cc7e067f038f328c35f922cdf77d02",
+    "rust-toolchain.toml": "e3a213e0d222e94d213cafbc20932eb3f76c643b4dd63756acf95192df2aa310"
+  }
+}

@@ -1,0 +1,264 @@
+[
+  {
+    "kind": "factory_reduced",
+    "observation": {
+      "confirmations": "4",
+      "edge": {
+        "asset": {
+          "ckb_genesis_hash": "0x5ee49c5bc7c7732aca792821555fc82407293914daf4495f106d77fbf9c8260b",
+          "kind": "ckb"
+        },
+        "channel_id": "0xf968333c4ae2c745df52b5be49958b121ebeceb0c2aa7fdb4123c7321a58d75a",
+        "deployment_id": "0xf2236b35aae35619fa3d8e10a708d61a20195f964e9b8f1e7aa1e76b3f43ec95",
+        "directional_liquidity": [
+          "1000000000",
+          "1000000000"
+        ],
+        "evidence_block_hash": "0x91010e188dd261b2cac1f4be820f53c94b73c0906ea71a0af248b59e3584e581",
+        "evidence_block_number": "94",
+        "factory_id": "0xa52ea32b165ef2f37affe0bd8b65febf1718c9e0ecad87981f5a353acc0a8a3d",
+        "factory_reservation_id": "0xb1709f470194b9653a694be84601ed574c2427c7a867d010ce8a9cc475546bde",
+        "factory_update_number": "6",
+        "funding_context_id": "0x941dc07b85bba99f1b716f1a00023e4440cbcf5acd4bcb3e77d4a272c6b36b04",
+        "funding_epoch": "0",
+        "morph_edge_id": "0x19da4f07eb3a35ba7627d190e71b1cb7c44875369a1892e0da467405a9678ef0",
+        "morph_participant_ids": [
+          "0x06a7d350e041eee09eeea7cb20fc1e6c7001da14e1a5e6bfdd66783738b7f882",
+          "0x7560004cdc269d7cdca29fd67205d9235d2c9b270edbc767c9e6b7b6fa9bfaf8"
+        ],
+        "node_ids": [
+          "0x02eeb9f43599b3b22cc02b1af8d5b6e12bb396a3e69171bfb0f6cbe5d741eba245",
+          "0x02ebce0de55bc4c514dc45bbdaf54e838200f14d4d7ce5187120b4d27a934bb4cb"
+        ],
+        "opaque_morph_commitment": "0x6f70b94b5a4604fe71a093e662a04a26348a8a03a973f01976f5363ef31c5698",
+        "state_number": "1"
+      },
+      "forwarding": false,
+      "schema": "morph.shadow_observation.v1",
+      "verified_tip_hash": "0x9993674457d34ec7eb00a30dcf8bb5c563cc28ce314c0b5c71aca043bd8902bc",
+      "verified_tip_number": "97"
+    },
+    "spent_child_rejected": true,
+    "journal_source_verified": true,
+    "changed_journal_rejected": true,
+    "pending_update_drains": true
+  },
+  {
+    "kind": "factory_retained",
+    "observation": {
+      "confirmations": "4",
+      "edge": {
+        "asset": {
+          "ckb_genesis_hash": "0x5ee49c5bc7c7732aca792821555fc82407293914daf4495f106d77fbf9c8260b",
+          "kind": "ckb"
+        },
+        "channel_id": "0xf733e7d08a92d1751da28d8736c098c0c0c82ca283de22b306368e44423db58c",
+        "deployment_id": "0xf2236b35aae35619fa3d8e10a708d61a20195f964e9b8f1e7aa1e76b3f43ec95",
+        "directional_liquidity": [
+          "1000000000",
+          "1000000000"
+        ],
+        "evidence_block_hash": "0xecb53d5459e88f7f105c574081f43137ca36bbe66b40447e1cf5d1a916a7d144",
+        "evidence_block_number": "173",
+        "factory_id": "0xa52ea32b165ef2f37affe0bd8b65febf1718c9e0ecad87981f5a353acc0a8a3d",
+        "factory_reservation_id": "0xba94d317fef447c595e1260a810cfb3218718e05c0d8565c35b799ccd47efbda",
+        "factory_update_number": "7",
+        "funding_context_id": "0x5c69fe50e5270a553ca6981c82cb0c5a168c3b9eb2873da33395d97a3751064c",
+        "funding_epoch": "0",
+        "morph_edge_id": "0xb0e786b78a6736c7c0955e2a148474e7a1584c37848bd5152e9c11066a672f4f",
+        "morph_participant_ids": [
+          "0x06a7d350e041eee09eeea7cb20fc1e6c7001da14e1a5e6bfdd66783738b7f882",
+          "0x7560004cdc269d7cdca29fd67205d9235d2c9b270edbc767c9e6b7b6fa9bfaf8"
+        ],
+        "node_ids": [
+          "0x02eeb9f43599b3b22cc02b1af8d5b6e12bb396a3e69171bfb0f6cbe5d741eba245",
+          "0x02ebce0de55bc4c514dc45bbdaf54e838200f14d4d7ce5187120b4d27a934bb4cb"
+        ],
+        "opaque_morph_commitment": "0x5ecb52682540fc43d04b1bd1274b00f0466aec4b9f46f169cc99d2466955b106",
+        "state_number": "1"
+      },
+      "forwarding": false,
+      "schema": "morph.shadow_observation.v1",
+      "verified_tip_hash": "0xaee78ab48c831b4d64d677819fd1e2e9c35cd6ed8afb7bae4de7f94a6ec06000",
+      "verified_tip_number": "176"
+    },
+    "spent_child_rejected": true,
+    "journal_source_verified": true,
+    "changed_journal_rejected": true,
+    "pending_update_drains": true
+  },
+  {
+    "kind": "factory_terminal",
+    "observation": {
+      "confirmations": "4",
+      "edge": {
+        "asset": {
+          "ckb_genesis_hash": "0x5ee49c5bc7c7732aca792821555fc82407293914daf4495f106d77fbf9c8260b",
+          "kind": "ckb"
+        },
+        "channel_id": "0x0cafbb1d889d5efd27440c9c8b10da052c493879ede493dcb80158aa6b80ee4e",
+        "deployment_id": "0xf2236b35aae35619fa3d8e10a708d61a20195f964e9b8f1e7aa1e76b3f43ec95",
+        "directional_liquidity": [
+          "2600000000",
+          "2600000000"
+        ],
+        "evidence_block_hash": "0x887616965b8c74968349fd8ece843761f7ad34d96365ea29e90027db7524a2c6",
+        "evidence_block_number": "248",
+        "factory_id": "0xa52ea32b165ef2f37affe0bd8b65febf1718c9e0ecad87981f5a353acc0a8a3d",
+        "factory_reservation_id": "0xd42d0248087921795567868270a07d2298d799a444f814cb1805b3d64023b739",
+        "factory_update_number": "8",
+        "funding_context_id": "0x1ea685cadf30f4b008018290e6fb251303e6b7d9ec8af3ad0baac7d5939ac7e5",
+        "funding_epoch": "0",
+        "morph_edge_id": "0x579d32c9ea97b34489a20a50557a7a2a6d095d71b598eeac69fd2373c5c772a6",
+        "morph_participant_ids": [
+          "0x06a7d350e041eee09eeea7cb20fc1e6c7001da14e1a5e6bfdd66783738b7f882",
+          "0x7560004cdc269d7cdca29fd67205d9235d2c9b270edbc767c9e6b7b6fa9bfaf8"
+        ],
+        "node_ids": [
+          "0x02eeb9f43599b3b22cc02b1af8d5b6e12bb396a3e69171bfb0f6cbe5d741eba245",
+          "0x02ebce0de55bc4c514dc45bbdaf54e838200f14d4d7ce5187120b4d27a934bb4cb"
+        ],
+        "opaque_morph_commitment": "0xa542b3a7100c1710731193ed05851dcd357515ee9d7f23d3550426a6dc389c65",
+        "state_number": "1"
+      },
+      "forwarding": false,
+      "schema": "morph.shadow_observation.v1",
+      "verified_tip_hash": "0x3122ab12e864fa6793f79d8fef277f1ace6e4b77072c483190ebda2f82e8d3ba",
+      "verified_tip_number": "251"
+    },
+    "spent_child_rejected": true,
+    "journal_source_verified": true,
+    "changed_journal_rejected": true,
+    "pending_update_drains": true
+  },
+  {
+    "kind": "splice_initial_root",
+    "observation": {
+      "confirmations": "4",
+      "edge": {
+        "asset": {
+          "ckb_genesis_hash": "0x5ee49c5bc7c7732aca792821555fc82407293914daf4495f106d77fbf9c8260b",
+          "kind": "xudt",
+          "type_script_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e"
+        },
+        "channel_id": "0xaf2f1ac46aa16c489ae5d34f72e935594d7ee614e7c1dd2095a907a9401f9b8c",
+        "deployment_id": "0xf2236b35aae35619fa3d8e10a708d61a20195f964e9b8f1e7aa1e76b3f43ec95",
+        "directional_liquidity": [
+          "700",
+          "300"
+        ],
+        "evidence_block_hash": "0x61753a00980707a2f1e76e08c21f8f30248e0742e281ac97125fef9c3717b120",
+        "evidence_block_number": "339",
+        "factory_id": null,
+        "factory_reservation_id": null,
+        "factory_update_number": null,
+        "funding_context_id": "0xa9f496f207723108664234a88b4396ece44d2ee3accfa9c7fb119cc0ce5d4154",
+        "funding_epoch": "0",
+        "morph_edge_id": "0x7f000010efe2fda5ff8256bbb4b12dcbef3b1d0579a1f2019b6c57f7fe2bf867",
+        "morph_participant_ids": [
+          "0x06a7d350e041eee09eeea7cb20fc1e6c7001da14e1a5e6bfdd66783738b7f882",
+          "0x7560004cdc269d7cdca29fd67205d9235d2c9b270edbc767c9e6b7b6fa9bfaf8"
+        ],
+        "node_ids": [
+          "0x02eeb9f43599b3b22cc02b1af8d5b6e12bb396a3e69171bfb0f6cbe5d741eba245",
+          "0x02ebce0de55bc4c514dc45bbdaf54e838200f14d4d7ce5187120b4d27a934bb4cb"
+        ],
+        "opaque_morph_commitment": "0x793e191010919acd32c2b6e7c75f6f6f8fe54b6fef0cd34d926b7e5ea5041cec",
+        "state_number": "1"
+      },
+      "forwarding": false,
+      "schema": "morph.shadow_observation.v1",
+      "verified_tip_hash": "0xfd62053a3c8d37a3ef193668466a8632ef1fa259ba3ad6cba70a19d450b7ea5f",
+      "verified_tip_number": "342"
+    },
+    "journal_source_verified": true
+  },
+  {
+    "kind": "splice_remove",
+    "observation": {
+      "confirmations": "4",
+      "edge": {
+        "asset": {
+          "ckb_genesis_hash": "0x5ee49c5bc7c7732aca792821555fc82407293914daf4495f106d77fbf9c8260b",
+          "kind": "xudt",
+          "type_script_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e"
+        },
+        "channel_id": "0xaf2f1ac46aa16c489ae5d34f72e935594d7ee614e7c1dd2095a907a9401f9b8c",
+        "deployment_id": "0xf2236b35aae35619fa3d8e10a708d61a20195f964e9b8f1e7aa1e76b3f43ec95",
+        "directional_liquidity": [
+          "700",
+          "300"
+        ],
+        "evidence_block_hash": "0x7c40b62a864d85efda4b637b70f1c17f03979f0ee6a0cd766eca181250b6f280",
+        "evidence_block_number": "350",
+        "factory_id": null,
+        "factory_reservation_id": null,
+        "factory_update_number": null,
+        "funding_context_id": "0x6929fd79e5a7b05b8a02c49bc005f28837384317b16c438048370b35832e513a",
+        "funding_epoch": "1",
+        "morph_edge_id": "0x55ced812c6e1d1e4027bc4f536559322c52f1e5799c9057652162283241eefc2",
+        "morph_participant_ids": [
+          "0x06a7d350e041eee09eeea7cb20fc1e6c7001da14e1a5e6bfdd66783738b7f882",
+          "0x7560004cdc269d7cdca29fd67205d9235d2c9b270edbc767c9e6b7b6fa9bfaf8"
+        ],
+        "node_ids": [
+          "0x02eeb9f43599b3b22cc02b1af8d5b6e12bb396a3e69171bfb0f6cbe5d741eba245",
+          "0x02ebce0de55bc4c514dc45bbdaf54e838200f14d4d7ce5187120b4d27a934bb4cb"
+        ],
+        "opaque_morph_commitment": "0x57eaa3d01eeda1942d02b7386f71d3a437f2487ff9fef9b7c649833bb8f72c77",
+        "state_number": "1"
+      },
+      "forwarding": false,
+      "schema": "morph.shadow_observation.v1",
+      "verified_tip_hash": "0x5e2303e042dfd20942e5d7dfb52881378f729929af7310d31154a62e64b32b69",
+      "verified_tip_number": "353"
+    },
+    "previous_context_rejected": true,
+    "journal_source_verified": true,
+    "prior_contexts_checked": 1
+  },
+  {
+    "kind": "splice_admit",
+    "observation": {
+      "confirmations": "4",
+      "edge": {
+        "asset": {
+          "ckb_genesis_hash": "0x5ee49c5bc7c7732aca792821555fc82407293914daf4495f106d77fbf9c8260b",
+          "kind": "xudt",
+          "type_script_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e"
+        },
+        "channel_id": "0xaf2f1ac46aa16c489ae5d34f72e935594d7ee614e7c1dd2095a907a9401f9b8c",
+        "deployment_id": "0xf2236b35aae35619fa3d8e10a708d61a20195f964e9b8f1e7aa1e76b3f43ec95",
+        "directional_liquidity": [
+          "700",
+          "300"
+        ],
+        "evidence_block_hash": "0x6aeebaca47ea7d1066be169b95266574c14fde879b93e6844b970768b3a6310f",
+        "evidence_block_number": "361",
+        "factory_id": null,
+        "factory_reservation_id": null,
+        "factory_update_number": null,
+        "funding_context_id": "0xd49449e1d14ab2231dc689b1147855dd95feec38354ca88a674a9c73e08310de",
+        "funding_epoch": "2",
+        "morph_edge_id": "0xb7e87cf4755cc9a5cd1349393dcef8701f35ec515a33a73e5423b4175102e79f",
+        "morph_participant_ids": [
+          "0x06a7d350e041eee09eeea7cb20fc1e6c7001da14e1a5e6bfdd66783738b7f882",
+          "0x7560004cdc269d7cdca29fd67205d9235d2c9b270edbc767c9e6b7b6fa9bfaf8"
+        ],
+        "node_ids": [
+          "0x02eeb9f43599b3b22cc02b1af8d5b6e12bb396a3e69171bfb0f6cbe5d741eba245",
+          "0x02ebce0de55bc4c514dc45bbdaf54e838200f14d4d7ce5187120b4d27a934bb4cb"
+        ],
+        "opaque_morph_commitment": "0x8840d2ec3e0a31b6c4c60b3f26d55e6f36fd14f28c32105d4396ca28c8450965",
+        "state_number": "1"
+      },
+      "forwarding": false,
+      "schema": "morph.shadow_observation.v1",
+      "verified_tip_hash": "0x0eea3050c76fc8bd4618095fb49316510760227dbfb62e9ea72079387ba1a776",
+      "verified_tip_number": "364"
+    },
+    "previous_context_rejected": true,
+    "journal_source_verified": true,
+    "prior_contexts_checked": 2
+  }
+]

@@ -61,7 +61,8 @@
   },
   "conditional_batch": {
     "enabled": true,
-    "ckb_only": true,
+    "asset_scope": "ckb_and_manifest_pinned_devnet_xudt",
+    "max_batches": 8,
     "max_transfers": 8,
     "max_refund_block_delta": 2016,
     "allowed_hash_algorithms": [

@@ -1,0 +1,26 @@
+{
+  "lease_ms": "600000",
+  "protection_ready": false,
+  "publication_budget": "not_verified",
+  "resources": [
+    {
+      "caught_up": false,
+      "evidence_fresh": false,
+      "publication_confirmed": false,
+      "reorg_reset": false,
+      "resource_index": 0,
+      "scan_completed": false
+    },
+    {
+      "caught_up": false,
+      "evidence_fresh": false,
+      "publication_confirmed": false,
+      "reorg_reset": false,
+      "resource_index": 1,
+      "scan_completed": false
+    }
+  ],
+  "scan_coverage_ready": false,
+  "schema": "morph.watchtower_readiness.v1",
+  "scope": "scan_coverage"
+}

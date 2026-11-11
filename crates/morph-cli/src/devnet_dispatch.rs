@@ -4,6 +4,72 @@ use crate::canonical_fields::canonical_hex32;
 pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
     let rpc = CkbRpcClient::new(rpc_url)?;
     match command {
+        DevnetCommand::ShadowService { config, command } => {
+            devnet::shadow_service::run(&config, command)?;
+        }
+        DevnetCommand::ShadowObserve {
+            request,
+            contracts_dir,
+            min_confirmations,
+            rpc_budget_ms,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&devnet::shadow_observer::run(
+                    rpc_url,
+                    &request,
+                    &contracts_dir,
+                    min_confirmations,
+                    rpc_budget_ms
+                )?)?
+            );
+        }
+        DevnetCommand::OperationExport {
+            store,
+            operation_id,
+            output,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&crate::operation_runtime::export(
+                    &store,
+                    &operation_id,
+                    &output
+                )?)?
+            );
+        }
+        DevnetCommand::OperationStatus {
+            store,
+            operation_id,
+            depth,
+            wait_ms,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&crate::operation_runtime::status(
+                    &store,
+                    &operation_id,
+                    depth,
+                    wait_ms
+                )?)?
+            );
+        }
+        DevnetCommand::ConditionalBatch { command } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&devnet::conditional_batch_operator::run(
+                    &rpc, command
+                )?)?
+            );
+        }
+        DevnetCommand::MultiAssetClose { command } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&devnet::multi_asset_close_operator::run(
+                    &rpc, command
+                )?)?
+            );
+        }
         DevnetCommand::Factory { command } => {
             println!(
                 "{}",
@@ -46,7 +112,6 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                     max_fee,
                     mine_blocks,
                     watch_policy: None,
-                    alert_webhook_url: None,
                     auto_fund_sponsor: None,
                 },
             )?;
@@ -221,6 +286,10 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
             shared_funding,
             funding_reorg,
             splice_transitions,
+            signer_faults,
+            cooperative_close,
+            conditional_settlement,
+            shadow_provider_rpc,
             fee,
             finalise_since,
             mine_blocks,
@@ -242,6 +311,10 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                     shared_funding,
                     funding_reorg,
                     splice_transitions,
+                    signer_faults,
+                    cooperative_close,
+                    conditional_settlement,
+                    shadow_provider_rpc,
                     fee,
                     finalise_since,
                     mine_blocks,
@@ -579,16 +652,22 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 println!("channels={}", report.channel_count);
                 println!("published={}", report.published_count);
                 println!("idle={}", report.idle_count);
+                println!("failed={}", report.failed_count);
                 for channel in &report.channels {
                     println!(
-                        "channel={} scanned_to={} next_from={} published={}",
+                        "channel={} completed={} scanned_to={} next_from={} published={}",
                         channel.channel_id,
+                        channel.observation.completed,
                         channel.report["scanned_to_block"],
                         channel.report["next_from_block"],
                         !channel.report["publication"].is_null()
                     );
                 }
             }
+            anyhow::ensure!(
+                report.failed_count == 0,
+                "one or more watch resources failed"
+            );
         }
         DevnetCommand::WatchConfigLoop {
             contracts_dir,
@@ -628,14 +707,19 @@ pub(super) fn run_devnet(rpc_url: &str, command: DevnetCommand) -> Result<()> {
                 );
                 for pass in &report.passes {
                     println!(
-                        "pass={} channels={} published={} idle={}",
+                        "pass={} channels={} published={} idle={} failed={}",
                         pass.pass_number,
                         pass.report.channel_count,
                         pass.report.published_count,
-                        pass.report.idle_count
+                        pass.report.idle_count,
+                        pass.report.failed_count
                     );
                 }
             }
+            anyhow::ensure!(
+                report.passes.iter().all(|p| p.report.failed_count == 0),
+                "one or more watch resources failed"
+            );
         }
         DevnetCommand::WatchConfigService {
             contracts_dir,

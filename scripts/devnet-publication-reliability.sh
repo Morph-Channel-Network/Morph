@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -385,7 +386,7 @@ jq -n \
 log "proving SponsorPolicy fee caps stop publication before broadcast"
 rpc_tx_pool_info >"$OUT_DIR/sponsor-cap-pool-before.json"
 set +e
-run_current_watch "operator-a" "$LOW_CAP_SPONSOR_OUT_POINT" "$OUT_DIR/operator-a/sponsor-cap-cursor.json" "$OUT_DIR/operator-a/sponsor-cap-attempts.jsonl" 5 >"$OUT_DIR/sponsor-cap.stdout" 2>"$OUT_DIR/sponsor-cap.stderr"
+run_current_watch "operator-a" "$LOW_CAP_SPONSOR_OUT_POINT" "$OUT_DIR/operator-a/sponsor-cap-cursor.db" "$OUT_DIR/operator-a/sponsor-cap-attempts.jsonl" 5 >"$OUT_DIR/sponsor-cap.stdout" 2>"$OUT_DIR/sponsor-cap.stderr"
 SPONSOR_CAP_STATUS="$?"
 set -e
 [ "$SPONSOR_CAP_STATUS" -ne 0 ] || fail "over-cap publication unexpectedly entered tx-pool"
@@ -418,7 +419,7 @@ DETECTION_MS="$((DETECTION_END_MS - START_MS))"
 
 log "operator A submits the first pending publication without participant keys"
 A_BUILD_START_MS="$(date +%s%3N)"
-run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.json" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/watch.json"
+run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.db" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/watch.json"
 A_BUILD_END_MS="$(date +%s%3N)"
 BUILD_AND_VERIFY_MS="$((A_BUILD_END_MS - A_BUILD_START_MS))"
 A_TX_HASH="$(jq -r '.publication.tx_hash' "$OUT_DIR/operator-a/watch.json")"
@@ -438,7 +439,7 @@ rpc_transaction "$DROPPED_A_TX_HASH" >"$OUT_DIR/operator-a/evicted-tx-status.jso
 jq -e '.result.tx_status.status == "unknown" or .result.tx_status.status == "rejected"' \
   "$OUT_DIR/operator-a/evicted-tx-status.json" >/dev/null ||
   fail "cleared publication remained active in the transaction pool"
-run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.json" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/retry-watch.json"
+run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.db" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/retry-watch.json"
 run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" tip --json \
   >"$OUT_DIR/operator-a/mempool-retry-tip-after.json"
 jq -e --slurpfile before "$OUT_DIR/operator-a/mempool-retry-tip-before.json" \
@@ -453,7 +454,7 @@ A_FEE="$(jq -r '.publication.fee' "$OUT_DIR/operator-a/retry-watch.json")"
   fail "mempool retry changed the deterministic carrier without a fee or input change"
 
 log "proving duplicate rebroadcast is reconciled as an accepted pending transaction"
-run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.json" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/duplicate-watch.json"
+run_current_watch "operator-a" "$SPONSOR_A_OUT_POINT" "$OUT_DIR/operator-a/cursor.db" "$OUT_DIR/operator-a/attempts.jsonl" 5 >"$OUT_DIR/operator-a/duplicate-watch.json"
 jq -e --arg tx_hash "$A_TX_HASH" \
   '.retry_rescan == true and .publication.status == "Pending" and
    .publication.tx_hash == $tx_hash' "$OUT_DIR/operator-a/duplicate-watch.json" >/dev/null ||
@@ -472,7 +473,7 @@ FAILOVER_START_MS="$(date +%s%3N)"
 log "operator B replaces operator A using an independent sponsor and package store"
 sleep 0.050
 B_WATCH_START_MS="$(date +%s%3N)"
-run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 5 >"$OUT_DIR/operator-b/watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.db" "$OUT_DIR/operator-b/attempts.jsonl" 5 >"$OUT_DIR/operator-b/watch.json"
 B_WATCH_END_MS="$(date +%s%3N)"
 FAILOVER_MS="$((B_WATCH_START_MS - FAILOVER_START_MS))"
 QUEUE_AND_RBF_MS="$((B_WATCH_END_MS - B_WATCH_START_MS))"
@@ -515,7 +516,7 @@ ORIGINAL_PUBLICATION_BLOCK_HASH="$(jq -r '.result.tx_status.block_hash' "$OUT_DI
 CONFIRMATION_MS="$(($(date +%s%3N) - CONFIRMATION_START_MS))"
 
 log "reconciling durable attempt logs and advancing the cursor"
-run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reconciled-watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.db" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reconciled-watch.json"
 jq -e --arg tx_hash "$B_TX_HASH" \
   'select(.tx_hash == $tx_hash and .status == "confirmed")' \
   "$OUT_DIR/operator-b/attempts.jsonl" >/dev/null ||
@@ -524,9 +525,9 @@ jq -e --arg tx_hash "$B_TX_HASH" \
 log "inducing a canonical reorg with IntegrationTest truncate"
 run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" mine --blocks 1 --json \
   >"$OUT_DIR/pre-reorg-mine.json"
-run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/pre-reorg-watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.db" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/pre-reorg-watch.json"
 run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" tip --json >"$OUT_DIR/pre-reorg-tip.json"
-CURSOR_BLOCK="$(jq -r '.scanned_to_block' "$OUT_DIR/operator-b/cursor.json")"
+CURSOR_BLOCK="$(jq -r '.scanned_to_block' "$OUT_DIR/operator-b/pre-reorg-watch.json")"
 TIP_BLOCK="$(jq -r '.number_value' "$OUT_DIR/pre-reorg-tip.json")"
 [ "$CURSOR_BLOCK" -eq "$TIP_BLOCK" ] || fail "cursor did not reach the pre-reorg tip"
 [ "$REPLACEMENT_BLOCK_DEC" -gt 0 ] || fail "replacement committed in an invalid block"
@@ -541,7 +542,7 @@ run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" truncate "$TRUNCATE_
 # CKB may return detached transactions to the pool. Clear them so recovery is
 # proven by the watchtower's durable package, not by automatic pool replay.
 clear_tx_pool
-run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reorg-watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.db" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reorg-watch.json"
 REORG_TX_HASH="$(jq -r '.publication.tx_hash' "$OUT_DIR/operator-b/reorg-watch.json")"
 jq -e '(.reorg_recovery.reason == "cursor_block_missing" or
         .reorg_recovery.reason == "cursor_block_hash_mismatch") and
@@ -569,7 +570,7 @@ mine_to_canonical_depth "$OUT_DIR/operator-b/reorg-tx-status.json" \
 REORG_PUBLICATION_BLOCK_HASH="$(jq -r '.result.tx_status.block_hash' "$OUT_DIR/operator-b/reorg-tx-status.json")"
 [ "$ORIGINAL_PUBLICATION_BLOCK_HASH" != "$REORG_PUBLICATION_BLOCK_HASH" ] ||
   fail "reorg recovery publication did not land on a distinct canonical block"
-run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.json" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reorg-reconciled-watch.json"
+run_current_watch "operator-b" "$SPONSOR_B_OUT_POINT" "$OUT_DIR/operator-b/cursor.db" "$OUT_DIR/operator-b/attempts.jsonl" 1 >"$OUT_DIR/operator-b/reorg-reconciled-watch.json"
 jq -e --arg tx_hash "$REORG_TX_HASH" \
   'select(.tx_hash == $tx_hash and .status == "confirmed")' \
   "$OUT_DIR/operator-b/attempts.jsonl" >/dev/null ||
@@ -587,11 +588,11 @@ run_morph_no_keys print-watch-config-fixture | jq \
    .defaults.watch_policy=($dir+"/service-policy.json") |
    .defaults.publication_profile=($dir+"/profile.json") |
    .defaults.publication_attempt_log=($dir+"/service-attempts.jsonl") |
-   .defaults.alert_file=($dir+"/service-alerts.jsonl") | .defaults.alert_webhook_url=null |
+   .defaults.alert_file=($dir+"/service-alerts.jsonl") |
    .defaults.detection_depth=1 | .defaults.timeout_secs=1 | .defaults.poll_ms=50 |
    .defaults.fee=1000000000 | .defaults.mine_blocks=0 | .defaults.auto_fund_sponsor=false |
    .channels[0].channel_id=$channel | .channels[0].from_block=$from |
-   .channels[0].sponsor_out_point=$sponsor | .channels[0].cursor_file=($dir+"/service-cursor.json")' \
+   .channels[0].sponsor_out_point=$sponsor | .channels[0].cursor_file=($dir+"/service-cursor.db")' \
   >"$OUT_DIR/operator-b/service-config.json"
 run_morph_no_keys devnet --devnet-only --rpc-url "$RPC_URL" watch-config-service --contracts-dir "$CONTRACTS_DIR" \
   --private-key-file "$OPERATOR_B_KEY_TMP" --config "$OUT_DIR/operator-b/service-config.json" \
@@ -728,7 +729,19 @@ MORPH_REVISION="$(git rev-parse HEAD)"
 WORKTREE_CONTENT_SHA256="$({
   git rev-parse HEAD
   git diff --binary --no-ext-diff HEAD
-  git ls-files --others --exclude-standard -z | sort -z | xargs -0 -r sha256sum
+  python3 - <<'PY_SOURCE_HASH'
+import hashlib, json, os, pathlib, subprocess
+paths = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"])
+for raw in sorted(filter(None, paths.split(b"\0"))):
+    path = pathlib.Path(os.fsdecode(raw))
+    if path.is_symlink():
+        kind, data = "symlink", os.fsencode(os.readlink(path))
+    elif path.is_file():
+        kind, data = "file", path.read_bytes()
+    else:
+        raise SystemExit(f"unsupported untracked source entry: {path}")
+    print(json.dumps([kind, str(path), hashlib.sha256(data).hexdigest()], ensure_ascii=True))
+PY_SOURCE_HASH
 } | sha256sum | awk '{print $1}')"
 MORPH_CLI_SHA256="$(sha256sum "$MORPH_BIN" | awk '{print $1}')"
 HARNESS_SHA256="$(sha256sum scripts/devnet-publication-reliability.sh | awk '{print $1}')"
@@ -762,8 +775,8 @@ jq -n \
   --slurpfile profile_b "$OUT_DIR/operator-b/profile.json" \
   --arg sponsor_a "$SPONSOR_A_OUT_POINT" \
   --arg sponsor_b "$SPONSOR_B_OUT_POINT" \
-  --arg cursor_a "$OUT_DIR/operator-a/cursor.json" \
-  --arg cursor_b "$OUT_DIR/operator-b/cursor.json" \
+  --arg cursor_a "$OUT_DIR/operator-a/cursor.db" \
+  --arg cursor_b "$OUT_DIR/operator-b/cursor.db" \
   --arg dataset_sha256 "$DATASET_SHA256" \
   --arg package_signing_digest "$PACKAGE_SIGNING_DIGEST" \
   --arg morph_revision "$MORPH_REVISION" \
@@ -779,7 +792,7 @@ jq -n \
     watcher_environment_probe_passed: $watcher_env_probe,
     distinct_operator_signing_identities: true,
     state_header_bytes: 318,
-    descriptor_version: 5,
+    descriptor_version: 7,
     independent_current_funding_journals: true,
     immutable_signed_evidence: {
       package_signing_digest: $package_signing_digest,

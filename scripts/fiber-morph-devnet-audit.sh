@@ -209,7 +209,7 @@ def read(path):
 def check(condition,message):
     if not condition: raise SystemExit(message)
 evidence=read(root/'evidence.json'); observed=read(Path(sys.argv[2]))
-check(evidence.get('descriptor_version')==5,'current descriptor evidence missing')
+check(evidence.get('descriptor_version')==7,'current descriptor evidence missing')
 check(evidence.get('genesis_hash')==observed.get('result'),'Morph/Fiber genesis mismatch')
 manifest=dict(line.split('=',1) for line in Path(sys.argv[4]).read_text().splitlines() if '=' in line)
 check(evidence.get('rpc_url')==manifest.get('fiber_ckb_rpc_url'),'Morph/Fiber RPC endpoint mismatch')
@@ -399,7 +399,7 @@ write_report() {
         (
           (if $include_morph == 1 then {
             morph_current_case_ids: ["bilateral_shared", "bilateral_splice", "factory_custody_and_children", "watch_service_reorg", "maximum_asset_lifecycle"],
-            morph_descriptor_version: 5,
+            morph_descriptor_version: 7,
             morph_state_header_bytes: 318,
             morph_stateful_assertion: "morph-stateful/current-assertion.json",
             evidence_scope: "actual current reports, independent journals, same Fiber genesis; not production approval"

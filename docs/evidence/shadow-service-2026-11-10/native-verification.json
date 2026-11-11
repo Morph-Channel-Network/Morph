@@ -1,0 +1,23 @@
+{
+  "schema": "morph.shadow_service_native.v1",
+  "passed": true,
+  "forwarding": false,
+  "real_fiber_and_ckb": true,
+  "source_unchanged": true,
+  "sha256": {
+    "morph-cli": "e2614f6f4fd7070c3d0216abbfc4637ed584fd53e0ed55e8eef0dd68ccbb4033",
+    "fnn": "a3c399b48f389e5e06856d2d96ef290fafac4f8e9e66557b567a9c01aab0e386",
+    "source-before.json": "b08a331186245cded657ae38ac63a2d25bce15972ab426ebb8df198b06e83159",
+    "source-after.json": "b08a331186245cded657ae38ac63a2d25bce15972ab426ebb8df198b06e83159",
+    "contracts.json": "47060e4f7f5c79ad26a6051aaf22bf7eed4ae34dd75217147b20542e34bdf067",
+    "genesis.json": "190dbc900e3b646c997385d0f1904a27819e15fabc5c1d4468153ceb59a05b50",
+    "deployment.json": "3d32b9274fe0195e9608174a81d781319b8abb83cbf09acc6c9030f187af3712",
+    "public-summary.json": "ffd19f31f71d8403a32008fd66e67e7ccc72ff650074913594662628d920ba8f",
+    "provider-restart.txt": "7be65872f2bf5a6353d9c9b76d02e28cd2d695980f944bd5ca8a029d2540a2c0"
+  },
+  "limits": [
+    "no routed payment",
+    "Root XUDT service source only; Factory/splice observer evidence is separate",
+    "not final release qualification"
+  ]
+}

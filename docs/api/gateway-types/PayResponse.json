@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "completed": {
+      "type": "boolean"
+    },
+    "fiber_result": true,
+    "payment_hash": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "completed",
+    "payment_hash",
+    "fiber_result"
+  ],
+  "title": "PayResponse",
+  "type": "object"
+}

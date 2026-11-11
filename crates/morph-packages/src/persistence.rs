@@ -134,18 +134,39 @@ pub fn sync_private_lock(lock: &fs::File, parent: &Path, existing: &Path) -> Res
     lock.sync_all()?;
     sync_recovery_directories(parent, existing)
 }
-pub fn lock_private_path(path: &Path) -> Result<fs::File> {
+/// Own one lock lifetime, independently of descriptors briefly inherited by a
+/// concurrent fork/exec. Closing only our descriptor can leave the same flock
+/// held by the child's inherited open-file description until its exec completes.
+pub struct PrivateLock {
+    file: fs::File,
+}
+impl std::fmt::Debug for PrivateLock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PrivateLock { .. }")
+    }
+}
+impl Drop for PrivateLock {
+    fn drop(&mut self) {
+        // The owner has completed its protected writes. Explicitly unlock the
+        // shared description before close; inherited duplicates are not owners.
+        let _ = self.file.unlock();
+    }
+}
+
+pub fn lock_private_path(path: &Path) -> Result<PrivateLock> {
     let (lock, parent, existing) = open_private_lock(path)?;
     lock.lock()
         .context("failed to lock persistent state file")?;
-    sync_private_lock(&lock, &parent, &existing)?;
+    let lock = PrivateLock { file: lock };
+    sync_private_lock(&lock.file, &parent, &existing)?;
     Ok(lock)
 }
-pub fn try_lock_private_path(path: &Path) -> Result<Option<fs::File>> {
+pub fn try_lock_private_path(path: &Path) -> Result<Option<PrivateLock>> {
     let (lock, parent, existing) = open_private_lock(path)?;
     match lock.try_lock() {
         Ok(()) => {
-            sync_private_lock(&lock, &parent, &existing)?;
+            let lock = PrivateLock { file: lock };
+            sync_private_lock(&lock.file, &parent, &existing)?;
             Ok(Some(lock))
         }
         Err(fs::TryLockError::WouldBlock) => Ok(None),
@@ -255,4 +276,36 @@ pub fn atomic_json_tmp_path(final_path: &Path) -> PathBuf {
         .unwrap_or_else(|| "package.json".to_string());
     let tmp_name = format!(".{}.{}.{}.{}.tmp", file_name, pid, counter, nanos);
     parent.join(tmp_name)
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    #[test]
+    fn owner_drop_releases_lock_even_while_an_inherited_description_stays_open() {
+        let dir = atomic_json_tmp_path(&std::env::temp_dir().join("morph-lock-description"));
+        let path = dir.join("authority.json");
+        // Control: the old close-only lifetime really retains a ghost owner
+        // while the duplicated description is alive.
+        let (raw, _, _) = open_private_lock(&path).unwrap();
+        raw.lock().unwrap();
+        let duplicate = raw.try_clone().unwrap();
+        drop(raw);
+        assert!(try_lock_private_path(&path).unwrap().is_none());
+        duplicate.unlock().unwrap();
+        drop(duplicate);
+        let owner = lock_private_path(&path).unwrap();
+        // dup, like fork, retains the same open-file description. Keep it open
+        // deterministically instead of relying on a short fork/exec race.
+        let inherited = owner.file.try_clone().unwrap();
+        assert!(try_lock_private_path(&path).unwrap().is_none());
+        drop(owner);
+        let next = try_lock_private_path(&path).unwrap().unwrap();
+        drop(inherited);
+        assert!(try_lock_private_path(&path).unwrap().is_none());
+        drop(next);
+        assert!(try_lock_private_path(&path).unwrap().is_some());
+        fs::remove_dir_all(dir).unwrap();
+    }
 }

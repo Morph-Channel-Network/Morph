@@ -19,6 +19,7 @@ pub enum Work {
     Disconnect,
     Refresh,
     Execute {
+        expected_revision: Option<u64>,
         operation: HubOperation,
         id: String,
         body: Value,
@@ -105,6 +106,7 @@ impl Worker {
                                 Ok(Reply::Hub(Box::new(HubReply::State(Box::new(state)))))
                             }
                             Work::Execute {
+                                expected_revision,
                                 operation,
                                 id,
                                 body,
@@ -112,6 +114,17 @@ impl Worker {
                                 let client = client
                                     .as_ref()
                                     .ok_or_else(|| anyhow!("Connect to a Hub first"))?;
+                                let client = if operation.mutates() {
+                                    client.clone().with_expected_revision(
+                                        expected_revision.ok_or_else(|| {
+                                            anyhow!(
+                                                "Review the current Hub state before confirming"
+                                            )
+                                        })?,
+                                    )?
+                                } else {
+                                    client.clone()
+                                };
                                 Ok(Reply::Hub(Box::new(
                                     runtime
                                         .as_ref()

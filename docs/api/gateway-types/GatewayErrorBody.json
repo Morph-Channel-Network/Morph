@@ -1,0 +1,56 @@
+{
+  "$defs": {
+    "GatewayErrorCode": {
+      "description": "Stable machine-readable errors. Human text is not a branching contract.",
+      "enum": [
+        "invalid_request",
+        "unknown_challenge",
+        "payment_required",
+        "payment_timeout",
+        "payment_outcome_unknown",
+        "request_conflict",
+        "unsupported_asset",
+        "unauthorized",
+        "unknown_offer",
+        "fiber_unavailable",
+        "gateway_unavailable",
+        "store_unavailable",
+        "store_capacity_exceeded",
+        "rate_limited",
+        "credential_failure",
+        "crypto_failure",
+        "invalid_json",
+        "invalid_query",
+        "unsupported_content_type",
+        "body_too_large",
+        "route_not_found",
+        "method_not_allowed"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "api_version": {
+      "type": "string"
+    },
+    "code": {
+      "$ref": "#/$defs/GatewayErrorCode"
+    },
+    "error": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "api_version",
+    "code",
+    "request_id",
+    "error"
+  ],
+  "title": "GatewayErrorBody",
+  "type": "object"
+}

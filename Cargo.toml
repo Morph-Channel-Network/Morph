@@ -7,6 +7,11 @@ members = [
   "crates/morph-payment-gateway",
   "crates/morph-fiber-adapter",
   "crates/morph-desktop",
+  "crates/morph-wallet",
+  "crates/morph-runtime-store",
+  "crates/morph-observability",
+  "crates/morph-events",
+  "crates/morph-signer",
   "crates/morph-packages",
   "crates/morph-hub-api",
   "crates/morph-sdk",
@@ -24,16 +29,17 @@ members = [
 exclude = ["vendor/*"]
 
 [workspace.package]
-version = "4.0.0-alpha.1"
+version = "4.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["Arthur Zhang"]
-repository = "https://github.com/a19q3/Morph"
+repository = "https://github.com/Morph-Channel-Network/Morph"
 rust-version = "1.95.0"
 description = "CKB-native off-chain channels, factories, and operator tooling"
 readme = "README.md"
 
 [workspace.dependencies]
+schemars = "=1.2.1"
 anyhow = "1.0"
 zeroize = "1.8"
 aes-gcm = "0.10"

@@ -1,0 +1,24 @@
+{
+  "schema": "morph.signer_readiness_checkpoint.v1",
+  "passed": true,
+  "relevant_sources_unchanged": true,
+  "cli_unit_tests": 346,
+  "cli_integration_tests": 4,
+  "transport_tests": 13,
+  "native_event_test": "ignored; requires separate retained devnet evidence",
+  "probe_scope": "key_process_policy",
+  "probe_deadline_ms": 2000,
+  "metric_series": 2,
+  "actual_process_cases": [
+    "healthy",
+    "occupied signing listener timeout",
+    "queue release recovery",
+    "configuration drift",
+    "SIGKILL",
+    "reviewed restart with changed policy"
+  ],
+  "canonical_chain_qualification": false,
+  "release_qualified": false,
+  "issues_closed": false,
+  "cli_binary_sha256": "4d62d7bfee665bb0edc2cfba6f1fdbb9892a2fa92577fa3cf42bcbe950dbdf79"
+}

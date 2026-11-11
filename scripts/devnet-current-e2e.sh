@@ -157,7 +157,7 @@ evidence={'schema':'morph.current_splice_fixture_evidence.v1','scope':'developme
  'recorded_at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
  'node_version':node_info.get('version'),
  'runner_binary_version':subprocess.check_output([str(run/'morph-cli'),'--version'],text=True).strip(),
- 'descriptor_version':5,'trace_sha256':hashlib.sha256(trace.read_bytes()).hexdigest(),
+ 'descriptor_version':7,'trace_sha256':hashlib.sha256(trace.read_bytes()).hexdigest(),
  'cli_sha256':hashlib.sha256((run/'morph-cli').read_bytes()).hexdigest(),
  'contract_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((out/'contracts').iterdir())},
  'command':'scripts/devnet-current-e2e.sh','root_funding':report['fund'],'root_activation':report['activation'],

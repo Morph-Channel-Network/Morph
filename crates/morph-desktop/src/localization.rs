@@ -9,7 +9,7 @@ impl Desktop {
         }
     }
     pub(crate) fn scale(&self) -> f32 {
-        self.ui_preferences().scale()
+        self.ui_preferences().scale() * (design::BASE_FONT_SIZE / 14.)
     }
     pub(crate) fn motion_enabled(&self, window: &mut Window, cx: &mut App) -> bool {
         !self.reduced_motion
@@ -18,7 +18,7 @@ impl Desktop {
             && window.is_visible()
     }
     fn apply_scale(&self, window: &mut Window, cx: &mut App) {
-        let size = px(14. * self.scale());
+        let size = px(design::BASE_FONT_SIZE * self.ui_preferences().scale());
         Theme::update(cx, |theme| theme.font_size = size);
         window.set_rem_size(size);
         window.refresh();
@@ -58,6 +58,7 @@ impl Desktop {
         window.set_window_title(language.t(Text::MorphWorkspace));
         for (input, text) in [
             (&self.search, Text::SearchRecords),
+            (&self.task_search, Text::SearchWorkflows),
             (&self.activity_search, Text::SearchTasks),
             (&self.token, Text::AccessToken),
         ] {
@@ -72,6 +73,9 @@ impl Desktop {
             input.update(cx, |v, cx| v.set_placeholder(language.t(text), window, cx));
         }
         for (key, draft) in &self.drafts {
+            draft.asset.update(cx, |v, cx| {
+                v.set_placeholder(language.t(Text::AssetHashPlaceholder), window, cx)
+            });
             draft.target_search.update(cx, |v, cx| {
                 v.set_placeholder(language.t(Text::SearchObjects), window, cx)
             });
@@ -91,6 +95,7 @@ impl Desktop {
             });
         }
         self.rebuild();
+        self.update_output(window, cx);
         cx.notify();
     }
     pub(crate) fn poll_preferences(&mut self, window: &mut Window, cx: &mut Context<Self>) {

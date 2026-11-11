@@ -1,4 +1,5 @@
 use super::*;
+use gpui_kit::TestSupportExt;
 
 impl Desktop {
     pub(super) fn render_tasks(
@@ -24,6 +25,67 @@ impl Desktop {
                 self.t(Text::StartWithATask),
                 self.t(Text::ChooseAWorkflowObjectSpecificActions),
             ));
+        view = view.child(
+            Input::new(&self.task_search)
+                .id("workflow-search")
+                .cleanable(true),
+        );
+        let query = self.task_search.read(cx).value().trim().to_lowercase();
+        if !query.is_empty() {
+            let matches = forms::FORMS
+                .iter()
+                .enumerate()
+                .filter(|(_, form)| {
+                    let text = format!(
+                        "{} {}",
+                        operation_title(form.operation, self.language),
+                        p::operation_help(form.operation, self.language)
+                    )
+                    .to_lowercase();
+                    query.split_whitespace().all(|part| text.contains(part))
+                })
+                .collect::<Vec<_>>();
+            if matches.is_empty() {
+                view = view.child(empty_state(
+                    IconName::Search,
+                    self.t(Text::NoMatchingWorkflows),
+                    self.t(Text::SearchWorkflows),
+                ));
+            }
+            for (i, form) in matches {
+                let op = form.operation;
+                view = view.child(
+                    Button::new(("workflow-match", i))
+                        .ghost()
+                        .h_auto()
+                        .p_4()
+                        .justify_start()
+                        .bg(rgb(d::PANEL))
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(rgb(d::BORDER))
+                        .accessibility_label(operation_title(op, self.language))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_2()
+                                .whitespace_normal()
+                                .items_start()
+                                .child(
+                                    div()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child(operation_title(op, self.language)),
+                                )
+                                .child(d::caption(p::operation_help(op, self.language))),
+                        )
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.start_task(op, String::new(), window, cx)
+                        })),
+                );
+            }
+            return view.into_any_element();
+        }
         if !self.drafts.is_empty() {
             let mut card = d::panel()
                 .flex()
@@ -72,7 +134,7 @@ impl Desktop {
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(domain.label(self.language)),
                 )
-                .child(d::caption(domain_description(index, self.language)));
+                .child(d::caption(domain_description(domain, self.language)));
             for (i, form) in forms::FORMS
                 .iter()
                 .enumerate()
@@ -103,6 +165,7 @@ impl Desktop {
             }
             view = view.child(card);
         } else {
+            let animated = self.motion_enabled(window, cx);
             for chunk in (0..Domain::ALL.len())
                 .collect::<Vec<_>>()
                 .chunks(if wide { 3 } else { 2 })
@@ -111,45 +174,68 @@ impl Desktop {
                 for index in chunk {
                     let index = *index;
                     let domain = Domain::ALL[index];
-                    let icon = match index {
-                        0 => IconName::ArrowLeftRight,
-                        1 => IconName::Layers,
-                        2 => IconName::Wallet,
-                        3 => IconName::FolderOpen,
-                        4 => IconName::FileCheck,
-                        5 => IconName::Users,
-                        _ => IconName::Settings,
+                    let icon = match domain {
+                        Domain::Payments => IconName::Wallet,
+                        Domain::Evidence => IconName::FolderOpen,
+                        Domain::Funding => IconName::FileCheck,
+                        Domain::Peers => IconName::Users,
+                        Domain::Workspace => IconName::Settings,
                     };
-                    row = row.child(
-                        Button::new(("task-area", index))
-                            .ghost()
-                            .accessibility_label(domain.label(self.language))
-                            .h(px(142.))
-                            .flex_1()
-                            .min_w_0()
-                            .border_1()
-                            .border_color(rgb(d::BORDER))
-                            .bg(rgb(d::PANEL))
-                            .child(
-                                div()
-                                    .w_full()
-                                    .flex()
-                                    .flex_col()
-                                    .items_start()
-                                    .gap_3()
-                                    .child(Icon::new(icon).text_color(rgb(d::ACCENT)))
-                                    .child(
-                                        div()
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .child(domain.label(self.language)),
-                                    )
-                                    .child(d::caption(domain_description(index, self.language))),
-                            )
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.task_domain = Some(index);
-                                cx.notify()
-                            })),
-                    );
+                    let tile = Button::new(("task-area", index))
+                        .ghost()
+                        .accessibility_label(domain.label(self.language))
+                        .h_auto()
+                        .min_h(px(130. * self.scale()))
+                        .p_5()
+                        .rounded(px(14.))
+                        .flex_1()
+                        .min_w_0()
+                        .border_1()
+                        .border_color(rgb(d::BORDER))
+                        .bg(rgb(d::PANEL))
+                        .child(
+                            div()
+                                .w_full()
+                                .whitespace_normal()
+                                .flex()
+                                .flex_col()
+                                .items_start()
+                                .gap_3()
+                                .child(
+                                    div()
+                                        .w_full()
+                                        .flex()
+                                        .justify_between()
+                                        .items_center()
+                                        .child(d::icon_tile(icon))
+                                        .child(
+                                            Icon::new(IconName::ArrowUpRight)
+                                                .text_color(rgb(d::DIM)),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(domain.label(self.language)),
+                                )
+                                .child(d::caption(domain_description(domain, self.language))),
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.motion_generation = this.motion_generation.wrapping_add(1);
+                            this.page_enter_started = Instant::now();
+                            this.task_domain = Some(index);
+                            cx.notify()
+                        }));
+                    row = row.child(div().flex_1().min_w_0().child(crate::motion::interactive(
+                        tile.w_full(),
+                        ("task-area", index),
+                        animated,
+                        window,
+                        cx,
+                    )));
+                }
+                for _ in chunk.len()..if wide { 3 } else { 2 } {
+                    row = row.child(div().flex_1());
                 }
                 view = view.child(row);
             }
@@ -170,6 +256,7 @@ impl Desktop {
         let discard_key = key.clone();
         let head = div()
             .flex()
+            .flex_wrap()
             .gap_3()
             .items_center()
             .pb_4()
@@ -229,7 +316,7 @@ impl Desktop {
         }
         let review = self.prepared.as_ref().is_some_and(|p| p.key == key);
         if review {
-            let contents = self.render_review(&key, cx);
+            let contents = self.render_review(&key, window, cx);
             return view
                 .child(
                     div()
@@ -237,9 +324,12 @@ impl Desktop {
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .child(contents),
+                        .child(d::workbench(contents, 760. * self.scale())),
                 )
-                .child(self.render_task_footer(&key, true, cx));
+                .child(d::workbench(
+                    self.render_task_footer(&key, true, cx),
+                    760. * self.scale(),
+                ));
         }
         if self.result.is_some() && self.result_target == ResultTarget::Draft(key.clone()) {
             return view
@@ -267,11 +357,14 @@ impl Desktop {
         let Some(draft) = self.drafts.get(&key) else {
             return view;
         };
+        let scroll = draft.scroll.clone();
+        let anchors = draft.anchors.clone();
         let id = draft.id.clone();
         let asset = draft.asset.clone();
         let fields = draft.fields.clone();
         let ckb_units = draft.ckb_units;
         let advanced_id = draft.advanced_id;
+        let advanced_fields = draft.advanced_fields;
         let show_document = draft.show_document;
         let document = draft.documents[0].clone();
         let file = draft.files[0].clone();
@@ -300,14 +393,7 @@ impl Desktop {
             ));
         }
         if let Some(error) = error {
-            editor = editor.child(
-                div()
-                    .p_3()
-                    .rounded_md()
-                    .bg(rgb(Tone::Danger.background()))
-                    .text_color(rgb(d::DANGER))
-                    .child(crate::i18n::stored_copy(&error, self.language)),
-            );
+            editor = editor.child(self.diagnostic("draft-error", error, window, cx));
         }
         if form.needs_id {
             if !key.resource.is_empty() {
@@ -332,9 +418,12 @@ impl Desktop {
                     editor = editor.child(self.render_resource_picker(op, cx));
                 }
                 if advanced_id {
-                    editor = editor
-                        .child(d::caption(self.t(Text::ExactObjectID)))
-                        .child(Input::new(&id).id("resource-id"));
+                    editor = editor.child(d::caption(self.t(Text::ExactObjectID))).child(
+                        div()
+                            .id("resource-anchor")
+                            .anchor_scroll(anchors.get("resource").cloned())
+                            .child(Input::new(&id).id("resource-id")),
+                    );
                     if let Some(issue) = issues.get("resource") {
                         editor = editor.child(d::caption(issue.clone()).text_color(rgb(d::DANGER)));
                     }
@@ -428,7 +517,12 @@ impl Desktop {
                     .child(d::caption(
                         self.t(Text::CanonicalTypeHashUnknownTokenPrecision),
                     ))
-                    .child(Input::new(&asset).id("asset-type"));
+                    .child(
+                        div()
+                            .id("asset-anchor")
+                            .anchor_scroll(anchors.get("asset").cloned())
+                            .child(Input::new(&asset).id("asset-type")),
+                    );
                 if let Some(issue) = issues.get("asset") {
                     editor = editor.child(d::caption(issue.clone()).text_color(rgb(d::DANGER)));
                 }
@@ -470,7 +564,54 @@ impl Desktop {
                 );
             }
         }
+        if op == HubOperation::CreateInvoice {
+            editor = editor.child(d::caption(self.t(Text::InvoiceAutomatic)));
+            let saved = fields
+                .iter()
+                .any(|(k, v)| *k == "payment_preimage" && !v.read(cx).value().is_empty());
+            editor = editor.child(d::caption(self.t(if saved {
+                Text::InvoiceSecretSaved
+            } else {
+                Text::InvoiceWalletRequired
+            })));
+            if !saved {
+                editor = editor.child(
+                    Button::new("invoice-open-wallet")
+                        .label(self.t(Text::OpenLocalWallet))
+                        .on_click(cx.listener(|this, _, w, cx| this.navigate(Page::Wallet, w, cx))),
+                );
+            }
+            let toggle_key = key.clone();
+            editor = editor.child(
+                Button::new("task-advanced-options")
+                    .ghost()
+                    .small()
+                    .label(self.t(if advanced_fields {
+                        Text::HideAdvancedOptions
+                    } else {
+                        Text::AdvancedOptions
+                    }))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(d) = this.drafts.get_mut(&toggle_key) {
+                            d.advanced_fields = !d.advanced_fields;
+                        }
+                        cx.notify();
+                    })),
+            );
+        }
         for (field_index, (name, input)) in fields.iter().enumerate() {
+            if op == HubOperation::CreateInvoice
+                && matches!(
+                    *name,
+                    "payment_preimage" | "payment_hash" | "expiry_secs" | "channel_id"
+                )
+                && !advanced_fields
+            {
+                continue;
+            }
+            if op == HubOperation::CreateInvoice && *name == "payment_preimage" {
+                continue;
+            }
             let meta = form.fields.iter().find(|f| f.key == *name);
             let fallback = meta.map_or(Text::Task, |m| m.label);
             let label = p::field_label(name, fallback, self.language);
@@ -499,10 +640,78 @@ impl Desktop {
                 field = field.child(d::caption(helper));
             } else if *name == "sponsor_budget" {
                 field = field.child(d::caption(p::amount(&raw, true, self.language)));
+            } else if op == HubOperation::CreateInvoice && *name == "payment_hash" {
+                field = field.child(d::caption(self.t(Text::InvoiceSecretModeHelp)));
             } else if *name == "payment_preimage" {
                 field = field.child(d::caption(self.t(Text::KeptInMemoryForInvoiceCreation)));
             }
-            editor = editor.child(div().id(("field-container", field_index)).child(field));
+            if *name == "counterparty_pubkey"
+                && let Some(state) = &self.state
+            {
+                let mut peers = div().flex().flex_wrap().gap_2();
+                for (i, peer) in state.peers.iter().take(24).enumerate() {
+                    let v = serde_json::to_value(peer).unwrap_or_default();
+                    if let Some(pubkey) = v["pubkey"].as_str() {
+                        let public = pubkey.to_owned();
+                        let alias = v["alias"].as_str().unwrap_or("").to_owned();
+                        let k = key.clone();
+                        peers = peers.child(
+                            Button::new(("known-peer", i))
+                                .small()
+                                .label(if alias.is_empty() {
+                                    p::short(&public)
+                                } else {
+                                    alias.clone()
+                                })
+                                .on_click(cx.listener(move |this, _, w, cx| {
+                                    if let Some(d) = this.drafts.get(&k) {
+                                        for (name, input) in &d.fields {
+                                            if *name == "counterparty_pubkey" {
+                                                input.update(cx, |v, cx| {
+                                                    v.set_value(public.clone(), w, cx)
+                                                });
+                                            } else if *name == "counterparty_alias" {
+                                                input.update(cx, |v, cx| {
+                                                    v.set_value(alias.clone(), w, cx)
+                                                });
+                                            }
+                                        }
+                                    }
+                                })),
+                        );
+                    }
+                }
+                field = field.child(peers);
+            }
+            if op == HubOperation::CreateInvoice
+                && *name == "channel_id"
+                && let Some(state) = &self.state
+            {
+                let mut channels = div().flex().flex_wrap().gap_2();
+                for (i, channel) in state.channels.iter().take(24).enumerate() {
+                    let v = serde_json::to_value(channel).unwrap_or_default();
+                    if let Some(id) = v["channel_id"].as_str() {
+                        let value = id.to_owned();
+                        let target = input.clone();
+                        channels = channels.child(
+                            Button::new(("invoice-channel", i))
+                                .small()
+                                .label(p::short(id))
+                                .on_click(move |_, w, cx| {
+                                    target.update(cx, |v, cx| v.set_value(value.clone(), w, cx));
+                                }),
+                        );
+                    }
+                }
+                field = field.child(channels);
+            }
+            editor = editor.child(
+                div()
+                    .id(("field-container", field_index))
+                    .anchor_scroll(anchors.get(name).cloned())
+                    .child(field)
+                    .test_support(),
+            );
         }
         if form.document && op != HubOperation::Restore {
             let target = DocumentTarget::Draft(key.clone(), 0);
@@ -595,61 +804,32 @@ impl Desktop {
             editor = editor.child(filecard);
         }
         if let Some(plan) = plan {
-            editor = editor.child(self.render_restore_preview(&plan, cx));
+            editor = editor.child(self.render_restore_preview(&plan, window, cx));
         }
         let inline_read = !op.mutates() && !form.document;
         if inline_read {
             editor = editor.child(self.render_task_footer(&key, false, cx));
         }
-        let guidance = div()
-            .px_4()
-            .py_3()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(d::caption(self.t(Text::BeforeYouContinue)))
-            .child(d::badge(
-                if op.mutates() {
-                    self.t(Text::ReviewExactRequest)
-                } else {
-                    self.t(Text::ReadOnlyRequest)
-                },
-                Tone::Info,
-            ))
-            .child(d::caption(format!(
-                "{} · {}",
-                self.t(Text::Permission),
-                p::scope_name(op.required_scope(), self.language)
-            )))
-            .child(d::caption(self.t(Text::ChangingAnInputOrTheWorkspace)));
-        let body = if wide {
-            div().flex().gap_5().items_start().child(editor).child(
-                div()
-                    .w(px(296. * self.scale()))
-                    .flex_shrink_0()
-                    .child(guidance),
-            )
-        } else {
-            div()
-                .flex()
-                .flex_col()
-                .gap_4()
-                .child(editor)
-                .child(guidance)
-        };
+        let body = d::workbench(editor, 760. * self.scale());
+        let _ = wide;
         let _ = window;
         view = view.child(
             div()
                 .id("task-edit-scroll")
+                .track_scroll(&scroll)
                 .flex_1()
                 .min_h_0()
                 .overflow_y_scroll()
-                .child(body),
+                .child(body)
+                .test_support(),
         );
         if inline_read {
             view
         } else {
-            view.child(self.render_task_footer(&key, false, cx))
+            view.child(d::workbench(
+                self.render_task_footer(&key, false, cx),
+                760. * self.scale(),
+            ))
         }
     }
 
@@ -665,6 +845,7 @@ impl Desktop {
             && key.resource.is_empty()
             && self.drafts.get(key).is_some_and(|d| !d.advanced_id);
         let mut footer = div()
+            .flex_wrap()
             .pt_4()
             .mt_3()
             .border_t_1()
@@ -803,7 +984,7 @@ impl Desktop {
         let page_count = count.div_ceil(8).max(1);
         let page = page.min(page_count - 1);
         card = card
-            .child(Input::new(&search).id("task-target-search"))
+            .child(Input::new(&search).id("task-target-search").cleanable(true))
             .child(d::caption(format!(
                 "{} {} · {} / {}",
                 count,
@@ -938,7 +1119,12 @@ impl Desktop {
         self.invalidate_draft(key, cx)
     }
 
-    pub(super) fn render_review(&mut self, key: &DraftKey, cx: &mut Context<Self>) -> Div {
+    pub(super) fn render_review(
+        &mut self,
+        key: &DraftKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let Some(prepared) = self.prepared.as_ref() else {
             return d::panel();
         };
@@ -964,7 +1150,7 @@ impl Desktop {
                 .and_then(|d| d.restore.as_ref())
                 .cloned()
             {
-                card = card.child(self.render_restore_preview(&plan, cx));
+                card = card.child(self.render_restore_preview(&plan, window, cx));
             }
         } else if forms::FORMS[key.form].document {
             card = card
@@ -985,6 +1171,13 @@ impl Desktop {
             let (_, ckb) = p::json_asset(&body["asset"], self.language);
             for (i, f) in forms::FORMS[key.form].fields.iter().enumerate() {
                 let val = &body[f.key];
+                if op == HubOperation::CreateInvoice
+                    && (matches!(f.key, "payment_preimage" | "payment_hash")
+                        || val.is_null()
+                        || val.as_str() == Some(""))
+                {
+                    continue;
+                }
                 let text = if matches!(f.kind, forms::Kind::Secret) {
                     if val.is_null() {
                         self.t(Text::NotSupplied).into()
@@ -1064,6 +1257,7 @@ impl Desktop {
     pub(super) fn render_restore_preview(
         &mut self,
         plan: &RestorePlan,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
         let mut card = div()
@@ -1115,8 +1309,13 @@ impl Desktop {
         ] {
             card = card.child(d::key_value(self.t(label), format!("{before} → {after}")));
         }
-        for warning in &plan.preview.warnings {
-            card = card.child(d::caption(warning.clone()).text_color(rgb(d::WARNING)));
+        for (i, warning) in plan.preview.warnings.iter().enumerate() {
+            card = card.child(self.service_message(
+                ("restore-warning", i),
+                warning.clone(),
+                window,
+                cx,
+            ));
         }
         let op = self.active.as_ref().map(|k| forms::FORMS[k.form].operation);
         if op == Some(HubOperation::PreviewRestore) {
@@ -1131,14 +1330,12 @@ impl Desktop {
     }
 }
 
-fn domain_description(index: usize, l: Language) -> &'static str {
-    match index {
-        0 => l.t(Text::ManageChannelRecordsAndProgress),
-        1 => l.t(Text::MembersReservesAndChildRecords),
-        2 => l.t(Text::CreateImportAndTrackInvoices),
-        3 => l.t(Text::ReviewAndPrivatelyExportEvidence),
-        4 => l.t(Text::ExactTermsSignatureRolesAndExport),
-        5 => l.t(Text::PublicIdentitiesAndDisplayNames),
-        _ => l.t(Text::PrivateExportAndPreviewedRestore),
+fn domain_description(domain: Domain, l: Language) -> &'static str {
+    match domain {
+        Domain::Payments => l.t(Text::CreateImportAndTrackInvoices),
+        Domain::Evidence => l.t(Text::ReviewAndPrivatelyExportEvidence),
+        Domain::Funding => l.t(Text::ExactTermsSignatureRolesAndExport),
+        Domain::Peers => l.t(Text::PublicIdentitiesAndDisplayNames),
+        Domain::Workspace => l.t(Text::PrivateExportAndPreviewedRestore),
     }
 }

@@ -19,7 +19,7 @@ pub struct Context<'a> {
     pub recovery_deps: &'a [CellDep],
 }
 
-fn mine_depth(rpc: &CkbRpcClient, included: u64, minimum: u64) -> Result<()> {
+pub(super) fn mine_depth(rpc: &CkbRpcClient, included: u64, minimum: u64) -> Result<()> {
     for _ in 0..64 {
         if block_confirmations(included, rpc.tip_header()?.number_value()?)? >= minimum {
             return Ok(());
@@ -59,6 +59,56 @@ pub fn run(
     let mut released_input = None;
     let mut traces = Vec::new();
     let mut observations = Vec::new();
+    let participants = [&options.alice_private_key, &options.bob_private_key].map(
+        |secret| -> Result<morph_core::ChannelParticipant> {
+            let key = k256_signing_key(secret)?;
+            Ok(morph_core::ChannelParticipant {
+                node_id: morph_core::blake2b256(&k256_pubkey(&key)),
+                settlement_lock_hash: secp256k1_lock(&parse_privkey(secret)?)?
+                    .calc_script_hash()
+                    .unpack(),
+            })
+        },
+    );
+    let [left, right] = participants;
+    let participants = [left?, right?];
+    let VaultAsset::Xudt(type_script_hash) = original.manifest.vaults[0].asset else {
+        return Err(anyhow!("typed initial splice custody"));
+    };
+    let root_candidate = super::shadow_observer::Candidate {
+        schema: "morph.shadow_candidate.v1".into(),
+        package: StoredMultiAssetPackage::from_recovery(&original, context.recovery_deps)?,
+        state_out_point: format_out_point(&state_point),
+        participants: participants.clone(),
+        asset: morph_core::GatewayAsset::Xudt {
+            ckb_genesis_hash: original.state.header.chain_id,
+            type_script_hash,
+        },
+        reservation: None,
+        origin: super::shadow_observer::Origin::Root {},
+    };
+    let root_path = options.store_dir.join("shadow-root-candidate.json");
+    crate::persistence::write_private_immutable(&root_path, &serde_json::to_vec(&root_candidate)?)?;
+    let initial_shadow = super::shadow_observer::run(
+        rpc.endpoint(),
+        &root_path,
+        &options.contracts_dir,
+        4,
+        10_000,
+    )?;
+    let source = crate::multi_asset_session::shadow::capture(
+        context.alice_session,
+        participants.clone(),
+        root_candidate.asset.clone(),
+        None,
+    )?;
+    ensure!(!source.draining, "idle Root journal marked draining");
+    ensure!(
+        source.observe(Duration::from_secs(10))?.public()? == initial_shadow,
+        "current Root journal differs from canonical observation"
+    );
+    let mut shadow_candidates = vec![root_path];
+
     for (name, removing) in [("remove", true), ("admit", false)] {
         let directory = options.store_dir.join(format!("splice-{name}"));
         crate::persistence::create_private_directories(&directory)?;
@@ -166,12 +216,13 @@ pub fn run(
             .into_iter()
             .enumerate()
             {
-                let receipt = session_run(
+                let receipt = crate::participant_signer::acceptance::sign(
+                    rpc,
                     session,
-                    SessionCommand::Sign {
-                        target,
-                        private_key: secret.clone(),
-                    },
+                    target.into(),
+                    secret,
+                    &current,
+                    options.signer_faults,
                 )?;
                 let path = directory.join(format!("{target:?}-{index}.json"));
                 crate::persistence::write_private_atomic(
@@ -336,12 +387,79 @@ pub fn run(
         );
         let (public_draft, _, _) =
             SpliceDraft::from_signed_transaction(&before.recovery()?, &current, &transaction)?;
+        for old_candidate in &shadow_candidates {
+            ensure!(
+                super::shadow_observer::run(
+                    rpc.endpoint(),
+                    old_candidate,
+                    &options.contracts_dir,
+                    4,
+                    10_000
+                )
+                .is_err(),
+                "retired funding context remained admissible"
+            );
+        }
+        let VaultAsset::Xudt(type_script_hash) = current.manifest.vaults[0].asset else {
+            return Err(anyhow!("typed splice acceptance"));
+        };
+        let candidate = super::shadow_observer::Candidate {
+            schema: "morph.shadow_candidate.v1".into(),
+            package: future.clone(),
+            state_out_point: format_out_point(&state_point),
+            participants: participants.clone(),
+            asset: morph_core::GatewayAsset::Xudt {
+                ckb_genesis_hash: current.state.header.chain_id,
+                type_script_hash,
+            },
+            reservation: None,
+            origin: super::shadow_observer::Origin::Splice {
+                old: Box::new(before.clone()),
+                initial: Box::new(future.clone()),
+                transaction_hex: canonical_hex(transaction.as_slice()),
+                factory_history: None,
+            },
+        };
+        let candidate_path = directory.join("shadow-candidate.json");
+        crate::persistence::write_private_immutable(
+            &candidate_path,
+            &serde_json::to_vec(&candidate)?,
+        )?;
+        let shadow = super::shadow_observer::run(
+            rpc.endpoint(),
+            &candidate_path,
+            &options.contracts_dir,
+            4,
+            10_000,
+        )?;
+        let source = crate::multi_asset_session::shadow::capture(
+            context.alice_session,
+            participants.clone(),
+            candidate.asset.clone(),
+            None,
+        )?;
+        ensure!(!source.draining, "confirmed splice journal marked draining");
+        ensure!(
+            source.observe(Duration::from_secs(10))?.public()? == shadow,
+            "current splice journal differs from canonical observation"
+        );
+        ensure!(shadow["forwarding"] == false, "splice enabled forwarding");
+        if let Some(previous) = observations.last() {
+            let previous: &Value = previous;
+            ensure!(
+                previous["shadow_observer"]["edge"]["morph_edge_id"]
+                    != shadow["edge"]["morph_edge_id"],
+                "splice successor retained old edge identity"
+            );
+        }
+        let prior_contexts_checked = shadow_candidates.len();
+        shadow_candidates.push(candidate_path);
         traces.push(json!({
             "name":name,"current":before,"draft":public_draft,
             "creation_receipts":role_receipts[0],"recovery_receipts":role_receipts[1],"bridge_receipts":role_receipts[2],
             "funding":{"schema":"morph.multi_asset_splice_funding.v1","transaction_hex":canonical_hex(transaction.as_slice()),"recovery_package":future},
         }));
-        observations.push(json!({"operation":name,"submission":submitted,"activation":activation,"withheld_bridge_receipt_reconciled":true}));
+        observations.push(json!({"journal_source_verified":true,"operation":name,"shadow_observer":shadow,"previous_shadow_context_rejected":true,"prior_contexts_checked":prior_contexts_checked,"submission":submitted,"activation":activation,"withheld_bridge_receipt_reconciled":true}));
     }
     let trace_path = options.store_dir.join("splice-transitions.json");
     crate::persistence::write_private_atomic(&trace_path, &serde_json::to_vec_pretty(&traces)?)?;
@@ -391,7 +509,14 @@ pub fn run(
         rpc.live_cell(state_point.into(), false)?.status != "live",
         "splice channel failed to retire"
     );
+    for path in &shadow_candidates {
+        ensure!(
+            super::shadow_observer::run(rpc.endpoint(), path, &options.contracts_dir, 4, 10_000)
+                .is_err(),
+            "finalised splice context remained admissible"
+        );
+    }
     Ok(
-        json!({"trace_file":trace_path,"operations":observations,"terminal":endings,"summary":package.validate()?}),
+        json!({"initial_journal_source_verified":true,"initial_shadow_observer":initial_shadow,"shadow_finalised_contexts_rejected":true,"trace_file":trace_path,"operations":observations,"terminal":endings,"summary":package.validate()?}),
     )
 }

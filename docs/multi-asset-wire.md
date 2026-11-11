@@ -1,18 +1,56 @@
 # Current State and Vault-Set Wire Profile
 
-Status: current unpublished implementation, 2026-11-05. The shared parsers in
+Status: 4.1.0 current encoding; controlled devnet, 2026-11-12. The shared parsers in
 `morph-script-common` are the executable wire definition. This is the sole
 current channel custody implementation; the Factory is a separate authority
 object over the same custody primitives. Unsupported prior bytes are rejected.
 See [current capability coverage](current-protocol-coverage.md) for migration,
 negative tests, measured limits and the remaining release gates.
 
+## Cooperative terminal close
+
+`multi_asset_close.rs` defines the sole `MORPHMC!` format. It is implemented in
+StateType with authenticated Vault-lock delegation. Durable host signing,
+exact-body native CLI operations and canonical operation tracking are implemented;
+additional API/desktop adapters remain separate. See [ADR 005](adr/005-bilateral-cooperative-terminal-close.md)
+and [the close runbook](runbooks/cooperative-close.md).
+The State layout, ordinary vote domain and unilateral challenge path remain
+unchanged; new ELF identities require new deployment and evidence.
+
+| Offset | Field | Bytes |
+| --- | --- | ---: |
+| 0 | `MORPHMC!` | 8 |
+| 8 | Format 1, little endian | 2 |
+| 10 | Reserved zero | 2 |
+| 12 | Inner current witness length, little endian | 4 |
+| 16 | Complete raw transaction hash | 32 |
+| 48 | Target bound Settling State, number greater than zero | 318 |
+| 366 | Exactly two sorted participant signatures, current bilateral encoding | 198 |
+| 564 | Existing `MORPHMA!` manifest/descriptor/OutPoints/scripts witness | Variable |
+
+Maximum total frame size is 17,456 bytes (including the maximum conditional trailer). It resides in input-0 WitnessArgs
+`output_type`; it has no alternative legacy reader. Signatures authorize
+`blake2b256(CKB_MORPH_MULTI_ASSET_CLOSE_V1 || target_state_digest || raw_tx_hash)`
+with CKB personalization. The target retains the source's immutable context;
+progress cannot regress and equal numbers require byte-identical headers.
+
+Input 0 is the authentic bound State; inputs 1 through N are the exact ordered
+Vault set. No State successor is allowed. Existing complete asset/reserve/carrier
+payout checks run using the validated **target** header, including conditional
+Batch identity. Remaining fee inputs/change have no Type or cell data; arbitrary
+lock programs still execute normally. Transactions are bounded below 64 inputs
+and outputs, with at most 64 cell dependencies and 64 header dependencies each.
+These scanner limits are not resource admission. StateType runs full verification;
+the Vault gate authenticates that mandatory immutable verifier, the same global
+frame/body, complete source and terminal retirement. Unknown/malformed frames and ordinary signature replay
+fail closed. New error codes 70/71 do not reuse retired discriminants.
+
 ## State and Vault Authority
 
 State layout 2 is an independent 318-byte encoding. It contains no single-Vault
 materialisation field, single-Vault OutPoint field, or duplicate content root.
 All integers use little endian order. Protocol version 1, signature scheme 1,
-bilateral mode 1, descriptor version 5, and layout version 2 are required.
+bilateral mode 1, descriptor version 7, and layout version 2 are required.
 
 | Byte offset | Field | Bytes |
 | --- | --- | --- |
@@ -41,7 +79,7 @@ is `CKB_MORPH_MULTI_ASSET_STATE_V1` followed by all 318 bytes. Historical
 414-byte packages and snapshots with single-Vault header fields are rejected.
 Replace development state after this change; there is no conversion parser.
 
-Each Vault uses 116-byte args: `MORPHMV!`, u16 encoding version 1, u16 reserved
+Each Vault uses 116-byte args: `MORPHMV!`, u16 encoding version 2, u16 reserved
 zero, funding anchor (32), canonical relative-block `since` (8), exact StateType
 Script hash (32), and exact StateLock Script hash (32). All Vaults share one
 lock. The scripts independently require the authentic State input and the
@@ -79,11 +117,11 @@ produce no Cell. A funded typed Vault has a positive quantity and exactly
 
 | Object | Encoding |
 | --- | --- |
-| Manifest | u16 version 1, u8 count, u8 reserved; N entries of asset ID (33), Vault lock hash (32), allocation (32). Length `4 + N*97`. |
-| Settlement descriptor | u16 version 5, u8 count, u8 capability; two sorted nonzero payout lock hashes (64), carrier-refund lock hash (32); N entries of asset ID (33) and two allocations (64). Ordinary length `100 + N*97`; capability 1 appends a 36-byte executor prefix and 828-byte Batch terms. |
-| Recovery witness | `MORPHMA!` (8), u16 version 1, u16 flags 0, u32 manifest length, u32 descriptor length, u16 OutPoint count, u16 reserved, u32 scripts length; manifest, descriptor, OutPoints, script evidence. |
+| Manifest | u16 version 2, u8 count, u8 reserved; N entries of asset ID (33), Vault lock hash (32), allocation (32). Length `4 + N*97`. |
+| Settlement descriptor | u16 version 7, u8 count, u8 capability; two sorted nonzero payout lock hashes (64), carrier-refund lock hash (32); N entries of asset ID (33) and two allocations (64). Ordinary length `100 + N*97`; capability 1 appends a 40-byte version-3 executor/count prefix and 1–8 asset-sorted version-5 Batch terms (`221 + 92*n` bytes each). |
+| Recovery witness | `MORPHMA!` (8), u16 version 2, u16 flags 0, u32 manifest length, u32 descriptor length, u16 OutPoint count, u16 reserved, u32 scripts length; manifest, descriptor, OutPoints, script evidence. |
 | OutPoints | N canonical 36-byte CKB OutPoints in manifest asset order; zero entries only for an unbound State. Duplicates and zero transaction hashes are rejected. |
-| Script evidence | Six scripts (payout 0, payout 1, carrier refund, Vault Lock, State Type, State Lock), followed by each xUDT Type Script in asset order. Each is a u32 length and complete canonical Molecule Script, bounded to 512 bytes. |
+| Script evidence | Six scripts (payout 0, payout 1, carrier refund, Vault Lock, State Type, State Lock), followed by each xUDT Type Script in asset order. Roles are u8 dictionary indices. The role prefix is `scope:u8, count:u8, table_len:u16`. Scope 0 embeds one sorted unique table (`count:u16, reserved:u16=0`, then `len:u16 + Script`); scope 1 requires the enclosing Factory table and `table_len=0`. Scripts are canonical Molecule bytes, each bounded to 512 bytes. Standalone packages require scope 0; parent children require scope 1; unused table entries and trailing bytes are rejected. |
 
 Content commitment hashes `CKB_MORPH_MULTI_ASSET_VAULT_SET_V1 || manifest`.
 Descriptor commitment hashes `CKB_MORPH_MULTI_ASSET_DESCRIPTOR_V1 || descriptor`.
@@ -94,29 +132,34 @@ Type hash list. Funding-context identity has its own
 `CKB_MORPH_MULTI_ASSET_FUNDING_CONTEXT_V1` domain and binds chain ID, channel ID,
 funding anchor, content-set root, and OutPoint-set root.
 
+State/Factory authority Type Scripts use immutable data hash modes (0/2/4); native deployments use Data1. Upgradeable Type-hash authority selection is rejected so delegated verification cannot be replaced after funding. Asset and wallet Script hash-mode rules remain separate. See [ADR 008](adr/008-bounded-cost-and-current-encoding.md).
+
 Script evidence proves actual lock/Type identities and occupied bytes before
 funding or accepting a signed state. State/Vault args must agree on anchor,
 challenge delay, StateType, and StateLock. Every Vault and payout reserve must
 cover its exact occupied capacity. Carrier capacity covers both the live State
 and its plain refund output.
 
-Capability tag 0 means ordinary settlement. Tag 1 requires the exact current
-CKB conditional trailer and at least one pending transfer; unknown tags,
-descriptor 4, zero/malformed conditional shapes and trailing bytes are rejected.
-The trailer commits executor code/hash type and the canonical 828-byte Batch
-terms. Those inner terms are reused by one Batch executor, not another State
-profile. Its sole 104-byte args bind channel ID, exact funding context, state
-number and complete terms commitment. See [conditional execution](conditional-batches.md).
+Capability tag 0 means ordinary settlement. Tag 1 requires the current
+asset-bound conditional trailer, with 1–8 strictly asset-ordered Batches of
+1–8 transfers. Unknown tags, descriptor 6 and older, malformed conditional
+shapes and trailing bytes are rejected. The trailer commits one executor
+code/hash type and every complete count-based asset-bearing Batch. Each Batch's 104-byte
+args bind channel, exact funding context, state number and its complete terms.
+Pending CKB consumes only its Vault's business lane; pending UDT consumes only
+that exact Type's u128 quantity and preserves signed capacities. Both possible
+future typed payout cells must fit occupied capacity, even at zero settled
+quantity. See [conditional execution](conditional-batches.md).
 
 ## Conservation and Finalisation
 
 Each manifest asset must have the same descriptor identity. Its two payouts
-independently sum to its reserve, business CKB, and token quantity. Checked
+plus its exact-asset pending lane independently sum to its reserve, business CKB, and token quantity. Checked
 arithmetic rejects overflow, cross-asset minting, and reserve reclassification.
 The current profile conserves those lanes per Vault, a stronger restriction
 than pooling reserve across assets.
 
-Finalisation consumes all committed Vault OutPoints. Outputs appear in
+Finalisation consumes all committed Vault OutPoints. A conditional asset produces one exact Batch output; remaining ordinary outputs appear in
 asset/participant order, omitting only empty allocations. Nonzero token
 quantities produce typed outputs; zero-token allocations produce plain outputs.
 The complete State carrier refund follows those payouts. Each position is
@@ -166,9 +209,9 @@ The reservation is persisted before calling the signer and the signature is
 persisted before stdout returns its receipt. A crashed process releases the OS
 lock. Initialization refuses an existing session rather than resetting history.
 
-Each participant runs its own session and supplies the path to its protected
-signing-key file through `MORPH_CHANNEL_PRIVATE_KEY_FILE`; see
-[key input](runbooks/key-input.md). `--local-pubkey` is the
+Each participant runs its own session and selects a fixed external service with
+`--signer-config`; the isolated service alone receives its protected key file.
+See [external signing](runbooks/external-participant-signer.md). `--local-pubkey` is the
 canonical `0x`-prefixed compressed 33-byte key. Review `inspect` output, including
 all proposed per-asset allocations and payout-lock identities, before `sign`.
 
@@ -177,7 +220,7 @@ morph-cli multi-asset-session --session alice.json propose \
   --descriptor-hex "$DESCRIPTOR_HEX" > proposal.json
 morph-cli multi-asset-session --session bob.json accept --proposal proposal.json
 morph-cli multi-asset-session --session alice.json inspect
-morph-cli multi-asset-session --session alice.json sign --target update > alice-signature.json
+morph-cli multi-asset-session --session alice.json sign --target update --signer-config /srv/morph/alice/signer.json > alice-signature.json
 morph-cli multi-asset-session --session alice.json add-signature --target update \
   --signature bob-signature.json
 morph-cli multi-asset-session --session alice.json commit --store-dir recovery
@@ -198,10 +241,10 @@ The private Rust snapshot is not a JavaScript interchange format.
 Keep one authoritative session per signer/funding context. Never clone an
 active signer journal into concurrent authorities or restore an older snapshot;
 local file locking cannot detect deliberate file rollback or separate stores.
-Retain complete recovery packages separately for watchtower use. The SDK's
-`createMultiAssetProposal`, `inspectMultiAssetProposal`, and
-`inspectMultiAssetProposalSignature` validate proposal content and signatures
-independently, but are stateless helpers and do not implement a signing journal.
+Retain complete recovery packages separately for watchtower use. The Rust SDK's
+`inspection::inspect` and `inspection::inspect_signature` reuse shared package
+codecs to validate content and signatures independently. They are stateless
+review helpers, not a signing journal.
 Current payment/conditional services use this backend; SDK helpers remain
 stateless. Factory signing has a separate durable rights/custody authority,
 with the shared current custody validators.
@@ -226,7 +269,9 @@ A cursor contains mandatory `from_block`, contiguous `next_block` and
 context. Its origin must match the configured origin and cannot start after
 any known canonical retained funding transaction. Unsupported/missing fields
 are rejected. Changing origin requires a fresh watch cursor, not a signer
-journal reset. New cursor writes use private fsynced atomic replacement.
+journal reset. The cursor is current SQLite state. Cursor, private alert intent,
+public typed outbox and egress permission commit in one watch-family transaction;
+there is no JSON cursor fallback.
 
 At startup, each poll boundary and between scanned blocks, canonical hash and
 parent linkage are checked. A missing/mismatched checkpoint or a block changing
@@ -250,7 +295,7 @@ input for later disputes.
 ```sh
 morph-cli devnet --devnet-only multi-asset-watch \
   --store-dir recovery --channel-id "$CHANNEL_ID" --from-block "$CREATION_BLOCK" \
-  --cursor-file operator-a/cursor.json --alert-file operator-a/alerts.jsonl \
+  --cursor-file operator-a/cursor.db --alert-file operator-a/alerts.jsonl \
   --publication-profile publication-profile.json --attempt-log operator-a/attempts.jsonl \
   --fee-out-point FEE_TX_HASH:0 --max-fee 100000000 --timeout-secs 30 wallet
 ```
@@ -273,9 +318,9 @@ canonical lowercase hex for the header, recovery witness, and bilateral
 signature witness, decimal-string carrier capacity, and a canonical bounded
 `cell_deps` list with exact OutPoints and Code or DepGroup kinds. Dependency
 liveness and approved deployed code require chain checks before broadcast.
-Rust and TypeScript
-share a signed fixture with token amounts above JavaScript's safe integer
-range; all exposed monetary quantities and state numbers remain strings.
+The CLI, Rust SDK and GPUI share current signed fixtures with full-u128 token
+amounts; all exposed monetary quantities and state numbers remain canonical
+decimal strings. No TypeScript client or numeric compatibility reader exists.
 
 ```sh
 cargo run -p morph-cli -- print-multi-asset-fixture
@@ -339,7 +384,7 @@ morph-cli devnet --devnet-only multi-asset-transact \
   --fee 100000000 --max-fee 100000000 --dry-run wallet
 ```
 
-Current release evidence must use rebuilt descriptor-5 artifacts and current
+Current release evidence must use rebuilt descriptor-7 artifacts and current
 reports. Historical descriptor-4 reports and old deployment hashes do not
 qualify this boundary. See [the coverage ledger](current-protocol-coverage.md)
 for current host/CKB-VM evidence and reproduction commands.
@@ -352,7 +397,7 @@ activation and update roles. Root and update have distinct exact-transaction
 signing domains; a header-only vote cannot authorize UPDATE. Activation binds
 the complete sibling set without member keys and preserves carrier capacity.
 
-`MORPHFM!` authorizes N-of-N materialisation. `MORPHFR!` version 1 is the sole
+`MORPHFM!` authorizes N-of-N materialisation. `MORPHFR!` version 2 is the sole
 current reduced/funded transition frame: ReducedRights, ReducedDeposit,
 ReducedRelease, ReducedChild and FullCustody. Pure metadata remains the one
 FS UPDATE path. Source, retained and child manifests use the shared custody

@@ -3,7 +3,7 @@
 Morph's controlled devnet connects the current host constructors, CKB scripts,
 independent signer journals, native wallet builders, watch service and offline
 reports. All custody uses the current Vault-set model: bilateral State headers
-are 318 bytes with explicit descriptor-5 settlement capability; Factory State
+are 318 bytes with explicit descriptor-7 settlement capability; Factory State
 headers are 306 bytes. A single asset uses a one-entry manifest.
 
 Devnet evidence does not approve mainnet deployment or real assets. The release

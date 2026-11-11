@@ -64,7 +64,7 @@ async fn native_sdk_preserves_hub_mutations_permissions_and_restore_barriers_ove
         ])
         .arg(&key_path)
         .arg("--state-path")
-        .arg(directory.join("state.json"))
+        .arg(directory.join("runtime/state.db"))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -84,6 +84,42 @@ async fn native_sdk_preserves_hub_mutations_permissions_and_restore_barriers_ove
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(ready, "Hub did not become ready");
+    assert!(client.liveness().await.unwrap().alive);
+    let mut mutation_readiness = client.readiness().await.unwrap();
+    for _ in 0..60 {
+        if mutation_readiness.ready {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        mutation_readiness = client.readiness().await.unwrap();
+    }
+    assert!(
+        mutation_readiness.ready,
+        "Hub local registry probe did not become ready"
+    );
+    assert!(
+        mutation_readiness
+            .scopes
+            .iter()
+            .filter(|scope| !scope.configured)
+            .all(|scope| !scope.ready)
+    );
+    let metrics = reqwest::Client::new()
+        .get(format!("http://{address}/api/metrics"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(metrics.status(), 200);
+    assert!(
+        metrics.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/plain")
+    );
+    let metrics = metrics.text().await.unwrap();
+    assert!(metrics.len() < 65536);
+    assert!(metrics.contains("scope=\"chain_publication\"} 0"));
+    assert!(!metrics.contains(&public(41)));
     let empty = client.state_file().await.unwrap();
     let preview = client.preview_restore(&empty).await.unwrap();
     assert!(preview.allowed);
@@ -111,7 +147,7 @@ async fn native_sdk_preserves_hub_mutations_permissions_and_restore_barriers_ove
             remote: "30000000000".into(),
             pending: Some("0".into()),
             sponsor_budget: 1_000_000,
-            asset: Some(AssetRequest::Ckb),
+            asset: Some(AssetRequest::Ckb {}),
         })
         .await
         .unwrap();
@@ -145,7 +181,7 @@ async fn native_sdk_preserves_hub_mutations_permissions_and_restore_barriers_ove
             factory_id: factory.clone(),
             participant_pubkeys: vec![public(41), public(42)],
             reserve: "100000000000".into(),
-            asset: Some(AssetRequest::Ckb),
+            asset: Some(AssetRequest::Ckb {}),
         })
         .await
         .unwrap();
@@ -170,7 +206,7 @@ async fn native_sdk_preserves_hub_mutations_permissions_and_restore_barriers_ove
                 remote: "10000000000".into(),
                 pending: Some("0".into()),
                 sponsor_budget: 1_000_000,
-                asset: Some(AssetRequest::Ckb),
+                asset: Some(AssetRequest::Ckb {}),
             },
         )
         .await
@@ -191,7 +227,7 @@ async fn native_sdk_preserves_hub_mutations_permissions_and_restore_barriers_ove
             )),
             expiry_secs: 3600,
             channel_id: None,
-            asset: Some(AssetRequest::Ckb),
+            asset: Some(AssetRequest::Ckb {}),
         })
         .await
         .unwrap();
@@ -224,6 +260,173 @@ async fn native_sdk_preserves_hub_mutations_permissions_and_restore_barriers_ove
         value
     );
     assert_eq!(current.provenance.source, "hub_state_file");
+    let info = client.api_info().await.unwrap();
+    let retry_client = client
+        .clone()
+        .with_mutation(MutationContext {
+            idempotency_key: "ab".repeat(16),
+            expected_revision: info.revision,
+        })
+        .unwrap();
+    let request = ConnectPeerRequest {
+        pubkey: public(44),
+        alias: "original request".into(),
+    };
+    let original = retry_client.connect_peer(&request).await.unwrap();
+    client
+        .connect_peer(&ConnectPeerRequest {
+            pubkey: public(45),
+            alias: "later change".into(),
+        })
+        .await
+        .unwrap();
+    let latest_revision = client.api_info().await.unwrap().revision;
+    let repeated = retry_client.connect_peer(&request).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(original).unwrap(),
+        serde_json::to_value(repeated).unwrap()
+    );
+    assert_eq!(client.api_info().await.unwrap().revision, latest_revision);
+    assert!(
+        client
+            .state()
+            .await
+            .unwrap()
+            .peers
+            .iter()
+            .any(|p| p.pubkey == public(45) && p.alias == "later change")
+    );
+    assert!(matches!(
+        retry_client
+            .connect_peer(&ConnectPeerRequest {
+                pubkey: public(44),
+                alias: "conflicting retry".into()
+            })
+            .await,
+        Err(morph_sdk::HubClientError::Api {
+            status: 409,
+            code: Some(morph_hub_api::ApiErrorCode::IdempotencyConflict),
+            ..
+        })
+    ));
+    let before_delivery_revision = client.api_info().await.unwrap().revision;
+    let mut cursor = None;
+    let mut event_count = 0;
+    let mut event_ids = std::collections::BTreeSet::new();
+    loop {
+        let page = client
+            .event_log(&EventPageRequest {
+                after: cursor,
+                limit: 3,
+            })
+            .await
+            .unwrap();
+        for event in &page.events {
+            assert!(event_ids.insert(event.event_id.clone()));
+            if event.kind == morph_events::Kind::ChannelSpliced {
+                assert_eq!(
+                    event.funding_context_id.as_deref(),
+                    Some(hash(53).trim_start_matches("0x"))
+                );
+            }
+        }
+        event_count += page.events.len();
+        cursor = Some(page.next);
+        if !page.has_more {
+            break;
+        }
+    }
+    assert!(event_count > 3);
+    let receiver = TcpListener::bind("127.0.0.1:0").unwrap();
+    let receiver_url = format!("http://{}", receiver.local_addr().unwrap());
+    let receiver_thread = std::thread::spawn(move || {
+        use std::io::Read;
+        let (mut stream, _) = receiver.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        let (end, length) = loop {
+            let mut buffer = [0; 1024];
+            let count = stream.read(&mut buffer).unwrap();
+            assert!(count > 0);
+            bytes.extend_from_slice(&buffer[..count]);
+            assert!(bytes.len() < 16384);
+            if let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.split_once(':')
+                            .filter(|(k, _)| k.eq_ignore_ascii_case("content-length"))
+                            .map(|(_, v)| v.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap();
+                break (end + 4, length);
+            }
+        };
+        while bytes.len() < end + length {
+            let mut buffer = [0; 1024];
+            let count = stream.read(&mut buffer).unwrap();
+            assert!(count > 0);
+            bytes.extend_from_slice(&buffer[..count]);
+        }
+        let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+        let signature = headers
+            .lines()
+            .find_map(|line| {
+                line.split_once(':')
+                    .filter(|(k, _)| k.eq_ignore_ascii_case("x-morph-signature"))
+                    .map(|(_, v)| v.trim())
+            })
+            .unwrap();
+        let body = &bytes[end..end + length];
+        let event = morph_events::EventEnvelope::decode(body).unwrap();
+        morph_events::verify_request(&event.event_id, body, signature, &[41; 32]).unwrap();
+        let ack = morph_events::acknowledgement(&event.event_id, body, &[41; 32]).unwrap();
+        write!(
+            stream,
+            "HTTP/1.1 204 No Content\r\nX-Morph-Ack: {ack}\r\nContent-Length: 0\r\n\r\n"
+        )
+        .unwrap();
+        event.event_id
+    });
+    let run_delivery = |command: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_morph-cli"))
+            .arg("event-delivery")
+            .arg("--source")
+            .arg(directory.join("runtime/state.db"))
+            .arg("--store")
+            .arg(directory.join("delivery/consumer.db"))
+            .arg("--url")
+            .arg(&receiver_url)
+            .arg("--hmac-key-file")
+            .arg(&key_path)
+            .args(command)
+            .output()
+            .unwrap()
+    };
+    let sent = run_delivery(&["run-once", "--limit", "1"]);
+    assert!(
+        sent.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sent.stderr)
+    );
+    let health: serde_json::Value = serde_json::from_slice(&sent.stdout).unwrap();
+    assert_eq!(health["acknowledged"], 1);
+    assert!(event_ids.contains(&receiver_thread.join().unwrap()));
+    let restarted = run_delivery(&["status"]);
+    assert!(
+        restarted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restarted.stderr)
+    );
+    let health: serde_json::Value = serde_json::from_slice(&restarted.stdout).unwrap();
+    assert_eq!(health["acknowledged"], 1);
+    assert_eq!(
+        client.api_info().await.unwrap().revision,
+        before_delivery_revision
+    );
     drop(process);
     std::fs::remove_dir_all(directory).unwrap();
 }

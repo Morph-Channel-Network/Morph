@@ -1,0 +1,35 @@
+{
+  "schema": "morph.shadow_observer_checkpoint.v1",
+  "head": "07a3fa04ba7c556a8af7a4cfd61c21ba39d4e09b",
+  "dirty": true,
+  "source_files": 4128,
+  "source_unchanged": true,
+  "source_manifest_sha256": "5f6ed3238ee4181276f5f42273281aaa42a572037fce7443aa248a0a769284f0",
+  "cli_sha256": "f397fd3aafd1d8daa1bc964c373874f93c2360d817422786853b9af70107e976",
+  "native_originals": "target/close-native-evidence/shadow-observer-qualified",
+  "boundaries": [
+    "Root canonical observer on two/eight devnet token Types; one selected routing asset per shape",
+    "Factory/splice branches implemented but not native-qualified here",
+    "No Morph durable registry, provider mutation, forwarding or expiry scheduler",
+    "Prebuilt manifest-matched ELFs; no contract rebuild or full CI",
+    "No release or issue closure"
+  ],
+  "tests": {
+    "cli_all_features": 333,
+    "targeted_observer": 5,
+    "cli_all_features_all_targets_clippy": "passed",
+    "fmt": "passed",
+    "cli_default_features_all_targets_clippy": "passed"
+  },
+  "evidence_sha256": {
+    "README.md": "30c2cc284e79d4f89da3a4c68b1868c96da0369219f056a8655239239b90e30c",
+    "cli-tests.log": "94cbf25991a76077b11bf3ec9ff488661ffb88f64b9f1da1c57fbff721952422",
+    "clippy.log": "362fd53717c44b3d0699c8d3ce37b7b73266dbf40377e275b0645a07eeed4503",
+    "contracts.json": "47060e4f7f5c79ad26a6051aaf22bf7eed4ae34dd75217147b20542e34bdf067",
+    "default-clippy.log": "13b725d44cbc9e2c30c341304578b142af037669a27241b28a2b1ae037f0eca5",
+    "fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-results.json": "c097b3f7426103d797314f632eeee35049de7d5ad9ffde0bda8da3b3570e8be1",
+    "native-verification.json": "aab2c97bec276be63e465f9d8c7b458965d8132dc795602a439a9a26443d57f6",
+    "observer-tests.log": "1b2ad49f896834d4456230a18ac50c4cdb941eb71e33206c7dba565abd847e57"
+  }
+}

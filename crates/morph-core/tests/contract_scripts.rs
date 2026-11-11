@@ -74,8 +74,8 @@ fn deploy_contract(
 ) -> ckb_testtool::ckb_types::packed::Script {
     let out_point = context.deploy_cell(contract_bin(name));
     context
-        .build_script(&out_point, args.into())
-        .expect("contract script")
+        .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.into())
+        .expect("immutable contract script")
 }
 
 fn put_u64(raw: &mut [u8], offset: usize, value: u64) {
@@ -205,16 +205,19 @@ fn conditional_batch_resolution_tx(tamper: ConditionalBatchTamper) -> (Context, 
     let sha_preimage = [7u8; 32];
     let blake_preimage = [8u8; 32];
     let batch = ConditionalBatch {
+        asset: morph_core::VaultAsset::Ckb,
         batch_id: [3; 32],
         application_context_commitment: [4; 32],
         participants: [
             ConditionalParticipant {
                 settlement_lock_hash: lock_hashes[0],
                 settled_capacity: CELL_CAPACITY / 2 - 1_000,
+                settled_amount: 0,
             },
             ConditionalParticipant {
                 settlement_lock_hash: lock_hashes[1],
                 settled_capacity: CELL_CAPACITY / 2 - 2_000,
+                settled_amount: 0,
             },
         ],
         transfers: vec![

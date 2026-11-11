@@ -1,0 +1,13 @@
+{
+  "crates/morph-fiber-adapter/Cargo.toml": "5833030d9d32a5876a5da1e2ec614a3480e5e6d3abd0004265b993c0d0901a80",
+  "crates/morph-fiber-adapter/src/capabilities.rs": "920c930b0962ae975fb004e24a8bb6d66ea0cf06c24059acdb00a84e45cfc262",
+  "crates/morph-fiber-adapter/src/client_tests.rs": "c173b212cfc942fc15bdee0207d5c14ac36c16a0d74a790bf7f55c2345db0632",
+  "crates/morph-fiber-adapter/src/coordinator/tests.rs": "f5b7b89ab38aeab90dce089bd66fc3fe8f40eb2600a222acbeab647d68197bb4",
+  "crates/morph-fiber-adapter/src/coordinator.rs": "5ee936ab05ec1ccbbe744471742b11aa2fa8ec2b7a5f30836ee95d8952b8a277",
+  "crates/morph-fiber-adapter/src/edge_codec.rs": "063b86c8b7be5f2740da93d79d32abcc62fc7a8aaf55362173f9d2bff2525fc1",
+  "crates/morph-fiber-adapter/src/lib.rs": "edd89301924d62b6746d00d286e60bbeff113db7f3adf3ba4abf42b5671eb4c2",
+  "crates/morph-fiber-adapter/src/shadow/rpc.rs": "777f2b6af5d9b25dfabce730f909d832d8c9ac4290ae0703075708d5d985e541",
+  "crates/morph-fiber-adapter/src/shadow/tests/model.rs": "d4e5fa45e44a53c1947c01df6465c395b5645864038689786e99ec53ab97d400",
+  "crates/morph-fiber-adapter/src/shadow/tests.rs": "f439ae45c327e6546675fe4d634401a308167ee9566ce76777a6b5e5fad84328",
+  "crates/morph-fiber-adapter/src/shadow.rs": "6e01bb6a9a8a17cd5bcad170f965bc972d4d7b532b4f05ba6fd8de6464e5ff78"
+}

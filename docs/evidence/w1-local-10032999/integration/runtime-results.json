@@ -1,0 +1,550 @@
+{
+  "fuzz": [
+    {
+      "report_sha256": "6ae4483e1e46e1aa66c401a8c305f060debff256fa73e16c671e10aaff080959",
+      "seed": 1,
+      "targets": [
+        {
+          "accepted": 2356,
+          "cases": 10000,
+          "rejected": 7644,
+          "target": "manifest"
+        },
+        {
+          "accepted": 2713,
+          "cases": 10000,
+          "rejected": 7287,
+          "target": "settlement"
+        },
+        {
+          "accepted": 1219,
+          "cases": 10000,
+          "rejected": 8781,
+          "target": "state-witness"
+        },
+        {
+          "accepted": 1476,
+          "cases": 10000,
+          "rejected": 8524,
+          "target": "close-frame"
+        },
+        {
+          "accepted": 1039,
+          "cases": 10000,
+          "rejected": 8961,
+          "target": "recovery-json"
+        },
+        {
+          "accepted": 1124,
+          "cases": 10000,
+          "rejected": 8876,
+          "target": "factory-frame"
+        },
+        {
+          "accepted": 3323,
+          "cases": 10000,
+          "rejected": 6677,
+          "target": "factory-state"
+        },
+        {
+          "accepted": 1003,
+          "cases": 10000,
+          "rejected": 8997,
+          "target": "factory-materialisation"
+        },
+        {
+          "accepted": 1173,
+          "cases": 10000,
+          "rejected": 8827,
+          "target": "event-json"
+        },
+        {
+          "accepted": 1207,
+          "cases": 10000,
+          "rejected": 8793,
+          "target": "hub-mutation"
+        },
+        {
+          "accepted": 1011,
+          "cases": 10000,
+          "rejected": 8989,
+          "target": "gateway-authorization"
+        },
+        {
+          "accepted": 1005,
+          "cases": 10000,
+          "rejected": 8995,
+          "target": "callback-auth"
+        },
+        {
+          "accepted": 1347,
+          "cases": 10000,
+          "rejected": 8653,
+          "target": "store-commit"
+        },
+        {
+          "accepted": 2128,
+          "cases": 10000,
+          "rejected": 7872,
+          "target": "store-replay"
+        },
+        {
+          "accepted": 1017,
+          "cases": 10000,
+          "rejected": 8983,
+          "target": "sdk-document"
+        },
+        {
+          "accepted": 1012,
+          "cases": 10000,
+          "rejected": 8988,
+          "target": "sdk-receipt"
+        },
+        {
+          "accepted": 1046,
+          "cases": 10000,
+          "rejected": 8954,
+          "target": "splice-frame"
+        },
+        {
+          "accepted": 3249,
+          "cases": 10000,
+          "rejected": 6751,
+          "target": "splice-flows"
+        },
+        {
+          "accepted": 2039,
+          "cases": 10000,
+          "rejected": 7961,
+          "target": "batch-resolution"
+        },
+        {
+          "accepted": 3629,
+          "cases": 10000,
+          "rejected": 6371,
+          "target": "script-args"
+        },
+        {
+          "accepted": 1000,
+          "cases": 10000,
+          "rejected": 9000,
+          "target": "signer-request"
+        },
+        {
+          "accepted": 1024,
+          "cases": 10000,
+          "rejected": 8976,
+          "target": "signer-review"
+        },
+        {
+          "accepted": 1007,
+          "cases": 10000,
+          "rejected": 8993,
+          "target": "signer-response"
+        },
+        {
+          "accepted": 2196,
+          "cases": 10000,
+          "rejected": 7804,
+          "target": "hub-api"
+        },
+        {
+          "accepted": 2008,
+          "cases": 10000,
+          "rejected": 7992,
+          "target": "gateway-api"
+        },
+        {
+          "accepted": 1112,
+          "cases": 10000,
+          "rejected": 8888,
+          "target": "gateway-receipt"
+        }
+      ]
+    },
+    {
+      "report_sha256": "0e459f477e842667272c2d364afcaaa95a493a81c21d562e02fd0471024d6c18",
+      "seed": 17,
+      "targets": [
+        {
+          "accepted": 2354,
+          "cases": 10000,
+          "rejected": 7646,
+          "target": "manifest"
+        },
+        {
+          "accepted": 2702,
+          "cases": 10000,
+          "rejected": 7298,
+          "target": "settlement"
+        },
+        {
+          "accepted": 1226,
+          "cases": 10000,
+          "rejected": 8774,
+          "target": "state-witness"
+        },
+        {
+          "accepted": 1479,
+          "cases": 10000,
+          "rejected": 8521,
+          "target": "close-frame"
+        },
+        {
+          "accepted": 1041,
+          "cases": 10000,
+          "rejected": 8959,
+          "target": "recovery-json"
+        },
+        {
+          "accepted": 1140,
+          "cases": 10000,
+          "rejected": 8860,
+          "target": "factory-frame"
+        },
+        {
+          "accepted": 3283,
+          "cases": 10000,
+          "rejected": 6717,
+          "target": "factory-state"
+        },
+        {
+          "accepted": 1003,
+          "cases": 10000,
+          "rejected": 8997,
+          "target": "factory-materialisation"
+        },
+        {
+          "accepted": 1192,
+          "cases": 10000,
+          "rejected": 8808,
+          "target": "event-json"
+        },
+        {
+          "accepted": 1232,
+          "cases": 10000,
+          "rejected": 8768,
+          "target": "hub-mutation"
+        },
+        {
+          "accepted": 1013,
+          "cases": 10000,
+          "rejected": 8987,
+          "target": "gateway-authorization"
+        },
+        {
+          "accepted": 1005,
+          "cases": 10000,
+          "rejected": 8995,
+          "target": "callback-auth"
+        },
+        {
+          "accepted": 1368,
+          "cases": 10000,
+          "rejected": 8632,
+          "target": "store-commit"
+        },
+        {
+          "accepted": 2144,
+          "cases": 10000,
+          "rejected": 7856,
+          "target": "store-replay"
+        },
+        {
+          "accepted": 1013,
+          "cases": 10000,
+          "rejected": 8987,
+          "target": "sdk-document"
+        },
+        {
+          "accepted": 1008,
+          "cases": 10000,
+          "rejected": 8992,
+          "target": "sdk-receipt"
+        },
+        {
+          "accepted": 1047,
+          "cases": 10000,
+          "rejected": 8953,
+          "target": "splice-frame"
+        },
+        {
+          "accepted": 3223,
+          "cases": 10000,
+          "rejected": 6777,
+          "target": "splice-flows"
+        },
+        {
+          "accepted": 2042,
+          "cases": 10000,
+          "rejected": 7958,
+          "target": "batch-resolution"
+        },
+        {
+          "accepted": 3667,
+          "cases": 10000,
+          "rejected": 6333,
+          "target": "script-args"
+        },
+        {
+          "accepted": 1001,
+          "cases": 10000,
+          "rejected": 8999,
+          "target": "signer-request"
+        },
+        {
+          "accepted": 1024,
+          "cases": 10000,
+          "rejected": 8976,
+          "target": "signer-review"
+        },
+        {
+          "accepted": 1002,
+          "cases": 10000,
+          "rejected": 8998,
+          "target": "signer-response"
+        },
+        {
+          "accepted": 2231,
+          "cases": 10000,
+          "rejected": 7769,
+          "target": "hub-api"
+        },
+        {
+          "accepted": 2001,
+          "cases": 10000,
+          "rejected": 7999,
+          "target": "gateway-api"
+        },
+        {
+          "accepted": 1107,
+          "cases": 10000,
+          "rejected": 8893,
+          "target": "gateway-receipt"
+        }
+      ]
+    },
+    {
+      "report_sha256": "9425cb267632d8c7d7c04cb9c5dc11037716e516e56f451329869f452af0e0a2",
+      "seed": 332043276360,
+      "targets": [
+        {
+          "accepted": 2388,
+          "cases": 10000,
+          "rejected": 7612,
+          "target": "manifest"
+        },
+        {
+          "accepted": 2717,
+          "cases": 10000,
+          "rejected": 7283,
+          "target": "settlement"
+        },
+        {
+          "accepted": 1218,
+          "cases": 10000,
+          "rejected": 8782,
+          "target": "state-witness"
+        },
+        {
+          "accepted": 1484,
+          "cases": 10000,
+          "rejected": 8516,
+          "target": "close-frame"
+        },
+        {
+          "accepted": 1039,
+          "cases": 10000,
+          "rejected": 8961,
+          "target": "recovery-json"
+        },
+        {
+          "accepted": 1139,
+          "cases": 10000,
+          "rejected": 8861,
+          "target": "factory-frame"
+        },
+        {
+          "accepted": 3355,
+          "cases": 10000,
+          "rejected": 6645,
+          "target": "factory-state"
+        },
+        {
+          "accepted": 1006,
+          "cases": 10000,
+          "rejected": 8994,
+          "target": "factory-materialisation"
+        },
+        {
+          "accepted": 1187,
+          "cases": 10000,
+          "rejected": 8813,
+          "target": "event-json"
+        },
+        {
+          "accepted": 1224,
+          "cases": 10000,
+          "rejected": 8776,
+          "target": "hub-mutation"
+        },
+        {
+          "accepted": 1009,
+          "cases": 10000,
+          "rejected": 8991,
+          "target": "gateway-authorization"
+        },
+        {
+          "accepted": 1006,
+          "cases": 10000,
+          "rejected": 8994,
+          "target": "callback-auth"
+        },
+        {
+          "accepted": 1370,
+          "cases": 10000,
+          "rejected": 8630,
+          "target": "store-commit"
+        },
+        {
+          "accepted": 2153,
+          "cases": 10000,
+          "rejected": 7847,
+          "target": "store-replay"
+        },
+        {
+          "accepted": 1020,
+          "cases": 10000,
+          "rejected": 8980,
+          "target": "sdk-document"
+        },
+        {
+          "accepted": 1009,
+          "cases": 10000,
+          "rejected": 8991,
+          "target": "sdk-receipt"
+        },
+        {
+          "accepted": 1062,
+          "cases": 10000,
+          "rejected": 8938,
+          "target": "splice-frame"
+        },
+        {
+          "accepted": 3224,
+          "cases": 10000,
+          "rejected": 6776,
+          "target": "splice-flows"
+        },
+        {
+          "accepted": 2052,
+          "cases": 10000,
+          "rejected": 7948,
+          "target": "batch-resolution"
+        },
+        {
+          "accepted": 3637,
+          "cases": 10000,
+          "rejected": 6363,
+          "target": "script-args"
+        },
+        {
+          "accepted": 1003,
+          "cases": 10000,
+          "rejected": 8997,
+          "target": "signer-request"
+        },
+        {
+          "accepted": 1031,
+          "cases": 10000,
+          "rejected": 8969,
+          "target": "signer-review"
+        },
+        {
+          "accepted": 1006,
+          "cases": 10000,
+          "rejected": 8994,
+          "target": "signer-response"
+        },
+        {
+          "accepted": 2295,
+          "cases": 10000,
+          "rejected": 7705,
+          "target": "hub-api"
+        },
+        {
+          "accepted": 2020,
+          "cases": 10000,
+          "rejected": 7980,
+          "target": "gateway-api"
+        },
+        {
+          "accepted": 1126,
+          "cases": 10000,
+          "rejected": 8874,
+          "target": "gateway-receipt"
+        }
+      ]
+    }
+  ],
+  "required_ci_tests": [
+    "multi_asset_backend_whole_consistent_snapshot_rollback_is_not_detectable_locally",
+    "cooperative_close_consistent_whole_store_rollback_still_needs_external_freshness",
+    "exact_shape_rejects_zero_token_rights_and_unwithdrawable_allocations",
+    "lifetime_reservations_survive_restart_alternatives_closure_and_reorg",
+    "bilateral_splice_peaks_and_factory_children_share_one_atomic_budget",
+    "factory_multi_asset_reduced_release_rejects_retained_reserve_one_below_occupied_floor",
+    "factory_multi_asset_reduced_release_rejects_replayed_frame_and_stale_before_header",
+    "atomic_cas_replay_and_bounded_queries_share_memory_and_disk_semantics",
+    "real_process_kill_before_commit_after_commit_and_after_acknowledgement",
+    "actual_fsync_eio_and_enospc_never_acknowledge_partial_commit",
+    "full_width_public_numbers_round_trip_without_json_number_coercion",
+    "liveness_does_not_wait_for_store_and_busy_scope_is_not_ready",
+    "unavailable_storage_recovers_only_after_the_real_file_is_accessible_again",
+    "each_resource_has_one_fixed_diagnosis_without_hiding_other_resources",
+    "publication_requires_full_fee_headroom_and_short_fresh_window",
+    "real_supervisor_stop_expires_redacted_observation_without_mutating_evidence"
+  ],
+  "schema": "morph.local_w1_results.v1",
+  "scope": "controlled-devnet-no-real-assets",
+  "shadow": {
+    "binary_sha256": "8103178a7df15a2437fcea95466815f10af87db9ec5a59a333519289b93f5fdc",
+    "exact_activation_replay_reactivated": true,
+    "fiber_process_restart_acknowledged": true,
+    "fiber_revision": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+    "forwarding": false,
+    "journal_busy_disabled": true,
+    "journal_released_reactivated": true,
+    "morph_process_restarted": true,
+    "orphaned_activation_disabled": true,
+    "patch_sha256": "39af376d9455449743a7a13da07639ff920df2ae969be063934065d0b82eeda1",
+    "registered": true,
+    "reorg_preserved_backend_authority": true,
+    "spent_custody_disabled": true,
+    "verification_sha256": "9dd6093cefd92be082be80f478693c754eb78a1729724222e636d9b10d78a05c"
+  },
+  "signers": {
+    "cooperative-close": {
+      "attempts": 16,
+      "roles": {
+        "cooperative_close": 8,
+        "root_creation": 4,
+        "root_exit": 4
+      },
+      "verification_sha256": "ea59b818dfe01fecb128fdfc1c623e7af96980140525f97b212b4a231ca7be5c"
+    },
+    "signer-lifecycle": {
+      "attempts": 22,
+      "roles": {
+        "root_creation": 4,
+        "root_exit": 4,
+        "splice_bridge": 4,
+        "splice_creation": 4,
+        "splice_recovery": 4,
+        "update": 2
+      },
+      "verification_sha256": "2f10225a6d7d6e3526c75a090bb3e4402c8e52db76aea7e0f1ace78f8558368d"
+    }
+  },
+  "source_commit": "1003299952a1ef0d3fba1f3900b49e2104c6623e"
+}

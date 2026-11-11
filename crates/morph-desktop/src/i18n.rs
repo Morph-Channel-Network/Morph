@@ -38,6 +38,203 @@ impl Language {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Text {
+    WalletPublicNode,
+    WalletLocalNode,
+    WalletCustomNode,
+    WalletPublicHelp,
+    WalletLocalHelp,
+    WalletEndpointHelp,
+    WalletSecurity,
+    WalletAssetManagement,
+    WalletAccount,
+    WalletConnectionPreview,
+
+    WalletObservedAt,
+    WalletSyncHelp,
+
+    WalletErrorPasswordLength,
+    WalletErrorAmount,
+    WalletErrorAsset,
+    WalletErrorLocked,
+    WalletErrorFee,
+    WalletRefreshFailed,
+    WalletTokenChange,
+    WalletBackupContents,
+
+    InvoiceWalletRequired,
+    InvoiceSecretSaved,
+    OpenLocalWallet,
+
+    AdvancedOptions,
+    HideAdvancedOptions,
+    InvoiceAutomatic,
+    InvoiceAutomaticFailed,
+    ChooseKnownPeer,
+    UseKnownChannel,
+    OptionalDescription,
+    ManagedInvoiceSecret,
+    InvoiceSecretModeHelp,
+
+    WalletImportAssets,
+    WalletAssetReview,
+    WalletAssetReviewHelp,
+    WalletAdmitAssets,
+    WalletDecimals,
+    WalletFeeRate,
+    WalletMoreHistory,
+    WalletStartNew,
+    WalletStartPayment,
+    WalletConnectHelp,
+    WalletNewPasswordAgain,
+    WalletConfirmed,
+    WalletProposed,
+    WalletPending,
+    WalletRejected,
+    WalletUnknown,
+    WalletHeldHelp,
+    WalletRecipientType,
+    WalletPasswordHelp,
+    WalletTotal,
+    WalletBalanceDetails,
+    WalletTransaction,
+    WalletNetChangeHelp,
+    WalletNoNetChange,
+    WalletUnknownAssetEffects,
+    WalletReadyToConnect,
+
+    Wallet,
+    WalletWelcome,
+    WalletWelcomeHelp,
+    WalletName,
+    WalletPassword,
+    WalletPasswordAgain,
+    WalletCreate,
+    WalletImportKey,
+    WalletRestore,
+    WalletBackup,
+    WalletBackupHelp,
+    WalletUnlock,
+    WalletLock,
+    WalletLocked,
+    WalletSend,
+    WalletReceive,
+    WalletHistory,
+    WalletNetwork,
+    WalletAvailable,
+    WalletOccupied,
+    WalletHeld,
+    WalletImmature,
+    WalletAssets,
+    WalletSync,
+    WalletNotSynced,
+    WalletRecipient,
+    WalletAmount,
+    WalletReview,
+    WalletConfirm,
+    WalletReviewHelp,
+    WalletFee,
+    WalletChange,
+    WalletRecipientCapacity,
+    WalletRPC,
+    WalletIndexer,
+    WalletConnect,
+    WalletBusy,
+    WalletPasswordMismatch,
+    WalletSubmitted,
+    WalletUncertain,
+    WalletCheckStatus,
+    WalletResend,
+    WalletSaved,
+    WalletChangePassword,
+    WalletNewPassword,
+    WalletError,
+    WalletErrorUnlock,
+    WalletErrorFunds,
+    WalletErrorAddress,
+    WalletErrorNetwork,
+    WalletErrorReview,
+    WalletErrorOpen,
+    WalletOnChainOnly,
+    WalletNoTransactions,
+    WalletFetchHistory,
+    WalletOwnAddress,
+    WalletKeySelected,
+    WalletBackupSelected,
+    WalletRestoreConfirm,
+    WalletNetworkRequired,
+    WalletLocal,
+    WalletTokenRaw,
+
+    CapabilityBoundary,
+    ApiPermissions,
+    RecordProvenance,
+    WatchService,
+    PrivateEvidenceHidden,
+    LocalServiceMetadata,
+
+    ServicePeerAdded,
+    ServiceInvoiceCreated,
+    ServiceInvoiceDecoded,
+    ServiceInvoiceReceived,
+    ServiceInvoiceSettled,
+    ServiceChannelOpened,
+    ServiceChannelSpliced,
+    ServiceStatePublished,
+    ServiceFinalised,
+    ServiceFactoryOpened,
+    ServiceFactoryAdvanced,
+    ServiceChildMaterialised,
+    ServiceRootProposed,
+    ServiceRootReceipt,
+    ServiceRecoveryImported,
+    ServiceBatchImported,
+    RestoreBootstrapWarning,
+    RestoreSettlingWarning,
+    IgnoredRestoreFlows,
+    UnknownServiceDetail,
+
+    SearchWorkflows,
+    NoMatchingWorkflows,
+    ClearSearch,
+    Copied,
+    OriginalDiagnostic,
+    HideDiagnostic,
+    DiagnosticUnavailable,
+    ErrorEndpoint,
+    ErrorToken,
+    ErrorTransport,
+    ErrorResponse,
+    ErrorPackage,
+    ErrorUnauthorized,
+    ErrorConflict,
+    ErrorRateLimit,
+    ErrorService,
+    ErrorJson,
+    ErrorFile,
+    ErrorFileSize,
+    FileWorkerStopped,
+    NetworkWorkerStopped,
+    ServiceEvent,
+    ServiceMessage,
+    NetworkDevnet,
+    NetworkTestnet,
+    NetworkMainnet,
+    Online,
+    AssetHashPlaceholder,
+    SavedBatchDescription,
+    OpenItem,
+
+    LocalChannelBalance,
+    RecordedCKBOnly,
+    OpenChannelNote,
+    RequestPaymentNote,
+    KeepRecoveryNote,
+    BalanceUnavailable,
+    ViewChannels,
+    ChannelDistribution,
+    ChannelsPreviewLimit,
+    NoPendingActions,
+
     Appearance,
     InterfaceScale,
     ScaleHelp,
@@ -45,11 +242,8 @@ pub enum Text {
     FollowSystem,
     MotionHelp,
     ResetScale,
-    LargerText,
-    SmallerText,
-    FlowCaption,
-    FlowNote,
-    FlowReplay,
+    LargerType,
+    SmallerType,
 
     PreviewCandidateAgain,
     RestorePreviewExpired,
@@ -199,7 +393,7 @@ pub enum Text {
     Enter216CompressedPublicKeys,
     SupplyExactlyOnePaymentPreimageOr,
     Dismiss,
-    OPERATORWORKSPACE,
+    OperatorWorkspace,
     HubConnected,
     HubDataStale,
     Offline,
@@ -215,7 +409,7 @@ pub enum Text {
     NewTask,
     YourNativeOperatorWorkspace,
     ReviewALocalFile,
-    CKBRPC,
+    CkbRpc,
     NotObserved,
     ANodeObservationNotChannelConfirmation,
     WatchEvidence,
@@ -465,7 +659,7 @@ pub enum Text {
     CommittedParticipants,
     Participant,
     OrdinarySettlement,
-    ConditionalCKBSettlement,
+    ConditionalAssetSettlement,
     PendingConditions,
     Condition,
     Amount,
@@ -560,6 +754,436 @@ pub enum Text {
 impl Text {
     fn pair(self) -> (&'static str, &'static str) {
         match self {
+            Self::WalletPublicNode => ("Public node", "公共节点"),
+            Self::WalletLocalNode => ("Local node", "本地节点"),
+            Self::WalletCustomNode => ("Custom", "自定义"),
+            Self::WalletPublicHelp => (
+                "Community RPC · node and indexer share this address.",
+                "社区 RPC · 节点与索引器共用此地址。",
+            ),
+            Self::WalletLocalHelp => (
+                "Your CKB node · 8114 by default; development chain uses 18114.",
+                "连接自己的 CKB 节点 · 默认 8114，开发链使用 18114。",
+            ),
+            Self::WalletEndpointHelp => (
+                "Leave indexer empty to use the node address. Network identity is checked before saving.",
+                "索引器留空时使用节点地址。保存前会验证网络身份。",
+            ),
+            Self::WalletSecurity => ("Backup & security", "备份与安全"),
+            Self::WalletAssetManagement => ("Token definitions", "代币定义"),
+            Self::WalletAccount => ("Account", "账户"),
+            Self::WalletConnectionPreview => ("Connect & verify", "连接并验证"),
+            Self::WalletObservedAt => ("Verified at block", "验证区块高度"),
+            Self::WalletSyncHelp => (
+                "Balances refresh while this page is visible. Every payment rechecks live inputs before signing.",
+                "此页面可见时自动刷新余额，每笔付款签名前会重新核对 live inputs。",
+            ),
+
+            Self::WalletErrorPasswordLength => (
+                "Use at least 12 characters, up to 1,024 bytes.",
+                "密码至少 12 个字符，总长度不超过 1,024 字节。",
+            ),
+            Self::WalletErrorAmount => (
+                "Enter a positive amount within the asset’s decimal precision.",
+                "请输入正金额，且小数位不能超过资产精度。",
+            ),
+            Self::WalletErrorAsset => (
+                "Check the asset definition, network and deployment. Existing asset definitions cannot be replaced silently.",
+                "请核对资产定义、网络和部署。已添加的资产定义不能被静默替换。",
+            ),
+            Self::WalletErrorLocked => (
+                "Unlock your wallet before signing or creating a payment secret.",
+                "请先解锁钱包，再签名或创建付款秘密。",
+            ),
+            Self::WalletErrorFee => (
+                "The estimated fee exceeds this wallet’s limit. No transaction was signed.",
+                "预计手续费超过钱包上限，尚未签名交易。",
+            ),
+            Self::WalletRefreshFailed => (
+                "Balances could not be verified. Refresh after reconnecting.",
+                "未能验证余额，请恢复连接后刷新。",
+            ),
+            Self::WalletTokenChange => ("Token change", "代币找零"),
+            Self::WalletBackupContents => (
+                "Includes the encrypted key, saved payment secrets, asset settings and signed transaction evidence. Public transaction metadata is readable.",
+                "包含加密私钥、付款秘密、资产设置和已签交易证据。公开交易元数据未加密。",
+            ),
+
+            Self::InvoiceWalletRequired => (
+                "Unlock your local wallet to save a recoverable payment secret, then return to this draft.",
+                "请先解锁本机钱包以安全保存可恢复的付款秘密，然后返回此草稿。",
+            ),
+            Self::InvoiceSecretSaved => (
+                "Payment secret is encrypted in your local wallet and included in its backup.",
+                "付款秘密已加密保存在本机钱包中，并包含在钱包备份内。",
+            ),
+            Self::OpenLocalWallet => ("Open local wallet", "打开本机钱包"),
+
+            Self::AdvancedOptions => ("Advanced options", "高级选项"),
+            Self::HideAdvancedOptions => ("Hide advanced options", "收起高级选项"),
+            Self::InvoiceAutomatic => (
+                "Payment secret is generated securely. Expires in one hour by default.",
+                "付款秘密由程序安全生成，默认一小时后到期。",
+            ),
+            Self::InvoiceAutomaticFailed => (
+                "Could not generate a secure payment secret. Reopen this draft before continuing.",
+                "未能生成安全的付款秘密。请重新新建草稿后继续。",
+            ),
+            Self::ChooseKnownPeer => ("Choose a saved peer", "选择已保存的对端"),
+            Self::UseKnownChannel => ("Use a channel", "选择通道"),
+            Self::OptionalDescription => ("Description (optional)", "备注（可选）"),
+            Self::ManagedInvoiceSecret => ("Managed payment secret", "自动管理的付款秘密"),
+            Self::InvoiceSecretModeHelp => (
+                "A supplied payment hash replaces the generated secret. Only use this when the matching preimage is managed elsewhere.",
+                "填写付款哈希后将替代自动生成的秘密。仅在其他系统持有对应原像时使用。",
+            ),
+
+            Self::WalletImportAssets => ("Import asset definitions", "导入资产定义"),
+            Self::WalletAssetReview => ("Review assets", "核对资产"),
+            Self::WalletAssetReviewHelp => (
+                "Check the network, token identity and decimals against the issuer before adding. A symbol alone does not identify an asset.",
+                "添加前请与发行方核对网络、资产身份和精度。符号相同不代表同一种资产。",
+            ),
+            Self::WalletAdmitAssets => ("Add these assets", "添加这些资产"),
+            Self::WalletDecimals => ("Decimal places", "小数位数"),
+            Self::WalletFeeRate => (
+                "Estimated fee rate · shannons / KB",
+                "估算费率 · shannons / KB",
+            ),
+            Self::WalletMoreHistory => ("Load more transactions", "加载更多交易"),
+            Self::WalletStartNew => ("Create a new wallet instead", "改为新建钱包"),
+            Self::WalletStartPayment => ("New payment", "发起新付款"),
+            Self::WalletConnectHelp => (
+                "Connect a CKB node to see your balances and receive funds. Indexer defaults to the same endpoint.",
+                "连接 CKB 节点即可查询余额和收款。索引器默认使用相同地址。",
+            ),
+            Self::WalletNewPasswordAgain => ("Confirm new password", "确认新密码"),
+            Self::WalletConfirmed => ("Confirmed on chain", "链上已确认"),
+            Self::WalletProposed => ("Proposed · awaiting confirmation", "已提议 · 等待确认"),
+            Self::WalletPending => ("In transaction pool", "交易池中"),
+            Self::WalletRejected => ("Rejected by this node", "当前节点已拒绝"),
+            Self::WalletUnknown => ("Not found at this node", "当前节点尚未找到"),
+            Self::WalletHeldHelp => (
+                "Signed inputs stay reserved until spent. A rejection or timeout does not revoke a signature; only resend the same transaction.",
+                "已签名的输入在花费前保持预留。节点拒绝或超时不代表签名已撤销；可重新提交同一笔交易。",
+            ),
+            Self::WalletRecipientType => ("Token identity", "资产身份"),
+            Self::WalletPasswordHelp => (
+                "At least 12 characters. Keep the encrypted backup and password separately; neither can replace the other.",
+                "至少 12 个字符。请分开保管加密备份和密码，缺少任一项都无法恢复。",
+            ),
+            Self::WalletTotal => ("Total on-chain capacity", "链上总容量"),
+            Self::WalletBalanceDetails => ("Balance details", "余额明细"),
+            Self::WalletTransaction => ("Transaction", "交易"),
+            Self::WalletNetChangeHelp => (
+                "Amounts show this wallet’s net change. CKB includes fees and cell capacity; the fee below is for the entire transaction.",
+                "金额显示本钱包的净变化。CKB 包含费用与 cell 容量变化；下方为整笔交易的手续费。",
+            ),
+            Self::WalletNoNetChange => {
+                ("No net change in recognized balances", "已识别余额无净变化")
+            }
+            Self::WalletUnknownAssetEffects => (
+                "Some asset data is unsupported; its quantity change is not shown.",
+                "部分资产数据尚不支持，未推断其数量变化。",
+            ),
+            Self::WalletReadyToConnect => ("Wallet ready", "钱包已就绪"),
+
+            Self::Wallet => ("Wallet", "钱包"),
+            Self::WalletWelcome => ("Your money. Your keys.", "你的资产，你的密钥。"),
+            Self::WalletWelcomeHelp => (
+                "Create a local wallet or restore your encrypted backup. Your keys stay on this device.",
+                "创建本机钱包，或恢复加密备份。密钥保留在这台设备上。",
+            ),
+            Self::WalletName => ("Wallet name", "钱包名称"),
+            Self::WalletPassword => ("Wallet password", "钱包口令"),
+            Self::WalletPasswordAgain => ("Confirm password", "再次输入口令"),
+            Self::WalletCreate => ("Create wallet", "创建钱包"),
+            Self::WalletImportKey => ("Import protected key file", "导入受保护密钥文件"),
+            Self::WalletRestore => ("Restore encrypted backup", "恢复加密备份"),
+            Self::WalletBackup => ("Back up wallet", "备份钱包"),
+            Self::WalletBackupHelp => (
+                "Save an encrypted backup before adding funds. Keep the backup and its password separately.",
+                "入金前请保存加密备份，并将备份与口令分开保管。",
+            ),
+            Self::WalletUnlock => ("Unlock", "解锁"),
+            Self::WalletLock => ("Lock wallet", "锁定钱包"),
+            Self::WalletLocked => (
+                "Wallet locked · balances remain viewable",
+                "钱包已锁定 · 仍可查看余额",
+            ),
+            Self::WalletSend => ("Send", "付款"),
+            Self::WalletReceive => ("Receive", "收款"),
+            Self::WalletHistory => ("Transactions", "交易记录"),
+            Self::WalletNetwork => ("CKB connection", "CKB 连接"),
+            Self::WalletAvailable => ("Available on-chain CKB", "链上可用 CKB"),
+            Self::WalletOccupied => ("Occupied capacity", "占用容量"),
+            Self::WalletHeld => ("Pending transaction inputs", "待确认交易占用"),
+            Self::WalletImmature => ("Immature cellbase", "尚未成熟的挖矿奖励"),
+            Self::WalletAssets => ("On-chain assets", "链上资产"),
+            Self::WalletSync => ("Sync balances", "同步余额"),
+            Self::WalletNotSynced => (
+                "Connect a CKB node to load verified balances.",
+                "连接 CKB 节点后同步链上余额。",
+            ),
+            Self::WalletRecipient => ("Recipient address", "收款地址"),
+            Self::WalletAmount => ("Amount", "金额"),
+            Self::WalletReview => ("Review payment", "审阅付款"),
+            Self::WalletConfirm => ("Confirm & send", "确认并发送"),
+            Self::WalletReviewHelp => (
+                "Check the recipient and total before signing. Inputs, change and fees were calculated from live cells.",
+                "签名前请核对收款人和金额。输入、找零与费用已根据链上 live cells 计算。",
+            ),
+            Self::WalletFee => ("Network fee", "网络手续费"),
+            Self::WalletChange => ("Your change", "找零给自己"),
+            Self::WalletRecipientCapacity => ("Capacity sent to recipient", "转入收款方的容量"),
+            Self::WalletRPC => ("CKB RPC URL", "CKB RPC 地址"),
+            Self::WalletIndexer => (
+                "Indexer URL (same as RPC if empty)",
+                "Indexer 地址（留空使用 RPC）",
+            ),
+            Self::WalletConnect => ("Verify & connect", "验证并连接"),
+            Self::WalletBusy => ("Working…", "正在处理…"),
+            Self::WalletPasswordMismatch => (
+                "Passwords must match and contain at least 12 bytes.",
+                "两次口令必须一致，且长度至少 12 字节。",
+            ),
+            Self::WalletSubmitted => (
+                "Submitted · waiting for confirmation",
+                "已提交 · 等待链上确认",
+            ),
+            Self::WalletUncertain => (
+                "Submission unresolved · check this exact transaction before retrying",
+                "提交结果待核对 · 请先检查这笔准确交易",
+            ),
+            Self::WalletCheckStatus => ("Check status", "查询状态"),
+            Self::WalletResend => ("Resend exact transaction", "重发同一笔交易"),
+            Self::WalletSaved => ("Encrypted backup saved", "加密备份已保存"),
+            Self::WalletChangePassword => ("Change password", "修改口令"),
+            Self::WalletNewPassword => ("New password", "新口令"),
+            Self::WalletError => (
+                "The wallet could not complete this action. Review the details below.",
+                "钱包未能完成此操作，请查看下面的具体原因。",
+            ),
+            Self::WalletErrorUnlock => (
+                "Incorrect password or damaged wallet file.",
+                "口令不正确，或钱包文件已损坏。",
+            ),
+            Self::WalletErrorFunds => (
+                "Not enough available funds for the amount, occupied capacity and fee.",
+                "可用资金不足以覆盖金额、占用容量与手续费。",
+            ),
+            Self::WalletErrorAddress => (
+                "Check the address and the selected network.",
+                "请检查收款地址与所选网络。",
+            ),
+            Self::WalletErrorNetwork => (
+                "The node could not provide a current, consistent view of this network. Reconnect or sync again.",
+                "节点未能提供当前网络的一致链上数据，请重新连接或同步。",
+            ),
+            Self::WalletErrorReview => (
+                "This review has expired or the inputs changed. Review the payment again.",
+                "本次审阅已过期，或交易输入发生变化，请重新审阅付款。",
+            ),
+            Self::WalletErrorOpen => (
+                "This wallet is already open in another process.",
+                "此钱包已在另一个进程中打开。",
+            ),
+            Self::WalletOnChainOnly => (
+                "On-chain wallet balance. Channel custody is shown separately.",
+                "这里是链上钱包余额，通道托管资产单独显示。",
+            ),
+            Self::WalletNoTransactions => ("No wallet transactions yet.", "还没有钱包交易。"),
+            Self::WalletFetchHistory => ("Refresh transactions", "刷新交易记录"),
+            Self::WalletOwnAddress => ("Your receiving address", "你的收款地址"),
+            Self::WalletKeySelected => ("Key file selected", "已选择密钥文件"),
+            Self::WalletBackupSelected => ("Encrypted backup selected", "已选择加密备份"),
+            Self::WalletRestoreConfirm => ("Restore wallet", "恢复钱包"),
+            Self::WalletNetworkRequired => (
+                "Choose a network before receiving funds.",
+                "收款前请先选择并连接网络。",
+            ),
+            Self::WalletLocal => ("Local wallet", "本机钱包"),
+            Self::WalletTokenRaw => ("Unverified asset · base units", "未鉴定资产 · 基础单位"),
+
+            Self::CapabilityBoundary => ("Capability boundary", "能力边界"),
+            Self::ApiPermissions => ("API permissions", "API 权限"),
+            Self::RecordProvenance => ("Record provenance", "记录来源"),
+            Self::WatchService => ("Watch service", "观察服务"),
+            Self::PrivateEvidenceHidden => ("[private evidence hidden]", "[私密证据已隐藏]"),
+            Self::LocalServiceMetadata => (
+                "Local service metadata; open details to inspect the original fields.",
+                "本地服务信息；打开详情查看原始字段。",
+            ),
+
+            Self::ServicePeerAdded => (
+                "Peer added to the local node state",
+                "对端已添加到本地节点记录。",
+            ),
+            Self::ServiceInvoiceCreated => {
+                ("Invoice created by morph-core", "发票已由 Morph 核心创建。")
+            }
+            Self::ServiceInvoiceDecoded => (
+                "Invoice decoded and marked as received",
+                "发票已解码并标记为收到。",
+            ),
+            Self::ServiceInvoiceReceived => ("Invoice marked as received", "发票已标记为收到。"),
+            Self::ServiceInvoiceSettled => (
+                "Invoice settled with a matching preimage",
+                "发票已使用匹配的原像完成结算。",
+            ),
+            Self::ServiceChannelOpened => (
+                "Channel opened in the Morph node state",
+                "通道已添加到 Morph 节点记录。",
+            ),
+            Self::ServiceChannelSpliced => {
+                ("Channel funding context advanced", "通道资金上下文已推进。")
+            }
+            Self::ServiceStatePublished => (
+                "Latest channel state published",
+                "最新通道状态已记录为发布。",
+            ),
+            Self::ServiceFinalised => ("Settling channel finalised", "结算中的通道已记录为完成。"),
+            Self::ServiceFactoryOpened => (
+                "Factory opened in the Morph node state",
+                "工厂已添加到 Morph 节点记录。",
+            ),
+            Self::ServiceFactoryAdvanced => {
+                ("Factory update number advanced", "工厂更新号已推进。")
+            }
+            Self::ServiceChildMaterialised => (
+                "Factory child channel materialised",
+                "工厂子通道已记录为物化。",
+            ),
+            Self::ServiceRootProposed => (
+                "Root funding proposal retained for participant review",
+                "根资金提案已保存，等待参与方审阅。",
+            ),
+            Self::ServiceRootReceipt => (
+                "Verified participant funding receipt retained",
+                "已验证的参与方资金回执已保存。",
+            ),
+            Self::ServiceRecoveryImported => (
+                "Validated multi-asset unilateral recovery package stored",
+                "已验证的多资产单侧恢复包已保存。",
+            ),
+            Self::ServiceBatchImported => (
+                "Validated conditional force-resolution package stored for watchtower recovery",
+                "已验证的条件强制结算包已保存，可用于观察服务恢复。",
+            ),
+            Self::RestoreBootstrapWarning => (
+                "state restore is limited to empty bootstrap state until chain-anchored restore is implemented",
+                "目前只允许恢复空白的初始工作区；基于链上证据的恢复尚未实现。",
+            ),
+            Self::RestoreSettlingWarning => (
+                "state restore refuses settling channels because restored state cannot be chain-anchored",
+                "不能恢复处于结算阶段的通道，因为恢复状态无法与链上证据绑定。",
+            ),
+            Self::IgnoredRestoreFlows => (
+                "Completed flows absent from the live workspace are ignored",
+                "当前工作区中不存在的已完成流程将被忽略",
+            ),
+            Self::UnknownServiceDetail => (
+                "The service supplied additional information. Expand it to read the original.",
+                "服务提供了附加信息，可展开查看原文。",
+            ),
+
+            Self::SearchWorkflows => ("Find a task…", "查找任务…"),
+            Self::NoMatchingWorkflows => ("No matching tasks", "没有匹配的任务"),
+            Self::ClearSearch => ("Clear search", "清除搜索"),
+            Self::Copied => ("Copied", "已复制"),
+            Self::OriginalDiagnostic => ("Original diagnostic", "原始诊断"),
+            Self::HideDiagnostic => ("Hide diagnostic", "收起诊断"),
+            Self::DiagnosticUnavailable => (
+                "The operation could not be completed. Review the original diagnostic for details.",
+                "操作未能完成。可展开原始诊断查看具体原因。",
+            ),
+            Self::ErrorEndpoint => (
+                "Use an HTTPS origin or an HTTP loopback address, without credentials, query or fragment.",
+                "请使用 HTTPS 地址或 HTTP 回环地址，不要包含凭据、查询参数或片段。",
+            ),
+            Self::ErrorToken => (
+                "The access token is invalid. Check the token in connection settings.",
+                "访问令牌无效，请在连接设置中检查。",
+            ),
+            Self::ErrorTransport => (
+                "The Hub could not be reached. Check the address and service, then reconnect or refresh.",
+                "无法连接 Hub。请检查地址和服务，再重新连接或刷新。",
+            ),
+            Self::ErrorResponse => (
+                "The Hub response could not be read. Reconnect or inspect the service diagnostic.",
+                "无法读取 Hub 响应。请重新连接，或检查服务端诊断。",
+            ),
+            Self::ErrorPackage => (
+                "The evidence failed canonical validation. Check the document, signatures and funding context.",
+                "证据未通过规范校验。请检查文档、签名及资金上下文。",
+            ),
+            Self::ErrorUnauthorized => (
+                "Access was rejected. Check the token and required permissions.",
+                "访问被拒绝，请检查令牌和所需权限。",
+            ),
+            Self::ErrorConflict => (
+                "The workspace changed or the request conflicts with current state. Refresh and review again.",
+                "工作区已变化，或请求与当前状态冲突。请刷新后重新审阅。",
+            ),
+            Self::ErrorRateLimit => (
+                "The service is rate limiting requests. Wait before trying again.",
+                "请求过于频繁，请等待后再试。",
+            ),
+            Self::ErrorService => (
+                "The service could not complete the request. Inspect its diagnostic before continuing.",
+                "服务未能完成请求，请检查原始诊断后再继续。",
+            ),
+            Self::ErrorJson => (
+                "The document is not valid JSON. Check its syntax and required fields.",
+                "文档不是有效 JSON，请检查语法和必填字段。",
+            ),
+            Self::ErrorFile => (
+                "The file could not be read or saved. Check the path, permissions and whether it already exists.",
+                "无法读取或保存文件，请检查路径、权限及文件是否已存在。",
+            ),
+            Self::ErrorFileSize => (
+                "The document exceeds the 4 MiB limit. Choose a smaller document.",
+                "文档超过 4 MiB 上限，请选择更小的文档。",
+            ),
+            Self::FileWorkerStopped => (
+                "File worker stopped; inspect the destination before retrying a save.",
+                "文件工作器已停止；重试保存前，请先检查目标文件。",
+            ),
+            Self::NetworkWorkerStopped => (
+                "Network worker stopped; restart and reconcile before writing.",
+                "网络工作器已停止；请重启应用并完成对账后再写入。",
+            ),
+            Self::ServiceEvent => ("Service event", "服务事件"),
+            Self::ServiceMessage => ("Original service message", "服务原始信息"),
+            Self::NetworkDevnet => ("Development network", "开发网络"),
+            Self::NetworkTestnet => ("Test network", "测试网络"),
+            Self::NetworkMainnet => ("Main network", "主网络"),
+            Self::Online => ("Connected", "已连接"),
+            Self::AssetHashPlaceholder => (
+                "0x + 64 lowercase hex characters",
+                "0x + 64 位小写十六进制字符",
+            ),
+            Self::SavedBatchDescription => (
+                "Saved conditional settlement evidence",
+                "已保存的条件结算证据",
+            ),
+            Self::OpenItem => ("Open record", "打开记录"),
+            Self::LocalChannelBalance => ("Your channel balance", "本地通道余额"),
+            Self::RecordedCKBOnly => (
+                "Recorded CKB · excludes tokens and wallet funds",
+                "已记录的 CKB · 不含代币与钱包资金",
+            ),
+            Self::OpenChannelNote => ("Create a bilateral channel record", "创建双边通道记录"),
+            Self::RequestPaymentNote => ("Create a payment request", "创建收款请求"),
+            Self::KeepRecoveryNote => ("Keep your signed exit evidence", "保存已签名的退出证据"),
+            Self::BalanceUnavailable => ("Balance unavailable", "余额暂不可用"),
+            Self::ViewChannels => ("View channels", "查看通道"),
+            Self::ChannelDistribution => ("Channel allocation", "通道资产分布"),
+            Self::ChannelsPreviewLimit => (
+                "Showing up to 6 channels. Open the channel list for all records.",
+                "此处最多展示 6 条通道，完整记录请打开通道列表。",
+            ),
+            Self::NoPendingActions => ("Nothing needs your attention", "暂无待处理事项"),
             Self::Appearance => ("Appearance", "外观与动效"),
             Self::InterfaceScale => ("Text and interface size", "文字与界面大小"),
             Self::ScaleHelp => (
@@ -573,11 +1197,8 @@ impl Text {
                 "仅在交互时播放短动效，并始终尊重系统的减少动态效果设置。",
             ),
             Self::ResetScale => ("Reset to 100%", "重置为 100%"),
-            Self::LargerText => ("Larger text", "放大文字"),
-            Self::SmallerText => ("Smaller text", "缩小文字"),
-            Self::FlowCaption => ("MORPH FLOW · visual identity", "MORPH FLOW · 品牌动效"),
-            Self::FlowNote => ("Independent state. Shared flow.", "独立状态，自由流转。"),
-            Self::FlowReplay => ("Replay visual", "重播动效"),
+            Self::LargerType => ("Larger text", "放大文字"),
+            Self::SmallerType => ("Smaller text", "缩小文字"),
             Self::PreviewCandidateAgain => (
                 "Preview this candidate again before restoring.",
                 "请先重新预览此候选状态，再执行恢复。",
@@ -823,11 +1444,11 @@ impl Text {
             Self::StoppedWaiting => ("Stopped waiting", "已停止等待"),
             Self::ReviewedAfterRefresh => ("Reviewed after refresh", "已刷新并核对"),
             Self::Channels => ("Channels", "通道记录"),
-            Self::Factories => ("Factories", "Factory"),
+            Self::Factories => ("Factories", "工厂"),
             Self::PaymentsInvoices => ("Payments & invoices", "支付与发票"),
             Self::EvidenceRecovery => ("Evidence & recovery", "证据与恢复"),
             Self::FundingCeremony => ("Funding ceremony", "资金仪式"),
-            Self::WorkspaceRestore => ("Workspace & restore", "工作区与恢复"),
+            Self::WorkspaceRestore => ("Workspace tools", "工作区工具"),
             Self::Peers => ("Peers", "对端记录"),
             Self::All => ("All", "全部"),
             Self::NeedsAttention => ("Needs attention", "需要处理"),
@@ -865,7 +1486,7 @@ impl Text {
                 "支付 preimage 与支付哈希必须且只能填写一个。",
             ),
             Self::Dismiss => ("Dismiss", "关闭提示"),
-            Self::OPERATORWORKSPACE => ("OPERATOR WORKSPACE", "操作工作区"),
+            Self::OperatorWorkspace => ("MY WORKSPACE", "我的空间"),
             Self::HubConnected => ("Hub connected", "Hub 已连接"),
             Self::HubDataStale => ("Hub data stale", "Hub 数据待刷新"),
             Self::Offline => ("Offline", "离线"),
@@ -886,9 +1507,9 @@ impl Text {
             }
             Self::Overview => ("Overview", "总览"),
             Self::NewTask => ("New task", "新建任务"),
-            Self::YourNativeOperatorWorkspace => ("Your Morph workspace", "你的 Morph 工作区"),
+            Self::YourNativeOperatorWorkspace => ("Your wallet and channels", "你的钱包与通道"),
             Self::ReviewALocalFile => ("Review a local file", "审阅本地文件"),
-            Self::CKBRPC => ("CKB RPC", "CKB 节点观测"),
+            Self::CkbRpc => ("CKB RPC", "CKB 节点观测"),
             Self::NotObserved => ("Not observed", "尚未核实"),
             Self::ANodeObservationNotChannelConfirmation => (
                 "A node observation, not channel confirmation",
@@ -1197,8 +1818,8 @@ impl Text {
                 "公开身份与显示名称。",
             ),
             Self::PrivateExportAndPreviewedRestore => (
-                "Private export and previewed restore.",
-                "私密导出与经预览的恢复。",
+                "Local record maintenance, export and restore; these do not submit chain transactions.",
+                "维护本地记录、导出与恢复；这些操作不会提交链上交易。",
             ),
             Self::UseANonnegativeDecimalUpTo => (
                 "Use a nonnegative decimal, up to 8 fractional digits.",
@@ -1357,7 +1978,7 @@ impl Text {
             Self::CommittedParticipants => ("Committed participants", "承诺中的参与者"),
             Self::Participant => ("Participant", "参与者"),
             Self::OrdinarySettlement => ("Ordinary settlement", "普通结算"),
-            Self::ConditionalCKBSettlement => ("Conditional CKB settlement", "CKB 条件结算"),
+            Self::ConditionalAssetSettlement => ("Conditional settlement", "条件结算"),
             Self::PendingConditions => ("Pending conditions", "待解析条件价值"),
             Self::Condition => ("Condition", "条件"),
             Self::Amount => ("Amount", "金额"),
@@ -1427,8 +2048,8 @@ impl Text {
             Self::Seconds => ("s", "秒"),
             Self::CKBBusiness => ("CKB business", "CKB 业务价值"),
             Self::ChooseAWorkspaceToGetStarted => (
-                "Choose a workspace to get started.",
-                "连接工作区，开始管理通道与证据。",
+                "Use your local wallet, or connect a Hub to manage channels.",
+                "使用本机钱包，或连接 Hub 管理通道。",
             ),
             Self::ConnectToHub => ("Connect to Hub", "连接 Hub"),
             Self::OverviewOfYourWorkspace => ("Your workspace at a glance.", "工作区一览。"),
@@ -1436,8 +2057,8 @@ impl Text {
             Self::ReviewExactRequest => ("Review exact request", "审阅精确请求"),
             Self::Connection => ("Connection", "连接"),
             Self::KeyAndChainOperationsRemainIn => (
-                "Key and chain operations remain in the existing signing ceremony.",
-                "私钥与链上操作仍由既有签名仪式管理。",
+                "Wallet payments run locally. Channel custody remains protected by its existing signing and recovery ceremony.",
+                "钱包付款在本机完成；通道托管继续遵循既有签名与恢复仪式。",
             ),
             Self::OpenSettings => ("Open settings", "打开设置"),
             Self::SwitchLanguage => ("Switch language", "切换界面语言"),
@@ -1474,6 +2095,192 @@ impl Text {
         }
     }
     pub const ALL: &'static [Self] = &[
+        Self::WalletPublicNode,
+        Self::WalletLocalNode,
+        Self::WalletCustomNode,
+        Self::WalletPublicHelp,
+        Self::WalletLocalHelp,
+        Self::WalletEndpointHelp,
+        Self::WalletSecurity,
+        Self::WalletAssetManagement,
+        Self::WalletAccount,
+        Self::WalletConnectionPreview,
+        Self::WalletObservedAt,
+        Self::WalletSyncHelp,
+        Self::WalletErrorPasswordLength,
+        Self::WalletErrorAmount,
+        Self::WalletErrorAsset,
+        Self::WalletErrorLocked,
+        Self::WalletErrorFee,
+        Self::WalletRefreshFailed,
+        Self::WalletTokenChange,
+        Self::WalletBackupContents,
+        Self::InvoiceWalletRequired,
+        Self::InvoiceSecretSaved,
+        Self::OpenLocalWallet,
+        Self::AdvancedOptions,
+        Self::HideAdvancedOptions,
+        Self::InvoiceAutomatic,
+        Self::InvoiceAutomaticFailed,
+        Self::ChooseKnownPeer,
+        Self::UseKnownChannel,
+        Self::OptionalDescription,
+        Self::ManagedInvoiceSecret,
+        Self::InvoiceSecretModeHelp,
+        Self::WalletImportAssets,
+        Self::WalletAssetReview,
+        Self::WalletAssetReviewHelp,
+        Self::WalletAdmitAssets,
+        Self::WalletDecimals,
+        Self::WalletFeeRate,
+        Self::WalletMoreHistory,
+        Self::WalletStartNew,
+        Self::WalletStartPayment,
+        Self::WalletConnectHelp,
+        Self::WalletNewPasswordAgain,
+        Self::WalletConfirmed,
+        Self::WalletProposed,
+        Self::WalletPending,
+        Self::WalletRejected,
+        Self::WalletUnknown,
+        Self::WalletHeldHelp,
+        Self::WalletRecipientType,
+        Self::WalletPasswordHelp,
+        Self::WalletTotal,
+        Self::WalletBalanceDetails,
+        Self::WalletTransaction,
+        Self::WalletNetChangeHelp,
+        Self::WalletNoNetChange,
+        Self::WalletUnknownAssetEffects,
+        Self::WalletReadyToConnect,
+        Self::Wallet,
+        Self::WalletWelcome,
+        Self::WalletWelcomeHelp,
+        Self::WalletName,
+        Self::WalletPassword,
+        Self::WalletPasswordAgain,
+        Self::WalletCreate,
+        Self::WalletImportKey,
+        Self::WalletRestore,
+        Self::WalletBackup,
+        Self::WalletBackupHelp,
+        Self::WalletUnlock,
+        Self::WalletLock,
+        Self::WalletLocked,
+        Self::WalletSend,
+        Self::WalletReceive,
+        Self::WalletHistory,
+        Self::WalletNetwork,
+        Self::WalletAvailable,
+        Self::WalletOccupied,
+        Self::WalletHeld,
+        Self::WalletImmature,
+        Self::WalletAssets,
+        Self::WalletSync,
+        Self::WalletNotSynced,
+        Self::WalletRecipient,
+        Self::WalletAmount,
+        Self::WalletReview,
+        Self::WalletConfirm,
+        Self::WalletReviewHelp,
+        Self::WalletFee,
+        Self::WalletChange,
+        Self::WalletRecipientCapacity,
+        Self::WalletRPC,
+        Self::WalletIndexer,
+        Self::WalletConnect,
+        Self::WalletBusy,
+        Self::WalletPasswordMismatch,
+        Self::WalletSubmitted,
+        Self::WalletUncertain,
+        Self::WalletCheckStatus,
+        Self::WalletResend,
+        Self::WalletSaved,
+        Self::WalletChangePassword,
+        Self::WalletNewPassword,
+        Self::WalletError,
+        Self::WalletErrorUnlock,
+        Self::WalletErrorFunds,
+        Self::WalletErrorAddress,
+        Self::WalletErrorNetwork,
+        Self::WalletErrorReview,
+        Self::WalletErrorOpen,
+        Self::WalletOnChainOnly,
+        Self::WalletNoTransactions,
+        Self::WalletFetchHistory,
+        Self::WalletOwnAddress,
+        Self::WalletKeySelected,
+        Self::WalletBackupSelected,
+        Self::WalletRestoreConfirm,
+        Self::WalletNetworkRequired,
+        Self::WalletLocal,
+        Self::WalletTokenRaw,
+        Self::CapabilityBoundary,
+        Self::ApiPermissions,
+        Self::RecordProvenance,
+        Self::WatchService,
+        Self::PrivateEvidenceHidden,
+        Self::LocalServiceMetadata,
+        Self::ServicePeerAdded,
+        Self::ServiceInvoiceCreated,
+        Self::ServiceInvoiceDecoded,
+        Self::ServiceInvoiceReceived,
+        Self::ServiceInvoiceSettled,
+        Self::ServiceChannelOpened,
+        Self::ServiceChannelSpliced,
+        Self::ServiceStatePublished,
+        Self::ServiceFinalised,
+        Self::ServiceFactoryOpened,
+        Self::ServiceFactoryAdvanced,
+        Self::ServiceChildMaterialised,
+        Self::ServiceRootProposed,
+        Self::ServiceRootReceipt,
+        Self::ServiceRecoveryImported,
+        Self::ServiceBatchImported,
+        Self::RestoreBootstrapWarning,
+        Self::RestoreSettlingWarning,
+        Self::IgnoredRestoreFlows,
+        Self::UnknownServiceDetail,
+        Self::SearchWorkflows,
+        Self::NoMatchingWorkflows,
+        Self::ClearSearch,
+        Self::Copied,
+        Self::OriginalDiagnostic,
+        Self::HideDiagnostic,
+        Self::DiagnosticUnavailable,
+        Self::ErrorEndpoint,
+        Self::ErrorToken,
+        Self::ErrorTransport,
+        Self::ErrorResponse,
+        Self::ErrorPackage,
+        Self::ErrorUnauthorized,
+        Self::ErrorConflict,
+        Self::ErrorRateLimit,
+        Self::ErrorService,
+        Self::ErrorJson,
+        Self::ErrorFile,
+        Self::ErrorFileSize,
+        Self::FileWorkerStopped,
+        Self::NetworkWorkerStopped,
+        Self::ServiceEvent,
+        Self::ServiceMessage,
+        Self::NetworkDevnet,
+        Self::NetworkTestnet,
+        Self::NetworkMainnet,
+        Self::Online,
+        Self::AssetHashPlaceholder,
+        Self::SavedBatchDescription,
+        Self::OpenItem,
+        Self::LocalChannelBalance,
+        Self::RecordedCKBOnly,
+        Self::OpenChannelNote,
+        Self::RequestPaymentNote,
+        Self::KeepRecoveryNote,
+        Self::BalanceUnavailable,
+        Self::ViewChannels,
+        Self::ChannelDistribution,
+        Self::ChannelsPreviewLimit,
+        Self::NoPendingActions,
         Self::Appearance,
         Self::InterfaceScale,
         Self::ScaleHelp,
@@ -1481,11 +2288,8 @@ impl Text {
         Self::FollowSystem,
         Self::MotionHelp,
         Self::ResetScale,
-        Self::LargerText,
-        Self::SmallerText,
-        Self::FlowCaption,
-        Self::FlowNote,
-        Self::FlowReplay,
+        Self::LargerType,
+        Self::SmallerType,
         Self::PreviewCandidateAgain,
         Self::RestorePreviewExpired,
         Self::DocumentSizeLimit,
@@ -1634,7 +2438,7 @@ impl Text {
         Self::Enter216CompressedPublicKeys,
         Self::SupplyExactlyOnePaymentPreimageOr,
         Self::Dismiss,
-        Self::OPERATORWORKSPACE,
+        Self::OperatorWorkspace,
         Self::HubConnected,
         Self::HubDataStale,
         Self::Offline,
@@ -1650,7 +2454,7 @@ impl Text {
         Self::NewTask,
         Self::YourNativeOperatorWorkspace,
         Self::ReviewALocalFile,
-        Self::CKBRPC,
+        Self::CkbRpc,
         Self::NotObserved,
         Self::ANodeObservationNotChannelConfirmation,
         Self::WatchEvidence,
@@ -1900,7 +2704,7 @@ impl Text {
         Self::CommittedParticipants,
         Self::Participant,
         Self::OrdinarySettlement,
-        Self::ConditionalCKBSettlement,
+        Self::ConditionalAssetSettlement,
         Self::PendingConditions,
         Self::Condition,
         Self::Amount,
@@ -1995,6 +2799,14 @@ impl Text {
 }
 /// Translate only application-owned stored notices/titles, never arbitrary user records.
 pub fn stored_copy(value: &str, language: Language) -> String {
+    // Only application-owned activity strings use this function; the suffix is a user file name.
+    for source in [Language::English, Language::Chinese] {
+        if let Some(name) =
+            value.strip_prefix(&format!("{} · ", source.t(Text::NewPrivateFileSaved)))
+        {
+            return format!("{} · {name}", language.t(Text::NewPrivateFileSaved));
+        }
+    }
     Text::ALL
         .iter()
         .find(|m| {
@@ -2002,4 +2814,62 @@ pub fn stored_copy(value: &str, language: Language) -> String {
             value == en || value == zh
         })
         .map_or_else(|| value.to_owned(), |m| language.t(*m).to_owned())
+}
+
+/// Exact application messages only. User-entered text never goes through this lookup.
+pub fn message_key(value: &str) -> Option<Text> {
+    Text::ALL.iter().copied().find(|m| {
+        let (en, zh) = m.pair();
+        value == en || value == zh
+    })
+}
+/// Human-facing explanation; original diagnostics remain available verbatim in a disclosure.
+pub fn diagnostic_summary(value: &str, language: Language) -> String {
+    if let Some(key) = message_key(value) {
+        return language.t(key).into();
+    }
+    let key = if value.starts_with("Hub endpoint must") {
+        Text::ErrorEndpoint
+    } else if value == "invalid Hub bearer token" {
+        Text::ErrorToken
+    } else if value == "invalid canonical resource id" {
+        Text::ObjectIDRequiresCanonical0x64
+    } else if value.starts_with("public package validation failed") {
+        Text::ErrorPackage
+    } else if value.starts_with("Hub read failed") {
+        Text::ErrorTransport
+    } else if value.starts_with("Mutation outcome unknown") {
+        Text::AWriteOutcomeNeedsReviewRefresh
+    } else if value.starts_with("Hub returned an invalid") {
+        Text::ErrorResponse
+    } else if value.starts_with("HTTP 401:") || value.starts_with("HTTP 403:") {
+        Text::ErrorUnauthorized
+    } else if value.starts_with("HTTP 409:") || value.starts_with("HTTP 412:") {
+        Text::ErrorConflict
+    } else if value.starts_with("HTTP 429:") {
+        Text::ErrorRateLimit
+    } else if value.starts_with("HTTP ") {
+        Text::ErrorService
+    } else if value.contains(" at line ") && value.contains(" column ") {
+        Text::ErrorJson
+    } else if value == "document exceeds 4 MiB" {
+        Text::ErrorFileSize
+    } else if value.contains("os error") || value.contains("regular file") {
+        Text::ErrorFile
+    } else if value.starts_with("CKB amount requires") {
+        Text::UseANonnegativeCKBAmountWith
+    } else if value.starts_with("CKB amount exceeds") {
+        Text::CanonicalAmountRequired
+    } else if value == "member keys are required" {
+        Text::Enter216CompressedPublicKeys
+    } else if value.starts_with("Type hash must") {
+        Text::TypeHashRequires0x64Lowercase
+    } else if value == "Connect to a Hub first" {
+        Text::ConnectToAWorkspaceFirst
+    } else if value == "network runtime unavailable" {
+        Text::NetworkWorkerStopped
+    } else {
+        Text::DiagnosticUnavailable
+    };
+    language.t(key).into()
 }

@@ -1,0 +1,78 @@
+[
+  {
+    "limited": {
+      "capacity_after_change_floor": "24100000000",
+      "execution_blocks": "45",
+      "execution_ms": "450000",
+      "full_fee_ceiling_supported": false,
+      "initial_fee": "374537",
+      "observed_unix_ms": "1794316002250",
+      "operator_fee_cap": "374537",
+      "profile_fee_ceiling": "200000000",
+      "sponsor_per_tx": "200000000",
+      "sponsor_remaining": "200000000",
+      "status": "verified",
+      "tx_size_bytes": 2633
+    },
+    "verified": {
+      "capacity_after_change_floor": "24100000000",
+      "execution_blocks": "45",
+      "execution_ms": "450000",
+      "full_fee_ceiling_supported": true,
+      "initial_fee": "374537",
+      "observed_unix_ms": "1794316001675",
+      "operator_fee_cap": "200000000",
+      "profile_fee_ceiling": "200000000",
+      "sponsor_per_tx": "200000000",
+      "sponsor_remaining": "200000000",
+      "status": "verified",
+      "tx_size_bytes": 2633
+    }
+  },
+  {
+    "passive_watch": {
+      "capacity_after_change_floor": "24100000000",
+      "execution_blocks": "45",
+      "execution_ms": "450000",
+      "full_fee_ceiling_supported": true,
+      "initial_fee": "374537",
+      "observed_unix_ms": "1794316004837",
+      "operator_fee_cap": "200000000",
+      "profile_fee_ceiling": "200000000",
+      "sponsor_per_tx": "200000000",
+      "sponsor_remaining": "200000000",
+      "status": "verified",
+      "tx_size_bytes": 2633
+    }
+  },
+  {
+    "limited": {
+      "capacity_after_change_floor": "24100000000",
+      "execution_blocks": "36",
+      "execution_ms": "360000",
+      "full_fee_ceiling_supported": false,
+      "initial_fee": "413966",
+      "observed_unix_ms": "1794316013648",
+      "operator_fee_cap": "413966",
+      "profile_fee_ceiling": "200000000",
+      "sponsor_per_tx": "200000000",
+      "sponsor_remaining": "200000000",
+      "status": "verified",
+      "tx_size_bytes": 2633
+    },
+    "verified": {
+      "capacity_after_change_floor": "24100000000",
+      "execution_blocks": "36",
+      "execution_ms": "360000",
+      "full_fee_ceiling_supported": true,
+      "initial_fee": "413966",
+      "observed_unix_ms": "1794316013041",
+      "operator_fee_cap": "200000000",
+      "profile_fee_ceiling": "200000000",
+      "sponsor_per_tx": "200000000",
+      "sponsor_remaining": "200000000",
+      "status": "verified",
+      "tx_size_bytes": 2633
+    }
+  }
+]

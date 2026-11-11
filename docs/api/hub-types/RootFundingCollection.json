@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "RootFundingDraft": {
+      "additionalProperties": false,
+      "description": "Public immutable funding proposal. Every amount and the initial exit are\nderived from the packed transaction; no duplicate roots or amounts exist.",
+      "properties": {
+        "participants": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "transaction_hex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "transaction_hex",
+        "participants"
+      ],
+      "type": "object"
+    },
+    "SignatureMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "pubkey": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "signing_digest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "signing_digest",
+        "pubkey",
+        "signature"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Public coordination state. It contains no signer authority or reservation.",
+  "properties": {
+    "creation_signatures": {
+      "items": {
+        "$ref": "#/$defs/SignatureMessage"
+      },
+      "type": "array"
+    },
+    "draft": {
+      "$ref": "#/$defs/RootFundingDraft"
+    },
+    "exit_signatures": {
+      "items": {
+        "$ref": "#/$defs/SignatureMessage"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "draft",
+    "exit_signatures",
+    "creation_signatures"
+  ],
+  "title": "RootFundingCollection",
+  "type": "object"
+}

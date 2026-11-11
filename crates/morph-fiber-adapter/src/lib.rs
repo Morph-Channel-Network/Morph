@@ -7,6 +7,15 @@
 //! to fake a graph edge through those APIs. It targets an explicit, minimal
 //! hook that Fiber can implement or Morph can carry in an isolated patch.
 
+mod capabilities;
+pub mod coordinator;
+mod edge_codec;
+pub mod shadow;
+pub use capabilities::{
+    CAPABILITIES_METHOD, DRAIN_EXTERNAL_EDGE_METHOD, HookCapabilities, HookPolicy,
+    MAX_SHADOW_EDGES, MirrorState, SHADOW_PROFILE,
+};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -26,11 +35,14 @@ pub const DISABLE_EXTERNAL_EDGE_METHOD: &str = "morph_disable_external_edge";
 pub const LIST_EXTERNAL_EDGES_METHOD: &str = "morph_list_external_edges";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FiberExternalEdge {
     pub morph_edge_id: String,
     pub channel_id: String,
     pub funding_context_id: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub funding_epoch: u64,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub state_number: u64,
     /// Fiber graph endpoints: compressed secp256k1 public keys.
     pub node_ids: [String; 2],
@@ -39,15 +51,20 @@ pub struct FiberExternalEdge {
     pub asset: FiberEdgeAsset,
     pub directional_liquidity: [String; 2],
     pub deployment_id: String,
+    #[serde(deserialize_with = "required_option")]
     pub factory_id: Option<String>,
+    #[serde(with = "morph_packages::public_encoding::optional_decimal")]
     pub factory_update_number: Option<u64>,
+    #[serde(deserialize_with = "required_option")]
+    pub factory_reservation_id: Option<String>,
     pub evidence_block_hash: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub evidence_block_number: u64,
     pub opaque_morph_commitment: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FiberEdgeAsset {
     Ckb {
         ckb_genesis_hash: String,
@@ -113,6 +130,7 @@ impl TryFrom<&ProviderEdgeDescriptor> for FiberExternalEdge {
             deployment_id: hex32(&edge.deployment_id),
             factory_id: edge.factory_id.map(|value| hex32(&value)),
             factory_update_number: edge.factory_update_number,
+            factory_reservation_id: edge.factory_reservation_id.map(|value| hex32(&value)),
             evidence_block_hash: hex32(&edge.evidence_block_hash),
             evidence_block_number: edge.evidence_block_number,
             opaque_morph_commitment: hex32(&edge.opaque_morph_commitment),
@@ -121,42 +139,58 @@ impl TryFrom<&ProviderEdgeDescriptor> for FiberExternalEdge {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RegisterExternalEdgeRequest {
     pub edge: FiberExternalEdge,
     /// Reject registration if Fiber already mirrors a different generation for
     /// this channel. Splice replacement is always explicit.
+    #[serde(deserialize_with = "required_option")]
     pub expected_previous_edge_id: Option<String>,
     pub callback_endpoint: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateExternalEdgeRequest {
     pub edge: FiberExternalEdge,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub expected_provider_revision: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DisableExternalEdgeRequest {
+#[serde(deny_unknown_fields)]
+pub struct SetExternalEdgeStateRequest {
     pub morph_edge_id: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub expected_provider_revision: u64,
     pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FiberHookAck {
     pub morph_edge_id: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub provider_revision: u64,
-    pub enabled: bool,
+    pub state: MirrorState,
+    /// Must be false in this diagnostic-only profile.
+    pub forwarding: bool,
     pub opaque_morph_commitment: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MirroredFiberEdge {
     pub channel_id: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
+    pub funding_epoch: u64,
     pub morph_edge_id: String,
     pub funding_context_id: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub provider_revision: u64,
-    pub enabled: bool,
+    pub state: MirrorState,
+    /// Must be false in this diagnostic-only profile.
+    pub forwarding: bool,
     pub opaque_morph_commitment: String,
 }
 
@@ -171,21 +205,26 @@ pub enum ExternalPaymentDirection {
 /// edge. `prepare` reserves a descriptor transition; `commit` is accepted only
 /// after Morph obtains the required bilateral signatures.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExternalPaymentPrepare {
     pub morph_edge_id: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub provider_revision: u64,
     pub payment_id: String,
     pub direction: ExternalPaymentDirection,
     pub amount: String,
     pub payment_hash: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub expiry_unix_millis: u64,
     pub idempotency_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExternalPaymentPrepared {
     pub payment_id: String,
     pub morph_prepared_id: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub expected_state_number: u64,
     pub opaque_proposal_commitment: String,
 }
@@ -198,8 +237,10 @@ pub enum ExternalPaymentResolution {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExternalPaymentResolve {
     pub morph_edge_id: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
     pub provider_revision: u64,
     pub payment_id: String,
     pub morph_prepared_id: String,
@@ -211,6 +252,7 @@ pub struct FiberHookClient {
     url: Url,
     bearer_token: Option<String>,
     callback_endpoint: Url,
+    policy: HookPolicy,
     client: Client,
     next_id: Arc<AtomicU64>,
 }
@@ -220,18 +262,21 @@ impl FiberHookClient {
         rpc_url: &str,
         bearer_token: Option<String>,
         callback_endpoint: &str,
+        policy: HookPolicy,
     ) -> AdapterResult<Self> {
+        policy.validate()?;
         let url = parse_http_url(rpc_url)?;
         let callback_endpoint = parse_http_url(callback_endpoint)?;
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .map_err(|error| AdapterError::Transport(error.to_string()))?;
+            .map_err(|_| AdapterError::Transport)?;
         Ok(Self {
             url,
             bearer_token,
             callback_endpoint,
+            policy,
             client,
             next_id: Arc::new(AtomicU64::new(1)),
         })
@@ -242,6 +287,17 @@ impl FiberHookClient {
         edge: &ProviderEdgeDescriptor,
         expected_previous_edge_id: Option<Bytes32>,
     ) -> AdapterResult<FiberHookAck> {
+        self.capabilities().await?;
+        let genesis = match &edge.asset {
+            GatewayAsset::Ckb { ckb_genesis_hash }
+            | GatewayAsset::Xudt {
+                ckb_genesis_hash, ..
+            } => *ckb_genesis_hash,
+            GatewayAsset::Rgbpp(asset) => asset.ckb_genesis_hash,
+        };
+        if hex32(&genesis) != self.policy.ckb_genesis_hash {
+            return Err(AdapterError::InvalidMorphEdge);
+        }
         let ack: FiberHookAck = self
             .call(
                 REGISTER_EXTERNAL_EDGE_METHOD,
@@ -261,6 +317,17 @@ impl FiberHookClient {
         edge: &ProviderEdgeDescriptor,
         expected_provider_revision: u64,
     ) -> AdapterResult<FiberHookAck> {
+        self.capabilities().await?;
+        let genesis = match &edge.asset {
+            GatewayAsset::Ckb { ckb_genesis_hash }
+            | GatewayAsset::Xudt {
+                ckb_genesis_hash, ..
+            } => *ckb_genesis_hash,
+            GatewayAsset::Rgbpp(asset) => asset.ckb_genesis_hash,
+        };
+        if hex32(&genesis) != self.policy.ckb_genesis_hash {
+            return Err(AdapterError::InvalidMorphEdge);
+        }
         let ack: FiberHookAck = self
             .call(
                 UPDATE_EXTERNAL_EDGE_METHOD,
@@ -280,21 +347,59 @@ impl FiberHookClient {
         expected_provider_revision: u64,
         reason: String,
     ) -> AdapterResult<FiberHookAck> {
+        self.set_edge_state(
+            edge_id,
+            expected_provider_revision,
+            reason,
+            MirrorState::Disabled,
+        )
+        .await
+    }
+
+    pub async fn drain_edge(
+        &self,
+        edge_id: Bytes32,
+        expected_provider_revision: u64,
+        reason: String,
+    ) -> AdapterResult<FiberHookAck> {
+        self.set_edge_state(
+            edge_id,
+            expected_provider_revision,
+            reason,
+            MirrorState::Draining,
+        )
+        .await
+    }
+
+    async fn set_edge_state(
+        &self,
+        edge_id: Bytes32,
+        expected_provider_revision: u64,
+        reason: String,
+        state: MirrorState,
+    ) -> AdapterResult<FiberHookAck> {
+        self.capabilities().await?;
         if reason.trim().is_empty() || reason.len() > 256 {
             return Err(AdapterError::InvalidRequest);
         }
         let ack: FiberHookAck = self
             .call(
-                DISABLE_EXTERNAL_EDGE_METHOD,
-                DisableExternalEdgeRequest {
+                if state == MirrorState::Draining {
+                    DRAIN_EXTERNAL_EDGE_METHOD
+                } else {
+                    DISABLE_EXTERNAL_EDGE_METHOD
+                },
+                SetExternalEdgeStateRequest {
                     morph_edge_id: hex32(&edge_id),
                     expected_provider_revision,
                     reason,
                 },
             )
             .await?;
-        if ack.morph_edge_id != hex32(&edge_id)
-            || ack.enabled
+        if decode_byte32(&ack.opaque_morph_commitment).is_err()
+            || ack.morph_edge_id != hex32(&edge_id)
+            || ack.state != state
+            || ack.forwarding
             || expected_provider_revision.checked_add(1) != Some(ack.provider_revision)
         {
             return Err(AdapterError::ProviderAckMismatch);
@@ -303,7 +408,22 @@ impl FiberHookClient {
     }
 
     pub async fn list_edges(&self) -> AdapterResult<Vec<MirroredFiberEdge>> {
-        self.call(LIST_EXTERNAL_EDGES_METHOD, json!({})).await
+        let capabilities = self.capabilities().await?;
+        let edges: Vec<MirroredFiberEdge> =
+            self.call(LIST_EXTERNAL_EDGES_METHOD, json!({})).await?;
+        if edges.len() > capabilities.max_edges as usize {
+            return Err(AdapterError::InvalidRequest);
+        }
+        validate_mirrors(&edges)?;
+        Ok(edges)
+    }
+
+    /// Fresh handshake for each operation; never infer a live hook from native
+    /// graph_channels/external funding or cache a capability across restarts.
+    pub async fn capabilities(&self) -> AdapterResult<HookCapabilities> {
+        let capabilities: HookCapabilities = self.call(CAPABILITIES_METHOD, json!({})).await?;
+        capabilities.check(&self.policy)?;
+        Ok(capabilities)
     }
 
     async fn call<P: Serialize, T: for<'de> Deserialize<'de>>(
@@ -322,10 +442,7 @@ impl FiberHookClient {
         if let Some(token) = &self.bearer_token {
             request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|error| AdapterError::Transport(error.to_string()))?;
+        let response = request.send().await.map_err(|_| AdapterError::Transport)?;
         if !response.status().is_success() {
             return Err(AdapterError::Http(response.status().as_u16()));
         }
@@ -337,20 +454,17 @@ impl FiberHookClient {
         if value.get("jsonrpc") != Some(&json!("2.0")) || value.get("id") != Some(&json!(id)) {
             return Err(AdapterError::MalformedResponse);
         }
+        if value.get("error").is_some() == value.get("result").is_some() {
+            return Err(AdapterError::MalformedResponse);
+        }
         if let Some(error) = value.get("error") {
             let code = error.get("code").and_then(Value::as_i64).unwrap_or(-1);
-            let message = error
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown Fiber hook error")
-                .to_string();
             if code == -32601 {
                 return Err(AdapterError::HookUnavailable);
             }
             return Err(AdapterError::Rpc {
                 method: method.to_string(),
                 code,
-                message,
             });
         }
         serde_json::from_value(
@@ -367,6 +481,7 @@ impl FiberHookClient {
 pub enum ReconcileAction {
     Register {
         edge_id: Bytes32,
+        expected_previous_edge_id: Option<Bytes32>,
     },
     Update {
         edge_id: Bytes32,
@@ -385,6 +500,10 @@ pub fn reconciliation_plan(
     local_edges: &[ProviderEdgeDescriptor],
     mirrored_edges: &[MirroredFiberEdge],
 ) -> AdapterResult<Vec<ReconcileAction>> {
+    if local_edges.len() > MAX_SHADOW_EDGES {
+        return Err(AdapterError::InvalidRequest);
+    }
+    validate_mirrors(mirrored_edges)?;
     morph_core::validate_provider_edge_set(local_edges)
         .map_err(|_| AdapterError::InvalidMorphEdge)?;
     let mut local = BTreeMap::new();
@@ -411,12 +530,32 @@ pub fn reconciliation_plan(
     let mut actions = Vec::new();
     for (edge_id, edge) in &local {
         match mirrored.get(edge_id) {
-            None => actions.push(ReconcileAction::Register { edge_id: *edge_id }),
+            None => {
+                let previous = mirrored
+                    .iter()
+                    .filter(|(_, remote)| {
+                        remote.channel_id == hex32(&edge.channel_id)
+                            && remote.funding_context_id != hex32(&edge.funding_context_id)
+                    })
+                    .max_by_key(|(id, remote)| (remote.funding_epoch, **id));
+                if previous.is_some_and(|(_, remote)| remote.funding_epoch >= edge.funding_epoch) {
+                    return Err(AdapterError::ProviderAckMismatch);
+                }
+                actions.push(ReconcileAction::Register {
+                    edge_id: *edge_id,
+                    expected_previous_edge_id: previous.map(|(id, _)| *id),
+                });
+            }
             Some(remote)
                 if remote.channel_id != hex32(&edge.channel_id)
                     || remote.funding_context_id != hex32(&edge.funding_context_id)
-                    || remote.opaque_morph_commitment != hex32(&edge.opaque_morph_commitment)
-                    || !remote.enabled =>
+                    || remote.funding_epoch != edge.funding_epoch =>
+            {
+                return Err(AdapterError::ProviderAckMismatch);
+            }
+            Some(remote)
+                if remote.opaque_morph_commitment != hex32(&edge.opaque_morph_commitment)
+                    || remote.state != MirrorState::Active =>
             {
                 actions.push(ReconcileAction::Update {
                     edge_id: *edge_id,
@@ -428,19 +567,41 @@ pub fn reconciliation_plan(
     }
     let local_ids = local.keys().copied().collect::<BTreeSet<_>>();
     for (edge_id, remote) in mirrored {
-        if remote.enabled && !local_ids.contains(&edge_id) {
+        if remote.state != MirrorState::Disabled && !local_ids.contains(&edge_id) {
             actions.push(ReconcileAction::DisableUnknown {
                 edge_id,
                 expected_provider_revision: remote.provider_revision,
             });
         }
     }
+    // Retire unknown/old contexts BEFORE any new registration or refresh.
+    // Sorting only by edge hash can otherwise admit a successor first.
     actions.sort_by_key(|action| match action {
-        ReconcileAction::Register { edge_id }
-        | ReconcileAction::Update { edge_id, .. }
-        | ReconcileAction::DisableUnknown { edge_id, .. } => *edge_id,
+        ReconcileAction::DisableUnknown { edge_id, .. } => (0, *edge_id),
+        ReconcileAction::Update { edge_id, .. } => (1, *edge_id),
+        ReconcileAction::Register { edge_id, .. } => (2, *edge_id),
     });
     Ok(actions)
+}
+
+fn validate_mirrors(edges: &[MirroredFiberEdge]) -> AdapterResult<()> {
+    if edges.len() > MAX_SHADOW_EDGES {
+        return Err(AdapterError::InvalidRequest);
+    }
+    let mut ids = BTreeSet::new();
+    for edge in edges {
+        if edge.forwarding || edge.provider_revision == 0 {
+            return Err(AdapterError::HookMismatch);
+        }
+        let id = decode_byte32(&edge.morph_edge_id)?;
+        decode_byte32(&edge.channel_id)?;
+        decode_byte32(&edge.funding_context_id)?;
+        decode_byte32(&edge.opaque_morph_commitment)?;
+        if !ids.insert(id) {
+            return Err(AdapterError::DuplicateProviderEdge);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Error)]
@@ -451,8 +612,8 @@ pub enum AdapterError {
     InvalidUrl,
     #[error("Fiber hook request is invalid")]
     InvalidRequest,
-    #[error("Fiber hook transport failed: {0}")]
-    Transport(String),
+    #[error("Fiber hook transport failed")]
+    Transport,
     #[error("Fiber hook returned HTTP {0}")]
     Http(u16),
     #[error("Fiber hook response exceeded the safety limit")]
@@ -461,12 +622,10 @@ pub enum AdapterError {
     MalformedResponse,
     #[error("the connected Fiber node does not implement the Morph external-edge hook")]
     HookUnavailable,
-    #[error("Fiber hook {method} failed with code {code}: {message}")]
-    Rpc {
-        method: String,
-        code: i64,
-        message: String,
-    },
+    #[error("Fiber hook does not match the installed shadow profile or deployment")]
+    HookMismatch,
+    #[error("Fiber hook {method} failed with code {code}")]
+    Rpc { method: String, code: i64 },
     #[error("Fiber returned duplicate mirrored edge identifiers")]
     DuplicateProviderEdge,
     #[error("Fiber hook acknowledgement does not match the requested Morph edge or revision")]
@@ -479,6 +638,13 @@ pub type AdapterResult<T> = Result<T, AdapterError>;
 
 fn parse_http_url(value: &str) -> AdapterResult<Url> {
     let url = Url::parse(value).map_err(|_| AdapterError::InvalidUrl)?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(AdapterError::InvalidUrl);
+    }
     let is_loopback = url.host_str().is_some_and(|host| {
         host.eq_ignore_ascii_case("localhost")
             || host
@@ -513,7 +679,7 @@ async fn read_response_limited(
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|error| AdapterError::Transport(error.to_string()))?
+        .map_err(|_| AdapterError::Transport)?
     {
         if chunk.len() > maximum.saturating_sub(body.len()) {
             return Ok(None);
@@ -530,12 +696,19 @@ fn validate_enabled_ack(
 ) -> AdapterResult<()> {
     if ack.morph_edge_id != hex32(&edge.edge_id)
         || ack.opaque_morph_commitment != hex32(&edge.opaque_morph_commitment)
-        || !ack.enabled
+        || ack.state != MirrorState::Active
+        || ack.forwarding
         || expected_provider_revision.checked_add(1) != Some(ack.provider_revision)
     {
         return Err(AdapterError::ProviderAckMismatch);
     }
     Ok(())
+}
+
+fn required_option<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+    d: D,
+) -> Result<Option<T>, D::Error> {
+    Option::<T>::deserialize(d)
 }
 
 fn hex32(value: &Bytes32) -> String {
@@ -570,7 +743,25 @@ mod tests {
 
     use super::*;
 
-    fn edge(tag: u8) -> ProviderEdgeDescriptor {
+    pub(super) fn policy() -> HookPolicy {
+        HookPolicy {
+            fiber_commit: "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703".into(),
+            patch_hash: hex32(&[42; 32]),
+            ckb_genesis_hash: hex32(&[5; 32]),
+        }
+    }
+    pub(super) fn capabilities() -> HookCapabilities {
+        let p = policy();
+        HookCapabilities {
+            profile: SHADOW_PROFILE.into(),
+            fiber_commit: p.fiber_commit,
+            patch_hash: p.patch_hash,
+            ckb_genesis_hash: p.ckb_genesis_hash,
+            forwarding: false,
+            max_edges: MAX_SHADOW_EDGES as u64,
+        }
+    }
+    pub(super) fn edge(tag: u8) -> ProviderEdgeDescriptor {
         let participant_pubkeys_sec1 = [1_u8, 2_u8].map(|seed| {
             SigningKey::from_slice(&[seed; 32])
                 .unwrap()
@@ -702,7 +893,8 @@ mod tests {
             FiberHookClient::new(
                 "https://fiber.example.com",
                 None,
-                "http://10.0.0.9:4621/callback"
+                "http://10.0.0.9:4621/callback",
+                policy()
             ),
             Err(AdapterError::InvalidUrl)
         ));
@@ -714,19 +906,23 @@ mod tests {
         let unknown = edge(20);
         let remote = vec![
             MirroredFiberEdge {
+                funding_epoch: 0,
                 channel_id: hex32(&current.channel_id),
                 morph_edge_id: hex32(&current.edge_id),
                 funding_context_id: hex32(&current.funding_context_id),
                 provider_revision: 3,
-                enabled: true,
+                state: MirrorState::Active,
+                forwarding: false,
                 opaque_morph_commitment: hex32(&[99; 32]),
             },
             MirroredFiberEdge {
+                funding_epoch: 0,
                 channel_id: hex32(&unknown.channel_id),
                 morph_edge_id: hex32(&unknown.edge_id),
                 funding_context_id: hex32(&unknown.funding_context_id),
                 provider_revision: 4,
-                enabled: true,
+                state: MirrorState::Active,
+                forwarding: false,
                 opaque_morph_commitment: hex32(&unknown.opaque_morph_commitment),
             },
         ];
@@ -754,11 +950,13 @@ mod tests {
         assert_eq!(updated.derive_id().unwrap(), current.edge_id);
 
         let mirrored = MirroredFiberEdge {
+            funding_epoch: 0,
             channel_id: hex32(&current.channel_id),
             morph_edge_id: hex32(&current.edge_id),
             funding_context_id: hex32(&current.funding_context_id),
             provider_revision: 7,
-            enabled: true,
+            state: MirrorState::Active,
+            forwarding: false,
             opaque_morph_commitment: hex32(&current.opaque_morph_commitment),
         };
         assert_eq!(
@@ -771,23 +969,22 @@ mod tests {
     }
 
     #[test]
-    fn reconciliation_repairs_a_wrong_provider_channel_binding() {
+    fn reconciliation_rejects_a_wrong_provider_channel_binding() {
         let current = edge(1);
         let mirrored = MirroredFiberEdge {
+            funding_epoch: 0,
             channel_id: hex32(&[99; 32]),
             morph_edge_id: hex32(&current.edge_id),
             funding_context_id: hex32(&current.funding_context_id),
             provider_revision: 2,
-            enabled: true,
+            state: MirrorState::Active,
+            forwarding: false,
             opaque_morph_commitment: hex32(&current.opaque_morph_commitment),
         };
-        assert_eq!(
-            reconciliation_plan(std::slice::from_ref(&current), &[mirrored]).unwrap(),
-            vec![ReconcileAction::Update {
-                edge_id: current.edge_id,
-                expected_provider_revision: 2,
-            }]
-        );
+        assert!(matches!(
+            reconciliation_plan(std::slice::from_ref(&current), &[mirrored]),
+            Err(AdapterError::ProviderAckMismatch)
+        ));
     }
 
     #[derive(Default)]
@@ -802,14 +999,18 @@ mod tests {
         let id = request.get("id").cloned().unwrap();
         let method = request.get("method").and_then(Value::as_str).unwrap();
         state.lock().unwrap().methods.push(method.to_string());
+        if method == CAPABILITIES_METHOD {
+            return Json(json!({"jsonrpc":"2.0","id":id,"result":capabilities()}));
+        }
         let edge = request.pointer("/params/0/edge");
         let result = json!({
             "morph_edge_id": edge
                 .and_then(|edge| edge.get("morph_edge_id"))
                 .and_then(Value::as_str)
                 .unwrap_or(&format!("0x{}", "01".repeat(32))),
-            "provider_revision": 1,
-            "enabled": true,
+            "provider_revision": "1",
+            "state": "active",
+            "forwarding": false,
             "opaque_morph_commitment": edge
                 .and_then(|edge| edge.get("opaque_morph_commitment"))
                 .and_then(Value::as_str)
@@ -831,6 +1032,7 @@ mod tests {
             &format!("http://{address}"),
             None,
             "http://127.0.0.1:4621/callback",
+            policy(),
         )
         .unwrap();
         let edge = edge(1);
@@ -838,7 +1040,10 @@ mod tests {
         assert_eq!(ack.morph_edge_id, hex32(&edge.edge_id));
         assert_eq!(
             state.lock().unwrap().methods,
-            vec![REGISTER_EXTERNAL_EDGE_METHOD]
+            vec![CAPABILITIES_METHOD, REGISTER_EXTERNAL_EDGE_METHOD]
         );
     }
 }
+
+#[cfg(test)]
+mod client_tests;

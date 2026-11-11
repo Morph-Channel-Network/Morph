@@ -1,0 +1,33 @@
+{
+  "lease_ms": "600000",
+  "publication_ready": false,
+  "resources": [
+    {
+      "budget_summary": null,
+      "caught_up": false,
+      "evidence_fresh": false,
+      "publication_budget": null,
+      "publication_confirmed": false,
+      "publication_ready": false,
+      "reason": "evidence_unavailable",
+      "reorg_reset": false,
+      "resource_index": 0,
+      "scan_completed": false
+    },
+    {
+      "budget_summary": null,
+      "caught_up": false,
+      "evidence_fresh": false,
+      "publication_budget": null,
+      "publication_confirmed": false,
+      "publication_ready": false,
+      "reason": "evidence_unavailable",
+      "reorg_reset": false,
+      "resource_index": 1,
+      "scan_completed": false
+    }
+  ],
+  "scan_coverage_ready": false,
+  "schema": "morph.watchtower_readiness.v3",
+  "scope": "scan_coverage"
+}

@@ -1,0 +1,7 @@
+{
+  "crates/morph-cli/src/main.rs": "d616f3c5c8415a1cd95fa4074b7ea33755cb70be0f5bc4b5fee27c1c7a760702",
+  "crates/morph-cli/src/operation_runtime.rs": "3fef05359195221bd2a2b5734d03af4f42e6c44d1a9de68209b9edafb843e0b6",
+  "crates/morph-cli/src/operation_runtime/tests.rs": "fa10c1bda14d7ded0d30f3daf3f54d3c0ab489d6b59ec03951e4bf468f009854",
+  "crates/morph-cli/src/operation_runtime/observability.rs": "3d3958f41777ecc87b025e8e0eb7442207fec436007d40af864fccd85f0874bd",
+  "crates/morph-cli/src/operation_runtime/observability/tests.rs": "b3bf04180cc34e33682369c12f4e0b84b122c11ec6a0b773f7d3bd565bafd5fb"
+}

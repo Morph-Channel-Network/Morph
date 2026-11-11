@@ -19,7 +19,7 @@ const WATCH_CONFIG_SCHEMA: &str = "morph.watchtower_config.v1";
 const WATCH_CONFIG_RUN_SCHEMA: &str = "morph.watchtower_config_run";
 const WATCH_CONFIG_LOOP_SCHEMA: &str = "morph.watchtower_config_loop";
 const WATCH_CONFIG_SERVICE_SCHEMA: &str = "morph.watchtower_config_service";
-const WATCH_CONFIG_HEALTH_SCHEMA: &str = "morph.watchtower_health";
+pub(crate) const WATCH_CONFIG_HEALTH_SCHEMA: &str = "morph.watchtower_health.v3";
 const DEFAULT_STORE_DIR: &str = "packages";
 const DEFAULT_DETECTION_DEPTH: u64 = 1;
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
@@ -29,6 +29,8 @@ const DEFAULT_MINE_BLOCKS: u64 = 4;
 const DEFAULT_AUTO_SPONSOR_CAPACITY: u64 = 50_000_000_000;
 const MAX_LOOP_PASSES: u64 = 10_000;
 const MAX_SERVICE_PASSES: u64 = 1_000_000;
+mod readiness;
+pub use readiness::inspect_health;
 
 fn bytes32_hex(seed: u8) -> String {
     format!("0x{}", format!("{seed:02x}").repeat(32))
@@ -82,7 +84,6 @@ pub struct WatchtowerConfigDefaults {
     pub publication_profile: Option<PathBuf>,
     pub publication_attempt_log: Option<PathBuf>,
     pub alert_file: Option<PathBuf>,
-    pub alert_webhook_url: Option<String>,
     pub detection_depth: Option<u64>,
     pub timeout_secs: Option<u64>,
     pub poll_ms: Option<u64>,
@@ -104,7 +105,6 @@ pub struct WatchtowerChannelConfig {
     pub publication_profile: Option<PathBuf>,
     pub publication_attempt_log: Option<PathBuf>,
     pub alert_file: Option<PathBuf>,
-    pub alert_webhook_url: Option<String>,
     pub detection_depth: Option<u64>,
     pub timeout_secs: Option<u64>,
     pub poll_ms: Option<u64>,
@@ -146,6 +146,8 @@ pub struct WatchtowerConfigRunReport {
     pub channel_count: usize,
     pub published_count: usize,
     pub idle_count: usize,
+    pub failed_count: usize,
+    pub config_digest: String,
     pub channels: Vec<WatchtowerChannelRunReport>,
 }
 
@@ -153,6 +155,7 @@ pub struct WatchtowerConfigRunReport {
 pub struct WatchtowerChannelRunReport {
     pub channel_id: String,
     pub report: serde_json::Value,
+    pub observation: readiness::ChannelObservation,
 }
 
 #[derive(Debug, Serialize)]
@@ -192,6 +195,7 @@ pub struct WatchtowerConfigServiceReport {
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchtowerConfigServiceHealth {
     pub schema: String,
     pub operator_id: String,
@@ -205,6 +209,9 @@ pub struct WatchtowerConfigServiceHealth {
     pub status: String,
     pub stopped_reason: Option<String>,
     pub last_error: Option<String>,
+    #[serde(deserialize_with = "crate::persistence::required_option")]
+    pub config_digest: Option<String>,
+    pub channels: Vec<readiness::ChannelObservation>,
 }
 
 impl WatchtowerConfig {
@@ -218,7 +225,6 @@ impl WatchtowerConfig {
                 publication_profile: Some(PathBuf::from("publication-profile.json")),
                 publication_attempt_log: Some(PathBuf::from("watch-publication-attempts.jsonl")),
                 alert_file: Some(PathBuf::from("watch-alerts.jsonl")),
-                alert_webhook_url: None,
                 detection_depth: Some(3),
                 timeout_secs: Some(30),
                 poll_ms: Some(1_000),
@@ -237,7 +243,6 @@ impl WatchtowerConfig {
                 publication_profile: None,
                 publication_attempt_log: None,
                 alert_file: None,
-                alert_webhook_url: None,
                 detection_depth: None,
                 timeout_secs: None,
                 poll_ms: None,
@@ -257,8 +262,8 @@ impl WatchtowerConfig {
         );
         validate_operator_id(&self.operator_id)?;
         ensure!(
-            !self.channels.is_empty(),
-            "watchtower config must contain at least one channel"
+            (1..=32).contains(&self.channels.len()),
+            "watchtower config must contain one to 32 channels"
         );
         ensure_positive(self.defaults.detection_depth, "default detection_depth")?;
         ensure_positive(self.defaults.timeout_secs, "default timeout_secs")?;
@@ -360,7 +365,7 @@ pub fn fixture_config() -> WatchtowerConfig {
 }
 
 pub fn read_watchtower_config(path: &Path) -> Result<WatchtowerConfig> {
-    let bytes = fs::read(path)
+    let bytes = readiness::bounded(path)
         .with_context(|| format!("failed to read watchtower config {}", path.display()))?;
     let config: WatchtowerConfig = serde_json::from_slice(&bytes)
         .with_context(|| format!("failed to parse watchtower config {}", path.display()))?;
@@ -379,23 +384,30 @@ pub fn run_watchtower_config_once(
 ) -> Result<WatchtowerConfigRunReport> {
     config.validate_for_path(config_path)?;
     let base_dir = config_base_dir(config_path);
-    let mut reports = Vec::with_capacity(config.channels.len());
-    for channel in &config.channels {
+    let config_digest = readiness::config_digest(config_path, config)?;
+    let reports = collect_channels(config, |channel| {
         let options = channel_options(&base_dir, &config.defaults, channel, &runtime)?;
-        let report = multi_asset_watch::watch(rpc, options)
-            .with_context(|| format!("failed to watch channel {}", channel.channel_id))?;
-        if let Some(profile_operator_id) = report["operator_id"].as_str() {
-            ensure!(
-                profile_operator_id == config.operator_id,
-                "publication profile operator_id {profile_operator_id} does not match watchtower config operator_id {}",
-                config.operator_id
-            );
-        }
-        reports.push(WatchtowerChannelRunReport {
-            channel_id: channel.channel_id.clone(),
-            report,
-        });
-    }
+        ensure!(
+            options.timeout_secs <= 300,
+            "watch pass timeout exceeds five minutes"
+        );
+        let bounded = CkbRpcClient::new_supervision(
+            rpc.endpoint(),
+            Duration::from_secs(options.timeout_secs + 5),
+        )?;
+        let report = multi_asset_watch::watch(&bounded, options)?;
+        ensure!(
+            report["operator_id"].as_str() == Some(config.operator_id.as_str()),
+            "watch publication operator changed"
+        );
+        bounded.ensure_deadline()?;
+        Ok(report)
+    })?;
+    ensure!(
+        readiness::config_digest(config_path, &read_watchtower_config(config_path)?)?
+            == config_digest,
+        "watch configuration changed during pass"
+    );
     let published_count = reports
         .iter()
         .filter(|channel| {
@@ -409,15 +421,39 @@ pub fn run_watchtower_config_once(
             )
         })
         .count();
+    let failed_count = reports.iter().filter(|r| !r.observation.completed).count();
     Ok(WatchtowerConfigRunReport {
         schema: WATCH_CONFIG_RUN_SCHEMA.to_string(),
         operator_id: config.operator_id.clone(),
         config_path: config_path.display().to_string(),
         channel_count: reports.len(),
         published_count,
-        idle_count: reports.len().saturating_sub(published_count),
+        idle_count: reports.len().saturating_sub(published_count + failed_count),
+        failed_count,
+        config_digest,
         channels: reports,
     })
+}
+
+#[cfg(feature = "devnet")]
+fn collect_channels(
+    config: &WatchtowerConfig,
+    mut run: impl FnMut(&WatchtowerChannelConfig) -> Result<serde_json::Value>,
+) -> Result<Vec<WatchtowerChannelRunReport>> {
+    let mut reports = Vec::with_capacity(config.channels.len());
+    for channel in &config.channels {
+        let started = readiness::Stamp::now()?;
+        let result = run(channel);
+        let observation =
+            readiness::ChannelObservation::from_result(&channel.channel_id, started, &result)?;
+        // Only fixed errors leave the aggregate boundary; later channels still run.
+        reports.push(WatchtowerChannelRunReport {
+            channel_id: channel.channel_id.clone(),
+            report: result.unwrap_or_else(|_| serde_json::json!({"status":"unavailable"})),
+            observation,
+        });
+    }
+    Ok(reports)
 }
 
 fn terminal_publication_observed(
@@ -474,9 +510,9 @@ pub fn run_watchtower_config_loop(
     }
 
     let completed_passes = pass_reports.len() as u64;
-    let total_channel_runs = pass_reports
+    let total_idle = pass_reports
         .iter()
-        .map(|pass| pass.report.channel_count)
+        .map(|pass| pass.report.idle_count)
         .sum::<usize>();
     Ok(WatchtowerConfigLoopReport {
         schema: WATCH_CONFIG_LOOP_SCHEMA.to_string(),
@@ -486,7 +522,7 @@ pub fn run_watchtower_config_loop(
         completed_passes,
         stopped_after_publication,
         published_count,
-        idle_count: total_channel_runs.saturating_sub(published_count),
+        idle_count: total_idle,
         passes: pass_reports,
     })
 }
@@ -501,6 +537,14 @@ pub fn run_watchtower_config_service(
 ) -> Result<WatchtowerConfigServiceReport> {
     validate_service_options(&options)?;
     config.validate()?;
+    let _health_owner = options
+        .health_file
+        .as_ref()
+        .map(|path| {
+            crate::persistence::try_lock_private_path(path)?
+                .ok_or_else(|| anyhow::anyhow!("watch health already owned"))
+        })
+        .transpose()?;
 
     let config_path_string = config_path.display().to_string();
     let mut completed_passes = 0u64;
@@ -524,6 +568,7 @@ pub fn run_watchtower_config_service(
             error_count,
             consecutive_errors,
             last_error.clone(),
+            last_pass.as_ref(),
         )?,
     )?;
 
@@ -545,7 +590,14 @@ pub fn run_watchtower_config_service(
                 completed_passes = completed_passes.saturating_add(1);
                 published_count = published_count.saturating_add(report.published_count);
                 idle_count = idle_count.saturating_add(report.idle_count);
-                consecutive_errors = 0;
+                if report.failed_count > 0 {
+                    error_count = error_count.saturating_add(report.failed_count as u64);
+                }
+                consecutive_errors = if report.failed_count == report.channel_count {
+                    consecutive_errors.saturating_add(1)
+                } else {
+                    0
+                };
                 last_error = None;
                 let pass_published = report.published_count;
                 last_pass = Some(report);
@@ -563,9 +615,13 @@ pub fn run_watchtower_config_service(
                         error_count,
                         consecutive_errors,
                         None,
+                        last_pass.as_ref(),
                     )?,
                 )?;
 
+                if consecutive_errors >= options.max_consecutive_errors {
+                    break "max_consecutive_errors".to_string();
+                }
                 if options.stop_after_publication && pass_published > 0 {
                     break "publication".to_string();
                 }
@@ -580,7 +636,8 @@ pub fn run_watchtower_config_service(
             Err(err) => {
                 error_count = error_count.saturating_add(1);
                 consecutive_errors = consecutive_errors.saturating_add(1);
-                last_error = Some(format!("{err:#}"));
+                let _ = err;
+                last_error = Some("watch_pass_unavailable".to_string());
                 write_service_health_if_requested(
                     &options.health_file,
                     service_health(
@@ -594,6 +651,7 @@ pub fn run_watchtower_config_service(
                         error_count,
                         consecutive_errors,
                         last_error.clone(),
+                        None,
                     )?,
                 )?;
                 if consecutive_errors >= options.max_consecutive_errors {
@@ -617,6 +675,7 @@ pub fn run_watchtower_config_service(
             error_count,
             consecutive_errors,
             last_error.clone(),
+            last_pass.as_ref(),
         )?,
     )?;
 
@@ -727,10 +786,6 @@ fn channel_options(
                 .as_ref()
                 .or(defaults.watch_policy.as_ref()),
         ),
-        alert_webhook_url: channel
-            .alert_webhook_url
-            .clone()
-            .or_else(|| defaults.alert_webhook_url.clone()),
         detection_depth: channel
             .detection_depth
             .or(defaults.detection_depth)
@@ -826,22 +881,7 @@ fn write_service_health_if_requested(
 }
 
 fn write_service_health(path: &Path, health: &WatchtowerConfigServiceHealth) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create health directory {}", parent.display()))?;
-    }
-    let tmp = crate::persistence::atomic_json_tmp_path(path);
-    let json = serde_json::to_vec_pretty(health)?;
-    fs::write(&tmp, json)
-        .with_context(|| format!("failed to write temporary health file {}", tmp.display()))?;
-    fs::rename(&tmp, path).with_context(|| {
-        format!(
-            "failed to atomically move health file {} to {}",
-            tmp.display(),
-            path.display()
-        )
-    })?;
-    Ok(())
+    crate::persistence::write_private_atomic(path, &serde_json::to_vec_pretty(health)?)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -856,6 +896,7 @@ fn service_health(
     error_count: u64,
     consecutive_errors: u64,
     last_error: Option<String>,
+    pass: Option<&WatchtowerConfigRunReport>,
 ) -> Result<WatchtowerConfigServiceHealth> {
     Ok(WatchtowerConfigServiceHealth {
         schema: WATCH_CONFIG_HEALTH_SCHEMA.to_string(),
@@ -870,6 +911,10 @@ fn service_health(
         status: status.to_string(),
         stopped_reason,
         last_error,
+        config_digest: pass.map(|p| p.config_digest.clone()),
+        channels: pass
+            .map(|p| p.channels.iter().map(|c| c.observation.clone()).collect())
+            .unwrap_or_default(),
     })
 }
 
@@ -919,6 +964,31 @@ mod tests {
     }
 
     #[test]
+    fn watch_profiles_reject_participant_keys_and_signer_handles_at_every_level() {
+        let current = serde_json::to_value(WatchtowerConfig::fixture()).unwrap();
+        for field in [
+            "private_key",
+            "participant_private_key",
+            "signer_config",
+            "participant_signer",
+        ] {
+            for pointer in ["", "/defaults", "/channels/0"] {
+                let mut injected = current.clone();
+                injected
+                    .pointer_mut(pointer)
+                    .unwrap()
+                    .as_object_mut()
+                    .unwrap()
+                    .insert(field.into(), serde_json::json!("not-a-watch-capability"));
+                assert!(
+                    serde_json::from_value::<WatchtowerConfig>(injected).is_err(),
+                    "accepted {field} at {pointer}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn rejects_duplicate_channels() {
         let mut config = WatchtowerConfig::fixture();
         config.channels.push(config.channels[0].clone());
@@ -949,7 +1019,7 @@ mod tests {
         config.defaults.alert_file = Some(PathBuf::from("alerts.jsonl"));
         config.defaults.publication_profile = Some(PathBuf::from("profile.json"));
         config.defaults.publication_attempt_log = Some(PathBuf::from("attempts.jsonl"));
-        config.channels[0].cursor_file = Some(PathBuf::from("cursor.json"));
+        config.channels[0].cursor_file = Some(PathBuf::from("cursor.db"));
         let profile = crate::publication::fixture_publication_profile();
         fs::write(
             dir.join("profile.json"),
@@ -961,7 +1031,7 @@ mod tests {
         assert_eq!(options.store_dir, dir.join("packages"));
         assert_eq!(options.watch_policy, Some(dir.join("policy.json")));
         assert_eq!(options.alert_file, dir.join("alerts.jsonl"));
-        assert_eq!(options.cursor_file, dir.join("cursor.json"));
+        assert_eq!(options.cursor_file, dir.join("cursor.db"));
         assert_eq!(options.max_fee, profile.fee.max_fee);
         assert_eq!(
             options.auto_fund_sponsor.as_ref().unwrap().capacity,

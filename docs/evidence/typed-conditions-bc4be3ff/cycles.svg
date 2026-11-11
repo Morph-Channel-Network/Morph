@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="440" viewBox="0 0 1160 440" role="img" aria-labelledby="title desc">
+<title id="title">条件 UDT 本地执行成本</title>
+<desc id="desc">完整终结 · 8 UDT × 8 条件: 25928800 cycles; 单 Batch 领取 · 最大值: 1854210 cycles; 单 Batch 退款／混合 · 最大值: 1827117 cycles</desc>
+<rect width="1160" height="440" rx="20" fill="#f8f6fb"/>
+<g font-family="Noto Sans CJK SC, sans-serif">
+<text x="36" y="46" font-size="24" font-weight="700" fill="#21172e">条件 UDT · 实际节点执行成本</text>
+<text x="36" y="75" font-size="14" fill="#71677e">候选 bc4be3f  ·  标准 secp 钱包 + devnet xUDT  ·  8 资产 / 64 条件</text>
+<line x1="316.00" y1="108" x2="316.00" y2="345" stroke="#e5dfec"/>
+<text x="316.00" y="374" text-anchor="middle" font-size="12" fill="#7b7087">0M</text>
+<line x1="428.86" y1="108" x2="428.86" y2="345" stroke="#e5dfec"/>
+<text x="428.86" y="374" text-anchor="middle" font-size="12" fill="#7b7087">10M</text>
+<line x1="541.71" y1="108" x2="541.71" y2="345" stroke="#e5dfec"/>
+<text x="541.71" y="374" text-anchor="middle" font-size="12" fill="#7b7087">20M</text>
+<line x1="654.57" y1="108" x2="654.57" y2="345" stroke="#e5dfec"/>
+<text x="654.57" y="374" text-anchor="middle" font-size="12" fill="#7b7087">30M</text>
+<line x1="767.43" y1="108" x2="767.43" y2="345" stroke="#e5dfec"/>
+<text x="767.43" y="374" text-anchor="middle" font-size="12" fill="#7b7087">40M</text>
+<line x1="880.29" y1="108" x2="880.29" y2="345" stroke="#e5dfec"/>
+<text x="880.29" y="374" text-anchor="middle" font-size="12" fill="#7b7087">50M</text>
+<line x1="993.14" y1="108" x2="993.14" y2="345" stroke="#e5dfec"/>
+<text x="993.14" y="374" text-anchor="middle" font-size="12" fill="#7b7087">60M</text>
+<line x1="1106.00" y1="108" x2="1106.00" y2="345" stroke="#e5dfec"/>
+<text x="1106.00" y="374" text-anchor="middle" font-size="12" fill="#7b7087">70M</text>
+<text x="36" y="150" font-size="16" fill="#372942">完整终结 · 8 UDT × 8 条件</text>
+<rect x="316" y="125" width="292.625" height="34" rx="8" fill="#7866d7"/>
+<text x="621.625" y="148" font-size="17" font-weight="600" fill="#4a3264">25.93M</text>
+<text x="36" y="228" font-size="16" fill="#372942">单 Batch 领取 · 最大值</text>
+<rect x="316" y="203" width="20.926" height="34" rx="8" fill="#9b80df"/>
+<text x="349.926" y="226" font-size="17" font-weight="600" fill="#4a3264">1.85M</text>
+<text x="36" y="306" font-size="16" fill="#372942">单 Batch 退款／混合 · 最大值</text>
+<rect x="316" y="281" width="20.620" height="34" rx="8" fill="#b09bdd"/>
+<text x="349.620" y="304" font-size="17" font-weight="600" fill="#4a3264">1.83M</text>
+<line x1="1106" y1="108" x2="1106" y2="345" stroke="#7d688e" stroke-dasharray="4 4"/>
+<text x="1106" y="100" text-anchor="end" font-size="12" fill="#7d688e">70M 本地验证上限</text>
+<text x="36" y="416" font-size="12" fill="#7b7087">成本来自已通过的 typed-conditions 关；整体验收与部署批准分别记录。此图不构成主网资源准入。</text>
+</g></svg>

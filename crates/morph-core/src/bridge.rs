@@ -98,6 +98,8 @@ pub struct FactoryRightReservation {
     pub factory_id: Bytes32,
     pub factory_update_number: u64,
     pub right: FactoryRightId,
+    /// Intended physical child, distinct from the source right's bookkeeping label.
+    pub target_channel_id: Bytes32,
     pub quantity: Amount,
     pub factory_state_root: Bytes32,
     pub access_manifest_root: Bytes32,
@@ -116,6 +118,7 @@ impl FactoryRightReservation {
         raw.extend_from_slice(&self.factory_id);
         raw.extend_from_slice(&self.factory_update_number.to_le_bytes());
         encode_right_id(&self.right, &mut raw);
+        raw.extend_from_slice(&self.target_channel_id);
         raw.extend_from_slice(&self.quantity.to_le_bytes());
         raw.extend_from_slice(&self.factory_state_root);
         raw.extend_from_slice(&self.access_manifest_root);
@@ -146,7 +149,9 @@ impl FactoryRightReservation {
         }
         if is_zero(&self.factory_id)
             || is_zero(&self.right.participant)
-            || is_zero(&self.right.subchannel)
+            || (is_zero(&self.right.subchannel)
+                && self.right.kind != FactoryRightKind::ReserveClaim)
+            || is_zero(&self.target_channel_id)
             || self.right.asset_type.is_some_and(|asset| is_zero(&asset))
             || self.quantity == 0
             || is_zero(&self.factory_state_root)
@@ -962,7 +967,8 @@ fn validate_factory_origin(
                 || source.state_root() != reservation.factory_state_root
                 || source.update_number() != reservation.factory_update_number
                 || committed_origin != factory_hash
-                || reservation.right.subchannel != evidence.recovery.state.header.channel_id
+                || source.access_manifest_root() != reservation.access_manifest_root
+                || reservation.target_channel_id != evidence.recovery.state.header.channel_id
                 || reservation.right.asset_type != asset_type_hash(&evidence.asset)
             {
                 return Err(BridgeError::FactoryOriginMismatch);

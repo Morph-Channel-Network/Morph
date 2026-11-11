@@ -95,14 +95,16 @@ pub struct ConditionalForceClosePackage {
     pub descriptor: Vec<u8>,
     pub resolution_witness: Vec<u8>,
     pub input_since: u64,
-    pub payout_capacities: [u64; 2],
+    pub asset: VaultAsset,
+    pub state_number: u64,
+    pub payout_values: [crate::ConditionalValue; 2],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 enum ConditionalChange {
     Arm {
-        batch: ConditionalBatch,
+        batch: Box<ConditionalBatch>,
         armed_at_block: u64,
         proposal: MultiAssetProposal,
     },
@@ -119,7 +121,7 @@ impl ConditionalChange {
     }
 }
 
-/// Metadata for explicit CKB Batch transitions on the current custody model.
+/// Metadata for explicit asset-bound Batch transitions on the current custody model.
 /// Persist with the agreement engine under its existing stable journal lock.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -157,6 +159,7 @@ impl ChannelConditionalBatches {
         }
         let mut ids = BTreeSet::new();
         let mut active = 0;
+        let mut active_assets = BTreeSet::new();
         for record in &self.records {
             record.batch.validate()?;
             if !ids.insert(record.batch.batch_id) || record.armed_state_number == 0 {
@@ -181,13 +184,16 @@ impl ChannelConditionalBatches {
             }
             if record.is_active() {
                 active += 1;
+                if !active_assets.insert(record.batch.asset.clone()) {
+                    return Err(ConditionalBackendError::BatchActive);
+                }
             }
             if matches!(&record.lifecycle, ConditionalBatchLifecycle::ForceSettled { settlement_tx } if *settlement_tx == [0; 32])
             {
                 return Err(ConditionalBackendError::InvalidRecord);
             }
         }
-        if active > 1 {
+        if active > morph_script_common::multi_asset::MULTI_ASSET_MAX_VAULTS {
             return Err(ConditionalBackendError::BatchActive);
         }
         if let Some(change) = &self.pending {
@@ -202,10 +208,12 @@ impl ChannelConditionalBatches {
             match change {
                 ConditionalChange::Arm { batch, .. } => {
                     batch.validate()?;
-                    if active != 0
+                    if active_assets.contains(&batch.asset)
                         || ids.contains(&batch.batch_id)
                         || !matches!(&proposal.settlement.capability,
-                            MultiAssetSettlementCapability::CkbConditional { batch: signed, .. } if signed.as_ref() == batch)
+                            MultiAssetSettlementCapability::Conditional { batches, .. }
+                            if batches.len() == active + 1 && batches.contains(batch)
+                                && self.records.iter().filter(|r| r.is_active()).all(|r| batches.contains(&r.batch)))
                     {
                         return Err(ConditionalBackendError::InvalidRecord);
                     }
@@ -215,8 +223,18 @@ impl ChannelConditionalBatches {
                         .conditional_batch(batch_id)
                         .ok_or(ConditionalBackendError::UnknownBatch)?;
                     if record.lifecycle != ConditionalBatchLifecycle::Armed
-                        || proposal.settlement.capability
-                            != MultiAssetSettlementCapability::Ordinary
+                        || match &proposal.settlement.capability {
+                            MultiAssetSettlementCapability::Ordinary => active != 1,
+                            MultiAssetSettlementCapability::Conditional { batches, .. } => {
+                                batches.len() != active - 1
+                                    || batches.iter().any(|b| b.batch_id == *batch_id)
+                                    || !self
+                                        .records
+                                        .iter()
+                                        .filter(|r| r.is_active() && r.batch.batch_id != *batch_id)
+                                        .all(|r| batches.contains(&r.batch))
+                            }
+                        }
                     {
                         return Err(ConditionalBackendError::InvalidRecord);
                     }
@@ -253,12 +271,11 @@ impl ChannelConditionalBatches {
         armed_at_block: u64,
     ) -> ConditionalBackendResult<MultiAssetProposal> {
         self.settled_engine(backend)?;
-        if self
-            .records
-            .iter()
-            .any(|record| record.is_active() || record.batch.batch_id == batch.batch_id)
-            || backend.current().settlement.capability != MultiAssetSettlementCapability::Ordinary
-        {
+        if self.records.iter().any(|record| {
+            record.batch.batch_id == batch.batch_id
+                || (record.is_active() && record.batch.asset == batch.asset)
+                || record.lifecycle == ConditionalBatchLifecycle::ForceClosing
+        }) {
             return Err(ConditionalBackendError::BatchActive);
         }
         batch.validate()?;
@@ -276,43 +293,70 @@ impl ChannelConditionalBatches {
                     &self.funding_context_id,
                     number,
                     &batch.application_context_commitment,
+                    &batch.asset,
                 )
         {
             return Err(ConditionalBackendError::BatchMismatch);
         }
         let mut settlement = backend.current().settlement.clone();
-        let ckb = settlement
+        let payout = settlement
             .payouts
             .iter_mut()
-            .find(|payout| payout.asset == VaultAsset::Ckb)
-            .ok_or(ConditionalBackendError::CkbVaultRequired)?;
+            .find(|payout| payout.asset == batch.asset)
+            .ok_or(ConditionalBackendError::AssetVaultRequired)?;
         for transfer in &batch.transfers {
             let payer = settlement
                 .participant_lock_hashes
                 .iter()
                 .position(|lock| *lock == transfer.payer_lock_hash)
                 .ok_or(ConditionalBackendError::BatchMismatch)?;
-            ckb.values[payer].business_ckb = ckb.values[payer]
-                .business_ckb
-                .checked_sub(transfer.amount)
-                .ok_or(ConditionalBackendError::InsufficientBusinessBalance)?;
+            if batch.asset == VaultAsset::Ckb {
+                payout.values[payer].business_ckb = payout.values[payer]
+                    .business_ckb
+                    .checked_sub(
+                        u64::try_from(transfer.amount)
+                            .map_err(|_| ConditionalBackendError::InsufficientBusinessBalance)?,
+                    )
+                    .ok_or(ConditionalBackendError::InsufficientBusinessBalance)?;
+            } else {
+                payout.values[payer].amount = payout.values[payer]
+                    .amount
+                    .checked_sub(transfer.amount)
+                    .ok_or(ConditionalBackendError::InsufficientBusinessBalance)?;
+            }
         }
         for index in 0..2 {
             if batch.participants[index].settlement_lock_hash
                 != settlement.participant_lock_hashes[index]
-                || batch.participants[index].settled_capacity != ckb.values[index].capacity()?
+                || batch.participants[index].settled_capacity != payout.values[index].capacity()?
+                || batch.participants[index].settled_amount != payout.values[index].amount
             {
                 return Err(ConditionalBackendError::BatchMismatch);
             }
         }
-        settlement.capability = MultiAssetSettlementCapability::CkbConditional {
-            batch_code_hash,
-            batch_hash_type,
-            batch: Box::new(batch.clone()),
-        };
+        match &mut settlement.capability {
+            MultiAssetSettlementCapability::Ordinary => {
+                settlement.capability = MultiAssetSettlementCapability::Conditional {
+                    batch_code_hash,
+                    batch_hash_type,
+                    batches: vec![batch.clone()],
+                };
+            }
+            MultiAssetSettlementCapability::Conditional {
+                batch_code_hash: code,
+                batch_hash_type: kind,
+                batches,
+            } => {
+                if *code != batch_code_hash || *kind != batch_hash_type {
+                    return Err(ConditionalBackendError::BatchMismatch);
+                }
+                batches.push(batch.clone());
+                batches.sort_by(|a, b| a.asset.cmp(&b.asset));
+            }
+        }
         let proposal = backend.propose(settlement)?;
         self.pending = Some(ConditionalChange::Arm {
-            batch,
+            batch: Box::new(batch),
             armed_at_block,
             proposal: proposal.clone(),
         });
@@ -347,7 +391,7 @@ impl ChannelConditionalBatches {
                 armed_at_block,
                 proposal,
             } => self.records.push(ConditionalBatchRecord {
-                batch,
+                batch: *batch,
                 armed_at_block,
                 armed_state_number: proposal.state.header.state_number,
                 preimages: vec![],
@@ -449,21 +493,28 @@ impl ChannelConditionalBatches {
         if record.lifecycle != ConditionalBatchLifecycle::Armed {
             return Err(ConditionalBackendError::BatchInactive);
         }
-        let capacities = record
-            .batch
-            .cooperative_capacities(&record.preimage_map())?;
+        let capacities = record.batch.cooperative_values(&record.preimage_map())?;
         let mut settlement = backend.current().settlement.clone();
-        let ckb = settlement
+        let payout = settlement
             .payouts
             .iter_mut()
-            .find(|payout| payout.asset == VaultAsset::Ckb)
-            .ok_or(ConditionalBackendError::CkbVaultRequired)?;
-        for (value, capacity) in ckb.values.iter_mut().zip(capacities) {
-            value.business_ckb = capacity
+            .find(|payout| payout.asset == record.batch.asset)
+            .ok_or(ConditionalBackendError::AssetVaultRequired)?;
+        for (value, resolved) in payout.values.iter_mut().zip(capacities) {
+            value.business_ckb = resolved
+                .capacity
                 .checked_sub(value.reserve)
                 .ok_or(ConditionalBackendError::InsufficientBusinessBalance)?;
+            value.amount = resolved.amount;
         }
-        settlement.capability = MultiAssetSettlementCapability::Ordinary;
+        if let MultiAssetSettlementCapability::Conditional { batches, .. } =
+            &mut settlement.capability
+        {
+            batches.retain(|batch| batch.batch_id != *batch_id);
+            if batches.is_empty() {
+                settlement.capability = MultiAssetSettlementCapability::Ordinary;
+            }
+        }
         let proposal = backend.propose(settlement)?;
         self.pending = Some(ConditionalChange::Consolidate {
             batch_id: *batch_id,
@@ -478,9 +529,9 @@ impl ChannelConditionalBatches {
         record: &ConditionalBatchRecord,
     ) -> ConditionalBackendResult<()> {
         match &backend.current().settlement.capability {
-            MultiAssetSettlementCapability::CkbConditional { batch, .. }
-                if batch.as_ref() == &record.batch
-                    && backend.current().state.header.state_number == record.armed_state_number =>
+            MultiAssetSettlementCapability::Conditional { batches, .. }
+                if batches.contains(&record.batch)
+                    && backend.current().state.header.state_number >= record.armed_state_number =>
             {
                 Ok(())
             }
@@ -532,7 +583,9 @@ impl ChannelConditionalBatches {
                 .encode_resolution_witness(&resolutions)?
                 .to_vec(),
             input_since,
-            payout_capacities: record.batch.resolve(&resolutions, input_since)?,
+            asset: record.batch.asset.clone(),
+            state_number: backend.current().state.header.state_number,
+            payout_values: record.batch.resolve(&resolutions, input_since)?,
         };
         self.records
             .iter_mut()
@@ -575,9 +628,9 @@ pub enum ConditionalBackendError {
     BatchActive,
     #[error("batch terms do not match the exact current allocation")]
     BatchMismatch,
-    #[error("conditional capability requires a funded plain CKB Vault")]
-    CkbVaultRequired,
-    #[error("pending transfers exceed spendable business CKB")]
+    #[error("conditional capability requires its exact funded asset Vault")]
+    AssetVaultRequired,
+    #[error("pending transfers exceed spendable value of their exact asset")]
     InsufficientBusinessBalance,
     #[error("unknown conditional batch")]
     UnknownBatch,

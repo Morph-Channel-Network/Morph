@@ -59,14 +59,15 @@ pub enum ProtocolError {
 
 pub type ProtocolResult<T> = Result<T, ProtocolError>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AssetKind {
     Ckb,
     Rgbpp,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RgbppAsset {
     pub kind: AssetKind,
     /// Stable CKB network/genesis identifier, not a display name.
@@ -76,9 +77,13 @@ pub struct RgbppAsset {
     pub type_script_hash: Option<String>,
     /// Canonical CKB JSON Script. Display metadata never replaces this value.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, with = "crate::wire::optional_script")]
+    #[schemars(with = "Option<crate::wire::PublicScript>")]
     pub type_script: Option<Value>,
     /// Required for RGB++; absent for CKB.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, with = "crate::wire::optional_bitcoin_network")]
+    #[schemars(with = "Option<crate::wire::BitcoinNetworkWire>")]
     pub bitcoin_network: Option<BitcoinNetwork>,
     /// Code hash of the RGB++ binding lock/profile.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,6 +118,11 @@ impl RgbppAsset {
                     .type_script
                     .clone()
                     .ok_or(ProtocolError::MissingTypeScript)?;
+                let public: crate::wire::PublicScript = serde_json::from_value(type_script.clone())
+                    .map_err(|_| ProtocolError::MissingTypeScript)?;
+                if !public.validate() {
+                    return Err(ProtocolError::MissingTypeScript);
+                }
                 let json_script: ckb_jsonrpc_types::Script = serde_json::from_value(type_script)
                     .map_err(|_| ProtocolError::MissingTypeScript)?;
                 let packed_script: ckb_types::packed::Script = json_script.into();
@@ -167,7 +177,8 @@ impl RgbppAsset {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PaymentRequirements {
     pub requirement_id: String,
     pub scheme: String,
@@ -188,6 +199,8 @@ pub struct PaymentRequirements {
     pub nonce: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rgbpp_proof_commitment: Option<String>,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
+    #[schemars(schema_with = "morph_packages::public_encoding::decimal::schema")]
     pub expires_at: u64,
 }
 
@@ -244,12 +257,17 @@ impl PaymentRequirements {
     }
 
     pub fn expected_id(&self) -> ProtocolResult<String> {
+        // Object insertion order must never depend on serde_json/preserve_order.
+        let type_script = self.asset.type_script.clone().map(|mut value| {
+            value.sort_all_objects();
+            value
+        });
         let canonical = RequirementCommitment {
             scheme: &self.scheme,
             network: &self.network,
             payment_rail: &self.payment_rail,
             asset_id: self.asset.canonical_id()?,
-            type_script: self.asset.type_script.as_ref(),
+            type_script: type_script.as_ref(),
             amount: &self.amount,
             payer: &self.payer,
             payee: &self.payee,
@@ -291,7 +309,8 @@ struct RequirementCommitment<'a> {
     expires_at: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PaymentPayload {
     pub requirement_id: String,
     pub payment_hash: String,
@@ -389,7 +408,8 @@ impl PaymentPayload {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PaymentReceipt {
     pub receipt_id: String,
     pub credential_id: String,
@@ -400,13 +420,21 @@ pub struct PaymentReceipt {
     pub amount: String,
     pub resource: String,
     pub operation: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
+    #[schemars(schema_with = "morph_packages::public_encoding::decimal::schema")]
     pub paid_at: u64,
     pub fiber_status: String,
     pub credential: String,
+    #[serde(with = "morph_packages::public_encoding::decimal")]
+    #[schemars(schema_with = "morph_packages::public_encoding::decimal::schema")]
     pub credential_expires_at: u64,
     /// Full canonical intent needed for independent receipt verification.
+    #[serde(with = "crate::wire::PaymentIntentWire")]
+    #[schemars(with = "crate::wire::PaymentIntentWire")]
     pub intent: PaymentIntent,
     /// Canonical, independently signed terminal settlement event.
+    #[serde(with = "crate::wire::TerminalSettlementReceiptWire")]
+    #[schemars(with = "crate::wire::TerminalSettlementReceiptWire")]
     pub terminal_receipt: TerminalSettlementReceipt,
 }
 
@@ -459,7 +487,8 @@ impl PaymentReceipt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct FairExchangeEnvelope {
     pub offer_id: String,
     pub requirement: PaymentRequirements,
@@ -468,7 +497,8 @@ pub struct FairExchangeEnvelope {
     pub result_hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct FairExchangeClaim {
     pub offer_id: String,
     pub decryption_key: String,
@@ -504,7 +534,12 @@ pub fn decode_byte32(value: &str) -> ProtocolResult<[u8; 32]> {
 }
 
 fn decode_fixed_hex<const N: usize>(value: &str) -> ProtocolResult<[u8; N]> {
-    if !value.starts_with("0x") {
+    if value.len() != 2 + N * 2
+        || !value.starts_with("0x")
+        || !value.as_bytes()[2..]
+            .iter()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b))
+    {
         return Err(ProtocolError::InvalidIdentifier);
     }
     let raw = hex::decode(strip_hex(value)).map_err(|_| ProtocolError::InvalidIdentifier)?;
@@ -634,6 +669,52 @@ mod tests {
             ),
             Err(ProtocolError::InvalidPayerAuthorization)
         );
+    }
+
+    #[test]
+    fn public_terms_round_trip_without_changing_authority_and_reject_ambiguous_inputs() {
+        let original = requirement();
+        let value = serde_json::to_value(&original).unwrap();
+        assert_eq!(value["expires_at"], u64::MAX.to_string());
+        let restored: PaymentRequirements = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(restored, original);
+        assert_eq!(restored.expected_id().unwrap(), original.requirement_id);
+        let mut reordered = original.clone();
+        let mut object = serde_json::Map::new();
+        let script = original
+            .asset
+            .type_script
+            .as_ref()
+            .unwrap()
+            .as_object()
+            .unwrap();
+        for key in ["hash_type", "code_hash", "args"] {
+            object.insert(key.into(), script[key].clone());
+        }
+        reordered.asset.type_script = Some(Value::Object(object));
+        assert_eq!(reordered.expected_id().unwrap(), original.requirement_id);
+        for invalid in [
+            serde_json::json!(1),
+            serde_json::json!("01"),
+            serde_json::json!("18446744073709551616"),
+        ] {
+            let mut bad = value.clone();
+            bad["expires_at"] = invalid;
+            assert!(serde_json::from_value::<PaymentRequirements>(bad).is_err());
+        }
+        let mut bad = value.clone();
+        bad["asset"]["type_script"]["ignored"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<PaymentRequirements>(bad).is_err());
+        let mut bad = value;
+        bad["asset"]["type_script"]["args"] = serde_json::json!("0xAB");
+        assert!(serde_json::from_value::<PaymentRequirements>(bad).is_err());
+        for invalid in [
+            format!("0x{}", "AB".repeat(32)),
+            "11".repeat(32),
+            format!("0x{}\n", "11".repeat(32)),
+        ] {
+            assert!(decode_byte32(&invalid).is_err());
+        }
     }
 
     #[test]

@@ -10,3 +10,9 @@
 # Generated Python bytecode is never implementation source.
 **/__pycache__/
 *.py[cod]
+
+# Candidate runs may contain private logs/state; never commit or Cargo-cache them.
+/.local-evidence/
+
+# Old interrupted alert-unit-test sidecars, never signing authority.
+/crates/morph-cli/morph-watch-alert-local-*.jsonl.lock

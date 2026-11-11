@@ -179,6 +179,31 @@ def ckb_assets(reserve, business):
              "business_ckb": str(business * 100_000_000), "amount": "0"}]
 
 
+def child_close_assertions(evidence, scenario, factory_path, kind):
+    """Record observed fork outcomes without presenting them as final-chain payouts."""
+    base = f"/transitions/child/{kind}/cooperative_close"
+    evidence.add(scenario, "state", factory_path, base + "/submitted/status/state", "finalised")
+    depth = pointer(evidence.document(factory_path), base + "/submitted/status/depth")
+    require(type(depth) is int and depth >= 4, "child close needs four canonical confirmations")
+    evidence.add(scenario, "state", factory_path, base + "/submitted/status/depth", depth)
+    # Verification flags are observations. Asset evidence remains the exact
+    # nonempty value/identity vectors inspected for each child below.
+    for field, dimension in (("zero_since", "state"), ("all_payouts_verified", "state"),
+                             ("parent_journals_unchanged", "authority"),
+                             ("child_journals_unchanged_after_rollback", "persistence")):
+        evidence.add(scenario, dimension, factory_path, base + "/" + field, True)
+    evidence.add(scenario, "reorg", factory_path, base + "/branch",
+                 "cooperative_branch_orphaned_before_existing_unilateral_acceptance")
+    if kind == "terminal":
+        for outcome in ("fulfilled", "refunded"):
+            evidence.add(scenario, "state", factory_path, base + "/batch/" + outcome + "/status", "Committed")
+        evidence.add(scenario, "state", factory_path, base + "/batch/canonical_payouts_verified", True)
+        evidence.add(scenario, "reorg", factory_path, base + "/batch/branches",
+                     "fulfilment_orphaned_then_refund_before_outer_close_rollback")
+    else:
+        evidence.add(scenario, "state", factory_path, base + "/batch", None)
+
+
 def generate(run, cli):
     provenance = capture_provenance(run, "post_run")
     evidence = Evidence(run, cli)
@@ -293,10 +318,11 @@ def generate(run, cli):
         require(review["missing_deliveries"] == [] and review["delivery_count"] == 2,
                 "parent approval requires two complete private-exit possession receipts")
         scenario = evidence.scenario(identifier,
-            "An independently signed private child exit precedes parent approval; the same child paths update, correct a stale state, and finalise." +
+            "An independently signed private child exit precedes parent approval; the same child paths update, cooperatively close on a controlled orphan branch, then correct a stale state and finalise on the retained branch." +
             (" The terminal all-member operation retires all parent custody and refunds its carrier." if kind == "terminal" else ""),
             "factory_custody_and_children", ["factory_value_delta_binding", "state_retirement_non_orphaning"])
         evidence.add(scenario, "state", factory_path, base + "/finalise/status", "Committed")
+        child_close_assertions(evidence, scenario, factory_path, kind)
         evidence.add(scenario, "authority", factory_path, base + "/initial_exit_required_before_parent_vote", True)
         evidence.add(scenario, "authority", factory_path, base + "/private_exit_signatures_absent_from_parent", True)
         for field in ("same_request_reservation_idempotent", "complete_history_revalidated_after_reload"):

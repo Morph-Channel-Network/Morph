@@ -1,16 +1,17 @@
 //! Application-owned visual tokens and small native components.
 use gpui_kit::component::Theme;
 use gpui_kit::{Div, FontWeight, ParentElement, SharedString, Styled, div, px, rgb};
-pub const BG: u32 = 0x0b0c15;
-pub const SIDEBAR: u32 = 0x0e0f1c;
-pub const PANEL: u32 = 0x141625;
-pub const HOVER: u32 = 0x202239;
-pub const BORDER: u32 = 0x272a41;
-pub const TEXT: u32 = 0xeeeefa;
-pub const MUTED: u32 = 0xa1a4bf;
-pub const DIM: u32 = 0x777d9c;
-pub const ACCENT: u32 = 0xa5a3ff;
-pub const ACCENT_BG: u32 = 0x292449;
+pub const BASE_FONT_SIZE: f32 = 16.;
+pub const BG: u32 = 0x0e0d16;
+pub const SIDEBAR: u32 = 0x12111d;
+pub const PANEL: u32 = 0x191824;
+pub const HOVER: u32 = 0x282438;
+pub const BORDER: u32 = 0x302c40;
+pub const TEXT: u32 = 0xf3eff7;
+pub const MUTED: u32 = 0xb0aabd;
+pub const DIM: u32 = 0x888197;
+pub const ACCENT: u32 = 0xb3a6fa;
+pub const ACCENT_BG: u32 = 0x342b4b;
 pub const WARNING: u32 = 0xe9bd7c;
 pub const DANGER: u32 = 0xf59b9b;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,7 +56,7 @@ pub fn install(cx: &mut gpui_kit::App) {
         if let Some(family) = preferred {
             t.font_family = family.into();
         }
-        t.font_size = px(14.);
+        t.font_size = px(BASE_FONT_SIZE);
         t.radius = px(9.);
         t.colors.background = rgb(BG).into();
         t.colors.foreground = rgb(TEXT).into();
@@ -98,16 +99,17 @@ pub fn panel() -> Div {
 }
 pub fn title(text: impl Into<SharedString>) -> Div {
     div()
-        .text_2xl()
+        .text_3xl()
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(rgb(TEXT))
         .child(text.into())
 }
 pub fn caption(text: impl Into<SharedString>) -> Div {
-    div().text_xs().text_color(rgb(MUTED)).child(text.into())
+    div().text_sm().text_color(rgb(MUTED)).child(text.into())
 }
 pub fn badge(text: impl Into<SharedString>, tone: Tone) -> Div {
     div()
+        .self_start()
         .flex_shrink_0()
         .px_2()
         .py(px(3.))
@@ -119,28 +121,6 @@ pub fn badge(text: impl Into<SharedString>, tone: Tone) -> Div {
 }
 pub fn rule() -> Div {
     div().h(px(1.)).w_full().bg(rgb(BORDER))
-}
-pub fn metric(
-    label: impl Into<SharedString>,
-    value: impl Into<SharedString>,
-    note: impl Into<SharedString>,
-    tone: Tone,
-) -> Div {
-    panel()
-        .flex_1()
-        .min_w_0()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .child(caption(label))
-        .child(
-            div()
-                .text_3xl()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(rgb(tone.color()))
-                .child(value.into()),
-        )
-        .child(caption(note))
 }
 pub fn key_value(label: impl Into<SharedString>, value: impl Into<SharedString>) -> Div {
     div()
@@ -186,4 +166,42 @@ pub fn language_font(language: crate::i18n::Language, cx: &mut gpui_kit::App) {
     {
         Theme::update(cx, |theme| theme.font_family = (*name).into());
     }
+}
+
+/// A consistent, quiet icon tile; decoration never replaces a text label.
+pub fn icon_tile(icon: gpui_kit::assets::IconName) -> Div {
+    use gpui_kit::component::Icon;
+    div()
+        .size(gpui_kit::rems(2.7))
+        .flex_shrink_0()
+        .rounded(px(12.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(rgb(ACCENT_BG))
+        .child(
+            Icon::new(icon)
+                .size(gpui_kit::rems(1.2))
+                .text_color(rgb(ACCENT)),
+        )
+}
+
+/// Small semantic status lights, always paired with a readable label.
+pub fn status(text: impl Into<SharedString>, tone: Tone) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_sm()
+        .text_color(rgb(MUTED))
+        .child(div().size(px(6.)).rounded_full().bg(rgb(tone.color())))
+        .child(text.into())
+}
+/// Short workflows have a readable width and share the center of the workspace.
+pub fn workbench(content: impl gpui_kit::IntoElement, width: f32) -> Div {
+    div()
+        .w_full()
+        .flex()
+        .justify_center()
+        .child(div().w_full().max_w(px(width)).min_w_0().child(content))
 }

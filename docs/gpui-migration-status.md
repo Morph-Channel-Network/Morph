@@ -7,7 +7,7 @@
 > explicitly requested no gates for that cleanup; the results below remain tied
 > to their original commits, not to the subsequent unqualified cleanup and UI changes.
 
-The frontend, internal clients and former JS/TS/Node test runners now use Rust. React/Vite, the TypeScript SDK, Node/Bruno execution, static serving and their installation outputs are retired. Existing shell node orchestration and Python evidence validators remain; neither executes a retired client runtime. See [the plan](gpui-rust-migration-plan.md), [native operations](native-desktop.md) and [dependency provenance](native-gui-dependencies.md).
+The frontend, internal clients and former JS/TS/Node test runners now use Rust. React/Vite, the TypeScript SDK, Node/Bruno execution, static serving and their installation outputs are retired. Existing shell node orchestration and Python evidence validators remain; neither executes a retired client runtime. See [native operations](native-desktop.md) and [dependency provenance](native-gui-dependencies.md).
 
 Baseline: `e6469c3b4736d8ab4f62469f054f79aef71610f9`. Implementation: `371aae9`; qualification cache isolation: `31a5cf2`. This ledger and the final audit invocation correction follow those commits. No release, main merge, script deployment or real-asset admission is performed.
 

@@ -148,6 +148,65 @@ fn factory_authorization(
         authorization,
     )
 }
+
+#[test]
+fn factory_public_fuzz_corpus_matches_current_encoders() {
+    let mut frames = Vec::new();
+    for (assets, children, retained, members) in
+        [(2, 1, true, 2), (8, 4, true, 16), (8, 1, false, 16)]
+    {
+        let mut plan = plan(assets, children, retained);
+        plan.participants_commitment = factory_members(members);
+        let (commitment, authorization) = factory_authorization(&plan, members);
+        frames.push(serde_json::json!({
+            "target": "factory-materialisation",
+            "assets": assets, "children": children, "retained": retained, "members": members,
+            "frame_hex": hex::encode(plan.encode_witness(&commitment, &authorization).unwrap())
+        }));
+        for kind in [
+            factory::FACTORY_STATE_WITNESS_ROOT,
+            factory::FACTORY_STATE_WITNESS_ACTIVATE,
+            factory::FACTORY_STATE_WITNESS_UPDATE,
+        ] {
+            // FS corpus exercises framing, not authority: these are FM-domain
+            // signatures, deliberately not valid root/update approvals.
+            let points = if kind == factory::FACTORY_STATE_WITNESS_ROOT {
+                &[][..]
+            } else {
+                &plan.source_outpoints
+            };
+            let signatures = if kind == factory::FACTORY_STATE_WITNESS_ACTIVATE {
+                &[][..]
+            } else {
+                &authorization
+            };
+            frames.push(serde_json::json!({
+                "target": "factory-state", "kind": kind, "assets": assets, "members": members,
+                "frame_hex": hex::encode(encode_factory_multi_asset_state_witness(
+                    kind, &plan.source, points, signatures).unwrap())
+            }));
+        }
+    }
+    let value = serde_json::json!({
+        "schema": "morph.factory_public_fuzz_corpus.v1",
+        "provenance": "Synthetic current Core constructors. Public FS/FM frames only; no private child exits. FS is structural corpus with FM-domain signatures; FM verifies synthetic parent signatures, not physical transactions.",
+        "cases": frames
+    });
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/protocol/factory-public-frames.json");
+    if std::env::var("MORPH_UPDATE_FIXTURES").as_deref() == Ok("1") {
+        std::fs::write(
+            &path,
+            format!("{}\n", serde_json::to_string_pretty(&value).unwrap()),
+        )
+        .unwrap();
+    }
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(
+        saved, value,
+        "regenerate with MORPH_UPDATE_FIXTURES=1 cargo test -p morph-core --test multi_asset factory_public_fuzz_corpus_matches_current_encoders"
+    );
+}
 #[test]
 fn factory_partition_has_complete_child_exits_separate_carriers_and_n_of_n_authority() {
     for (assets, children, retained) in [(2, 1, true), (8, 4, true), (8, 1, false)] {
@@ -233,6 +292,28 @@ fn factory_partition_rejects_cross_asset_minting_reserve_subsidies_and_custody_o
     let mut bad = plan(2, 2, true);
     bad.children[1] = bad.children[0].clone();
     assert!(bad.validate_contents().is_err());
+}
+
+#[test]
+fn materialisation_rejects_an_unused_shared_dictionary_script() {
+    use morph_script_common::script_table::{self, ScriptTable};
+    let plan = plan(2, 1, false);
+    let mut raw = plan.encode_intent().unwrap();
+    let start = factory::FACTORY_MATERIALISATION_PREFIX_LEN
+        + plan.source.encode().unwrap().len()
+        + plan.source_outpoints.len() * 36;
+    let len = u32::from_le_bytes(raw[204..208].try_into().unwrap()) as usize;
+    let table = ScriptTable::parse(&raw[start..start + len]).unwrap();
+    let extra = script(250, &[255; 458]); // 511 bytes, sorts after these fixture Scripts.
+    let mut entries: Vec<_> = (0..table.count())
+        .map(|i| table.script(i).unwrap())
+        .collect();
+    assert!(entries.last().unwrap() < &&extra[..]);
+    entries.push(&extra);
+    let expanded = script_table::encode(&entries).unwrap();
+    raw[204..208].copy_from_slice(&(expanded.len() as u32).to_le_bytes());
+    raw.splice(start..start + len, expanded);
+    assert!(factory::FactoryMaterialisationIntent::parse(&raw).is_err());
 }
 #[test]
 fn factory_partition_accepts_outside_child_parties_but_preserves_parent_and_exit_authority() {

@@ -1,0 +1,187 @@
+{
+  "$defs": {
+    "Component": {
+      "enum": [
+        "hub",
+        "gateway",
+        "watch",
+        "operation",
+        "edge"
+      ],
+      "type": "string"
+    },
+    "EventSchema": {
+      "enum": [
+        "morph.event.v1"
+      ],
+      "type": "string"
+    },
+    "EvidenceLevel": {
+      "enum": [
+        "local_record"
+      ],
+      "type": "string"
+    },
+    "Kind": {
+      "description": "These describe local component records, not independently verified chain outcomes.",
+      "enum": [
+        "edge_observed",
+        "edge_observation_invalidated",
+        "edge_mutation_queued",
+        "edge_mutation_acknowledged",
+        "edge_mutation_abandoned",
+        "operation_registered",
+        "operation_broadcast_intent",
+        "operation_observed",
+        "watch_reorg_detected",
+        "watch_recovery_invalid",
+        "watch_publication_failed",
+        "watch_older_state_detected",
+        "watch_publication_submitted",
+        "watch_splice_detected",
+        "watch_splice_package_stale",
+        "watch_splice_publication_submitted",
+        "watch_scan_idle",
+        "gateway_initialized",
+        "gateway_challenge_created",
+        "gateway_offer_created",
+        "gateway_payment_recorded",
+        "gateway_receipt_issued",
+        "gateway_outgoing_reserved",
+        "gateway_outgoing_succeeded",
+        "gateway_outgoing_failed",
+        "state_restored",
+        "peer_connected",
+        "invoice_created",
+        "invoice_received",
+        "invoice_settled",
+        "channel_opened",
+        "channel_spliced",
+        "state_published",
+        "channel_finalised",
+        "conditional_batch_imported",
+        "root_funding_proposed",
+        "root_funding_signature_received",
+        "multi_asset_recovery_imported",
+        "factory_opened",
+        "factory_advanced",
+        "factory_child_materialised"
+      ],
+      "type": "string"
+    },
+    "Severity": {
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "component": {
+      "$ref": "#/$defs/Component"
+    },
+    "correlation_id": {
+      "maxLength": 64,
+      "minLength": 64,
+      "pattern": "^[0-9a-f]+$",
+      "type": "string"
+    },
+    "created_at_ms": {
+      "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+      "maxLength": 20,
+      "minLength": 1,
+      "not": {
+        "pattern": "[^0-9]"
+      },
+      "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+      "type": "string"
+    },
+    "event_id": {
+      "maxLength": 64,
+      "minLength": 64,
+      "pattern": "^[0-9a-f]+$",
+      "type": "string"
+    },
+    "evidence_digest": {
+      "description": "Reference only: never embed an immutable publication attempt or private exit.",
+      "type": "string"
+    },
+    "evidence_level": {
+      "$ref": "#/$defs/EvidenceLevel"
+    },
+    "funding_context_id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/Kind"
+    },
+    "payment_hash": {
+      "type": "string"
+    },
+    "provider_revision": {
+      "anyOf": [
+        {
+          "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+          "maxLength": 20,
+          "minLength": 1,
+          "not": {
+            "pattern": "[^0-9]"
+          },
+          "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema": {
+      "$ref": "#/$defs/EventSchema"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "source_id": {
+      "maxLength": 64,
+      "minLength": 64,
+      "pattern": "^[0-9a-f]+$",
+      "type": "string"
+    },
+    "source_revision": {
+      "description": "Canonical unsigned decimal string in 0..=18446744073709551615. Units are documented on the field.",
+      "maxLength": 20,
+      "minLength": 1,
+      "not": {
+        "pattern": "[^0-9]"
+      },
+      "pattern": "^(0|[1-9][0-9]{0,18}|18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0})$",
+      "type": "string"
+    },
+    "subject_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "event_id",
+    "source_id",
+    "source_revision",
+    "created_at_ms",
+    "component",
+    "evidence_level",
+    "kind",
+    "severity",
+    "correlation_id",
+    "subject_id",
+    "funding_context_id",
+    "payment_hash",
+    "provider_revision",
+    "evidence_digest"
+  ],
+  "title": "EventEnvelope",
+  "type": "object"
+}

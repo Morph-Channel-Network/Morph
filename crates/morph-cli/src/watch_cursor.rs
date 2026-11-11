@@ -2,12 +2,10 @@
 use crate::canonical_fields::canonical_hex32;
 use crate::persistence::required_option;
 #[cfg(any(feature = "devnet", test))]
-use crate::persistence::write_private_atomic;
-#[cfg(any(feature = "devnet", test))]
-use anyhow::Context;
+use crate::watch_runtime;
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "devnet", test))]
+#[cfg(test)]
 use std::fs;
 #[cfg(any(feature = "devnet", test))]
 use std::path::{Path, PathBuf};
@@ -134,34 +132,20 @@ impl WatchCursor {
 pub fn default_watch_cursor_path(dir: &Path, channel_id: &str) -> Result<PathBuf> {
     let channel = canonical_hex32(channel_id)?;
     Ok(dir.join(format!(
-        "watch-cursor-{}.json",
+        "watch-cursor-{}.db",
         channel.trim_start_matches("0x")
     )))
 }
 
 #[cfg(any(feature = "devnet", test))]
 pub fn read_watch_cursor(path: &Path) -> Result<Option<WatchCursor>> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    fs::File::open(path)?
-        .take(16 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    ensure!(bytes.len() <= 16 * 1024, "watch cursor exceeds byte limit");
-    let cursor: WatchCursor = serde_json::from_slice(&bytes)
-        .with_context(|| format!("failed to parse watch cursor {}", path.display()))?;
-    cursor
-        .validate()
-        .with_context(|| format!("invalid watch cursor {}", path.display()))?;
-    Ok(Some(cursor))
+    watch_runtime::read(path)
 }
 
-#[cfg(any(feature = "devnet", test))]
+#[cfg(test)]
 pub fn write_watch_cursor(path: &Path, cursor: &WatchCursor) -> Result<()> {
     cursor.validate()?;
-    write_private_atomic(path, &serde_json::to_vec_pretty(cursor)?)
+    watch_runtime::commit(path, cursor, None, false, None)
 }
 
 fn now_unix_ms() -> Result<u64> {
@@ -183,6 +167,8 @@ mod tests {
                 .as_nanos()
         ));
         fs::create_dir_all(&path).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
         path
     }
     #[test]

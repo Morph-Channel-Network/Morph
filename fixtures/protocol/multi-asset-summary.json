@@ -18,8 +18,8 @@
   },
   "channel_id": "0x0202020202020202020202020202020202020202020202020202020202020202",
   "dependency_count": 5,
-  "funding_context_id": "0x100deb7a3111e8dfc7eef1ee35edfe49256d9b533c9f30593220cceb066df1bf",
-  "package_id": "0x2772bb16ada09e8ee59ab5222695704f917c6ac61cb7cb5e6aec8c4a38346bf8",
+  "funding_context_id": "0x82f7cb6e4e4bf40c7fb5981dbede035e76dcd59ae4dc103839291b312877442b",
+  "package_id": "0xb04fba96a97b3af38091524ac4e6e2df60d7b6fee06efc401c3ee06564e18c7a",
   "phase": "settling",
   "signer_pubkeys": [
     "0x024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
@@ -29,5 +29,5 @@
   "state_number": "9",
   "vault_count": 2,
   "vaults_bound": true,
-  "witness_bytes": 1360
+  "witness_bytes": 1285
 }

@@ -719,12 +719,20 @@ fn factory_child_public_fixture_matches_current_rust_vm_terms() {
     let (request, _, _, _) = support::reduced_child_request();
     let child = request.public_child(0).unwrap();
     let expected = request.expected_child_recovery(0).unwrap();
+    let standalone = encode_multi_asset_witness(
+        &expected.manifest,
+        &expected.settlement,
+        &expected.outpoints,
+        &expected.scripts,
+    )
+    .unwrap();
+    asset::MultiAssetWitness::parse(&standalone).unwrap();
     let encode = |raw: &[u8]| format!("0x{}", hex::encode(raw));
     let value = serde_json::json!({
         "schema": "morph.factory_child_public_terms_fixture.v1",
         "provenance": "Public terms extracted with Rust current codecs from the VM-qualified ReducedChild corpus; no private child authorization.",
         "header_hex": encode(child.header.as_bytes()),
-        "witness_hex": encode(child.evidence.as_bytes()),
+        "witness_hex": encode(&standalone),
         "state_carrier_capacity": child.carrier_capacity.to_string(),
         "participants": expected.authorization.signatures.iter().map(|member|encode(&member.pubkey_sec1)).collect::<Vec<_>>(),
         "state_type_script_hex": encode(&expected.scripts.state_type),

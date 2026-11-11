@@ -27,6 +27,57 @@ pub fn splice_evidence(index: usize, source: Source) -> Result<Option<Vec<u8>>> 
         .then(|| raw.to_vec()))
 }
 
+/// New State and Vault groups bind the same immutable old Type, global frame
+/// and exact body. The old Type must retire, forcing its complete verifier.
+/// New State creation signatures are still independently checked by its Type.
+pub fn verify_splice_gate(raw: &[u8]) -> Result<()> {
+    let proof = MultiAssetSpliceWitness::parse(raw)?;
+    let tx = load_transaction().map_err(|_| ScriptError::Encoding)?;
+    let inputs = tx.raw().inputs().len();
+    let outputs = tx.raw().outputs().len();
+    if inputs < 1 + proof.old_manifest().count()
+        || outputs < 1 + proof.new_evidence().manifest().count()
+        || inputs > MULTI_ASSET_MAX_TRANSACTION_CELLS
+        || outputs > MULTI_ASSET_MAX_TRANSACTION_CELLS
+        || tx.raw().cell_deps().len() > 64
+        || tx.raw().header_deps().len() > 64
+        || load_tx_hash()
+            .map_err(|_| ScriptError::Encoding)?
+            .as_slice()
+            != proof.header().transaction_hash()
+    {
+        return Err(ScriptError::MultiAssetSpliceMismatch);
+    }
+    let input = load_input(0, Source::Input).map_err(|_| ScriptError::Encoding)?;
+    if input.since().unpack() != 0u64
+        || input.previous_output().as_slice() != proof.header().old_state_outpoint()
+    {
+        return Err(ScriptError::MultiAssetSpliceMismatch);
+    }
+    let data = load_cell_data(0, Source::Input).map_err(|_| ScriptError::Encoding)?;
+    let old = MultiAssetStateHeader::parse(&data)?;
+    proof.validate_old_context(&old)?;
+    verify_authority(&proof, &old)?;
+    let old_type = load_cell_type_hash(0, Source::Input)
+        .map_err(|_| ScriptError::Encoding)?
+        .ok_or(ScriptError::StateTypeMismatch)?;
+    for i in 0..outputs {
+        if load_cell_type_hash(i, Source::Output).map_err(|_| ScriptError::Encoding)?
+            == Some(old_type)
+        {
+            return Err(ScriptError::WrongGroupShape);
+        }
+    }
+    if load_cell_data(0, Source::Output)
+        .map_err(|_| ScriptError::Encoding)?
+        .as_slice()
+        != proof.new_header().as_bytes()
+    {
+        return Err(ScriptError::MultiAssetSpliceMismatch);
+    }
+    Ok(())
+}
+
 pub fn verify_splice(raw: &[u8]) -> Result<()> {
     let proof = MultiAssetSpliceWitness::parse(raw)?;
     let tx = load_transaction().map_err(|_| ScriptError::Encoding)?;
@@ -146,6 +197,7 @@ fn verify_authority(proof: &MultiAssetSpliceWitness, old: &MultiAssetStateHeader
     let old_type = load_cell_type(0, Source::Input)
         .map_err(|_| ScriptError::Encoding)?
         .ok_or(ScriptError::StateTypeMismatch)?;
+    crate::multi_asset::require_immutable_authority_script(old_type.as_slice())?;
     let old_state_lock = load_cell_lock(0, Source::Input).map_err(|_| ScriptError::Encoding)?;
     let old_vault = load_cell_lock(1, Source::Input).map_err(|_| ScriptError::Encoding)?;
     let new_type = load_cell_type(0, Source::Output)

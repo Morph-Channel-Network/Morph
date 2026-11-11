@@ -1,0 +1,199 @@
+{
+  "schema": "morph.release_closed_issues.v1",
+  "release": "v4.1.0",
+  "repository": "Morph-Channel-Network/Morph",
+  "captured_at_utc": "2026-11-11T17:51:18.773762+00:00",
+  "count": 21,
+  "scope": "All closed repository issues at capture; pull requests are separate. Closure is interpreted within the recorded boundary, not as production readiness.",
+  "issues": [
+    {
+      "number": 15,
+      "title": "Factory materialisation: separate public intent from private child exit packages",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/15",
+      "closed_at": "2026-11-05T09:53:46Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Separate public Factory intents/possession receipts from private child exits; preserve owner-only delivery and recovery artifacts.",
+      "boundary": "Child exit signatures never enter parent public requests."
+    },
+    {
+      "number": 16,
+      "title": "Signing CLI: remove private keys from argv and support protected key input",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/16",
+      "closed_at": "2026-11-06T01:53:18Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Remove participant/wallet private-key argv and raw-secret environment entry points; use protected key files.",
+      "boundary": "Protected input is currently Linux-specific; no insecure fallback."
+    },
+    {
+      "number": 18,
+      "title": "Factory contracts: harden delegated verification and cross-script-group invariants",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/18",
+      "closed_at": "2026-11-06T01:53:22Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Harden delegated contract validation, authentic authority selection, complete custody and cross-script-group negative cases.",
+      "boundary": "Delegation authenticates mandatory immutable code; it does not omit physical conservation."
+    },
+    {
+      "number": 19,
+      "title": "Factory signers: implement independent durable journals and private exit delivery before approval",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/19",
+      "closed_at": "2026-11-05T09:53:51Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Independent durable Factory member/child journals, crash-safe signature reservation and private exit delivery before parent approval.",
+      "boundary": "Possession attestations rely on honest child persistence; they do not prove everlasting data availability."
+    },
+    {
+      "number": 20,
+      "title": "Factory CLI: implement native multi-asset creation, activation, and materialisation submission",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/20",
+      "closed_at": "2026-11-05T09:54:11Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Native Factory root, activation, metadata, retained/terminal materialisation, wallet funding, keyless submission and child recovery.",
+      "boundary": "Actual admitted shapes remain narrower than all parser maxima."
+    },
+    {
+      "number": 21,
+      "title": "Deployment policy: qualify one current custody envelope and explicit admission limits",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/21",
+      "closed_at": "2026-11-06T01:53:34Z",
+      "state_reason": "COMPLETED",
+      "delivered": "One current custody envelope with exact-request admission, lifetime reservations and canonical/reorg-aware accounting.",
+      "boundary": "Controlled no-value scope only; owner removed external-operator/external-record prerequisites."
+    },
+    {
+      "number": 24,
+      "title": "Supply chain: upgrade the RustCrypto signing stack and remove the RUSTSEC-2026-0387 waiver",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/24",
+      "closed_at": "2026-11-06T01:53:26Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Upgrade RustCrypto signing and Biscuit; remove the two resolved crypto advisory waivers.",
+      "boundary": "The deprecated vulnerable stack is not retained as a compatibility path."
+    },
+    {
+      "number": 25,
+      "title": "Supply chain: upgrade CKB dependencies and the toolchain to close faster-hex and removable legacy waivers",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/25",
+      "closed_at": "2026-11-06T01:53:29Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Upgrade CKB dependencies and Rust 1.95 toolchain; record reviewed vendor patches and remove obsolete waivers.",
+      "boundary": "The documented upstream rand 0.7 waiver remains; closed does not mean zero waivers."
+    },
+    {
+      "number": 28,
+      "title": "Current capability bounds: qualify admitted joint exits and retained floors",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/28",
+      "closed_at": "2026-11-11T03:36:56Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Qualify bounded admitted exits, claim backing, payout geometry, retained floors and exact resource shapes.",
+      "boundary": "Not a proof every arbitrary legal rights allocation/asset topology can independently liquidate the last floor."
+    },
+    {
+      "number": 29,
+      "title": "Runtime storage: add a transactional boundary for coordinated node state",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/29",
+      "closed_at": "2026-11-11T03:36:58Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Introduce transactional SQLite runtime families, revisions and atomic exact intent/outbox updates with current-schema validation.",
+      "boundary": "A runtime database or its backup never replaces the monotonic signer journal."
+    },
+    {
+      "number": 31,
+      "title": "Signing: add a role-bound external signer protocol and isolated implementation",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/31",
+      "closed_at": "2026-11-11T03:37:04Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Provide role-bound participant signer review and bounded private Linux IPC with timeout/lost-response/crash recovery.",
+      "boundary": "Existing reservations survive uncertainty; no automatic local-key fallback or hardware-wallet claim."
+    },
+    {
+      "number": 32,
+      "title": "API: versioned public Rust types, checked schemas and Rust clients",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/32",
+      "closed_at": "2026-11-11T03:37:06Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Make public Rust DTOs/errors authoritative; generate checked schemas and reuse typed SDK/GPUI contracts.",
+      "boundary": "The earlier TypeScript-output proposal was superseded by the owner’s Rust-only client decision."
+    },
+    {
+      "number": 35,
+      "title": "Observability: add bounded metrics and mutation readiness separate from liveness",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/35",
+      "closed_at": "2026-11-11T03:37:07Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Bound observability and authenticated mutation readiness independently of process liveness, with scope/freshness checks.",
+      "boundary": "Readiness is neither signer authority nor a guarantee of pooled failover."
+    },
+    {
+      "number": 37,
+      "title": "Fiber bridge: implement the external-edge hook and canonical shadow-mode service",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/37",
+      "closed_at": "2026-11-11T03:37:09Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Implement pinned Fiber external-edge hook and canonical, durable nonforwarding shadow coordination/service.",
+      "boundary": "Diagnostic mirrors do not route payments or create liquidity/settlement evidence."
+    },
+    {
+      "number": 43,
+      "title": "Verification: require bounded parser fuzzing and real-process crash recovery gates in CI",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/43",
+      "closed_at": "2026-11-11T03:37:15Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Add bounded parser/mutation, real-process crash/recovery and I/O fault evidence with reproducible budgets.",
+      "boundary": "780,000 bounded host mutations are not VM executions, coverage-guided proof or a universal security claim."
+    },
+    {
+      "number": 44,
+      "title": "Release evidence: publish a versioned machine-checked node and integration manifest",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/44",
+      "closed_at": "2026-11-11T03:37:17Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Bind source, schemas, node/Fiber identities, ELFs, policy, client bundles and per-gate receipts in machine-checked evidence.",
+      "boundary": "Previous candidates retain their own identities; skipped/stopped runs are not relabelled passes."
+    },
+    {
+      "number": 46,
+      "title": "Factory reduced rights: qualify native publication through the sole current capability",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/46",
+      "closed_at": "2026-11-05T09:54:03Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Publish current one/four/ten-right reduced updates through native prepare, independent signing, funding and proof refresh.",
+      "boundary": "Uses the sole compact current frame; no parallel historical reduced protocol."
+    },
+    {
+      "number": 51,
+      "title": "Accepted: explicit bilateral cooperative terminal close",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/51",
+      "closed_at": "2026-11-11T03:37:18Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Implement exact-body bilateral cooperative terminal close, retained replacement attempts, source races and conditional/child recovery.",
+      "boundary": "Native CLI consensus/signing/operation scope is implemented; generic send/RBF and all UI/API adapters are not implied."
+    },
+    {
+      "number": 55,
+      "title": "Double-spend review: qualify typed capabilities, freshness, signer rollback and exact custody",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/55",
+      "closed_at": "2026-11-11T03:37:20Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Review current typed authority, exact custody, roles, stale settlement, replay and rollback assumptions; bind acceptance to source.",
+      "boundary": "Local hashes/fsync cannot detect rollback of the entire authority store without independent freshness."
+    },
+    {
+      "number": 56,
+      "title": "Funding: retire obsolete shapes and enforce initial-exit recovery on the sole current path",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/56",
+      "closed_at": "2026-11-05T09:53:57Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Retire obsolete funding shapes; require complete initial exits and support withheld-receipt, offline recovery and exact orphan replay.",
+      "boundary": "No missing-field migration, second authority initialisation or journal reset."
+    },
+    {
+      "number": 63,
+      "title": "Optimize current protocol parsing, witness bytes and duplicated verification",
+      "url": "https://github.com/Morph-Channel-Network/Morph/issues/63",
+      "closed_at": "2026-11-11T16:46:51Z",
+      "state_reason": "COMPLETED",
+      "delivered": "Cache validated conditional views; compact Script/condition/right transport; authenticate one mandatory close/splice verifier; refresh resource evidence.",
+      "boundary": "Preserve 256-bit commitments, independent signatures, u128 amounts, conservation and complete private recovery."
+    }
+  ]
+}

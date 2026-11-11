@@ -1,12 +1,52 @@
 # Changelog
 
-## Unreleased — native Rust clients
+## v4.1.0 — 2026-11-12
 
-- Replace the browser frontend with one native GPUI operator application. Retire React/Vite, the TypeScript SDK, Node/Bruno runners, dependency manifests and Hub static serving; the Hub remains an API service.
-- Extract canonical package codecs and owned public DTOs into shared Rust crates, with a typed bounded SDK and no second signing authority. Preserve independent protocol/authorization vectors, exact u128 JSON values and ambiguous-write reconciliation.
-- Port selected Fiber/Gateway regressions to source-bound native Rust scenarios, including exact balances, terminal payments, credential/decryption checks and owned-node funding recovery.
-- Pin and qualify the native dependency family, resolve incoming unmaintained packages without new advisory waivers, and provide source/notice-carrying local desktop bundles. Protocol formats and contract release flags stay unchanged.
-- Migration acceptance and platform scope are recorded in `docs/gpui-migration-status.md`; this entry publishes no release.
+This release advances the sole current Morph custody implementation, native
+Rust clients and controlled-devnet acceptance. The tag is `v4.1.0`; workspace,
+SDK and Hub package versions are `4.1.0`. This version does not authorize
+mainnet deployment or real assets.
+
+- Add asset-bound CKB/UDT conditional settlement: up to eight asset-sorted Batches
+  with eight transfers each, exact Type/u128 conservation, fulfill/refund,
+  mature unchanged-term consolidation and independent fee funding. Exercise
+  real-node eight-Type/64-condition settlement, payout verification and reorgs.
+- Add exact-body cooperative terminal close with distinct signing authority,
+  durable reservations, retained fee-replacement approvals and canonical
+  operation tracking. Preserve unilateral recovery and same-path splice/root
+  handoff when peers withhold receipts or an operation is orphaned.
+- Replace browser/TypeScript clients and Node/Bruno tooling with the native
+  GPUI Hub, shared Rust SDK/package/API crates and Rust scenario tooling.
+  Include a local CKB/UDT wallet, bilingual UI, adjustable text sizing and
+  source/notice-carrying Linux desktop packaging. No retired client fallback.
+- Move operational state to typed SQLite stores and atomic outboxes; add bounded
+  signer supervision, reorg-aware watch/event delivery, authenticated readiness,
+  exact-request experiment admission and a nonforwarding Fiber shadow service.
+  Morph does not add routing; Fiber routing remains a separate integration.
+- Remove raw private-key argv/environment inputs; use protected key files and
+  independently reviewing Linux participant signer processes. Upgrade the
+  RustCrypto/Biscuit and CKB dependency family with Rust 1.95.0 and retained
+  documented upstream rand 0.7 waiver only.
+- Reduce repeated conditional parsing and cross-script close/splice verification;
+  share canonical Script dictionaries, count actual conditions and precompute
+  unchanged sparse-tree defaults. Maximum typed-terminal fixture cycles fall
+  69.67%, ordinary close 45.32% and splice 41.86%; maximum Factory transaction
+  bytes fall 28.80–31.13%. Keep unfavorable small-path results and source-bound
+  measurements visible rather than increasing admission limits.
+- Publish descriptor 7, custody encoding 2, conditional terms 5/trailer 3/
+  resolution 3, conditional package v3 and FM/FR frame 2 as the sole current
+  encodings. Recreate disposable development state; no backward readers or
+  signer-authority rollback/unfreeze are added.
+- Preserve the executed 114-case VM / ten-gate W1 and typed-condition evidence
+  with its original source identity. The owner skipped repeated acceptance for
+  this version/documentation publication; release builds have separate provenance.
+  Include dated
+  Morph/Fiber resource and fiat-cost comparisons with observed versus inferred
+  values, returned capacity versus fees, and public evidence checksums.
+
+See [the 4.1.0 release record](docs/releases/v4.1.0.md) for compatibility,
+artifacts, reproduction and remaining boundaries. Historical audit and
+qualification records retain their original source identities.
 
 ## v4.0.0-alpha.1 — 2026-11-05
 

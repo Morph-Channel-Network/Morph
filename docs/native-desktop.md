@@ -25,13 +25,17 @@ creates a local linker shim under `target/native-libs`; it never changes system
 libraries. `make` supplies that directory to the linker. Distribution packages
 should depend on the normal system runtime packages.
 
-Start the Hub in one terminal:
+The local wallet works independently of Hub. Open **Wallet** to create or restore a wallet, then choose a public, local or custom CKB connection. New wallets default to a Testnet public preset; connection requires explicit verification. See [local wallet](runbooks/local-wallet.md) and the current native screenshots below.
+
+For a disposable **real development-chain** demonstration, run `CKB_BIN=/absolute/path/to/ckb scripts/native-wallet-showcase.sh`. It funds a new wallet, sends 120 CKB to another development wallet, asserts receipt and opens the ordinary desktop. No fake balance or activity mode is installed in the product.
+
+For channel records and operator workflows, start the Hub in one terminal:
 
 ```sh
 cargo run -p morph-cli -- hub serve \
   --listen 127.0.0.1:4617 \
   --pubkey "${MORPH_PUBKEY:?set the 66-character compressed public key}" \
-  --state-path target/morph-hub/node-state.json \
+  --state-path target/morph-hub/runtime/node.db \
   --rotate-auth-token-on-restart
 ```
 
@@ -51,6 +55,9 @@ for separately maintained external browser clients, without shipping one here.
 ```mermaid
 flowchart TB
     D["morph-desktop · native GPUI"] --> W["Bounded worker · typed jobs"]
+    D --> L["Separate local-wallet worker"]
+    L --> K["morph-wallet · encrypted custody + exact transaction review"]
+    K --> R["Pinned CKB RPC and Indexer"]
     W --> S["morph-sdk · bounded HTTP + stateless inspection"]
     S --> A["morph-hub-api · owned public DTOs"]
     S --> P["morph-packages · canonical packages and review"]
@@ -68,7 +75,8 @@ flowchart TB
 | `morph-hub-api` | Public requests, records, model/security/provenance and watch views | Private persisted store or signer snapshots |
 | `morph-packages` | Sole public codec, exact-body construction, signatures, summaries, private immutable artifact writes | A second signer journal or implicit chain trust |
 | `morph-sdk` | Typed API operations, canonical package validation, payer authorization and receipt verification | State-number reservations or automatic write retry |
-| `morph-desktop` | Read views, search, 23 workflows, file review/export and explicit confirmation | Funding wallet selection, channel keys, chain publication |
+| `morph-desktop` | Native views, 23 Hub workflows, local-wallet review/confirm | Channel signer journals or implicit funding authorization |
+| `morph-wallet` | Encrypted local key, invoice secrets, CKB/xUDT selection and exact payments | Channel state signatures, Factory authority or bypass of funding ceremonies |
 | `morph-xtask` | Protocol vectors, native Fiber/Gateway scenarios and source retirement checks | Production admission or release approval |
 
 CLI modules re-export the shared packages rather than maintaining a parallel
@@ -146,12 +154,11 @@ remains available as an unchecked task output instead of replacing input.
 Chinese and English use one typed message catalog and switch live from the header
 or settings without resetting drafts or reviewed requests. Language, text scale and reduced-motion device
 preferences persist through a bounded background worker; credentials remain in
-memory. See [brand and internationalization](native-ui-design-and-i18n.md).
+memory.
 CKB/shannons conversion is exact integer arithmetic (at most eight decimal
 places); tokens with unknown precision remain integer base units. Asset lanes
 are never summed across Types. Compact navigation and the optional technical pane adapt to logical width divided
-by the selected text scale. See [motion and typography](native-motion-and-typography.md)
-for the finite animation policy, 90–150% controls and measured limits.
+by the selected text scale (90–150%).
 Ctrl+= / Ctrl+- adjust text and interface size; Ctrl+0 resets it.
 Ctrl-K opens search, Ctrl-1/2/3 navigate, Ctrl-N opens tasks and Ctrl-R reads fresh
 records. Enter/Escape retain native editor/IME semantics and never confirm writes.
@@ -200,9 +207,8 @@ source archives. No upload/release command is part of the target.
 
 The original migration acceptance ledger is
 [gpui-migration-status.md](gpui-migration-status.md); its qualification applies
-to the recorded commit, not subsequent source changes. The later workspace
-redesign and its limited native preview evidence are documented in
-[the UI/UX implementation record](native-uiux-implementation-2026-11-09.md).
+to the recorded commit, not subsequent source changes. Current UI structure
+and captured native screenshots are documented below.
 Headless tests, real OS event delivery, clipboard composition, file portals and
 physical keyboard/IME tests are separate evidence classes. A screenshot or
 headless input handler test alone does not establish native OS IME support.
@@ -211,5 +217,56 @@ interaction tests are run.
 
 The pinned native dependency family and exact source deltas are documented in
 [native-gui-dependencies.md](native-gui-dependencies.md). Distribution must carry
-its dependency notices and exact MPL source archives. This migration does not
-publish a release, deploy scripts or approve real assets.
+its dependency notices and exact MPL source archives. The 4.1.0 publication is described in [the release record](releases/v4.1.0.md);
+distribution does not authorize real assets or a script deployment.
+
+
+## Current Hub reconstruction and interface
+
+The service is API-only; native GPUI owns presentation. Shared typed DTOs,
+canonical package review, exact integer quantities and bounded worker jobs replace
+parallel browser/client logic. Wallet custody, Hub runtime projections and
+participant signer authority remain three different boundaries.
+
+Wide wallet layouts pair balance and a real receive QR; narrow windows keep one
+primary task. Short forms are centered and width-bounded, not squeezed into a
+corner under banners. Existing records supply selectable identities; review binds
+the exact inferred/entered values and still requires explicit confirmation.
+Technical maintenance is grouped under tools/settings rather than everyday flows.
+
+Blue-purple surfaces are slightly warm; small colored indicators always have
+text labels. Navigation rails animate measured x/y/width/height instead of an
+index multiplied by fixed spacing, so language, wrapping and text scale changes
+remain aligned. Fast reversals start from the current interpolated geometry.
+The restrained Bezier aurora is an independently cached leaf; it is not a full
+window shader, liquid-glass renderer or invented network graph. Hidden/unfocused
+and reduced-motion states stop or settle motion. There is no replay-animation
+button, random progress or injected balance mode.
+
+| Wallet connection | Public preset | Local preset |
+| --- | --- | --- |
+| Testnet | `https://testnet.ckb.dev/` | `http://127.0.0.1:8114` |
+| Mainnet | `https://mainnet.ckb.dev/` | `http://127.0.0.1:8114` |
+| Devnet | None | `http://127.0.0.1:18114` |
+
+Custom RPC and independent indexer remain available. Presets change a draft;
+**connect and verify** explicitly checks network identity and indexing. No silent
+provider fallback is performed. Saved custom settings remain distinct from
+presets. Public RPC access from a particular environment is not public-network
+admission evidence, and a wallet mainnet preset does not permit real-asset Morph
+channel deployment under the current envelope.
+
+![Native wallet, English](uiux/wallet/home-en.png)
+![Native receive view, Chinese](uiux/wallet/receive-zh.png)
+![Large-text compact layout](uiux/wallet/receive-en-150.png)
+
+These are captured native development-wallet views, not live data. The real
+showcase script creates/funds a fresh wallet and transfers 120 CKB to a separate
+development recipient; it retains evidence and cleans up only its own processes.
+The disposable showcase password is `morph showcase development only`; it is
+only for that script’s newly created no-value wallet, never an existing user
+wallet.
+
+Raw transaction evidence, native event videos and historical narrow CPU/RSS
+observations remain under `uiux/wallet/` and `uiux/refinement/`. They do not
+establish universal FPS/GPU, accessibility or cross-platform performance claims.

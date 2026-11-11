@@ -17,9 +17,13 @@ before provisioning, without putting the key bytes in a shell command:
 umask 077
 install -d -m 0700 /srv/morph/keys
 # Provision /srv/morph/keys/alice.key securely with mode 0600 or 0400.
-export MORPH_CHANNEL_PRIVATE_KEY_FILE=/srv/morph/keys/alice.key
 morph-cli multi-asset-session --session /srv/morph/alice.json inspect
-morph-cli multi-asset-session --session /srv/morph/alice.json sign --target update
+# Run the key service in its supervised process (RPC-enabled devnet build):
+morph-cli participant-signer-serve --config /srv/morph/alice/signer.json \
+  --private-key-file /srv/morph/keys/alice.key
+# From the ceremony process:
+morph-cli multi-asset-session --session /srv/morph/alice.json sign --target update \
+  --signer-config /srv/morph/alice/signer.json
 ```
 
 Keep the directory, file and backups outside public evidence, source control,
@@ -51,11 +55,17 @@ enabling key loading. Errors do not include file contents. In Rust, `SecretStrin
 is redacted and its owned storage is zeroized on drop; this does not guarantee
 erasure of OS caches, swap or memory retained by upstream signing libraries.
 
+Bilateral operational `sign` accepts `--signer-config`, not a private-key file.
+Only the isolated service receives its protected key file. `sign-local` requires
+the devnet build and is an explicit development choice, never a fallback.
+See [external participant signing](external-participant-signer.md).
+
 ## Select the signing role
 
 | Use | File option | Environment path |
 | --- | --- | --- |
-| Bilateral funding/update/splice, Factory, child and delivery signing | `--private-key-file` | `MORPH_CHANNEL_PRIVATE_KEY_FILE` |
+| Factory, child and delivery signing; explicit bilateral `sign-local` development command | `--private-key-file` | `MORPH_CHANNEL_PRIVATE_KEY_FILE` |
+| Isolated participant service | `--private-key-file` | Explicit option |
 | Devnet wallet or operator | `--private-key-file` | `MORPH_DEVNET_PRIVATE_KEY_FILE` |
 | Devnet participant fixtures | `--alice-private-key-file`, `--bob-private-key-file` | `MORPH_ALICE_PRIVATE_KEY_FILE`, `MORPH_BOB_PRIVATE_KEY_FILE` |
 | Hub signed invoices | `--invoice-private-key-file` | `MORPH_HUB_INVOICE_PRIVATE_KEY_FILE` |

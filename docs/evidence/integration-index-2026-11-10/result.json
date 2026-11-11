@@ -1,0 +1,36 @@
+{
+  "accepted": 3637,
+  "cases": 10000,
+  "corpus": [
+    {
+      "bytes": 41,
+      "ckb_blake2b256": "0c71f0110d3c58d11773aedef1127943611bbd830c1004eb49895bbd37e44027",
+      "file": "seed-0.bin"
+    },
+    {
+      "bytes": 73,
+      "ckb_blake2b256": "06d422dfc2092ab8888e5adf666f6173816cc7580344c89ae8c030d9ea8c9395",
+      "file": "seed-1.bin"
+    },
+    {
+      "bytes": 117,
+      "ckb_blake2b256": "b4f32fda08a3b66976e0c3a823511e7665e5ba4d065712c152d6e5bd522c22f6",
+      "file": "seed-2.bin"
+    },
+    {
+      "bytes": 137,
+      "ckb_blake2b256": "0c739772167541fd5b99e5bee25f4de7ca3202f339f11c01fdc3829f066712c4",
+      "file": "seed-3.bin"
+    },
+    {
+      "bytes": 45,
+      "ckb_blake2b256": "ff9a3b97603708983cab99355fe2d315543b9d7e83491f3fa3570f025a9b05cf",
+      "file": "seed-4.bin"
+    }
+  ],
+  "elapsed_ms": 1417,
+  "rejected": 6363,
+  "seed": 332043276360,
+  "status": "pass",
+  "target": "script-args"
+}

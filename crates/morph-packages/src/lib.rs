@@ -2,9 +2,11 @@
 //! No alternate wire implementation or signer authority is created here.
 
 pub mod canonical_fields;
+pub mod capability_summary;
 pub mod conditional_packages;
 pub mod factory_packets;
 pub mod factory_transition_packages;
+pub mod multi_asset_close;
 pub mod multi_asset_funding;
 pub mod multi_asset_packages;
 pub mod multi_asset_signatures;
@@ -16,3 +18,11 @@ pub mod proposal;
 pub mod review;
 
 pub mod construction;
+
+pub mod public_encoding;
+
+pub mod schema;
+
+pub mod signer_protocol;
+
+pub mod events;

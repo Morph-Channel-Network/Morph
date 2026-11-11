@@ -14,12 +14,13 @@ default = []
 devnet = []
 
 [dependencies]
+schemars.workspace = true
 anyhow.workspace = true
 ckb-types.workspace = true
 clap.workspace = true
 hex.workspace = true
 k256.workspace = true
-morph-core = { version = "4.0.0-alpha.1", path = "../morph-core" }
+morph-core = { version = "4.1.0", path = "../morph-core" }
 morph-script-common = { version = "0.1.0", path = "../../contracts/morph-script-common" }
 serde.workspace = true
 serde_json.workspace = true

@@ -83,6 +83,80 @@ pub struct FeeObservation {
     pub rbf_enabled: bool,
 }
 
+/// Exact-source, read-only quote. It is not a reservation or a promise that
+/// capacity, fees or the canonical source will remain unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PublicationBudget {
+    NotPrepared {
+        reason: BudgetReason,
+    },
+    Verified {
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        observed_unix_ms: u64,
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        initial_fee: u64,
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        profile_fee_ceiling: u64,
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        operator_fee_cap: u64,
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        sponsor_remaining: u64,
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        sponsor_per_tx: u64,
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        capacity_after_change_floor: u64,
+        full_fee_ceiling_supported: bool,
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        execution_blocks: u64,
+        #[serde(with = "morph_packages::public_encoding::decimal")]
+        execution_ms: u64,
+        tx_size_bytes: usize,
+    },
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetReason {
+    FundingNotPrepared,
+    SourceNotObserved,
+    RecoveryNotAvailable,
+    PreflightUnavailable,
+    SourceConsumed,
+}
+
+impl PublicationBudget {
+    pub fn ready(&self) -> bool {
+        match self {
+            Self::Verified {
+                initial_fee,
+                profile_fee_ceiling,
+                operator_fee_cap,
+                sponsor_remaining,
+                sponsor_per_tx,
+                capacity_after_change_floor,
+                full_fee_ceiling_supported,
+                execution_blocks,
+                execution_ms,
+                tx_size_bytes,
+                ..
+            } => {
+                *full_fee_ceiling_supported
+                    && *initial_fee > 0
+                    && initial_fee <= profile_fee_ceiling
+                    && profile_fee_ceiling <= operator_fee_cap
+                    && profile_fee_ceiling
+                        <= sponsor_remaining
+                            .min(sponsor_per_tx)
+                            .min(capacity_after_change_floor)
+                    && *execution_blocks > 0
+                    && *execution_ms > 0
+                    && *tx_size_bytes > 0
+            }
+            Self::NotPrepared { .. } => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicationAttemptRecord {
     pub schema: String,

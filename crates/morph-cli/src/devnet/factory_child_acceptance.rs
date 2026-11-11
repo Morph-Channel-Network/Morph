@@ -432,6 +432,63 @@ fn run_case(
             "parent packet leaked a child's private exit signature"
         );
     }
+    // Reserve a concrete existing right for the independently derived physical
+    // child BEFORE consuming its parent. The right label is not its future ID.
+    let (source, members, rights) = terms.context.decode()?;
+    let right = rights
+        .iter()
+        .find(|right| right.quantity > 0 && right.id.asset_type.is_none())
+        .ok_or_else(|| anyhow!("missing CKB reservation right"))?;
+    let owner = members
+        .iter()
+        .find(|member| member.participant == right.id.participant)
+        .ok_or_else(|| anyhow!("reservation member absent"))?;
+    let participants = keys.map(|secret| -> Result<morph_core::ChannelParticipant> {
+        let signer = k256_signing_key(secret)?;
+        let lock = secp256k1_lock(&parse_privkey(secret)?)?;
+        Ok(morph_core::ChannelParticipant {
+            node_id: blake2b256(&k256_pubkey(&signer)),
+            settlement_lock_hash: lock.calc_script_hash().unpack(),
+        })
+    });
+    let [left, right_party] = participants;
+    let participants = [left?, right_party?];
+    let owner_lock = participants
+        .iter()
+        .find(|p| p.node_id == blake2b256(&owner.pubkey_sec1))
+        .ok_or_else(|| anyhow!("provider owner is not a child party"))?
+        .settlement_lock_hash;
+    let side = private
+        .settlement
+        .participant_lock_hashes
+        .iter()
+        .position(|l| *l == owner_lock)
+        .ok_or_else(|| anyhow!("owner payout missing"))?;
+    let quantity =
+        u128::from(private.settlement.payouts[0].values[side].business_ckb).min(right.quantity);
+    let proof = morph_core::factory_right_sparse_proof(&rights, &right.id)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    let fields = source.state()?.fields();
+    let mut reservation = morph_core::FactoryRightReservation {
+        reservation_id: [0; 32],
+        factory_id: fields.factory_id,
+        factory_update_number: fields.update_number,
+        right: right.id.clone(),
+        target_channel_id: private.state.header.channel_id,
+        quantity,
+        factory_state_root: fields.state_root,
+        access_manifest_root: fields.access_manifest_root,
+        proof_commitment: morph_core::factory_right_proof_commitment(&proof),
+        right_proof: proof,
+        idempotency_key: request.transaction_hash()?,
+        reserved_at_unix: now,
+        expires_at_unix: now + 3600,
+    };
+    reservation.reservation_id = reservation.derive_id()?;
+    reservation.validate(now)?;
+    parent::save_json(&directory.join("shadow-reservation.json"), &reservation)?;
     let executed = parent::execute(rpc, context, directory, &complete, None)?;
     if !terminal && request.required_members()?.len() == 1 {
         parent::refresh_peer(rpc, context, &executed)?;
@@ -452,6 +509,94 @@ fn run_case(
         .ok_or_else(|| anyhow!("missing child activation hash"))?;
     let active_point = format!("{active_hash}:0");
     let parent_transaction = path(&executed, "transaction")?;
+    let candidate = super::shadow_observer::Candidate {
+        schema: "morph.shadow_candidate.v1".into(),
+        package: read_package(&private_packages[0])?,
+        state_out_point: active_point.clone(),
+        participants,
+        asset: morph_core::GatewayAsset::Ckb {
+            ckb_genesis_hash: private.state.header.chain_id,
+        },
+        reservation: Some(reservation),
+        origin: super::shadow_observer::Origin::Factory {
+            history: Box::new(crate::factory_child_origin::FactoryChildOrigin {
+                schema: crate::factory_child_origin::SCHEMA.into(),
+                request: read_request(&complete)?,
+                transaction_hex: canonical_hex(&fs::read(&parent_transaction)?),
+                child_index: 0,
+                initial_recovery: read_package(&private_packages[0])?,
+            }),
+        },
+    };
+    let candidate_path = directory.join("shadow-candidate.json");
+    parent::save_json(&candidate_path, &candidate)?;
+    super::multi_asset_splice_acceptance::mine_depth(
+        rpc,
+        activated["block_number"]
+            .as_u64()
+            .ok_or_else(|| anyhow!("activation height missing"))?,
+        4,
+    )?;
+    // A different, genuinely signed child history from this same Factory cannot
+    // supply this child's provenance, even after that earlier child is closed.
+    let prior_path = directory
+        .parent()
+        .ok_or_else(|| anyhow!("missing child parent"))?
+        .join("reduced/shadow-candidate.json");
+    let cross_child_history_rejected = if prior_path != candidate_path && prior_path.exists() {
+        let prior: super::shadow_observer::Candidate =
+            crate::multi_asset_packages::read_bounded_json(
+                &prior_path,
+                super::shadow_observer::MAX_REQUEST_BYTES,
+            )?;
+        let mut wrong: super::shadow_observer::Candidate =
+            serde_json::from_slice(&serde_json::to_vec(&candidate)?)?;
+        wrong.origin = prior.origin;
+        let wrong_path = directory.join("shadow-wrong-child.json");
+        parent::save_json(&wrong_path, &wrong)?;
+        let error = super::shadow_observer::run(
+            rpc.endpoint(),
+            &wrong_path,
+            &context.options.contracts_dir,
+            4,
+            10_000,
+        )
+        .err()
+        .ok_or_else(|| anyhow!("another child's history accepted"))?;
+        ensure!(
+            error
+                .to_string()
+                .contains("Factory child history targets another channel"),
+            "wrong child rejected by unrelated guard: {error}"
+        );
+        Some(true)
+    } else {
+        None
+    };
+    let shadow = super::shadow_observer::run(
+        rpc.endpoint(),
+        &candidate_path,
+        &context.options.contracts_dir,
+        4,
+        10_000,
+    )?;
+    ensure!(
+        shadow["forwarding"] == false && !shadow["edge"]["factory_id"].is_null(),
+        "Factory observation lost provenance or enabled forwarding"
+    );
+    ensure!(
+        rpc.canonical_live_cell(
+            OutPoint::new(
+                source.state_out_point.tx_hash.pack(),
+                source.state_out_point.index
+            )
+            .into(),
+            false
+        )?
+        .status
+            != "live",
+        "historical Factory source unexpectedly live"
+    );
     let mut handoffs = Vec::new();
     for session in &child_sessions {
         let before = fs::read(session)?;
@@ -494,16 +639,91 @@ fn run_case(
         handoffs.push(handoff);
     }
     let packages = directory.join("watch-recovery");
+    let session_source = crate::multi_asset_session::shadow::capture(
+        &child_sessions[0],
+        candidate.participants.clone(),
+        candidate.asset.clone(),
+        candidate.reservation.clone(),
+    )?;
+    ensure!(
+        !session_source.draining,
+        "idle Factory child journal marked draining"
+    );
+    let session_observation = session_source
+        .observe(std::time::Duration::from_secs(10))?
+        .public()?;
+    ensure!(
+        session_observation["edge"] == shadow["edge"],
+        "current Factory child journal differs from canonical observation"
+    );
     crate::multi_asset_packages::write_package(&packages, &read_package(&private_packages[0])?)?;
     let mut updated = private.settlement.clone();
     updated.payouts[0].values[0].business_ckb -= 100_000_000;
     updated.payouts[0].values[1].business_ckb += 100_000_000;
+    if terminal {
+        // Preserve a real pending claim after the parent has retired. The child
+        // independently authorizes this update and its later terminal close.
+        updated.payouts[0].values[0].business_ckb = updated.payouts[0].values[0]
+            .business_ckb
+            .checked_sub(100_000_000)
+            .ok_or_else(|| anyhow!("missing pending CKB"))?;
+        let capacities = [
+            updated.payouts[0].values[0].capacity()?,
+            updated.payouts[0].values[1].capacity()?,
+        ];
+        let batch = morph_core::ConditionalBatch {
+            asset: morph_core::VaultAsset::Ckb,
+            batch_id: [31; 32],
+            application_context_commitment: [32; 32],
+            participants: core::array::from_fn(|index| morph_core::ConditionalParticipant {
+                settlement_lock_hash: updated.participant_lock_hashes[index],
+                settled_capacity: capacities[index],
+                settled_amount: 0,
+            }),
+            transfers: vec![morph_core::ConditionalTransferSpec {
+                transfer_id: [33; 32],
+                payer_lock_hash: updated.participant_lock_hashes[0],
+                hash_algorithm: morph_core::ConditionalHashAlgorithm::CkbBlake2b,
+                payment_hash: morph_core::derive_conditional_payment_hash(
+                    morph_core::ConditionalHashAlgorithm::CkbBlake2b,
+                    &[34; 32],
+                )?,
+                amount: 100_000_000,
+                refund_after_block: rpc
+                    .tip_header()?
+                    .number_value()?
+                    .checked_add(64)
+                    .ok_or_else(|| anyhow!("refund height overflow"))?,
+            }],
+        };
+        updated.capability = MultiAssetSettlementCapability::Conditional {
+            batch_code_hash: blake2b256(&fs::read(
+                context.options.contracts_dir.join("morph-batch-lock"),
+            )?),
+            batch_hash_type: 2,
+            batches: vec![batch],
+        };
+    }
     let proposed = bilateral_session(
         &child_sessions[0],
         SessionCommand::Propose {
             descriptor_hex: canonical_hex(&updated.encode()?),
         },
     )?;
+    ensure!(
+        session_source.ensure_current().is_err(),
+        "journal mutation failed to invalidate captured observation"
+    );
+    let draining_source = crate::multi_asset_session::shadow::capture(
+        &child_sessions[0],
+        candidate.participants.clone(),
+        candidate.asset.clone(),
+        candidate.reservation.clone(),
+    )?;
+    ensure!(
+        draining_source.draining,
+        "pending child update remained active"
+    );
     let proposal_path = directory.join("child-update.json");
     parent::save_json(&proposal_path, &proposed)?;
     bilateral_session(
@@ -516,7 +736,7 @@ fn run_case(
     for (index, session) in child_sessions.iter().enumerate() {
         let vote = bilateral_session(
             session,
-            SessionCommand::Sign {
+            SessionCommand::SignLocal {
                 target: SigningTarget::Update,
                 private_key: keys[index].clone(),
             },
@@ -546,6 +766,14 @@ fn run_case(
         read_package(&latest)?.recovery()?.state.header.state_number == 2,
         "independent child update did not commit state2"
     );
+    let cooperative_close = super::factory_child_close::run(
+        rpc,
+        context,
+        &directory.join("cooperative-close"),
+        &child_sessions,
+        &latest,
+        &active_point,
+    )?;
     // Publish an older valid exit, then require the current watcher to correct
     // it using the latest private package produced by the operational journals.
     let stale = transact(
@@ -577,7 +805,7 @@ fn run_case(
             store_dir: packages.clone(),
             channel_id: canonical_hex(&private.state.header.channel_id),
             from_block,
-            cursor_file: directory.join("watch-cursor.json"),
+            cursor_file: directory.join("watch-cursor.db"),
             alert_file: directory.join("watch-alerts.jsonl"),
             publication_profile: profile_path,
             attempt_log: directory.join("publication-attempts.jsonl"),
@@ -587,7 +815,6 @@ fn run_case(
             max_fee: publication_max_fee,
             mine_blocks: context.options.mine_blocks,
             watch_policy: None,
-            alert_webhook_url: None,
             auto_fund_sponsor: None,
         },
     )?;
@@ -687,7 +914,18 @@ fn run_case(
     };
     let admission =
         crate::admission::facts(context.admission_config, &context.options.contracts_dir)?;
+    ensure!(
+        super::shadow_observer::run(
+            rpc.endpoint(),
+            &candidate_path,
+            &context.options.contracts_dir,
+            4,
+            10_000
+        )
+        .is_err(),
+        "finalised child remained admissible"
+    );
     Ok(
-        json!({"admission":admission,"terminal_factory":terminal,"parent":executed,"activation":activated,"independent_initial_exit_sessions":child_sessions,"private_exits":private_packages,"same_path_handoffs":handoffs,"initial_exit_required_before_parent_vote":true,"private_exit_signatures_absent_from_parent":true,"independent_update":committed,"old_publication":stale,"latest_package_watch":watched,"finalise":finalised,"retained_factory":remaining,"external_child_carrier":private.state_carrier_capacity.to_string()}),
+        json!({"cooperative_close":cooperative_close,"journal_source_verified":true,"changed_journal_rejected":true,"pending_update_drains":true,"cross_child_history_rejected":cross_child_history_rejected,"shadow_observer":shadow,"shadow_spent_child_rejected":true,"admission":admission,"terminal_factory":terminal,"parent":executed,"activation":activated,"independent_initial_exit_sessions":child_sessions,"private_exits":private_packages,"same_path_handoffs":handoffs,"initial_exit_required_before_parent_vote":true,"private_exit_signatures_absent_from_parent":true,"independent_update":committed,"old_publication":stale,"latest_package_watch":watched,"finalise":finalised,"retained_factory":remaining,"external_child_carrier":private.state_carrier_capacity.to_string()}),
     )
 }

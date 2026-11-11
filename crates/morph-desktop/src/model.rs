@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Page {
+    Wallet,
     Overview,
     Channels,
     Factories,

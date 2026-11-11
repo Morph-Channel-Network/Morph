@@ -1,0 +1,15 @@
+{
+  "captured": "after local validation",
+  "files": {
+    ".github/workflows/verification-campaign.yml": "cfc28406123466c890b443f06cd444546968d8f126c45bcf8cad2771d6237828",
+    "Cargo.lock": "bfa566ba4e004be7950f642f3964902be2f2e2c7d04c42dee9dcedad6d0c50d1",
+    "crates/morph-core/tests/multi_asset_cases/factory.rs": "67b600565e1bcd595a2e36238a19991b00bc002e2ee173418cfd281bd7b8c876",
+    "crates/morph-xtask/Cargo.toml": "3bc84a5e9099b0d0863a44cb05bdcba51056570d009d3b8723eef599eff2e37c",
+    "crates/morph-xtask/src/fuzz/mod.rs": "5f205afdf5640d620e30b8346ce67d333a46c685352fd0fc9be3358b4eaa7967",
+    "crates/morph-xtask/src/fuzz/targets.rs": "cd0f1d320bf6f753a43e68bc94df196ec35639dec62aae116a734e0ecfbea3a7",
+    "crates/morph-xtask/src/fuzz/targets/factory.rs": "8e5109d65b61b2b3a9f66fdd4c434240a9f755c3073c4cf9f15e8ed36a490761",
+    "crates/morph-xtask/tests/fuzz_campaign.rs": "fa90a086d34574c755cef3364beacb77829c8b4295d7f0d3d06f67840773e632",
+    "fixtures/protocol/factory-public-frames.json": "9ebd53f88361fd09b0235b4c04a56534e17fd1cb4e47a18b4861c978c4f82b93",
+    "rust-toolchain.toml": "e3a213e0d222e94d213cafbc20932eb3f76c643b4dd63756acf95192df2aa310"
+  }
+}

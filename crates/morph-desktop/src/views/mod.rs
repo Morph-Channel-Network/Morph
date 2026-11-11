@@ -46,6 +46,7 @@ pub(crate) fn install_shortcuts(cx: &mut App) {
 }
 fn page_name(page: Page, l: Language) -> &'static str {
     match page {
+        Page::Wallet => l.t(Text::Wallet),
         Page::Overview => l.t(Text::Overview),
         Page::Channels => l.t(Text::Channels2),
         Page::Factories => l.t(Text::Factory),
@@ -62,6 +63,7 @@ fn page_name(page: Page, l: Language) -> &'static str {
 }
 fn page_icon(page: Page) -> IconName {
     match page {
+        Page::Wallet => IconName::Wallet,
         Page::Overview => IconName::LayoutDashboard,
         Page::Channels => IconName::ArrowLeftRight,
         Page::Factories => IconName::Layers,
@@ -127,6 +129,7 @@ pub(crate) fn record_title(r: &Record, l: Language) -> String {
             v["id"],
             p::event_name(v["event"].as_str().unwrap_or(""), l)
         ),
+        Page::Model => crate::i18n::stored_copy(&r.row.title, l),
         _ => r.row.title.clone(),
     }
 }
@@ -171,6 +174,14 @@ pub(crate) fn record_subtitle(r: &Record, l: Language) -> String {
             l.t(Text::VaultCount),
             v["vault_count"]
         ),
+        Page::Recovery if r.is_batch() => l.t(Text::SavedBatchDescription).into(),
+        Page::Peers => p::short(v["pubkey"].as_str().unwrap_or("")),
+        Page::Events | Page::Watch => format!(
+            "{} · {}",
+            p::human_state(v["severity"].as_str().unwrap_or(""), l),
+            p::short(v["channel_id"].as_str().unwrap_or(""))
+        ),
+        Page::Model => l.t(Text::LocalServiceMetadata).into(),
         _ => r.row.subtitle.clone(),
     }
 }
@@ -179,19 +190,28 @@ fn title_row(title: &str, description: &str) -> Div {
         .flex()
         .flex_col()
         .gap_2()
-        .pb_4()
         .child(d::title(title.to_owned()))
         .child(d::caption(description.to_owned()))
 }
 fn empty_state(icon: IconName, title: &str, description: &str) -> Div {
-    d::panel()
+    div()
         .flex()
         .flex_col()
         .gap_4()
         .items_center()
         .justify_center()
         .py_12()
-        .child(Icon::new(icon).size(px(30.)).text_color(rgb(d::DIM)))
+        .child(
+            div()
+                .size(px(68.))
+                .rounded_full()
+                .border_1()
+                .border_color(rgb(d::BORDER))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(Icon::new(icon).size(px(26.)).text_color(rgb(d::ACCENT))),
+        )
         .child(
             div()
                 .text_lg()
@@ -202,6 +222,7 @@ fn empty_state(icon: IconName, title: &str, description: &str) -> Div {
 }
 
 mod activity;
+mod controls;
 mod evidence;
 mod overview;
 mod records;

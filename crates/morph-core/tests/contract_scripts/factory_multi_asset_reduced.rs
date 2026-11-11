@@ -131,8 +131,7 @@ fn replace_release_values(
     let old_len = view.retained().as_bytes().len();
     let allocation_offsets: Vec<_> = (0..view.payout_count())
         .map(|i| {
-            view.payout(i).unwrap().lock_script.as_ptr() as usize - frame.as_ptr() as usize - 69
-                + 33
+            view.payout(i).unwrap().as_bytes().as_ptr() as usize - frame.as_ptr() as usize + 33
         })
         .collect();
     assert_eq!(allocation_offsets.len(), payouts.len());
@@ -879,6 +878,8 @@ fn factory_multi_asset_reduced_release_maximum_eight_types_sixteen_members_execu
         .context
         .verify_tx(&fixture.transaction, 70_000_000)
         .expect("bounded maximum reduced release");
+    assert!(cycles < 48_000_000);
+    assert!(fixture.transaction.data().as_slice().len() <= 29_000);
     eprintln!(
         "Factory reduced release assets=8 members=16 claims=9 cycles={cycles} bytes={}",
         fixture.transaction.data().as_slice().len()
@@ -1209,7 +1210,8 @@ fn factory_multi_asset_reduced_rights_rejects_u128_group_overflow_with_valid_loc
         let after_header = view.after().as_bytes().as_ptr() as usize - frame.as_ptr() as usize;
         let offsets: Vec<_> = (0..2)
             .map(|i| {
-                view.right(i).unwrap().before.raw().as_ptr() as usize - frame.as_ptr() as usize
+                view.right(i).unwrap().before.participant().as_ptr() as usize
+                    - frame.as_ptr() as usize
             })
             .collect();
         frame[before_header..before_header + 306].copy_from_slice(&header.encode().unwrap());
@@ -1221,7 +1223,7 @@ fn factory_multi_asset_reduced_rights_rejects_u128_group_overflow_with_valid_loc
                 factory_right_sparse_proof_compact(&bad_before, &bad_before[i].id).unwrap(),
                 factory_right_sparse_proof_compact(&bad_after, &bad_after[i].id).unwrap(),
             ];
-            let mut proof_offset = offset + 2 * morph_script_common::FACTORY_RIGHT_LEN;
+            let mut proof_offset = offset + morph_script_common::FACTORY_RIGHT_LEN + 16;
             for (side, proof) in proofs.into_iter().enumerate() {
                 morph_core::verify_factory_right_compact_proof(
                     if side == 0 {
@@ -1233,7 +1235,7 @@ fn factory_multi_asset_reduced_rights_rejects_u128_group_overflow_with_valid_loc
                 )
                 .unwrap();
                 let quantity_offset =
-                    offset + (side + 1) * morph_script_common::FACTORY_RIGHT_LEN - 16;
+                    offset + morph_script_common::FACTORY_RIGHT_LEN - 16 + side * 16;
                 frame[quantity_offset..quantity_offset + 16]
                     .copy_from_slice(&proof.right.quantity.to_le_bytes());
                 let count = morph_script_common::read_u16(&frame, proof_offset) as usize;
@@ -1759,6 +1761,8 @@ fn factory_multi_asset_transition_reduced_child_maximum_bounded_shape_executes()
         .context
         .verify_tx(&fixture.transaction, 70_000_000)
         .expect("bounded reduced materialisation");
+    assert!(cycles < 60_000_000);
+    assert!(fixture.transaction.data().as_slice().len() <= 60_000);
     eprintln!(
         "Factory reduced child assets=8 children=4 members=16 claims=9 cycles={cycles} bytes={}",
         fixture.transaction.data().as_slice().len()
@@ -1930,6 +1934,7 @@ fn factory_multi_asset_transition_entire_type_exit_cannot_charge_retained_peer_c
         ExitShape::WholeTokenToPlain,
     );
     fixture.plan.rights[0].before.right.id.participant = [2; 32];
+    fixture.plan.rights[0].after.right.id.participant = [2; 32];
     fixture.plan.set_locality_digest().unwrap();
     assert!(
         fixture.plan.signing_digest().is_err(),
@@ -2047,6 +2052,8 @@ fn factory_multi_asset_transition_ten_right_metadata_preserves_flat_profile_atom
         .context
         .verify_tx(&tx, 70_000_000)
         .expect("ten touched metadata leaves in one current transaction");
+    assert!(cycles < 48_500_000);
+    assert!(tx.data().as_slice().len() <= 13_800);
     eprintln!(
         "Factory metadata rights=10 assets=8 members=16 maxscripts512 cycles={cycles} bytes={}",
         tx.data().as_slice().len()

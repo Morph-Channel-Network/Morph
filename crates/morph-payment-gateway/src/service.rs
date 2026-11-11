@@ -1,16 +1,21 @@
+mod health;
+#[cfg(test)]
+use axum::routing::get;
+pub use health::FiberIdentity;
 use std::{
     collections::{BTreeSet, VecDeque},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
+use crate::api::*;
+use crate::http_api::{ApiBytes, ApiJson, ApiPath, ApiQuery, HttpFailure};
 use axum::{
     Json, Router,
-    body::{Body, Bytes},
-    extract::{DefaultBodyLimit, Path as AxumPath, Query, RawQuery, State},
+    body::Body,
+    extract::{DefaultBodyLimit, RawQuery, State},
     http::{HeaderMap, Method, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{any, get, post},
 };
 use base64::{
     Engine as _,
@@ -41,9 +46,7 @@ use crate::{
         PaymentRequirements, ProtocolError, RgbppAsset, X402_NETWORK, X402_SCHEME, decode_byte32,
         hex32, now_seconds, parse_amount, validate_nonzero_byte32,
     },
-    store::{
-        ChallengeRecord, DurableStore, PaymentDirection, StoreError, StoredOffer, TrackedPayment,
-    },
+    store::{ChallengeRecord, DurableStore, StoreError, StoredOffer, TrackedPayment},
 };
 
 pub const DEFAULT_MAX_BODY_BYTES: usize = 1024 * 1024 + 64 * 1024;
@@ -51,7 +54,6 @@ pub const MAX_CHALLENGE_TTL_SECONDS: u64 = 24 * 60 * 60;
 pub const MIN_CHALLENGE_TTL_SECONDS: u64 = 30;
 pub const MAX_CREDENTIAL_TTL_SECONDS: u64 = 24 * 60 * 60;
 pub const DEFAULT_CREDENTIAL_TTL_SECONDS: u64 = 60 * 60;
-pub const MAX_LIST_PAYMENTS: usize = 1_000;
 pub const MAX_UPSTREAM_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_X402_HEADER_BYTES: usize = 64 * 1024;
 pub const MAX_OUTGOING_PAYMENT_TIMEOUT_SECONDS: u64 = 10 * 60;
@@ -70,6 +72,10 @@ pub enum ServiceError {
     PaymentRequired,
     #[error("outgoing Fiber payment did not reach a terminal state before the deadline")]
     PaymentTimeout,
+    #[error("payment submission outcome is unknown; retry only the exact request to reconcile")]
+    PaymentOutcomeUnknown,
+    #[error("request conflicts with a durable identity, provider binding or revision")]
+    RequestConflict,
     #[error("requested asset is not configured by this Morph Payment Gateway")]
     UnsupportedAsset,
     #[error("a valid paid Biscuit credential is required")]
@@ -106,7 +112,9 @@ impl From<FiberRpcError> for ServiceError {
 
 impl From<StoreError> for ServiceError {
     fn from(error: StoreError) -> Self {
-        if matches!(error, StoreError::CapacityExceeded) {
+        if matches!(error, StoreError::Conflict) {
+            Self::RequestConflict
+        } else if matches!(error, StoreError::CapacityExceeded) {
             Self::StoreCapacityExceeded
         } else {
             Self::StoreUnavailable
@@ -134,6 +142,8 @@ impl IntoResponse for ServiceError {
             }
             Self::PaymentRequired => StatusCode::PAYMENT_REQUIRED,
             Self::PaymentTimeout => StatusCode::GATEWAY_TIMEOUT,
+            Self::PaymentOutcomeUnknown => StatusCode::SERVICE_UNAVAILABLE,
+            Self::RequestConflict => StatusCode::CONFLICT,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::UnsupportedAsset => StatusCode::UNPROCESSABLE_ENTITY,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
@@ -143,12 +153,37 @@ impl IntoResponse for ServiceError {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
         };
-        (status, Json(json!({ "error": self.to_string() }))).into_response()
+        let code = match &self {
+            Self::InvalidRequest(_) => GatewayErrorCode::InvalidRequest,
+            Self::UnknownChallenge => GatewayErrorCode::UnknownChallenge,
+            Self::PaymentRequired => GatewayErrorCode::PaymentRequired,
+            Self::PaymentTimeout => GatewayErrorCode::PaymentTimeout,
+            Self::PaymentOutcomeUnknown => GatewayErrorCode::PaymentOutcomeUnknown,
+            Self::RequestConflict => GatewayErrorCode::RequestConflict,
+            Self::UnsupportedAsset => GatewayErrorCode::UnsupportedAsset,
+            Self::Unauthorized => GatewayErrorCode::Unauthorized,
+            Self::UnknownOffer => GatewayErrorCode::UnknownOffer,
+            Self::FiberUnavailable => GatewayErrorCode::FiberUnavailable,
+            Self::GatewayUnavailable => GatewayErrorCode::GatewayUnavailable,
+            Self::StoreUnavailable => GatewayErrorCode::StoreUnavailable,
+            Self::StoreCapacityExceeded => GatewayErrorCode::StoreCapacityExceeded,
+            Self::RateLimited => GatewayErrorCode::RateLimited,
+            Self::CredentialFailure => GatewayErrorCode::CredentialFailure,
+            Self::CryptoFailure => GatewayErrorCode::CryptoFailure,
+        };
+        // Never reflect request-derived parser/validation text or credentials.
+        let message = match self {
+            Self::InvalidRequest(_) => "invalid request".to_string(),
+            _ => self.to_string(),
+        };
+        HttpFailure::new(status, code, message).into_response()
     }
 }
 
 #[derive(Clone)]
 pub struct PaymentGatewayConfig {
+    /// Explicit node_info identity expectation for observations, not payment authority.
+    pub fiber_identity: Option<FiberIdentity>,
     pub payee: String,
     /// Morph identity allowed to authorize outgoing Fiber wallet spends.
     /// When absent, the public `/v1/pay` endpoint is disabled.
@@ -204,6 +239,8 @@ impl GatewayUpstream {
 }
 
 pub struct PaymentGatewayService {
+    health_permit: Arc<tokio::sync::Semaphore>,
+    metrics: Arc<morph_observability::metrics::Metrics>,
     config: PaymentGatewayConfig,
     api_bearer_token_hash: Option<[u8; 32]>,
     fiber: FiberRpcClient,
@@ -308,6 +345,10 @@ impl PaymentGatewayService {
             .as_deref()
             .map(|token| blake2b256(token.as_bytes()));
         Ok(Self {
+            health_permit: Arc::new(tokio::sync::Semaphore::new(1)),
+            metrics: Arc::new(morph_observability::metrics::Metrics::new(
+                morph_observability::Service::Gateway,
+            )),
             config,
             api_bearer_token_hash,
             fiber,
@@ -320,21 +361,50 @@ impl PaymentGatewayService {
     }
 
     pub fn router(self: Arc<Self>) -> Router {
-        Router::new()
-            .route("/health", get(health))
-            .route("/v1/supported", get(supported))
-            .route("/v1/challenges", post(create_challenge))
-            .route("/v1/x402/challenge", post(create_x402_challenge))
-            .route("/v1/pay", post(pay))
-            .route("/v1/x402/verify", post(verify))
-            .route("/v1/x402/settle", post(settle))
-            .route("/v1/payment-gateway/authorize", post(settle))
-            .route("/v1/credentials/verify", post(verify_credential))
-            .route("/v1/fair-exchange/offers", post(create_fair_offer))
-            .route("/v1/fair-exchange/claims", post(claim_fair_offer))
-            .route("/v1/payments", get(list_payments))
-            .route("/gateway/{*path}", any(gateway_proxy))
+        use crate::endpoints::{Endpoint, Method as RouteMethod};
+        let mut router = Router::new();
+        for endpoint in Endpoint::ALL {
+            let spec = endpoint.spec();
+            let filter = match spec.method {
+                RouteMethod::Get => axum::routing::MethodFilter::GET,
+                RouteMethod::Post => axum::routing::MethodFilter::POST,
+                RouteMethod::Proxy => axum::routing::MethodFilter::GET
+                    .or(axum::routing::MethodFilter::HEAD)
+                    .or(axum::routing::MethodFilter::POST)
+                    .or(axum::routing::MethodFilter::PUT)
+                    .or(axum::routing::MethodFilter::PATCH)
+                    .or(axum::routing::MethodFilter::DELETE),
+            };
+            let handler = match endpoint {
+                Endpoint::Readiness => axum::routing::on(filter, health::readiness),
+                Endpoint::Metrics => axum::routing::on(filter, health::metrics),
+                Endpoint::Events => axum::routing::on(filter, event_log),
+                Endpoint::Health => axum::routing::on(filter, health),
+                Endpoint::Supported => axum::routing::on(filter, supported),
+                Endpoint::Challenge => axum::routing::on(filter, create_challenge),
+                Endpoint::X402Challenge => axum::routing::on(filter, create_x402_challenge),
+                Endpoint::Pay => axum::routing::on(filter, pay),
+                Endpoint::Verify => axum::routing::on(filter, verify),
+                Endpoint::Settle | Endpoint::Authorize => axum::routing::on(filter, settle),
+                Endpoint::CredentialVerify => axum::routing::on(filter, verify_credential),
+                Endpoint::FairOffer => axum::routing::on(filter, create_fair_offer),
+                Endpoint::FairClaim => axum::routing::on(filter, claim_fair_offer),
+                Endpoint::Payments => axum::routing::on(filter, list_payments),
+                Endpoint::Proxy => axum::routing::on(filter, gateway_proxy),
+            };
+            router = router.route(spec.path, handler);
+        }
+        router
+            .fallback(crate::http_api::not_found)
+            .method_not_allowed_fallback(crate::http_api::method_not_allowed)
             .layer(DefaultBodyLimit::max(DEFAULT_MAX_BODY_BYTES))
+            .layer(axum::middleware::from_fn(
+                crate::http_api::response_contract,
+            ))
+            .layer(axum::middleware::from_fn_with_state(
+                self.metrics.clone(),
+                health::measure,
+            ))
             .with_state(self)
     }
 
@@ -655,106 +725,10 @@ fn core_http_operation(operation: &str) -> Result<HttpOperation, ServiceError> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateChallengeRequest {
-    pub asset: RgbppAsset,
-    pub amount: String,
-    /// Morph account allowed to sign and claim this challenge.
-    pub payer: String,
-    pub resource: String,
-    pub operation: String,
-    pub description: Option<String>,
-    pub expires_in_seconds: Option<u64>,
-    pub rgbpp_proof_commitment: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PayRequest {
-    pub requirements: PaymentRequirements,
-    pub payload: PaymentPayload,
-    pub timeout_seconds: Option<u64>,
-    pub max_fee_amount: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PayResponse {
-    pub completed: bool,
-    pub payment_hash: String,
-    pub fiber_result: Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerifyRequest {
-    pub requirements: PaymentRequirements,
-    pub payload: PaymentPayload,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerifyResponse {
-    pub valid: bool,
-    pub payment_hash: String,
-    pub fiber_status: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SettleRequest {
-    pub requirements: PaymentRequirements,
-    pub payload: PaymentPayload,
-    pub credential_ttl_seconds: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SettleResponse {
-    pub receipt: PaymentReceipt,
-    pub payment_preimage: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CredentialVerifyRequest {
-    pub credential: String,
-    pub receipt: PaymentReceipt,
-    pub resource: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FairExchangeOfferRequest {
-    pub asset: RgbppAsset,
-    pub amount: String,
-    /// Morph account allowed to pay for and decrypt this offer.
-    pub payer: String,
-    pub resource: String,
-    pub operation: String,
-    pub plaintext_base64: String,
-    pub description: Option<String>,
-    pub expires_in_seconds: Option<u64>,
-    pub rgbpp_proof_commitment: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FairExchangeClaimRequest {
-    pub offer_id: String,
-    pub payload: PaymentPayload,
-    pub credential_ttl_seconds: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PaymentListQuery {
-    limit: Option<usize>,
-}
-
-#[derive(Debug, Serialize)]
-struct SupportedResponse {
-    scheme: &'static str,
-    network: &'static str,
-    assets: Vec<RgbppAsset>,
-    payee: String,
-    capabilities: Vec<&'static str>,
-    credential_public_key: String,
-    terminal_receipt_public_key: String,
-}
-
-async fn health() -> Json<Value> {
-    Json(json!({ "status": "ok" }))
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "ok".into(),
+    })
 }
 
 async fn supported(State(service): State<Arc<PaymentGatewayService>>) -> Json<SupportedResponse> {
@@ -769,11 +743,11 @@ async fn supported(State(service): State<Arc<PaymentGatewayService>>) -> Json<Su
         capabilities.push("fixed_upstream_gateway");
     }
     Json(SupportedResponse {
-        scheme: X402_SCHEME,
-        network: X402_NETWORK,
+        scheme: X402_SCHEME.into(),
+        network: X402_NETWORK.into(),
         assets: service.config.supported_assets.clone(),
         payee: service.config.payee.clone(),
-        capabilities,
+        capabilities: capabilities.into_iter().map(str::to_owned).collect(),
         credential_public_key: service.credentials.public_key(),
         terminal_receipt_public_key: hex::encode(
             service
@@ -788,7 +762,7 @@ async fn supported(State(service): State<Arc<PaymentGatewayService>>) -> Json<Su
 async fn create_challenge(
     headers: HeaderMap,
     State(service): State<Arc<PaymentGatewayService>>,
-    Json(request): Json<CreateChallengeRequest>,
+    ApiJson(request): ApiJson<CreateChallengeRequest>,
 ) -> Result<Json<PaymentRequirements>, ServiceError> {
     service.require_api_bearer(&headers)?;
     let requirement = service.make_challenge(&request, random_byte32()).await?;
@@ -800,7 +774,7 @@ async fn create_challenge(
 async fn create_x402_challenge(
     headers: HeaderMap,
     State(service): State<Arc<PaymentGatewayService>>,
-    Json(request): Json<CreateChallengeRequest>,
+    ApiJson(request): ApiJson<CreateChallengeRequest>,
 ) -> Result<Response, ServiceError> {
     service.require_api_bearer(&headers)?;
     let requirement = service.make_challenge(&request, random_byte32()).await?;
@@ -817,29 +791,37 @@ async fn create_x402_challenge(
 
 async fn pay(
     State(service): State<Arc<PaymentGatewayService>>,
-    Json(request): Json<PayRequest>,
+    ApiJson(request): ApiJson<PayRequest>,
 ) -> Result<Json<PayResponse>, ServiceError> {
-    let now = now_seconds();
-    request.requirements.validate(now)?;
+    // Validate signatures and current payer authority even for cached delivery.
+    // Expiry gates a NEW submission, not observation of an existing spend.
+    request.requirements.validate(0)?;
     request.payload.validate(&request.requirements)?;
     if service.config.outgoing_payer.as_deref() != Some(request.payload.payer.as_str()) {
         return Err(ServiceError::Unauthorized);
     }
+    let provider = service.fiber.endpoint();
+    if let Some(attempt) = service.store.outgoing(&request, provider)? {
+        return reconcile_outgoing(&service, &request, attempt)
+            .await
+            .map(Json);
+    }
+    request.requirements.validate(now_seconds())?;
     let parsed = service
         .fiber
         .parse_invoice(&request.requirements.invoice)
         .await?;
     validate_fiber_invoice(&parsed, &request.requirements, &service.config.currency)?;
-    let max_fee = request
-        .max_fee_amount
-        .as_deref()
-        .map(parse_amount)
-        .transpose()?;
     let configured_max_fee = service
         .config
         .outgoing_max_fee_amount
         .ok_or(ServiceError::Unauthorized)?;
-    let max_fee = max_fee.unwrap_or(configured_max_fee);
+    let max_fee = request
+        .max_fee_amount
+        .as_deref()
+        .map(parse_amount)
+        .transpose()?
+        .unwrap_or(configured_max_fee);
     if max_fee > configured_max_fee {
         return Err(ServiceError::Unauthorized);
     }
@@ -849,84 +831,116 @@ async fn pay(
     if timeout == 0 || timeout > service.config.outgoing_payment_timeout_seconds {
         return Err(ServiceError::Unauthorized);
     }
-    let payment_hash = request.requirements.payment_hash.clone();
-    service.store.record_payment(TrackedPayment {
-        payment_hash: payment_hash.clone(),
-        requirement_id: request.requirements.requirement_id.clone(),
-        direction: PaymentDirection::Outgoing,
-        status: "PendingSubmission".to_string(),
-        updated_at: now,
-        fiber_result: json!({ "status": "PendingSubmission" }),
-    })?;
-    let initial_result = service
-        .fiber
-        .send_payment(json!({
-            "invoice": request.requirements.invoice,
-            "timeout": format!("0x{timeout:x}"),
-            "max_fee_amount": format!("0x{max_fee:x}"),
-            "custom_records": {
-                format!("0x{MORPH_REQUIREMENT_RECORD_KEY:x}"):
-                    request.requirements.requirement_id,
-                format!("0x{MORPH_PAYER_RECORD_KEY:x}"): request.payload.payer,
-            },
-        }))
-        .await?;
-    let reported_payment_hash = initial_result
-        .get("payment_hash")
-        .and_then(Value::as_str)
-        .ok_or(ServiceError::FiberUnavailable)?;
-    if reported_payment_hash != payment_hash {
-        return Err(ServiceError::FiberUnavailable);
-    }
-    let initial_status = initial_result
-        .get("status")
-        .and_then(Value::as_str)
-        .unwrap_or("Unknown")
-        .to_string();
-    service.store.record_payment(TrackedPayment {
-        payment_hash: payment_hash.clone(),
-        requirement_id: request.requirements.requirement_id.clone(),
-        direction: PaymentDirection::Outgoing,
-        status: initial_status,
-        updated_at: now_seconds(),
-        fiber_result: initial_result.clone(),
-    })?;
-    let result = if payment_is_terminal(&initial_result) {
-        initial_result
-    } else {
-        wait_for_payment(&service.fiber, &payment_hash, Duration::from_secs(timeout)).await?
-    };
-    if result
-        .get("payment_hash")
-        .and_then(Value::as_str)
-        .is_some_and(|reported| reported != payment_hash)
+    // Recheck expiry after invoice RPC and before persisting send authority.
+    let now = now_seconds();
+    request.requirements.validate(now)?;
+    let submission = json!({
+        "invoice": request.requirements.invoice,
+        "timeout": format!("0x{timeout:x}"),
+        "max_fee_amount": format!("0x{max_fee:x}"),
+        "custom_records": {
+            format!("0x{MORPH_REQUIREMENT_RECORD_KEY:x}"): request.requirements.requirement_id,
+            format!("0x{MORPH_PAYER_RECORD_KEY:x}"): request.payload.payer,
+        },
+    });
+    match service
+        .store
+        .reserve_outgoing(&request, provider, submission.clone(), timeout, now)?
     {
-        return Err(ServiceError::FiberUnavailable);
+        crate::store::OutgoingReservation::Existing(attempt) => {
+            return reconcile_outgoing(&service, &request, *attempt)
+                .await
+                .map(Json);
+        }
+        crate::store::OutgoingReservation::New => {}
     }
-    let status = result
-        .get("status")
-        .and_then(Value::as_str)
-        .unwrap_or("Unknown")
-        .to_string();
-    let completed = payment_is_success(&result);
-    service.store.record_payment(TrackedPayment {
-        payment_hash: payment_hash.clone(),
-        requirement_id: request.requirements.requirement_id,
-        direction: PaymentDirection::Outgoing,
-        status,
-        updated_at: now_seconds(),
-        fiber_result: result.clone(),
-    })?;
-    Ok(Json(PayResponse {
-        completed,
-        payment_hash,
-        fiber_result: result,
-    }))
+    // Only this successfully committed NEW branch sends. A disconnect, process
+    // exit or uncertain storage result never grants another send on restart.
+    #[cfg(test)]
+    tests::process_faults::checkpoint("reserved").await;
+    request.requirements.validate(now_seconds())?;
+    let initial = service
+        .fiber
+        .send_payment(submission)
+        .await
+        .map_err(|_| ServiceError::PaymentOutcomeUnknown)?;
+    #[cfg(test)]
+    tests::process_faults::checkpoint("provider-accepted").await;
+    require_payment_identity(&initial, &request.requirements.payment_hash)?;
+    let result = if payment_is_terminal(&initial) {
+        initial
+    } else {
+        wait_for_payment(
+            &service.fiber,
+            &request.requirements.payment_hash,
+            Duration::from_secs(timeout),
+        )
+        .await
+        .map_err(payment_reconcile_error)?
+    };
+    let response = finish_outgoing(&service, &request, result)?;
+    #[cfg(test)]
+    tests::process_faults::checkpoint("terminal-persisted").await;
+    Ok(Json(response))
+}
+
+fn payment_reconcile_error(error: ServiceError) -> ServiceError {
+    if matches!(error, ServiceError::PaymentTimeout) {
+        error
+    } else {
+        ServiceError::PaymentOutcomeUnknown
+    }
+}
+fn require_payment_identity(result: &Value, hash: &str) -> Result<(), ServiceError> {
+    if result.get("payment_hash").and_then(Value::as_str) != Some(hash) {
+        return Err(ServiceError::PaymentOutcomeUnknown);
+    }
+    Ok(())
+}
+async fn reconcile_outgoing(
+    service: &PaymentGatewayService,
+    request: &PayRequest,
+    attempt: crate::store::OutgoingAttempt,
+) -> Result<PayResponse, ServiceError> {
+    if let Some(response) = attempt.response {
+        return Ok(response);
+    }
+    let timeout = attempt
+        .timeout_seconds
+        .min(service.config.outgoing_payment_timeout_seconds);
+    let result = wait_for_payment(
+        &service.fiber,
+        &request.requirements.payment_hash,
+        Duration::from_secs(timeout),
+    )
+    .await
+    .map_err(payment_reconcile_error)?;
+    finish_outgoing(service, request, result)
+}
+fn finish_outgoing(
+    service: &PaymentGatewayService,
+    request: &PayRequest,
+    result: Value,
+) -> Result<PayResponse, ServiceError> {
+    require_payment_identity(&result, &request.requirements.payment_hash)?;
+    service
+        .store
+        .finish_outgoing(
+            request,
+            service.fiber.endpoint(),
+            PayResponse {
+                completed: payment_is_success(&result),
+                payment_hash: request.requirements.payment_hash.clone(),
+                fiber_result: result,
+            },
+            now_seconds(),
+        )
+        .map_err(Into::into)
 }
 
 async fn verify(
     State(service): State<Arc<PaymentGatewayService>>,
-    Json(request): Json<VerifyRequest>,
+    ApiJson(request): ApiJson<VerifyRequest>,
 ) -> Result<Json<VerifyResponse>, ServiceError> {
     let fiber_status = service
         .verify_payment(&request.requirements, &request.payload)
@@ -940,7 +954,7 @@ async fn verify(
 
 async fn settle(
     State(service): State<Arc<PaymentGatewayService>>,
-    Json(request): Json<SettleRequest>,
+    ApiJson(request): ApiJson<SettleRequest>,
 ) -> Result<Json<SettleResponse>, ServiceError> {
     let (receipt, payment_preimage) = service
         .settle_requirement(
@@ -957,8 +971,8 @@ async fn settle(
 
 async fn verify_credential(
     State(service): State<Arc<PaymentGatewayService>>,
-    Json(request): Json<CredentialVerifyRequest>,
-) -> Result<Json<Value>, ServiceError> {
+    ApiJson(request): ApiJson<CredentialVerifyRequest>,
+) -> Result<Json<CredentialVerifyResponse>, ServiceError> {
     if request.credential != request.receipt.credential
         || service
             .store
@@ -994,13 +1008,13 @@ async fn verify_credential(
         },
         now_seconds(),
     )?;
-    Ok(Json(json!({ "authorized": true })))
+    Ok(Json(CredentialVerifyResponse { authorized: true }))
 }
 
 async fn create_fair_offer(
     headers: HeaderMap,
     State(service): State<Arc<PaymentGatewayService>>,
-    Json(request): Json<FairExchangeOfferRequest>,
+    ApiJson(request): ApiJson<FairExchangeOfferRequest>,
 ) -> Result<Json<FairExchangeEnvelope>, ServiceError> {
     service.require_api_bearer(&headers)?;
     let plaintext = BASE64.decode(&request.plaintext_base64).map_err(|_| {
@@ -1046,7 +1060,7 @@ async fn create_fair_offer(
 
 async fn claim_fair_offer(
     State(service): State<Arc<PaymentGatewayService>>,
-    Json(request): Json<FairExchangeClaimRequest>,
+    ApiJson(request): ApiJson<FairExchangeClaimRequest>,
 ) -> Result<Json<FairExchangeClaim>, ServiceError> {
     let offer = service
         .store
@@ -1074,40 +1088,61 @@ async fn claim_fair_offer(
     }))
 }
 
+async fn event_log(
+    headers: HeaderMap,
+    State(service): State<Arc<PaymentGatewayService>>,
+    ApiJson(query): ApiJson<EventPageRequest>,
+) -> Result<Json<EventPage>, ServiceError> {
+    service.require_api_bearer(&headers)?;
+    service
+        .store
+        .events(&query)
+        .map(Json)
+        .map_err(|error| match error {
+            morph_events::Error::Invalid | morph_events::Error::Policy => {
+                ServiceError::InvalidRequest("invalid event page or source cursor".into())
+            }
+            _ => ServiceError::StoreUnavailable,
+        })
+}
+
 async fn list_payments(
     headers: HeaderMap,
     State(service): State<Arc<PaymentGatewayService>>,
-    Query(query): Query<PaymentListQuery>,
-) -> Result<Json<Value>, ServiceError> {
+    ApiQuery(query): ApiQuery<PaymentListQuery>,
+) -> Result<Json<PaymentListResponse>, ServiceError> {
     service.require_api_bearer(&headers)?;
-    let limit = query.limit.unwrap_or(100).clamp(1, MAX_LIST_PAYMENTS);
+    let limit = query.limit.unwrap_or(100);
+    if limit == 0 || limit > MAX_LIST_PAYMENTS {
+        return Err(ServiceError::InvalidRequest(
+            "page limit is outside bounds".into(),
+        ));
+    }
     let payments = service
         .store
         .payments(limit)?
         .into_iter()
-        .map(|payment| {
-            json!({
-                "payment_hash": payment.payment_hash,
-                "requirement_id": payment.requirement_id,
-                "direction": payment.direction,
-                "status": payment.status,
-                "updated_at": payment.updated_at,
-            })
+        .map(|payment| PaymentListItem {
+            payment_hash: payment.payment_hash,
+            requirement_id: payment.requirement_id,
+            direction: payment.direction,
+            status: payment.status,
+            updated_at: payment.updated_at,
         })
         .collect::<Vec<_>>();
-    Ok(Json(json!({
-        "payments": payments,
-        "source": "morph_payment_gateway_durable_index",
-    })))
+    Ok(Json(PaymentListResponse {
+        payments,
+        source: "morph_payment_gateway_durable_index".into(),
+    }))
 }
 
 async fn gateway_proxy(
     State(service): State<Arc<PaymentGatewayService>>,
-    AxumPath(path): AxumPath<String>,
+    ApiPath(path): ApiPath<String>,
     RawQuery(query): RawQuery,
     method: Method,
     headers: HeaderMap,
-    body: Bytes,
+    ApiBytes(body): ApiBytes,
 ) -> Result<Response, ServiceError> {
     let upstream = service
         .upstream
@@ -1437,6 +1472,7 @@ pub async fn wait_for_payment(
         let payment = tokio::time::timeout(remaining, fiber.get_payment(payment_hash))
             .await
             .map_err(|_| ServiceError::PaymentTimeout)??;
+        require_payment_identity(&payment, payment_hash)?;
         if payment_is_terminal(&payment) {
             return Ok(payment);
         }
@@ -1454,6 +1490,7 @@ fn payment_is_terminal(payment: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
+    pub(super) mod process_faults;
     use std::sync::Mutex;
 
     use axum::routing::post;
@@ -1467,6 +1504,11 @@ mod tests {
         invoice_address: Option<String>,
         payment_poll_count: usize,
         omit_send_payment_hash: bool,
+        send_count: usize,
+        get_payment_error: bool,
+        wrong_payment_hash: bool,
+        hold_send_reply: bool,
+        fail_payment: bool,
     }
 
     fn payer_id(seed: u8) -> String {
@@ -1577,7 +1619,8 @@ mod tests {
                 json!({ "invoice": state.invoice.clone().unwrap() })
             }
             "send_payment" => {
-                let state = state.lock().unwrap();
+                let mut state = state.lock().unwrap();
+                state.send_count += 1;
                 let payment_hash = state
                     .invoice
                     .as_ref()
@@ -1592,6 +1635,11 @@ mod tests {
             }
             "get_payment" => {
                 let mut state = state.lock().unwrap();
+                if state.get_payment_error || state.send_count == 0 {
+                    return Json(
+                        json!({"jsonrpc":"2.0","id":id,"error":{"code":-1,"message":"provider-private-marker"}}),
+                    );
+                }
                 state.payment_poll_count += 1;
                 let payment_hash = state
                     .invoice
@@ -1599,7 +1647,14 @@ mod tests {
                     .and_then(|invoice| invoice.pointer("/data/payment_hash"))
                     .cloned()
                     .unwrap();
-                let status = if state.payment_poll_count < 2 {
+                let payment_hash = if state.wrong_payment_hash {
+                    json!(hex32(&[77; 32]))
+                } else {
+                    payment_hash
+                };
+                let status = if state.fail_payment {
+                    "Failed"
+                } else if state.payment_poll_count < 2 {
                     "Inflight"
                 } else {
                     "Success"
@@ -1608,10 +1663,14 @@ mod tests {
             }
             _ => Value::Null,
         };
+        let hold_reply = method == "send_payment" && state.lock().unwrap().hold_send_reply;
+        if hold_reply {
+            std::future::pending::<()>().await;
+        }
         Json(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
     }
 
-    async fn test_service(
+    pub(super) async fn test_service(
         upstream_base_url: Option<String>,
     ) -> (Arc<PaymentGatewayService>, tempfile::TempDir) {
         let (service, dir, _) = test_service_with_fiber_state(upstream_base_url).await;
@@ -1639,7 +1698,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(
             DurableStore::open(
-                dir.path().join("payment-gateway.db"),
+                dir.path().join("private/payment-gateway.db"),
                 credentials.store_key(),
             )
             .unwrap(),
@@ -1656,6 +1715,7 @@ mod tests {
         };
         let service = PaymentGatewayService::new(
             PaymentGatewayConfig {
+                fiber_identity: None,
                 payee: hex32(&blake2b256(
                     SigningKey::from_slice(&[5; 32])
                         .unwrap()
@@ -1683,6 +1743,238 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn public_http_errors_are_typed_bounded_and_do_not_reflect_input() {
+        let (mut service, dir) = test_service(None).await;
+        Arc::get_mut(&mut service).unwrap().api_bearer_token_hash =
+            Some(blake2b256("a".repeat(32).as_bytes()));
+        let asset = service.config.supported_assets[0].clone();
+        let request = CreateChallengeRequest {
+            asset,
+            amount: "1".into(),
+            payer: payer_id(4),
+            resource: "/test".into(),
+            operation: "GET".into(),
+            description: None,
+            expires_in_seconds: Some(60),
+            rgbpp_proof_commitment: None,
+        };
+        let path = dir.path().join("private/payment-gateway.db");
+        let before = std::fs::read(&path).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, service.router()).await.unwrap();
+        });
+        let client = reqwest::Client::new();
+        let mut unknown = serde_json::to_value(&request).unwrap();
+        unknown["raw-secret-marker"] = json!(true);
+        let mut nested = serde_json::to_value(&request).unwrap();
+        nested["asset"]["raw-secret-marker"] = json!(true);
+        let cases = [
+            (
+                "POST",
+                "/health",
+                "application/json",
+                "{}".into(),
+                405,
+                GatewayErrorCode::MethodNotAllowed,
+            ),
+            (
+                "GET",
+                "/v1/missing",
+                "application/json",
+                String::new(),
+                404,
+                GatewayErrorCode::RouteNotFound,
+            ),
+            (
+                "POST",
+                "/v1/challenges",
+                "text/plain",
+                "raw-secret-marker".into(),
+                415,
+                GatewayErrorCode::UnsupportedContentType,
+            ),
+            (
+                "POST",
+                "/v1/challenges",
+                "application/json",
+                "raw-secret-marker".into(),
+                400,
+                GatewayErrorCode::InvalidJson,
+            ),
+            (
+                "POST",
+                "/v1/challenges",
+                "application/json",
+                unknown.to_string(),
+                422,
+                GatewayErrorCode::InvalidJson,
+            ),
+            (
+                "POST",
+                "/v1/challenges",
+                "application/json",
+                nested.to_string(),
+                422,
+                GatewayErrorCode::InvalidJson,
+            ),
+            (
+                "POST",
+                "/v1/challenges",
+                "application/json",
+                "x".repeat(DEFAULT_MAX_BODY_BYTES + 1),
+                413,
+                GatewayErrorCode::BodyTooLarge,
+            ),
+            (
+                "POST",
+                "/v1/challenges",
+                "application/json",
+                serde_json::to_string(&request).unwrap(),
+                401,
+                GatewayErrorCode::Unauthorized,
+            ),
+            (
+                "GET",
+                "/v1/payments?limit=0",
+                "application/json",
+                String::new(),
+                400,
+                GatewayErrorCode::InvalidQuery,
+            ),
+            (
+                "GET",
+                "/v1/payments?limit=1001",
+                "application/json",
+                String::new(),
+                400,
+                GatewayErrorCode::InvalidQuery,
+            ),
+            (
+                "GET",
+                "/v1/payments?limit=01",
+                "application/json",
+                String::new(),
+                400,
+                GatewayErrorCode::InvalidQuery,
+            ),
+            (
+                "GET",
+                "/v1/payments?limit=1&limit=2",
+                "application/json",
+                String::new(),
+                400,
+                GatewayErrorCode::InvalidQuery,
+            ),
+            (
+                "GET",
+                "/v1/payments?unknown=raw-secret-marker",
+                "application/json",
+                String::new(),
+                400,
+                GatewayErrorCode::InvalidQuery,
+            ),
+        ];
+        let malformed_numbers = [
+            json!(60),
+            json!("01"),
+            json!("18446744073709551616"),
+            json!(" 60"),
+        ]
+        .into_iter()
+        .map(|value| {
+            let mut bad = serde_json::to_value(&request).unwrap();
+            bad["expires_in_seconds"] = value;
+            (
+                "POST",
+                "/v1/challenges",
+                "application/json",
+                bad.to_string(),
+                422,
+                GatewayErrorCode::InvalidJson,
+            )
+        });
+        let cases = cases.into_iter().chain(malformed_numbers).chain([
+            (
+                "POST",
+                "/gateway/test",
+                "application/octet-stream",
+                "x".repeat(DEFAULT_MAX_BODY_BYTES + 1),
+                413,
+                GatewayErrorCode::BodyTooLarge,
+            ),
+            (
+                "GET",
+                "/gateway/%FF",
+                "application/json",
+                String::new(),
+                400,
+                GatewayErrorCode::InvalidRequest,
+            ),
+        ]);
+        let mut ids = BTreeSet::new();
+        for (method, path, content, body, status, code) in cases {
+            let response = client
+                .request(method.parse().unwrap(), format!("{base}{path}"))
+                .header("content-type", content)
+                .header("x-morph-request-id", "raw-secret-marker")
+                .header("authorization", "Bearer raw-secret-marker")
+                .body(body)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status().as_u16(), status, "{path}");
+            assert_eq!(response.headers()["x-morph-api-version"], "1");
+            let id = response.headers()["x-morph-request-id"]
+                .to_str()
+                .unwrap()
+                .to_owned();
+            assert!(ids.insert(id.clone()));
+            let text = response.text().await.unwrap();
+            assert!(!text.contains("raw-secret-marker"));
+            let error: GatewayErrorBody = serde_json::from_str(&text).unwrap();
+            assert_eq!(error.code, code);
+            assert_eq!(error.request_id, id);
+            assert_eq!(error.api_version, "1");
+        }
+        let unauthorized = crate::PaymentGatewayClient::new(&base).unwrap();
+        assert!(matches!(
+            unauthorized.create_x402_challenge(&request).await,
+            Err(crate::PaymentGatewayClientError::Http {
+                code: Some(GatewayErrorCode::Unauthorized),
+                status: 401,
+                request_id: Some(_),
+                ..
+            })
+        ));
+        let sdk = crate::PaymentGatewayClient::new(&base)
+            .unwrap()
+            .with_bearer_token("a".repeat(32))
+            .unwrap();
+        assert!(matches!(
+            sdk.payments(0).await,
+            Err(crate::PaymentGatewayClientError::Http {
+                code: Some(GatewayErrorCode::InvalidQuery),
+                request_id: Some(_),
+                status: 400,
+                ..
+            })
+        ));
+        assert!(sdk.payments(1000).await.unwrap().payments.is_empty());
+        assert!(
+            sdk.supported()
+                .await
+                .unwrap()
+                .capabilities
+                .iter()
+                .any(|v| v == "x402_exact")
+        );
+        assert_eq!(std::fs::read(path).unwrap(), before);
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn fair_exchange_releases_a_verifiable_key_only_after_paid() {
         let (service, _dir) = test_service(None).await;
         let plaintext = b"RGB++ paid computation result";
@@ -1690,7 +1982,7 @@ mod tests {
         let envelope = create_fair_offer(
             HeaderMap::new(),
             State(service.clone()),
-            Json(FairExchangeOfferRequest {
+            ApiJson(FairExchangeOfferRequest {
                 asset,
                 amount: "42".to_string(),
                 payer: payer_id(4),
@@ -1709,7 +2001,7 @@ mod tests {
         let payload = PaymentPayload::new_signed(&envelope.requirement, None, &payer_key).unwrap();
         let claim = claim_fair_offer(
             State(service.clone()),
-            Json(FairExchangeClaimRequest {
+            ApiJson(FairExchangeClaimRequest {
                 offer_id: envelope.offer_id.clone(),
                 payload,
                 credential_ttl_seconds: Some(300),
@@ -1793,7 +2085,7 @@ mod tests {
             list_payments(
                 HeaderMap::new(),
                 State(service.clone()),
-                Query(PaymentListQuery { limit: Some(10) })
+                ApiQuery(PaymentListQuery { limit: Some(10) })
             )
             .await,
             Err(ServiceError::Unauthorized)
@@ -1807,13 +2099,362 @@ mod tests {
         let Json(value) = list_payments(
             headers,
             State(service),
-            Query(PaymentListQuery { limit: Some(10) }),
+            ApiQuery(PaymentListQuery { limit: Some(10) }),
         )
         .await
         .unwrap();
         let encoded = serde_json::to_string(&value).unwrap();
         assert!(!encoded.contains("raw-secret-marker"));
         assert!(encoded.contains("payment_hash"));
+    }
+
+    #[tokio::test]
+    async fn durable_event_http_pages_require_operator_and_redact_private_state() {
+        let (mut service, _dir) = test_service(None).await;
+        Arc::get_mut(&mut service).unwrap().api_bearer_token_hash =
+            Some(blake2b256("e".repeat(32).as_bytes()));
+        service.store.record_payment(TrackedPayment {
+            payment_hash: format!("0x{}", "12".repeat(32)), requirement_id: format!("0x{}", "13".repeat(32)),
+            direction: PaymentDirection::Incoming, status: "Paid".into(), updated_at: 1,
+            fiber_result: json!({"private_proof":"must-not-leave-store","url":"https://provider.invalid/?token=private"}),
+        }).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, service.router()).await.unwrap();
+        });
+        let client = reqwest::Client::new();
+        let query = EventPageRequest {
+            after: None,
+            limit: 1,
+        };
+        let denied = client
+            .post(format!("{base}/v1/events"))
+            .json(&query)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+        let sdk = crate::client::PaymentGatewayClient::new(&base)
+            .unwrap()
+            .with_bearer_token("e".repeat(32))
+            .unwrap();
+        let first = sdk.events(&query).await.unwrap();
+        assert!(first.has_more);
+        let second = sdk
+            .events(&EventPageRequest {
+                after: Some(first.next),
+                limit: 1,
+            })
+            .await
+            .unwrap();
+        assert!(!second.has_more);
+        assert_eq!(
+            second.events[0].kind,
+            morph_packages::events::Kind::GatewayPaymentRecorded
+        );
+        let text = serde_json::to_string(&second).unwrap();
+        assert!(!text.contains("must-not-leave-store"));
+        assert!(!text.contains("provider.invalid"));
+        let end = sdk
+            .events(&EventPageRequest {
+                after: Some(second.next.clone()),
+                limit: 1,
+            })
+            .await
+            .unwrap();
+        assert!(end.events.is_empty());
+        let mut wrong = second.next;
+        wrong.source_id = "ab".repeat(32);
+        let bad = client
+            .post(format!("{base}/v1/events"))
+            .bearer_auth("e".repeat(32))
+            .json(&EventPageRequest {
+                after: Some(wrong),
+                limit: 1,
+            })
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        task.abort();
+    }
+
+    async fn outgoing_retry_fixture() -> (
+        Arc<PaymentGatewayService>,
+        tempfile::TempDir,
+        Arc<Mutex<MockFiberState>>,
+        PayRequest,
+    ) {
+        let (mut service, dir, state) = test_service_with_fiber_state(None).await;
+        let requirements = service
+            .make_challenge(
+                &CreateChallengeRequest {
+                    asset: service.config.supported_assets[0].clone(),
+                    amount: "7".into(),
+                    payer: payer_id(4),
+                    resource: "/retry".into(),
+                    operation: "GET".into(),
+                    description: None,
+                    expires_in_seconds: Some(300),
+                    rgbpp_proof_commitment: None,
+                },
+                random_byte32(),
+            )
+            .await
+            .unwrap();
+        let payload = PaymentPayload::new_signed(
+            &requirements,
+            None,
+            &SigningKey::from_slice(&[4; 32]).unwrap(),
+        )
+        .unwrap();
+        let config = &mut Arc::get_mut(&mut service).unwrap().config;
+        config.outgoing_payer = Some(payer_id(4));
+        config.outgoing_max_fee_amount = Some(5);
+        (
+            service,
+            dir,
+            state,
+            PayRequest {
+                requirements,
+                payload,
+                timeout_seconds: Some(2),
+                max_fee_amount: Some("5".into()),
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn outgoing_http_concurrent_retries_send_once_and_conflicts_have_stable_code() {
+        let (service, dir, state, request) = outgoing_retry_fixture().await;
+        let peer = Arc::new(
+            PaymentGatewayService::new(
+                service.config.clone(),
+                service.fiber.clone(),
+                Arc::new(
+                    DurableStore::open(
+                        dir.path().join("private/payment-gateway.db"),
+                        service.credentials.store_key(),
+                    )
+                    .unwrap(),
+                ),
+                service.credentials.clone(),
+                service.receipt_signing_key.clone(),
+            )
+            .unwrap(),
+        );
+        let second = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let peer_url = format!("http://{}/v1/pay", second.local_addr().unwrap());
+        let peer_server = tokio::spawn(async move {
+            axum::serve(second, peer.router()).await.unwrap();
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/v1/pay", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, service.router()).await.unwrap();
+        });
+        let client = reqwest::Client::new();
+        let (a, b) = tokio::join!(
+            client.post(&url).json(&request).send(),
+            client.post(&peer_url).json(&request).send()
+        );
+        let a = a.unwrap();
+        let b = b.unwrap();
+        let mut terminal = None;
+        for response in [a, b] {
+            if response.status() == StatusCode::OK {
+                let value = response.json::<Value>().await.unwrap();
+                if let Some(saved) = &terminal {
+                    assert_eq!(saved, &value);
+                }
+                terminal = Some(value);
+            } else {
+                // The winner may not yet have reached Fiber when a racing
+                // observer queries. Missing evidence must not grant a send.
+                assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+                assert_eq!(
+                    response.json::<GatewayErrorBody>().await.unwrap().code,
+                    GatewayErrorCode::PaymentOutcomeUnknown
+                );
+            }
+        }
+        let original = terminal.expect("the winning submitter must complete");
+        assert_eq!(state.lock().unwrap().send_count, 1);
+        let mut changed = request.clone();
+        changed.timeout_seconds = Some(1);
+        let response = client.post(&url).json(&changed).send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            response.json::<GatewayErrorBody>().await.unwrap().code,
+            GatewayErrorCode::RequestConflict
+        );
+        assert_eq!(state.lock().unwrap().send_count, 1);
+        let cached = client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+        assert_eq!(cached, original);
+        for payment_url in [&url, &peer_url] {
+            let metrics_url = payment_url.replace("/v1/pay", "/metrics");
+            let metrics = client.get(metrics_url).send().await.unwrap();
+            assert_eq!(metrics.status(), StatusCode::OK);
+            let metrics = metrics.text().await.unwrap();
+            assert!(metrics.contains("morph_gateway_outgoing_reserved_total 1\n"));
+            assert!(metrics.contains("morph_gateway_outgoing_succeeded_total 1\n"));
+            assert!(metrics.contains("morph_gateway_outgoing_failed_total 0\n"));
+            assert!(!metrics.contains(&request.requirements.payment_hash));
+            assert!(!metrics.contains(&request.payload.payer_signature));
+        }
+        server.abort();
+        peer_server.abort();
+    }
+
+    #[tokio::test]
+    async fn outgoing_unknown_submission_reopens_and_reconciles_without_resubmitting() {
+        let (service, dir, state, request) = outgoing_retry_fixture().await;
+        state.lock().unwrap().omit_send_payment_hash = true;
+        assert!(matches!(
+            pay(State(service.clone()), ApiJson(request.clone())).await,
+            Err(ServiceError::PaymentOutcomeUnknown)
+        ));
+        assert_eq!(state.lock().unwrap().send_count, 1);
+        let config = service.config.clone();
+        let fiber = service.fiber.clone();
+        let credentials = service.credentials.clone();
+        let key = service.receipt_signing_key.clone();
+        drop(service);
+        let store = Arc::new(
+            DurableStore::open(
+                dir.path().join("private/payment-gateway.db"),
+                credentials.store_key(),
+            )
+            .unwrap(),
+        );
+        let reopened =
+            Arc::new(PaymentGatewayService::new(config, fiber, store, credentials, key).unwrap());
+        state.lock().unwrap().get_payment_error = true;
+        assert!(matches!(
+            pay(State(reopened.clone()), ApiJson(request.clone())).await,
+            Err(ServiceError::PaymentOutcomeUnknown)
+        ));
+        assert_eq!(state.lock().unwrap().send_count, 1);
+        state.lock().unwrap().get_payment_error = false;
+        let Json(result) = pay(State(reopened.clone()), ApiJson(request.clone()))
+            .await
+            .unwrap();
+        assert!(result.completed);
+        assert_eq!(state.lock().unwrap().send_count, 1);
+        let polls = state.lock().unwrap().payment_poll_count;
+        state.lock().unwrap().get_payment_error = true;
+        assert!(
+            pay(State(reopened), ApiJson(request))
+                .await
+                .unwrap()
+                .0
+                .completed
+        );
+        assert_eq!(state.lock().unwrap().payment_poll_count, polls);
+    }
+
+    #[tokio::test]
+    async fn outgoing_pre_send_reservation_never_guesses_non_submission_from_missing_provider_record()
+     {
+        let (service, _dir, state, request) = outgoing_retry_fixture().await;
+        service
+            .store
+            .reserve_outgoing(
+                &request,
+                service.fiber.endpoint(),
+                json!({"invoice":request.requirements.invoice}),
+                2,
+                now_seconds(),
+            )
+            .unwrap();
+        assert!(matches!(
+            pay(State(service.clone()), ApiJson(request.clone())).await,
+            Err(ServiceError::PaymentOutcomeUnknown)
+        ));
+        assert_eq!(state.lock().unwrap().send_count, 0);
+        assert!(
+            service
+                .store
+                .outgoing(&request, service.fiber.endpoint())
+                .unwrap()
+                .unwrap()
+                .response
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn outgoing_wrong_poll_identity_cannot_finish_original_attempt() {
+        let (service, _dir, state, request) = outgoing_retry_fixture().await;
+        state.lock().unwrap().wrong_payment_hash = true;
+        assert!(matches!(
+            pay(State(service.clone()), ApiJson(request.clone())).await,
+            Err(ServiceError::PaymentOutcomeUnknown)
+        ));
+        assert!(
+            service
+                .store
+                .outgoing(&request, service.fiber.endpoint())
+                .unwrap()
+                .unwrap()
+                .response
+                .is_none()
+        );
+        state.lock().unwrap().wrong_payment_hash = false;
+        assert!(
+            pay(State(service), ApiJson(request))
+                .await
+                .unwrap()
+                .0
+                .completed
+        );
+        assert_eq!(state.lock().unwrap().send_count, 1);
+    }
+
+    #[tokio::test]
+    async fn outgoing_expired_cached_result_is_delivered_but_new_expired_spend_is_rejected() {
+        let (service, _dir, state, mut request) = outgoing_retry_fixture().await;
+        request.requirements.expires_at = now_seconds() - 1;
+        request.requirements.requirement_id = request.requirements.expected_id().unwrap();
+        request.payload = PaymentPayload::new_signed(
+            &request.requirements,
+            None,
+            &SigningKey::from_slice(&[4; 32]).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            pay(State(service.clone()), ApiJson(request.clone()))
+                .await
+                .is_err()
+        );
+        service
+            .store
+            .reserve_outgoing(
+                &request,
+                service.fiber.endpoint(),
+                json!({}),
+                2,
+                now_seconds() - 10,
+            )
+            .unwrap();
+        service.store.finish_outgoing(&request,service.fiber.endpoint(),PayResponse { completed:true,payment_hash:request.requirements.payment_hash.clone(),fiber_result:json!({"payment_hash":request.requirements.payment_hash,"status":"Success"})},now_seconds()).unwrap();
+        assert!(
+            pay(State(service), ApiJson(request))
+                .await
+                .unwrap()
+                .0
+                .completed
+        );
+        assert_eq!(state.lock().unwrap().send_count, 0);
     }
 
     #[tokio::test]
@@ -1844,7 +2485,7 @@ mod tests {
         assert!(matches!(
             pay(
                 State(service.clone()),
-                Json(PayRequest {
+                ApiJson(PayRequest {
                     requirements: requirement.clone(),
                     payload: payload.clone(),
                     timeout_seconds: None,
@@ -1861,7 +2502,7 @@ mod tests {
         assert!(matches!(
             pay(
                 State(service),
-                Json(PayRequest {
+                ApiJson(PayRequest {
                     requirements: requirement,
                     payload,
                     timeout_seconds: Some(60),
@@ -1904,7 +2545,7 @@ mod tests {
 
         let Json(response) = pay(
             State(service.clone()),
-            Json(PayRequest {
+            ApiJson(PayRequest {
                 requirements: requirement.clone(),
                 payload,
                 timeout_seconds: Some(2),
@@ -1955,7 +2596,7 @@ mod tests {
         assert!(matches!(
             pay(
                 State(service.clone()),
-                Json(PayRequest {
+                ApiJson(PayRequest {
                     requirements: requirement.clone(),
                     payload,
                     timeout_seconds: Some(2),
@@ -1963,7 +2604,7 @@ mod tests {
                 }),
             )
             .await,
-            Err(ServiceError::FiberUnavailable)
+            Err(ServiceError::PaymentOutcomeUnknown)
         ));
         let payments = service.store.payments(10).unwrap();
         assert_eq!(payments.len(), 1);

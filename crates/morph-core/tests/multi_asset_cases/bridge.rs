@@ -205,6 +205,7 @@ fn reservation(materialized: &MaterializedChannelEvidence, now: u64) -> FactoryR
         factory_id: [7; 32],
         factory_update_number: 9,
         right,
+        target_channel_id: materialized.recovery.state.header.channel_id,
         quantity,
         factory_state_root: factory_right_sparse_root(&rights).unwrap(),
         access_manifest_root: [11; 32],
@@ -224,6 +225,7 @@ fn reserve_child(registry: &mut SovereignEdgeRegistry) -> MaterializedChannelEvi
     let origin = materialized.factory_origin.as_mut().unwrap();
     let mut header = origin.source.state().unwrap().fields();
     header.state_root = reserved.factory_state_root;
+    header.access_manifest_root = reserved.access_manifest_root;
     origin.source.header = header.encode().unwrap().to_vec();
     assert_eq!(
         reserved.validate(99),
@@ -607,6 +609,71 @@ fn current_bridge_excludes_conditional_pending_ckb_from_every_advertised_edge() 
 }
 
 #[test]
+fn current_bridge_excludes_pending_udt_from_its_type_without_reducing_other_assets() {
+    let mut recovery = fixture(2);
+    let before = recovery.settlement.payouts.clone();
+    let asset = before[0].asset.clone();
+    let VaultAsset::Xudt(type_script_hash) = asset else {
+        panic!("typed fixture");
+    };
+    recovery.settlement.payouts[0].values[0].amount -= 20;
+    let values = recovery.settlement.payouts[0].values;
+    let batch = ConditionalBatch {
+        asset,
+        batch_id: [81; 32],
+        application_context_commitment: [82; 32],
+        participants: core::array::from_fn(|i| ConditionalParticipant {
+            settlement_lock_hash: recovery.settlement.participant_lock_hashes[i],
+            settled_capacity: values[i].capacity().unwrap(),
+            settled_amount: values[i].amount,
+        }),
+        transfers: vec![ConditionalTransferSpec {
+            transfer_id: [83; 32],
+            payer_lock_hash: recovery.settlement.participant_lock_hashes[0],
+            hash_algorithm: ConditionalHashAlgorithm::Sha256,
+            payment_hash: derive_conditional_payment_hash(
+                ConditionalHashAlgorithm::Sha256,
+                &[84; 32],
+            )
+            .unwrap(),
+            amount: 20,
+            refund_after_block: 200,
+        }],
+    };
+    recovery.settlement.capability = MultiAssetSettlementCapability::Conditional {
+        batch_code_hash: [31; 32],
+        batch_hash_type: 2,
+        batches: vec![batch],
+    };
+    recovery.state.header.state_number += 1;
+    recovery.state.header.settlement_descriptor_commitment =
+        recovery.settlement.commitment().unwrap();
+    sign(&mut recovery);
+    let mut materialized = evidence_from_recovery(recovery, None);
+    materialized.asset = GatewayAsset::Xudt {
+        ckb_genesis_hash: [1; 32],
+        type_script_hash,
+    };
+    let mut registry = SovereignEdgeRegistry::default();
+    let edge = registry
+        .activate(materialized.clone(), &deployment(), 6, 101)
+        .unwrap();
+    assert_eq!(edge.directional_liquidity, values.map(|v| v.amount));
+    assert_eq!(
+        edge.directional_liquidity[0] + 20,
+        before[0].values[0].amount
+    );
+    select_token(&mut materialized, 1);
+    let other = registry
+        .activate(materialized, &deployment(), 6, 101)
+        .unwrap();
+    assert_eq!(
+        other.directional_liquidity,
+        before[1].values.map(|v| v.amount)
+    );
+}
+
+#[test]
 fn current_bridge_requires_all_asset_edges_to_drain_before_new_context_activation() {
     let mut registry = SovereignEdgeRegistry::default();
     let mut materialized = evidence(false);
@@ -753,6 +820,7 @@ fn arbitrary_factory_member_ids_map_through_committed_keys_to_channel_nodes() {
     let origin = materialized.factory_origin.as_mut().unwrap();
     let mut header = origin.source.state().unwrap().fields();
     header.state_root = reserved.factory_state_root;
+    header.access_manifest_root = reserved.access_manifest_root;
     header.participants_commitment = factory_membership_commitment(&origin.members).unwrap();
     origin.source.header = header.encode().unwrap().to_vec();
     let mut registry = SovereignEdgeRegistry::default();
@@ -763,4 +831,57 @@ fn arbitrary_factory_member_ids_map_through_committed_keys_to_channel_nodes() {
         .activate(materialized, &deployment(), 6, 101)
         .unwrap();
     assert_eq!(edge.participants[0], blake2b256(&participant_pubkey(1)));
+}
+
+#[test]
+fn current_bridge_reservation_binds_physical_target_separately_from_source_right_label() {
+    let mut materialized = evidence(true);
+    let mut reserved = reservation(&materialized, 100);
+    let mut right = reserved.right_proof.right.clone();
+    right.id.subchannel = [0; 32];
+    right.id.kind = FactoryRightKind::ReserveClaim;
+    reserved.right = right.id.clone();
+    reserved.right_proof = factory_right_sparse_proof(&[right.clone()], &right.id).unwrap();
+    reserved.factory_state_root = factory_right_sparse_root(&[right]).unwrap();
+    reserved.proof_commitment = factory_right_proof_commitment(&reserved.right_proof);
+    reserved.reservation_id = reserved.derive_id().unwrap();
+    let source = &mut materialized.factory_origin.as_mut().unwrap().source;
+    let mut header = source.state().unwrap().fields();
+    header.state_root = reserved.factory_state_root;
+    header.access_manifest_root = reserved.access_manifest_root;
+    source.header = header.encode().unwrap().to_vec();
+    let mut registry = SovereignEdgeRegistry::default();
+    let id = registry.reserve(reserved.clone(), 100).unwrap();
+    registry.begin_materialisation(&id).unwrap();
+    materialized.factory_reservation_id = Some(id);
+    assert!(
+        registry
+            .activate(materialized.clone(), &deployment(), 6, 101)
+            .is_ok()
+    );
+    let mut wrong_access = materialized.clone();
+    let source = &mut wrong_access.factory_origin.as_mut().unwrap().source;
+    let mut header = source.state().unwrap().fields();
+    header.access_manifest_root = [92; 32];
+    source.header = header.encode().unwrap().to_vec();
+    assert_eq!(
+        registry.activate(wrong_access, &deployment(), 6, 101),
+        Err(BridgeError::FactoryOriginMismatch)
+    );
+    let old_id = reserved.reservation_id;
+    reserved.target_channel_id = [93; 32];
+    assert_ne!(reserved.derive_id().unwrap(), old_id);
+    assert_eq!(
+        reserved.validate(101),
+        Err(BridgeError::ReservationIdMismatch)
+    );
+    reserved.reservation_id = reserved.derive_id().unwrap();
+    let mut registry = SovereignEdgeRegistry::default();
+    let id = registry.reserve(reserved, 100).unwrap();
+    registry.begin_materialisation(&id).unwrap();
+    materialized.factory_reservation_id = Some(id);
+    assert_eq!(
+        registry.activate(materialized, &deployment(), 6, 101),
+        Err(BridgeError::FactoryOriginMismatch)
+    );
 }

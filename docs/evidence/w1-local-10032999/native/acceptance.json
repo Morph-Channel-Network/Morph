@@ -1,0 +1,1516 @@
+{
+  "schema": "morph.public_acceptance_evidence.v1",
+  "source_commit": "1003299952a1ef0d3fba1f3900b49e2104c6623e",
+  "scenarios": [
+    {
+      "scenario_id": "bilateral_splice",
+      "coverage": [
+        "signed_descriptor_evolution",
+        "typed_asset_binding",
+        "state_retirement_non_orphaning",
+        "budget_regression"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/0/submission/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/0/withheld_bridge_receipt_reconciled",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/1/submission/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/1/withheld_bridge_receipt_reconciled",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/summary/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xe402d45d75068d3d73274d95f12e0fdd59576ed3a2cdb3a45f77b73e547b8c01"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/operations/1/activation/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "bilateral_unilateral_close",
+      "coverage": [
+        "canonical_relative_maturity",
+        "state_retirement_non_orphaning"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/terminal/1/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/terminal/1/package/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xe402d45d75068d3d73274d95f12e0fdd59576ed3a2cdb3a45f77b73e547b8c01"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/terminal/1/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/acceptance.json",
+          "pointer": "/transitions/terminal/1/resulting_state",
+          "expected": null,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_children",
+      "coverage": [
+        "factory_value_delta_binding",
+        "state_retirement_non_orphaning"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/cooperative_close/submitted/status/state",
+          "expected": "finalised",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/cooperative_close/submitted/status/depth",
+          "expected": 4,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/cooperative_close/zero_since",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/cooperative_close/all_payouts_verified",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/cooperative_close/parent_journals_unchanged",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/cooperative_close/child_journals_unchanged_after_rollback",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/cooperative_close/branch",
+          "expected": "cooperative_branch_orphaned_before_existing_unilateral_acceptance",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/cooperative_close/batch",
+          "expected": null,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/initial_exit_required_before_parent_vote",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/private_exit_signatures_absent_from_parent",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/admission/same_request_reservation_idempotent",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/admission/complete_history_revalidated_after_reload",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/admission/lifetime_child_reservations",
+          "expected": 1,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/admission/active_factories",
+          "expected": 1,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/latest_package_watch/publication/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/same_path_handoffs/0/session/current/package_id",
+          "expected": "0x31e5cb44dadd348e9951d2228a1b3df9e15d9706b341ec91971fe446b56b3eac",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/same_path_handoffs/0/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-reduced-latest-0.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "2000000000",
+              "reserve": "18000000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/same_path_handoffs/1/session/current/package_id",
+          "expected": "0x31e5cb44dadd348e9951d2228a1b3df9e15d9706b341ec91971fe446b56b3eac",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/same_path_handoffs/1/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-reduced-latest-1.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "2000000000",
+              "reserve": "18000000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/reduced/external_child_carrier",
+          "expected": "49600000000",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/ledger-evidence/factory-child-reduced.json",
+          "pointer": "/delivery_count",
+          "expected": 2,
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-child-reduced.json",
+          "pointer": "/target/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "7200000000",
+              "reserve": "45900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_deposit",
+      "coverage": [
+        "factory_value_delta_binding"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/deposit/report/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-deposit.json",
+          "pointer": "/target/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "9200000000",
+              "reserve": "63900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-deposit.json",
+          "pointer": "/target_rights",
+          "expected": [
+            {
+              "asset_type": null,
+              "kind": "ReserveClaim",
+              "participant": "0x0101010101010101010101010101010101010101010101010101010101010101",
+              "quantity": "46100000000",
+              "subchannel": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "asset_type": null,
+              "kind": "ReserveClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "13000000000",
+              "subchannel": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "97",
+              "subchannel": "0x4040404040404040404040404040404040404040404040404040404040404040"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "98",
+              "subchannel": "0x4141414141414141414141414141414141414141414141414141414141414141"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "98",
+              "subchannel": "0x4242424242424242424242424242424242424242424242424242424242424242"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "98",
+              "subchannel": "0x4343434343434343434343434343434343434343434343434343434343434343"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4545454545454545454545454545454545454545454545454545454545454545"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4646464646464646464646464646464646464646464646464646464646464646"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4747474747474747474747474747474747474747474747474747474747474747"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4848484848484848484848484848484848484848484848484848484848484848"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4949494949494949494949494949494949494949494949494949494949494949"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/peer_refreshed_from_public_changes",
+          "expected": true,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_reduced_escape",
+      "coverage": [
+        "factory_value_delta_binding",
+        "non_interference_not_authorisation",
+        "negative_recovery_continuity"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/escape/report/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-escape.json",
+          "pointer": "/target/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "9200000000",
+              "reserve": "23900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-escape.json",
+          "pointer": "/target_rights",
+          "expected": [
+            {
+              "asset_type": null,
+              "kind": "ReserveClaim",
+              "participant": "0x0101010101010101010101010101010101010101010101010101010101010101",
+              "quantity": "6100000000",
+              "subchannel": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "asset_type": null,
+              "kind": "ReserveClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "13000000000",
+              "subchannel": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "97",
+              "subchannel": "0x4040404040404040404040404040404040404040404040404040404040404040"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "98",
+              "subchannel": "0x4141414141414141414141414141414141414141414141414141414141414141"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "98",
+              "subchannel": "0x4242424242424242424242424242424242424242424242424242424242424242"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "98",
+              "subchannel": "0x4343434343434343434343434343434343434343434343434343434343434343"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4545454545454545454545454545454545454545454545454545454545454545"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4646464646464646464646464646464646464646464646464646464646464646"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4747474747474747474747474747474747474747474747474747474747474747"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4848484848484848484848484848484848484848484848484848484848484848"
+            },
+            {
+              "asset_type": null,
+              "kind": "SponsorBudgetClaim",
+              "participant": "0x0202020202020202020202020202020202020202020202020202020202020202",
+              "quantity": "99",
+              "subchannel": "0x4949494949494949494949494949494949494949494949494949494949494949"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/peer_refreshed_from_public_changes",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/full_consent_metadata/report/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/0/report/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/0/changed_right_count",
+          "expected": 1,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/0/peer_refreshed_from_public_changes",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/1/report/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/1/changed_right_count",
+          "expected": 4,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/1/peer_refreshed_from_public_changes",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/2/report/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/2/changed_right_count",
+          "expected": 10,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/2/peer_refreshed_from_public_changes",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/0/canonical_reorg_replay/orphaned",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/0/canonical_reorg_replay/authentic_source_live",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/0/canonical_reorg_replay/exact_body_and_witnesses",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/0/canonical_reorg_replay/unchanged_signer_journals",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/rights_updates/operations/0/canonical_reorg_replay/no_new_participant_signatures",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/previous_approval_not_revoked",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/withheld_full_consent_escaped",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/stale_context_preserves_journal",
+          "expected": true,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_retained_materialisation",
+      "coverage": [
+        "factory_value_delta_binding",
+        "state_retirement_non_orphaning"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/cooperative_close/submitted/status/state",
+          "expected": "finalised",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/cooperative_close/submitted/status/depth",
+          "expected": 4,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/cooperative_close/zero_since",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/cooperative_close/all_payouts_verified",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/cooperative_close/parent_journals_unchanged",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/cooperative_close/child_journals_unchanged_after_rollback",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/cooperative_close/branch",
+          "expected": "cooperative_branch_orphaned_before_existing_unilateral_acceptance",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/cooperative_close/batch",
+          "expected": null,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/initial_exit_required_before_parent_vote",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/private_exit_signatures_absent_from_parent",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/admission/same_request_reservation_idempotent",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/admission/complete_history_revalidated_after_reload",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/admission/lifetime_child_reservations",
+          "expected": 2,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/admission/active_factories",
+          "expected": 1,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/latest_package_watch/publication/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/same_path_handoffs/0/session/current/package_id",
+          "expected": "0x1a8eb90910288f72745ae4bf2b69e4eff1182636afa4d4b08dd17fc802e60360",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/same_path_handoffs/0/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-retained-latest-0.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "2000000000",
+              "reserve": "18000000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/same_path_handoffs/1/session/current/package_id",
+          "expected": "0x1a8eb90910288f72745ae4bf2b69e4eff1182636afa4d4b08dd17fc802e60360",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/same_path_handoffs/1/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-retained-latest-1.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "2000000000",
+              "reserve": "18000000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/retained/external_child_carrier",
+          "expected": "49600000000",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/ledger-evidence/factory-child-retained.json",
+          "pointer": "/delivery_count",
+          "expected": 2,
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/factory-child-retained.json",
+          "pointer": "/target/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "5200000000",
+              "reserve": "27900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "factory_terminal_materialisation",
+      "coverage": [
+        "factory_value_delta_binding",
+        "state_retirement_non_orphaning"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/submitted/status/state",
+          "expected": "finalised",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/submitted/status/depth",
+          "expected": 4,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/zero_since",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/all_payouts_verified",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/parent_journals_unchanged",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/child_journals_unchanged_after_rollback",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/branch",
+          "expected": "cooperative_branch_orphaned_before_existing_unilateral_acceptance",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/batch/fulfilled/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/batch/refunded/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/batch/canonical_payouts_verified",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/cooperative_close/batch/branches",
+          "expected": "fulfilment_orphaned_then_refund_before_outer_close_rollback",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/initial_exit_required_before_parent_vote",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/private_exit_signatures_absent_from_parent",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/admission/same_request_reservation_idempotent",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/admission/complete_history_revalidated_after_reload",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/admission/lifetime_child_reservations",
+          "expected": 3,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/admission/active_factories",
+          "expected": 0,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/latest_package_watch/publication/canonical_confirmed",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/same_path_handoffs/0/session/current/package_id",
+          "expected": "0xb095b6100fd07c36b58d904ab28da52980b0bf1f50ea7c73aae1679ff1fffa67",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/same_path_handoffs/0/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-terminal-latest-0.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "5200000000",
+              "reserve": "27900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/same_path_handoffs/1/session/current/package_id",
+          "expected": "0xb095b6100fd07c36b58d904ab28da52980b0bf1f50ea7c73aae1679ff1fffa67",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/same_path_handoffs/1/session/lineage/origin/kind",
+          "expected": "factory",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/ledger-evidence/child-terminal-latest-1.json",
+          "pointer": "/assets",
+          "expected": [
+            {
+              "amount": "0",
+              "business_ckb": "5200000000",
+              "reserve": "27900000000",
+              "type_hash": null
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/external_child_carrier",
+          "expected": "49600000000",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/ledger-evidence/factory-child-terminal.json",
+          "pointer": "/delivery_count",
+          "expected": 2,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/parent/canonical_reorg_replay/admission/orphaned/active_factories",
+          "expected": 1,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/parent/canonical_reorg_replay/admission/replayed/active_factories",
+          "expected": 0,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/parent/canonical_reorg_replay/admission/orphaned/lifetime_child_reservations",
+          "expected": 3,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/parent/canonical_reorg_replay/admission/replayed/lifetime_child_reservations",
+          "expected": 3,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/parent/canonical_reorg_replay/admission/lifetime_children_preserved",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/operator_checks/admission/lifetime_child_reservations",
+          "expected": 3,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/operator_checks/admission/active_factories",
+          "expected": 0,
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/retained_factory/retired",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/factory-acceptance.json",
+          "pointer": "/transitions/child/terminal/retained_factory/carrier_refund/capacity",
+          "expected": "50000000000",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/ledger-evidence/factory-child-terminal.json",
+          "pointer": "/target",
+          "expected": null,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "maximum_asset_lifecycle",
+      "coverage": [
+        "typed_asset_binding",
+        "budget_regression"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/eight-asset-acceptance.json",
+          "pointer": "/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/eight-asset-acceptance.json",
+          "pointer": "/summary/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x2d6db4cf049cd8678150b5868df4cef6027cbfd5aa237355c68243ddbe66a62c"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x3ca23ab8af9885b88f13ea19ef87248050aa8cc40acd4b61386879124e9baacc"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xacd18f4888fc78f180423eae67113257a769bb64d809f82099a6bd8b97197709"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xba8a3a2c8bde04e69f3e7db97084dd6e3290641ee6231396207e497d1c627d18"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xe402d45d75068d3d73274d95f12e0fdd59576ed3a2cdb3a45f77b73e547b8c01"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xfc8d314185706107290c599f826ffd14af03efbcc5da676aed126434d9e9a8a9"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xfeb49496c3d788780dccf490385ee3911dbdc93b871a90aa9d0b26694645d47b"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/eight-asset-acceptance.json",
+          "pointer": "/asset_count",
+          "expected": 8,
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/eight-asset-acceptance.json",
+          "pointer": "/operator_checks/6",
+          "expected": "three_distinct_funders_signed_only_their_own_groups",
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "root_funding",
+      "coverage": [
+        "state_authority_authenticity",
+        "state_retirement_non_orphaning",
+        "negative_recovery_continuity"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/activation/resulting_state",
+          "expected": {
+            "phase": "active",
+            "state_number": "0"
+          },
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/summary/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xe402d45d75068d3d73274d95f12e0fdd59576ed3a2cdb3a45f77b73e547b8c01"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/operator_checks/2",
+          "expected": "independent_initial_exit_before_creation_and_same_path_confirmation",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/operator_checks/7",
+          "expected": "three_distinct_funders_signed_only_their_own_groups",
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/operator_checks/6",
+          "expected": "unsigned_wallet_preflight_cannot_poison_funding_artifact",
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/operator_checks/3",
+          "expected": "withheld_root_creation_receipt_recovered_from_canonical_funding",
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/operator_checks/4",
+          "expected": "root_funding_orphaned_and_exact_signed_replayed_without_peer",
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/funding_replay/orphaned",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/funding_replay/exact_body_and_witnesses",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/funding_replay/unchanged_signer_journals",
+          "expected": true,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/shared-acceptance.json",
+          "pointer": "/funding_replay/peer_creation_receipt_withheld",
+          "expected": true,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "scenario_id": "watch_service_reorg",
+      "coverage": [
+        "watchtower_authority_and_cursor",
+        "sponsor_policy_boundary",
+        "negative_recovery_continuity"
+      ],
+      "assertions": [
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/finalise/status",
+          "expected": "Committed",
+          "matched": true
+        },
+        {
+          "dimension": "assets",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/summary/assets",
+          "expected": [
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e"
+            },
+            {
+              "amount": "1000",
+              "business_ckb": "10000000000",
+              "reserve": "28400000000",
+              "type_hash": "0xe402d45d75068d3d73274d95f12e0fdd59576ed3a2cdb3a45f77b73e547b8c01"
+            }
+          ],
+          "matched": true
+        },
+        {
+          "dimension": "authority",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/operator_checks/12",
+          "expected": "sponsor_fee_cap_rejected",
+          "matched": true
+        },
+        {
+          "dimension": "persistence",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/operator_checks/20",
+          "expected": "current_watch_service_health_verified",
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/operator_checks/22",
+          "expected": "watch_reorg_rescan_republished",
+          "matched": true
+        },
+        {
+          "dimension": "state",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/watch_passes/2/service/published_count",
+          "expected": 1,
+          "matched": true
+        },
+        {
+          "dimension": "reorg",
+          "source_artifact": "smoke/watch-service-acceptance.json",
+          "pointer": "/watch_passes/4/reorg_recovery/reason",
+          "expected": "cursor_block_missing",
+          "matched": true
+        }
+      ]
+    }
+  ],
+  "audit_families": [
+    {
+      "id": "state_authority_authenticity",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "canonical_relative_maturity",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "state_retirement_non_orphaning",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "signed_descriptor_evolution",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "non_interference_not_authorisation",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "factory_value_delta_binding",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "typed_asset_binding",
+      "severity": "P0",
+      "passed": true
+    },
+    {
+      "id": "sponsor_policy_boundary",
+      "severity": "P1",
+      "passed": true
+    },
+    {
+      "id": "watchtower_authority_and_cursor",
+      "severity": "P2",
+      "passed": true
+    },
+    {
+      "id": "negative_recovery_continuity",
+      "severity": "P1",
+      "passed": true
+    },
+    {
+      "id": "budget_regression",
+      "severity": "P2",
+      "passed": true
+    }
+  ]
+}

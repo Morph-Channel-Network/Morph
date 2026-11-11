@@ -28,10 +28,12 @@ pub const FACTORY_REDUCED_RELEASE_MAX_LEN: usize = FACTORY_REDUCED_RELEASE_PREFI
     + 16 * 65
     + 2 * 780
     + 8 * 36
-    + 117
-    + 16 * 516
-    + 8 * (69 + 512)
-    + FACTORY_TRANSITION_MAX_RIGHTS * (228 + 2 * (2 + 64 * 34));
+    + 4
+    + (2 + 117)
+    + 16 * (2 + 512)
+    + 16
+    + 8 * (2 + 512 + 69)
+    + FACTORY_TRANSITION_MAX_RIGHTS * (crate::FACTORY_RIGHT_LEN + 16 + 2 * (2 + 64 * 34));
 
 /// Explicit current operations; every variant signs its tag and exact body.
 #[repr(u16)]
@@ -103,7 +105,7 @@ impl<'a> FactoryReducedReleaseRight<'a> {
     /// Read one bounded before/after right and its two compact proofs.
     pub fn parse_at(raw: &'a [u8], offset: &mut usize) -> Result<Self> {
         let before = FactoryRight::parse(take(raw, offset, crate::FACTORY_RIGHT_LEN)?)?;
-        let after = FactoryRight::parse(take(raw, offset, crate::FACTORY_RIGHT_LEN)?)?;
+        let after = before.with_quantity(take(raw, offset, 16)?)?;
         let before_proof_offset = proof_end(raw, offset)?;
         let after_proof_offset = proof_end(raw, offset)?;
         Ok(Self {
@@ -129,6 +131,12 @@ pub struct FactoryReducedReleasePayout<'a> {
     pub allocation: MultiAssetAllocation,
     pub output_index: usize,
     pub lock_script: &'a [u8],
+    raw: &'a [u8],
+}
+impl<'a> FactoryReducedReleasePayout<'a> {
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.raw
+    }
 }
 #[derive(Debug, Clone, Copy)]
 pub struct FactoryReducedReleaseWitness<'a> {
@@ -152,23 +160,25 @@ impl<'a> FactoryReducedReleaseWitness<'a> {
         if raw.len() < FACTORY_REDUCED_RELEASE_PREFIX_LEN
             || raw.len() > FACTORY_REDUCED_RELEASE_MAX_LEN
             || raw.get(..8) != Some(FACTORY_REDUCED_RELEASE_MAGIC.as_slice())
-            || read_u16(raw, 8) != 1
+            || read_u16(raw, 8) != 2
             || read_u16(raw, 10) > 5
             || !(2..=16).contains(&read_u16(raw, 12))
             || read_u16(raw, 14) >= read_u16(raw, 12)
             || read_u16(raw, 16) > FACTORY_TRANSITION_MAX_RIGHTS as u16
             || read_u16(raw, 18) > 8
             || read_u16(raw, 32) > 16
-            || read_u16(raw, 34) != 0
             || read_u32(raw, 20) > 780
             || read_u32(raw, 24) > 780
-            || read_u32(raw, 28) != 117
+            || read_u32(raw, 28) as usize > crate::script_table::MAX_TABLE_LEN
         {
             return Err(ScriptError::FactoryReducedProofEncoding);
         }
         let before = FactoryMultiAssetStateHeader::parse(&raw[112..418])?;
         let after = FactoryMultiAssetStateHeader::parse(&raw[418..724])?;
         let operation = FactoryTransitionOperation::parse(read_u16(raw, 10))?;
+        if operation == FactoryTransitionOperation::ReducedChild && read_u16(raw, 32) != 0 {
+            return bad();
+        }
         let mut offset = FACTORY_REDUCED_RELEASE_PREFIX_LEN;
         if operation.is_full() {
             take(raw, &mut offset, (read_u16(raw, 12) as usize - 1) * 64)?;
@@ -179,17 +189,23 @@ impl<'a> FactoryReducedReleaseWitness<'a> {
         let points = take(raw, &mut offset, source.count() * 36)?;
         let retained =
             MultiAssetVaultManifest::parse(take(raw, &mut offset, read_u32(raw, 24) as usize)?)?;
-        let factory_lock = take(raw, &mut offset, 117)?;
-        asset::multi_asset_script_occupied_bytes(factory_lock)?;
+        let table = crate::script_table::ScriptTable::parse(take(
+            raw,
+            &mut offset,
+            read_u32(raw, 28) as usize,
+        )?)?;
+        let factory_index = read_u16(raw, 34) as usize;
+        let factory_lock = table.script(factory_index)?;
+        if factory_lock.len() != 117 {
+            return bad();
+        }
+        let mut used = 1u64 << factory_index;
         let mut types = [None; 16];
         let mut previous = None;
         for slot in types.iter_mut().take(read_u16(raw, 32) as usize) {
-            let len = read_u32(take(raw, &mut offset, 4)?, 0) as usize;
-            if len > 512 {
-                return bad();
-            }
-            let script = take(raw, &mut offset, len)?;
-            asset::multi_asset_script_occupied_bytes(script)?;
+            let index = take(raw, &mut offset, 1)?[0] as usize;
+            let script = table.script(index)?;
+            used |= 1u64 << index;
             let hash = blake2b256(&[script]);
             if previous.is_some_and(|p| p >= hash) {
                 return bad();
@@ -204,21 +220,19 @@ impl<'a> FactoryReducedReleaseWitness<'a> {
             let asset = MultiAssetId::parse(&prefix[..33])?;
             let allocation = MultiAssetAllocation::parse(&prefix[33..65])?;
             allocation.validate_for(asset, false)?;
-            let len = read_u16(prefix, 65) as usize;
-            if len > 512
-                || previous_asset.is_some_and(|p| p >= asset)
-                || allocation.capacity()? == 0
-            {
+            let index = read_u16(prefix, 65) as usize;
+            if previous_asset.is_some_and(|p| p >= asset) || allocation.capacity()? == 0 {
                 return bad();
             }
             previous_asset = Some(asset);
-            let lock_script = take(raw, &mut offset, len)?;
-            asset::multi_asset_script_occupied_bytes(lock_script)?;
+            let lock_script = table.script(index)?;
+            used |= 1u64 << index;
             *slot = Some(FactoryReducedReleasePayout {
                 asset,
                 allocation,
                 output_index: read_u16(prefix, 67) as usize,
                 lock_script,
+                raw: prefix,
             });
         }
         let mut rights = [None; FACTORY_TRANSITION_MAX_RIGHTS];
@@ -237,8 +251,25 @@ impl<'a> FactoryReducedReleaseWitness<'a> {
         } else {
             (None, &raw[0..0])
         };
-        if offset != raw.len() {
+        if offset != raw.len() || used != table.complete_usage() {
             return bad();
+        }
+        if let Some(intent) = child_intent.as_ref() {
+            let mut assets = [MultiAssetId::CKB; 16];
+            let mut n = 0;
+            for manifest in [&source, &retained] {
+                for i in 0..manifest.count() {
+                    let asset = manifest.entry(i)?.asset;
+                    if asset.kind == 1 && !assets[..n].contains(&asset) {
+                        assets[n] = asset;
+                        n += 1;
+                    }
+                }
+            }
+            assets[..n].sort_unstable();
+            for (i, asset) in assets.iter().take(n).enumerate() {
+                types[i] = intent.type_script(*asset)?;
+            }
         }
         Ok(Self {
             raw,
@@ -638,7 +669,7 @@ impl<'a> FactoryReducedReleaseWitness<'a> {
                 self.before.state_root(),
                 self.after.state_root(),
                 &others[..n],
-                &empty_hashes,
+                empty_hashes,
             )?;
             if matches!(operation, FactoryTransitionOperation::ReducedRights) {
                 if !matches!(
@@ -895,6 +926,7 @@ impl<'a> FactoryReducedReleaseWitness<'a> {
     }
     pub fn verify(&self) -> Result<()> {
         self.validate_transition()?;
+        let digest = self.signing_digest();
         let count = if self.operation().is_full() {
             self.member_count()
         } else {
@@ -912,7 +944,7 @@ impl<'a> FactoryReducedReleaseWitness<'a> {
                     .map_err(|_| ScriptError::ParticipantWitnessEncoding)?;
             let signature = Signature::try_from(&self.raw[offset..offset + 64])
                 .map_err(|_| ScriptError::ParticipantWitnessEncoding)?;
-            key.verify_prehash(&self.signing_digest(), &signature)
+            key.verify_prehash(&digest, &signature)
                 .map_err(|_| ScriptError::InvalidParticipantSignature)?;
         }
         Ok(())
@@ -950,7 +982,7 @@ pub fn verify_factory_localized_right_change(
         before_root,
         after_root,
         other_keys,
-        &empty_hashes,
+        empty_hashes,
     )
 }
 
@@ -1008,7 +1040,7 @@ pub fn factory_reduced_child_view(raw: &[u8]) -> Result<super::FactoryMaterialis
     if raw.len() < 788
         || raw.len() > FACTORY_REDUCED_RELEASE_MAX_LEN
         || raw.get(..8) != Some(FACTORY_REDUCED_RELEASE_MAGIC.as_slice())
-        || read_u16(raw, 8) != 1
+        || read_u16(raw, 8) != 2
         || read_u16(raw, 10) != FactoryTransitionOperation::ReducedChild as u16
         || !(2..=16).contains(&read_u16(raw, 12))
         || read_u16(raw, 14) >= read_u16(raw, 12)
@@ -1016,9 +1048,8 @@ pub fn factory_reduced_child_view(raw: &[u8]) -> Result<super::FactoryMaterialis
         || read_u16(raw, 18) != 0
         || read_u32(raw, 20) > 780
         || read_u32(raw, 24) > 780
-        || read_u32(raw, 28) != 117
-        || read_u16(raw, 32) > 16
-        || read_u16(raw, 34) != 0
+        || read_u32(raw, 28) as usize > crate::script_table::MAX_TABLE_LEN
+        || read_u16(raw, 32) != 0
     {
         return bad();
     }
@@ -1028,16 +1059,16 @@ pub fn factory_reduced_child_view(raw: &[u8]) -> Result<super::FactoryMaterialis
         MultiAssetVaultManifest::parse(take(raw, &mut offset, read_u32(raw, 20) as usize)?)?;
     take(raw, &mut offset, source.count() * 36)?;
     take(raw, &mut offset, read_u32(raw, 24) as usize)?;
-    take(raw, &mut offset, 117)?;
-    for _ in 0..read_u16(raw, 32) {
-        let len = read_u32(take(raw, &mut offset, 4)?, 0) as usize;
-        if len > 512 {
-            return bad();
-        }
-        take(raw, &mut offset, len)?;
+    let table = crate::script_table::ScriptTable::parse(take(
+        raw,
+        &mut offset,
+        read_u32(raw, 28) as usize,
+    )?)?;
+    if table.count() != 1 || table.script(read_u16(raw, 34) as usize)?.len() != 117 {
+        return bad();
     }
     for _ in 0..read_u16(raw, 16) {
-        take(raw, &mut offset, 2 * crate::FACTORY_RIGHT_LEN)?;
+        take(raw, &mut offset, crate::FACTORY_RIGHT_LEN + 16)?;
         proof_end(raw, &mut offset)?;
         proof_end(raw, &mut offset)?;
     }

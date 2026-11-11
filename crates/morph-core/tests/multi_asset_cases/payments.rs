@@ -350,10 +350,11 @@ fn ordinary_payment_refuses_to_modify_an_armed_conditional_allocation() {
         value.amount = 0;
     }
     package.settlement.payouts[0].values[0].business_ckb -= 1_000_000_000;
-    package.settlement.capability = MultiAssetSettlementCapability::CkbConditional {
+    package.settlement.capability = MultiAssetSettlementCapability::Conditional {
         batch_code_hash: [31; 32],
         batch_hash_type: 2,
-        batch: Box::new(ConditionalBatch {
+        batches: vec![ConditionalBatch {
+            asset: morph_core::VaultAsset::Ckb,
             batch_id: [11; 32],
             application_context_commitment: [12; 32],
             participants: [0, 1].map(|index| ConditionalParticipant {
@@ -361,6 +362,7 @@ fn ordinary_payment_refuses_to_modify_an_armed_conditional_allocation() {
                 settled_capacity: package.settlement.payouts[0].values[index]
                     .capacity()
                     .unwrap(),
+                settled_amount: 0,
             }),
             transfers: vec![ConditionalTransferSpec {
                 transfer_id: [13; 32],
@@ -370,7 +372,7 @@ fn ordinary_payment_refuses_to_modify_an_armed_conditional_allocation() {
                 amount: 1_000_000_000,
                 refund_after_block: 500,
             }],
-        }),
+        }],
     };
     package.state.vault_content_set_root = package.manifest.commitment().unwrap();
     package.state.vault_outpoint_set_root =

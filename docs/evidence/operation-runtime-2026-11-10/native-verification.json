@@ -1,0 +1,32 @@
+{
+  "schema": "morph.external_signer_native_evidence.v1",
+  "passed": true,
+  "scenario": "close",
+  "roles": {
+    "root_exit": 4,
+    "root_creation": 4,
+    "cooperative_close": 8
+  },
+  "isolated_service_processes": 48,
+  "key_using_processes": 32,
+  "completed_role_attempts": 16,
+  "verified_fresh_caller_processes": 32,
+  "source_unchanged": true,
+  "source_dirty": true,
+  "sha256": {
+    "morph-cli": "3f8d445831546fd81d57db5a57cdea546065ca1464d2f2144c6dda72cf65e01b",
+    "contracts.json": "47060e4f7f5c79ad26a6051aaf22bf7eed4ae34dd75217147b20542e34bdf067",
+    "source-before.json": "bf7466efac911a118919b557742150ed77e769f60aefa047643f9dc83aeb3968",
+    "source-after.json": "bf7466efac911a118919b557742150ed77e769f60aefa047643f9dc83aeb3968",
+    "deployment.json": "f83e64abc2c4b698ea3384b6796ba1869b40e12d5704142d6abb81bc4e49e895",
+    "close-2.json": "b9d57121452fc92c324f2e823f5685708a967312f768acf9b14e4ada246fa350",
+    "close-8.json": "77f37c013b229bca17b191284cc95ef0f5bffec37406b46fd786c01b6cc53b55"
+  },
+  "boundaries": [
+    "controlled devnet; no real assets",
+    "existing manifest-matched ELFs, not a clean contract rebuild",
+    "full CI and remaining W1 qualification not run by this script",
+    "hostile same-UID and whole-store rollback remain excluded",
+    "selected roles: unavailable service, expired request, lost signed response, restart and cached retry; malformed/deadline IPC tests are separate"
+  ]
+}

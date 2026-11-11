@@ -9,6 +9,7 @@ use crate::canonical_fields::canonical_hex32;
 const WATCH_POLICY_SCHEMA: &str = "morph.watchtower_policy";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchtowerPolicy {
     pub schema: String,
     pub channel_id: Option<String>,
@@ -34,7 +35,6 @@ pub struct WatchPolicyRun<'a> {
     pub sponsor_out_point_present: bool,
     pub auto_fund_sponsor: bool,
     pub auto_sponsor_capacity: u64,
-    pub alert_webhook_present: bool,
 }
 
 impl WatchtowerPolicy {
@@ -151,12 +151,6 @@ impl WatchtowerPolicy {
                 "watchtower policy requires mine_blocks greater than zero"
             );
         }
-        if run.alert_webhook_present {
-            ensure!(
-                self.allow_webhook_alerts,
-                "watchtower policy does not allow webhook alerts"
-            );
-        }
         Ok(())
     }
 }
@@ -191,7 +185,6 @@ mod tests {
             sponsor_out_point_present: true,
             auto_fund_sponsor: false,
             auto_sponsor_capacity: 50_000_000_000,
-            alert_webhook_present: false,
         }
     }
 
@@ -238,18 +231,6 @@ mod tests {
 
         let err = policy.validate_run(&valid_run()).unwrap_err();
         assert!(err.to_string().contains("not"));
-    }
-
-    #[test]
-    fn rejects_webhook_when_policy_forbids_it() {
-        let mut policy = WatchtowerPolicy::fixture();
-        policy.allow_webhook_alerts = false;
-
-        let mut run = valid_run();
-        run.alert_webhook_present = true;
-
-        let err = policy.validate_run(&run).unwrap_err();
-        assert!(err.to_string().contains("webhook alerts"));
     }
 
     fn bytes32_hex(seed: u8) -> String {

@@ -3,6 +3,12 @@ name: Current protocol native acceptance
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      qualify_baseline:
+        description: Run full local no-value W1 qualification and upload sanitized integrated evidence
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,7 +25,7 @@ jobs:
   native-e2e:
     name: Clean-head CKB lifecycle and recovery
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.qualify_baseline && 180 || 60 }}
     env:
       CKB_ARCHIVE: ckb_v0.210.0_x86_64-unknown-linux-gnu.tar.gz
       CKB_ARCHIVE_SHA256: 68a94c191109bae172f8dcb71828dbdf0383e2c314e0658743db217472b27bdf
@@ -34,7 +40,26 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
         with:
+          components: clippy,rustfmt
           targets: riscv64imac-unknown-none-elf
+
+      - name: Install full baseline dependencies
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_baseline }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config clang cmake libfontconfig-dev libfreetype-dev libxkbcommon-x11-dev libxcb-xinput-dev libxcb-cursor-dev libx11-xcb-dev libssl-dev libwayland-dev libvulkan-dev mesa-vulkan-drivers
+          cargo install --locked --version 0.22.2 cargo-audit
+          cargo install --locked --version 0.20.2 cargo-deny
+          cargo install --locked --version 0.9.151 cargo-nextest
+
+      - name: Prepare pinned public Fiber source for W1
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_baseline }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/nervosnetwork/fiber.git target/ci-fiber-source
+          git -C target/ci-fiber-source checkout --detach "$(jq -er .fiber_revision integrations/fiber-shadow/manifest.json)"
+          printf 'FIBER_SOURCE=%s/target/ci-fiber-source\n' "$GITHUB_WORKSPACE" >>"$GITHUB_ENV"
 
       - name: Cache cargo build outputs
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -72,6 +97,7 @@ jobs:
           printf 'MORPH_CI_FIXTURE_KEY_DIR=%s\n' "$key_dir" >>"$GITHUB_ENV"
 
       - name: Run the sole native acceptance pipeline
+        if: ${{ !inputs.qualify_baseline }}
         shell: bash
         run: |
           set -euo pipefail
@@ -81,6 +107,7 @@ jobs:
             bash scripts/devnet-current-e2e.sh
 
       - name: Export public evidence
+        if: ${{ !inputs.qualify_baseline }}
         # Keep per-attempt evidence outside Cargo's cached target directory.
         run: >-
           python3 scripts/export-current-public-evidence.py
@@ -88,10 +115,31 @@ jobs:
           --output-dir "$RUNNER_TEMP/morph-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/public-evidence"
 
       - name: Upload public acceptance evidence
+        if: ${{ !inputs.qualify_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: morph-native-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/morph-native-${{ github.run_id }}-${{ github.run_attempt }}/public-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Qualify the full local candidate baseline
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_baseline }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          env -u MORPH_UPDATE_FIXTURES \
+            CKB_BIN="$GITHUB_WORKSPACE/target/ci-ckb/ckb" \
+            OUT_DIR="$GITHUB_WORKSPACE/.local-evidence/ci-baseline" \
+            bash scripts/qualify-local-candidate.sh
+
+      - name: Upload only the sanitized integrated evidence bundle
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_baseline }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: morph-integrated-baseline-${{ github.sha }}
+          path: .local-evidence/ci-baseline/morph-integration-evidence.tar.gz
+          include-hidden-files: true # Exact sanitized archive only, never the run directory.
           if-no-files-found: error
           retention-days: 30
 

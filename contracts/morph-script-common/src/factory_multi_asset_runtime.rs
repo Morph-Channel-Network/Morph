@@ -141,6 +141,7 @@ pub fn validate_type() -> Result<()> {
     let transaction = load_transaction().map_err(encoding)?;
     validate_transaction_bounds(&transaction)?;
     let script = load_script().map_err(encoding)?;
+    crate::multi_asset::require_immutable_authority_script(script.as_slice())?;
     let args = script.args().raw_data();
     let factory = parse_factory_multi_asset_type_args(&args)?;
     let type_hash = load_script_hash().map_err(encoding)?;
@@ -288,6 +289,7 @@ fn authenticate_source(intent: &FactoryMaterialisationSource, type_hash: &[u8]) 
     let ty = load_cell_type(0, Source::Input)
         .map_err(encoding)?
         .ok_or(ScriptError::StateCellMissing)?;
+    crate::multi_asset::require_immutable_authority_script(ty.as_slice())?;
     let args = ty.args().raw_data();
     if parse_factory_multi_asset_type_args(&args)? != intent.factory_id()
         || blake2b256(&[ty.as_slice()]).as_slice() != type_hash
@@ -663,6 +665,7 @@ fn authenticate_reduced_source(
     let ty = load_cell_type(0, Source::Input)
         .map_err(encoding)?
         .ok_or(ScriptError::StateCellMissing)?;
+    crate::multi_asset::require_immutable_authority_script(ty.as_slice())?;
     if parse_factory_multi_asset_type_args(&ty.args().raw_data())? != proof.before().factory_id()
         || blake2b256(&[ty.as_slice()]).as_slice() != type_hash
         || proof.factory_lock_script()[85..117] != *type_hash

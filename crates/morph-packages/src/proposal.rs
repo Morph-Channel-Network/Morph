@@ -7,7 +7,7 @@ const MAX_DESCRIPTOR_BYTES: usize =
     morph_script_common::multi_asset::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
         + morph_script_common::multi_asset::MULTI_ASSET_MAX_VAULTS
             * morph_script_common::multi_asset::MULTI_ASSET_PAYOUT_ENTRY_LEN
-        + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN;
+        + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_MAX_LEN;
 fn digest(value: &str) -> Result<Bytes32> {
     decode_hex(value, 32)?
         .try_into()

@@ -5,7 +5,7 @@ Guidance for LLM/AI agents working in this repository. Focus on non-obvious know
 ## Project Snapshot
 
 - Morph Channel is a CKB-native off-chain channel + factory implementation being developed for production deployment. Host-side protocol semantics live in `morph-core`; the on-chain boundary is a set of `no_std` CKB scripts built for `riscv64imac-unknown-none-elf`.
-- Workspace members: ten host Rust crates (`morph-core`, `morph-key-input`, `morph-cli`, `morph-payment-gateway`, `morph-fiber-adapter`, `morph-packages`, `morph-hub-api`, `morph-sdk`, `morph-desktop`, `morph-xtask`) and nine contract crates under `contracts/` (including the shared script crate). The sole frontend is native GPUI; JavaScript/TypeScript sources, Node tooling and browser UI builds are retired.
+- Workspace members: fifteen host Rust crates (`morph-core`, `morph-key-input`, `morph-cli`, `morph-payment-gateway`, `morph-fiber-adapter`, `morph-packages`, `morph-hub-api`, `morph-sdk`, `morph-desktop`, `morph-xtask`, `morph-wallet`, `morph-runtime-store`, `morph-signer`, `morph-observability`, `morph-events`) and nine contract crates under `contracts/` (including the shared script crate). The sole frontend is native GPUI; JavaScript/TypeScript sources, Node tooling and browser UI builds are retired.
 - Morph Payment Gateway (`morph-payment-gateway`) is the application-layer payment and access gateway: payment processing, signed receipts, Biscuit authorization, and paid API access. Its current name is the sole supported crate, binary, SDK, and environment namespace.
 - Production implementation is the development focus; current deployment evidence is from controlled devnet. Mainnet and real-asset releases require the gates in `docs/mainnet-readiness.md`. The bilateral multi-asset wire profile is implemented; remaining integrations are tracked in `docs/multi-asset-channels.md`.
 
@@ -26,6 +26,7 @@ Use `make` targets — they orchestrate the right flags.
 | `make qualify-local-candidate` | Runs full CI, clean-source native acceptance, local packaging and exact source/artifact qualification without publishing. |
 | `make package-contract-release` | Stages a deterministic bundle under `target/contract-release.*` and writes `target/morph-current-custody.tar.gz` after readiness checks pass. |
 | `make supply-chain` | `cargo audit` then `cargo deny check`. See `Makefile` for ignored advisory IDs. |
+| `make fuzz-smoke` | Linux bounded mutation campaign: 26 current parser/SDK/signer/API/auth/store targets, fixed seed, 1000 cases per target, private child resource budgets; fresh reports under `target/fuzz-campaigns/`. See `docs/runbooks/verification-campaigns.md`. |
 | `make fixture-checks` | Generates and validates every protocol fixture (bilateral, factory, splice, watch). Writes to `target/fixture-checks/`. |
 | `make smoke` | Workspace tests plus `cargo run -p morph-cli -- validate-fixture`. |
 
@@ -67,7 +68,7 @@ crates/morph-cli           CLI entry point. Subcommands: print/validate fixtures
 contracts/morph-script-common    Shared no_std parsers, lengths, domains and typed capability frames.
 contracts/morph-state-{lock,type}      State cell boundary.
 contracts/morph-vault-lock            Vault settlement, splice checks.
-contracts/morph-batch-lock            Bounded CKB conditional preimage/refund settlement.
+contracts/morph-batch-lock            Bounded asset-bound CKB/UDT conditional preimage/refund settlement.
 contracts/morph-sponsor-lock          Bounded sponsor budget.
 contracts/morph-factory-{type,vault-lock}  Current Factory authority + Vault-set custody (FS/FM/FR).
 contracts/morph-devnet-xudt           Devnet-only xUDT issuer/conservation script.
@@ -76,7 +77,9 @@ scripts/                       Devnet orchestration (see table above).
 crates/morph-packages          Sole shared public package codecs, construction/review and persistence.
 crates/morph-hub-api           Owned typed public Hub requests/responses, no private store state.
 crates/morph-sdk               Bounded authenticated Rust HTTP client and stateless protocol inspection.
-crates/morph-desktop           Native GPUI operator console; bounded worker, review/confirm, no signer.
+crates/morph-desktop           Native GPUI client; bounded Hub and local-wallet workers, exact review/confirm.
+crates/morph-wallet            Local wallet keystore, live-cell selection, exact CKB/xUDT payments. No channel signer.
+crates/morph-signer            Bounded Linux participant signer IPC and protected config/journal reader.
 crates/morph-xtask             Rust protocol/Fiber/Gateway regression and source-hygiene tools.
 fixtures/                     Minimal current protocol samples, Gateway vector and native scenario definitions.
 ```
@@ -101,13 +104,16 @@ fixtures/                     Minimal current protocol samples, Gateway vector a
 
 ### Current State and witness formats
 
-- Bilateral State uses `multi_asset::MultiAssetStateHeader`: 318 bytes, layout 2 and descriptor 5. One to eight Vaults share a content commitment and exact OutPoint-set commitment. A one-asset channel uses this same implementation.
-- Descriptor 5 requires an explicit `Ordinary` or `CkbConditional` capability. Pending conditions consume CKB business value only; reserves, other assets and the signed State carrier remain independently conserved. The canonical inner Batch terms codec is 828 bytes; that shared primitive is not an older State profile. The Batch lock has 104-byte args binding channel, exact funding context, state number and terms commitment.
+- Bilateral State uses `multi_asset::MultiAssetStateHeader`: 318 bytes, layout 2 and descriptor 7. One to eight Vaults share a content commitment and exact OutPoint-set commitment. A one-asset channel uses this same implementation.
+- Descriptor 7 requires an explicit `Ordinary` or `Conditional` capability. One pinned executor supports 1–8 asset-sorted Batches, each with 1–8 transfers. Pending CKB consumes only its business lane; pending UDT consumes only the exact Type's u128 amount and preserves both signed capacities. Terms use version 5 and `221 + 92*n` bytes for 1–8 transfers; trailer version 3 has a 40-byte prefix, resolution version is 3 and package schema is `morph.conditional_batch_package.v3`. The 104-byte Batch args bind channel, exact funding context, state number and complete asset-bearing terms. Input 0 and outputs 0/1 are canonical Batch positions; other inputs/outputs are plain external fees/change. Check future typed payout occupancy even at zero settled tokens. Fiber TLC expiry is milliseconds, Morph refunds are absolute blocks: never directly copy/convert clocks. See `docs/conditional-batches.md`.
 - `MultiAssetStateTypeArgs::parse` is the sole Type-args parser: direct origin is `anchor32 || since8`; Factory child origin is `anchor32 || FactoryTypeHash32 || since8`. Since occupies the final eight bytes. Reject zero Factory origin and noncanonical relative since. Vault args are 116 bytes and bind anchor, since, authentic StateType and StateLock.
 - Factory State is 306 bytes, with 44-byte `MORPHFT!` Type args and 64-byte reserve-lock args. Its custody uses the same bounded manifest and per-Type values. There are no old State/Vault, descriptor1/2, old splice or envelope-kind fallbacks.
 
+- Conditional signing admission compares the target with the actual current co-signed package. Exact unchanged Batches (including executor pin, asset, identity, settled values and all transfers) may be retained past maturity during a fixed-context update. New/edited terms still require fresh bounded refund heights; initial and splice funding retain strict all-new-context admission. Preserve the source-authentication and independent signer checks, so mature retained conditions cannot block another asset's cooperative consolidation.
+
 ### Typed Factory authority and proofs
 
+- `MORPHFM!` frame/intent and `MORPHFR!` frame are version 2. FM intent prefix is 208 bytes and owns one strict Script dictionary; FR prefix 28 is its own dictionary length and 34 its Factory-lock index, with dictionary references for Type/payout roles; children carry scope-1 references, exported exits reconstruct scope-0 complete evidence. Reduced before/after rights share the 98-byte identity and encode two 16-byte quantities; roots are unchanged. State/Factory authority Types require immutable data hash modes (0/2/4), while asset/wallet Scripts retain their separate modes. Full close/old-splice verification stays in the authenticated StateType; Vault/new-splice gates bind the same global frame, body, source and mandatory retirement. See `docs/adr/008-bounded-cost-and-current-encoding.md`.
 - `MORPHFS!` format2 carries root, permissionless activation and exact-transaction metadata update. Full consent is N-of-N for 2–16 sorted members. `MORPHFM!` is full-consent materialisation with optional retained custody. `MORPHFR!` operations are reduced release0, rights1, deposit2, full custody4 and reduced child5; unknown tag3 is rejected.
 - Reduced transitions commit the complete membership and carry exactly the touched member's signature. Compact SMT proofs have depth 256 and at most 64 descending sibling pairs per leaf. Public before/after root localization prevents unlisted leaf changes. Raw `FactoryRightId` order is canonical; never sort by hashed key.
 - Reduced metadata supports up to 10 value rights; physical transitions support at most 9 claims (global CKB plus up to 8 token Types). Quantity rules are independent for every asset. CKB reserve/business lanes are global across Vaults; tokens remain per-Type. Never sum token amounts across Types or use carriers/fees as claims.
@@ -125,13 +131,60 @@ fixtures/                     Minimal current protocol samples, Gateway vector a
 - `since` is encoded as canonical relative block (`relative_block_since` in `morph-script-common`). Raw `u64` is not a valid CKB `since`. CLI arguments are block counts.
 - State retirement cannot orphan value: StateType finalise and splice retire paths authenticate and consume the complete committed Vault set.
 
+### Multi-asset cooperative close
+
+- Cooperative terminal-close consensus is implemented separately as `MORPHMC!`
+  in `multi_asset_close{,_runtime}.rs`: fixed prefix/target/signatures plus the sole
+  existing custody witness, bounded by `MULTI_ASSET_CLOSE_MAX_LEN`. Its new domain binds the
+  target state digest and complete raw transaction hash; ordinary state votes
+  are never close authority. Input 0 must be the authentic bound State, followed
+  by exact ordered Vaults; external fee inputs/change are plain CKB. Shared
+  settlement checking takes an explicitly validated target header so conditional
+  Batch identity uses the latest target number, not the older input State number.
+  Core now requires explicit `close` snapshot history (including null), retaining
+  up to 32 exact-body approvals. Reservation forbids cancellation, further updates
+  and splice; replacements keep the same source and latest saved allocation.
+  Whole-store rollback is not detectable locally. Core owns the sole host payout
+  builder, reused by finalisation and close review. `multi-asset-session
+  cooperative-close` persists reservations before the isolated `cooperative_close`
+  signer role. Receipts/export select an explicit transaction hash. The existing
+  512 KiB file ceiling includes worst-case space for both receipts of every retained
+  attempt; never discard old approvals to fit. `devnet multi-asset-close` builds,
+  fee-signs and submits exact bodies. Its wallet path admits one plain fee input
+  and one owner change; full VM preflight precedes immutable signed-file persistence.
+  Native two/eight-token evidence covers fee replacements, orphan replay and
+  source-consumption fallback with unchanged journals. Submit now requires a separate
+  private `--operation-store`, records full preflighted bytes and broadcast intent
+  before RPC, and reconciles even previously confirmed operations. Configured depth
+  distinguishes committed/finalised; repeat canonical submit does not resend.
+  `devnet operation-status` uses pinned RPC and independent subscriber depth;
+  `operation-export` is offline and claims no confirmation. Atomic typed operation
+  outbox events contain references only, never signed bytes or RPC URLs. No generic
+  fee replacement is inferred: close `--replaces-operation` requires a registered
+  fully signed predecessor with the same State source, target, network, endpoint
+  and depth policy. Both old/new approvals survive. `replaced` requires fresh
+  canonical proof from the linked family; its winner depth is not confirmation
+  of the losing body. Reorg clears obsolete attribution. No generic
+  send/RBF, producer rotation or autonomous scheduler exists; other operation
+  adapters and API/SDK/desktop integration remain pending. See ADR 005/006 and
+  `docs/runbooks/cooperative-close.md`. No old snapshot fallback or authority
+  unfreeze is permitted.
+
 ### Multi-asset splice signing
 
 - `multi_asset_splice` defines a 200-byte bridge header and up to 16 sorted per-asset flows. The complete transaction hash is signed; changing fees/inputs/dependencies requires fresh bridge and exact-OutPoint initial-exit signatures. Both new Active/0 and new Settling/1 authorizations must validate before old-context signing.
 - Backend snapshots require explicit `splice` (including null). A prepared splice blocks updates; after local signature reservation it cannot be cancelled or reset by restart. `confirm-splice` now switches the same active session file only after canonical splice/State confirmation; the old backend remains irreversibly sealed in `morph.multi_asset_retired_session.v1` evidence. Never add an old-context unfreeze flag. StateType creation/retirement and Vault Lock now verify the bounded `MORPHMS!` envelope; old State is input 0, old Vaults follow, new State is output 0, then new Vaults and withdrawals. Both bridge and new-creation signatures are required. Native construction/submission and confirmed journal switching are implemented; continuous reconciliation service and terminal abort tracking remain open. See `docs/multi-asset-splice.md`.
 
+### Diagnostic Fiber observation
+
+- Factory provider reservations commit the proved source right ID and a separate nonzero `target_channel_id`. ReserveClaim may use a zero source bookkeeping label. Require the actual source access root and child identity; do not equate its label with the anchor-derived physical channel ID or accept another child's history.
+
+- `devnet shadow-observe` consumes private recovery/provenance candidates and emits only public, non-forwarding edge projections. Pin installed artifacts and genesis; fetch actual canonical State/Vault bytes and require current custody live. Historical parent Factory/splice sources may be spent. A live Settling State must not activate an edge.
+- Participant-to-payout mapping is explicit operator configuration, not inferred address ownership. A saved observation or provider acknowledgement is never a freshness lease or signer authority. Factory reduced/retained/terminal children and root-origin splice observations have native evidence. The durable Morph coordinator library commits observations, exact outbound mutations and typed events together; reopening requires a new canonical observation before activation. The session reader releases its lock before RPC and rejects a changed journal afterward. Pending updates/splices/closes drain. The `devnet shadow-service` worker binds a strict private config to its runtime store, validates pinned sources under total budgets, and exposes boot/config/revision-bound diagnostic readiness. One failed source quarantines the whole batch; configuration replacement and producer-history segmentation are not automatic. Real Root XUDT service acceptance covers both-process SIGKILL, journal busy/release, actual activation orphan/replay and unilateral close; Factory/splice observer evidence remains separate. See `docs/runbooks/shadow-service.md` and `docs/evidence/shadow-service-2026-11-10/README.md`.
+
 ### Watchtower reorg recovery
 
+- Watch cursor + private alert intent + typed public outbox + egress permission commit in one `Family::Watch` runtime transaction. `cursor_file` is current SQLite, never JSON. The local alert JSONL is a non-authoritative projection shared safely across channels; its failure must not block publication. Publication attempts remain append-only; submission events bind their exact line digest. Synchronous watch webhooks and raw-secret env input are removed; `event-delivery` checks committed `allow_webhook_alerts` before ingest/claim. See `docs/runbooks/event-delivery.md`.
 - Current watch cursors require `from_block`, contiguous scan heights, and `scanned_to_block_hash`; missing old fields are rejected. At startup and while scanning, the watchtower compares that hash with the canonical block returned by CKB RPC.
 - An uninitialised cursor hash or a missing/mismatched canonical block emits a critical `chain_reorg_detected` alert, clears orphanable funding/observation context, and rescans from the channel's configured `from_block`.
 - Operators must set `from_block` no later than channel creation and retain packages across funding contexts. Do not weaken this to resume from an unverifiable height.
@@ -149,15 +202,35 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 ### Multi-asset signing sessions
 
 - `MultiAssetChannelBackend` uses the current multi-asset profile only. Persist `reserve_signature()` before invoking the local signer, then persist `record_signature()` before releasing its receipt. Cancel never resets the reservation. Only two valid signatures can commit a publishable recovery package.
+- `morph-packages::signer_protocol` derives seven bilateral/root/splice/close signing reviews using current decoders. `morph-signer` provides Linux private-socket transport. `participant-signer-serve` owns a protected key and independently checks the fixed existing journal; it never writes or initializes authority. Funding/session `sign --signer-config` preserves reservation → fsync → external call → verified record → fsync. `sign-local` is development-only and is never an unavailable-service fallback. Decode/IPC success is not permission to sign. Any lost response retains the reservation; a late valid receipt remains authority. See `docs/adr/003-participant-signer-boundary.md` for the intact-authority assumption and remaining gates.
 - `multi-asset-session` enforces that order with a stable OS-locked sidecar and fsynced atomic snapshots; never unlink its `.lock` file, clone an active authority, or restore an older signer snapshot. Recovery package backups do not replace the monotonic signer journal.
 - Splice sessions retain the exact packed raw transaction in required `splice_draft` evidence. `sign`/`add-signature` require an explicit `--target update|splice-creation|splice-recovery|splice-bridge`; no implicit signing role. Export persists the fully signed initial recovery package before returning the Morph-signed transaction. Initial funding uses the immutable `multi-asset-funding-session` ceremony and confirmed same-path handoff; operational `init`/`bind-root` are removed; `confirm-splice` retains the same active session path; never initialise a second authority at a new funding-context path. Operational commands reject null `lineage`; new journals obtain confirmed provenance only through same-path handoff. Lineage requires RPC-enabled canonical/dependency checks before signing; `refresh-chain --package` updates evidence without resetting votes. Retired evidence is rejected as an active session.
 - Root creation is epoch-0 unbound Active/0, signed over `MULTI_ASSET_ROOT_FUNDING_DOMAIN || state_digest || raw_tx_hash`. Ordinary state votes are rejected; public recovery validation requires bound epoch-0 evidence. Preserve a complete exact-TX exit before broadcasting. The funding ceremony collects a complete exit before creation, then `confirm` seals initial reservations and switches the same path to a guarded session; `export-root-funding` works offline/orphaned and `multi-asset-funding-submit` validates exact signed replay. Lineage uses explicit tagged Root/Splice/Factory origins, with no old-shape parser.
 - Public root construction uses `multi-asset-funding-prepare` and strict `morph.multi_asset_root_terms.v1`: canonical explicit funders/inputs, exact per-wallet CKB/fee and per-Type token contributions, and owner-only change. The native builder never mints or selects replacement inputs. `multi-asset-funding-wallet-sign` reconstructs the exact body before signing only the declared wallet group, after complete root/exit authorization. `multi-asset-funding-submit` is keyless with no wallet/presigned fallback; full VM preflight precedes immutable binary persistence, preventing partial-witness attempts from poisoning that path. The harness uses these public paths.
-- `multi-asset-supervise` observes 1–32 registered session paths with four workers, nonblocking journal locks and one total RPC budget per check. Its atomic health has a config-bound expiry and is never signing authority; `multi-asset-supervision-health` fails on stale/unverified entries. Stable alert history survives busy checks and restart. Unguarded epoch-0 sessions are explicitly unmanaged; failover and pooled publication remain open. Runbook: `docs/runbooks/signer-supervision.md`.
+- `multi-asset-supervise` observes 1–32 registered session paths with four workers, nonblocking journal locks and one total RPC budget per check. Its current v2 atomic health has config-bound, cycle-start wall/boot expiry and boot identity, never signing authority; `multi-asset-supervision-health` fails on stale/unverified entries. The redacted `multi-asset-supervision-readiness [--metrics]` reports only `authority_supervision`, not key-process liveness or `channel_signing`; v1 snapshots have no fallback. Stable alert history survives busy checks and restart. Unguarded epoch-0 sessions are explicitly unmanaged; failover and pooled publication remain open. Runbook: `docs/runbooks/signer-supervision.md`.
 - Public proposal/signature messages use decimal strings and canonical hex. Private snapshots use Rust serde integers. `serde_json` arbitrary_precision is required when passing state-file JSON through the SDK so u128 values remain exact. SDK inspection is stateless and does not reserve a signer state number.
 - Payment intent expiry gates preparation and new local signing reservations. Already issued valid state signatures remain authority after expiry; `commit_payment` may reconcile the exact co-signed proposal or recover its already committed result. Expiry alone never authorizes cancellation, refund or journal reset.
 
+### Public API types and schemas
+
+- `morph-hub-api` owns Hub DTOs and mutation/error contracts. All its u64 fields use canonical decimal strings, including timestamps/heights; bounded small counts/indices remain JSON integers. Do not add number-or-string readers. Native forms and SDK use these same encodings.
+- `docs/api/hub-types/*.json` are generated from authoritative Rust types by `cargo run -p morph-hub-api --example export_schemas`. Normal workspace tests compare exact output and reject stale/missing files. Keep recursive key sorting: GPUI enables serde_json/preserve_order and otherwise changes generated ordering.
+- Conditional capability/payout summaries are typed in `morph-packages`; do not replace them with arbitrary JSON. Empty internally tagged request branches use empty struct variants because Serde unit variants may ignore extra fields despite deny_unknown_fields. Package semantic/signature/lineage validation remains necessary after structural decoding.
+- Gateway public DTOs/errors live in `morph-payment-gateway::api`; framework extraction is adapted in `http_api`. Do not expose raw extractor/validation text, client-supplied request IDs or raw Fiber results in payment-list DTOs. `/v1/payments?limit=` is canonical 1..1000, not clamped. The SDK and Fiber runner branch on `GatewayErrorCode`; diagnostic request IDs are never retry identities.
+- Gateway `/ready` and `/metrics` require the operator bearer (except explicit local dev). Probes use one bounded permit, an independent read-only encrypted connection and exact source identity/revision; a timed-out disk task retains the permit. Optional paired `--fiber-pubkey` (66 lowercase hex, no 0x) / `--fiber-chain-hash` (0x32) compare read-only `node_info` with empty params. Missing pins are unverified. Provider-reported identity is not independent chain/deployment verification, payment authorization or route-liquidity evidence. Shared Readiness 503 is a valid typed response, not GatewayErrorBody. See `docs/runbooks/service-readiness.md`.
+- Current schema roots do not yet replace the administrative state-export contract or document every endpoint. Track remaining API scope in #32 and `docs/api/README.md`.
+
+### Durable event consumption
+
+- Public event/page DTOs live in `morph-packages::events`; `morph-events` owns runtime-store consumption and authenticated webhook delivery. Keep database/HTTP dependencies out of `morph-hub-api`.
+- Hub and Gateway projections and typed outbox appends share their respective transactions. Gateway projection schema 3 rejects the former generic-event shape; no backfill or migration. `event-delivery` owns a **different** runtime database; delivery claims/acks must never advance the producer's business revision or hold signer/Hub locks across HTTP.
+- `event-delivery serve` stamps a private source/generation/policy-bound heartbeat before each tick. `readiness`/`metrics` are read-only and use exact-revision backlog observation plus both wall and Linux boot-time/boot-ID expiry. Unread source events, any dead letter, aged pending work, sealed/archive-required generations or denied egress are not ready. These observations neither prove remote receipt availability nor authorize signing. See `docs/runbooks/service-readiness.md`.
+- Stable source ID + immutable outbox ID bind event identity. Receiver-side deduplication must be durable before HMAC acknowledgement. A replay is at least once, never HTTP exactly once. Source cursor, endpoint/key policy and original bytes cannot silently change.
+- The current 1024 retained jobs / 8 attempts / 3 explicit dead-letter replays are bounded development limits. Consumer metadata v2 supports explicit archive handoff: prepared successor → CAS-sealed predecessor → exact unresolved job copies → activated successor. Preserve every old database and its attempts/acks; never reset age/attempt/lease/cursor during handoff. The 8000-revision watermark leaves room for a seal. Producer-history archival and the remaining service integrations remain open; do not describe producer delivery as completing #34. See `docs/runbooks/event-delivery.md`.
+
 ### Morph Hub server
+
+- Hub and Gateway runtime projections use `morph-runtime-store` (SQLite DELETE journal, synchronous EXTRA, global CAS revision, immutable intents/attempts and outbox). The current database schema rejects old JSON/encrypted snapshots. Use a dedicated owner-only directory; public Hub JSON export is a projection, not a database backup. Never store signer keys/reservations or restore signing authority from this database. Read `docs/adr/002-runtime-transactions.md` and `docs/runbooks/runtime-store.md` before changing this boundary.
 
 - `crates/morph-cli/src/hub.rs` implements the API-only hub server from scratch (stdlib `TcpListener` + threads + `Mutex<HubStore>`); no HTTP framework. Constants `MAX_REQUEST_BODY_BYTES`, `MAX_REQUEST_LINE_BYTES`, `MAX_REQUEST_HEADER_BYTES`, `REQUEST_IO_TIMEOUT`, `MAX_CONCURRENT_CONNECTIONS`, `MAX_CONCURRENT_MUTATIONS`, `MAX_CONCURRENT_SSE_STREAMS`, mutation rate limit, and `MAX_INVOICE_EXPIRY_SECS` are all explicit guard rails; respect them.
 - The server retains `/api/events` for explicit unauthenticated loopback clients. The native application uses bounded authenticated polling in both modes; tokens never enter URLs or persistent preferences.
@@ -235,3 +308,33 @@ Each sponsor cell carries an immutable per-cell policy in its lock args. The spo
 - Keep presentation in `morph-desktop/src/presentation.rs` and `views/`, visual tokens in `design.rs`, and job control in `main.rs` / `worker.rs`. JSON is an advanced view; object details and exact review are the primary flow. CKB conversion must remain integer-based; unknown token precision stays in base units. Field validation is UX feedback only; canonical SDK/service validation remains mandatory. Long evidence hex uses a monospace editor without soft wrapping.
 - Unknown writes survive reconnect until the same endpoint and Hub identity are explicitly refreshed and reviewed. A file/parser failure must not make the network stale. Review summaries never replace private original recovery evidence.
 - Fiber scenario definitions use the closed Rust vocabulary in `morph-xtask`, preserve named economic/recovery assertions and source hashes, and never evaluate script strings. `scenario` mode records development evidence only; final full/coexistence qualification still requires committed tracked source. External funding signatures use a protected key file; restart may stop only an exact node1 executable in the owned stack tree.
+
+### Local wallet boundary
+
+- `morph-wallet` is a Linux-only, single-key CKB wallet, separate from channel journals. Keys enter through protected files or CSPRNG creation. Its worker owns decrypted key material; Hub requests never contain wallet keys. No key export or arbitrary-transaction signing API is provided.
+- Keystores use bounded Argon2id and AES-GCM. Current wallet backups include the encrypted key, authenticated encrypted invoice secrets, public settings and signed transaction evidence. Do not call the entire backup encrypted: its public metadata is readable. Do not accept a key-only backup as a complete pending-transaction/invoice recovery.
+- Wallet quotes bind exact outputs/inputs/fees, expire after 90 seconds, and are one-shot. Refresh live inputs and run node script preflight, persist the exact signed transaction before submission, and reserve its inputs across restart. A rejection or timeout never revokes an issued signature; rebroadcast only the same bytes.
+- Balance observation verifies pinned genesis and indexer checkpoints, paginates with bounds, and filters maturity/data cells. Failed refresh clears spendable projections. Background replies must not clear a pending foreground command. Never refresh away an active transaction quote.
+- Invoice preimages are generated and encrypted durably by the unlocked wallet before the desktop can create the invoice. Keep this out of general Hub exports. Backups restore the invoice secrets and exact signed-transaction reservations as well as the key.
+- This wallet does not yet sign funding/splice ceremonies. Reuse and extract the existing admission, exact-body reconstruction and pre-signed exit checks before connecting that path; never replace it with `/api/channels` record creation. See `docs/runbooks/local-wallet.md`.
+
+### Current Hub route and archive boundary
+
+- `morph-hub-api::endpoints::Endpoint` is the sole current route/scope/mutation registry. Hub dispatch is exhaustive over it; SDK permissions and durable mutation selection consume it. Add new routes there, not a permissive string-prefix fallback.
+- `cargo run -p morph-hub-api --example export_schemas` generates `docs/api/hub-types`, `hub-endpoints.md` and `hub-openapi.json`; API tests reject drift. OpenAPI references the adjacent schema files; ship the directory together. This is Hub coverage, not Gateway or #35 readiness.
+- Administrative HTTP export/preview/restore use `StateArchive` / `RestoreArchiveRequest`. Private `PersistedHubState` stays private; explicit conversion is in `hub_archive.rs`. Never reintroduce raw snapshot passthrough or a dual parser. Archives use decimal amounts/counters and canonical encoded signed invoices; zero balances are legal, unlike positive invoice amounts. Preserve empty-bootstrap-only restore, identity/network and preview/revision checks. An archive is never a signer journal.
+
+### Gateway public contracts and signing transport
+
+- `morph-payment-gateway::endpoints` is the sole route inventory consumed by Axum construction and schema/OpenAPI generation. `cargo run -p morph-payment-gateway --example export_api` regenerates the checked `docs/api/gateway-*` contracts; run Gateway/API/SDK tests with desktop features too when changing serde boundaries.
+- `morph-packages::public_encoding` and `schema` own shared scalar/schema generation. Gateway `wire` uses serde remote adapters for public Core intents/receipts; never change Core private serialization or binary signing encodings to satisfy HTTP DTO shape. Custom optional binding/anchor/proof adapters require explicit null; mark them required in Schemars as well as serde.
+- Public Gateway time/count fields are decimal strings. `RequirementCommitment` is a separate **private signing preimage**: its expiry stays an integer, and Script object keys are sorted before hashing. The independent payer authorization fixture must retain its exact requirement ID/signature when only public transport changes.
+- Public Script validation reuses the pinned CKB RPC hash-type decoder (including data1..data127); don't silently restrict it to four variants for convenient schema derivation. Unknown Script keys and noncanonical args are rejected.
+- Gateway request IDs are diagnostic, not idempotency identities. Generated retry notes explicitly distinguish fresh challenge/offer creation, provider submissions, observation and stored-receipt reconciliation. Generic durable Gateway key/body/revision replay and full attempt recovery remain unfinished; don't label them implemented based on Hub's separate contract.
+
+### Bounded verification campaigns
+
+- `morph-xtask` retains its default binary; `--bin morph-fuzz` selects the synchronous Linux mutation runner. This runner is tooling, not a second protocol parser. Its seeds come from current package constructors and checked-in public protocol fixtures.
+- Every worker has input, address-space, CPU, output-file and wall-time bounds. A timeout or signal is failure, never a skipped/pass result. Keep the report, seeds, `current.bin`, `current.json` and log when diagnosing failures; timeout during checkpoint writing can leave incomplete debug bytes, so also retain the recorded seed/config.
+- The campaign is deterministic mutation fuzzing, not coverage-guided fuzzing or VM qualification. Host/script equality is asserted only for equivalent manifest/descriptor parse boundaries; host accepted State/witness contents imply script acceptance, not the converse. Do not weaken this distinction to make a test green.
+- PR CI runs the short campaign; `verification-campaign.yml` schedules longer fixed-seed mutation and existing real-process signer/runtime tests. Full payment/edge/operation/replay state-machine fuzz remains separate #43 work. The signer fault modules also inject targeted ENOSPC/fsync/rename/directory-sync failures into owned caller subprocesses with a test-only `LD_PRELOAD` library; no fault hook is linked into production binaries.

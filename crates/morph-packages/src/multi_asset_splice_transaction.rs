@@ -79,7 +79,7 @@ impl SpliceTerms {
             &self.descriptor_hex,
             wire::MULTI_ASSET_DESCRIPTOR_PREFIX_LEN
                 + wire::MULTI_ASSET_MAX_VAULTS * wire::MULTI_ASSET_PAYOUT_ENTRY_LEN
-                + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_LEN,
+                + morph_script_common::multi_asset_conditional::MULTI_ASSET_CONDITIONAL_MAX_LEN,
         )?)?;
         ensure!(
             self.new_type_scripts_hex.len() <= wire::MULTI_ASSET_MAX_VAULTS,

@@ -9,14 +9,18 @@ use sha2::{Digest, Sha256};
 #[cfg(test)]
 mod crypto_vectors;
 
+mod factory_empty_hashes;
 pub mod factory_multi_asset;
 pub mod multi_asset;
+pub mod multi_asset_close;
 pub mod multi_asset_conditional;
 pub mod multi_asset_splice;
-#[cfg(target_arch = "riscv64")]
+pub mod script_table;
 extern crate alloc;
 #[cfg(target_arch = "riscv64")]
 pub mod factory_multi_asset_runtime;
+#[cfg(target_arch = "riscv64")]
+pub mod multi_asset_close_runtime;
 #[cfg(target_arch = "riscv64")]
 pub mod multi_asset_runtime;
 #[cfg(target_arch = "riscv64")]
@@ -32,27 +36,25 @@ pub const BYTE32_LEN: usize = 32;
 
 pub const SPONSOR_POLICY_LEN: usize = 136;
 
-pub const CONDITIONAL_TRANSFER_LEN: usize = BYTE32_LEN + 1 + 1 + 2 + BYTE32_LEN + 8 + 8;
+pub const CONDITIONAL_TRANSFER_LEN: usize = BYTE32_LEN + 1 + 1 + 2 + BYTE32_LEN + 16 + 8;
 
 pub const CONDITIONAL_TRANSFER_MAX_COUNT: u8 = 8;
 
-pub const BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN: usize = 2
+pub const CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN: usize = 2
     + 1
     + 1
     + BYTE32_LEN
     + BYTE32_LEN
     + 1
     + 7
-    + 2 * (BYTE32_LEN + 8)
+    + multi_asset::MULTI_ASSET_ID_LEN
+    + 2 * (BYTE32_LEN + 8 + 16);
+pub const CONDITIONAL_BATCH_DESCRIPTOR_MAX_LEN: usize = CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN
     + CONDITIONAL_TRANSFER_MAX_COUNT as usize * CONDITIONAL_TRANSFER_LEN;
-
-pub const CONDITIONAL_RESOLUTION_LEN: usize = 1 + BYTE32_LEN;
-
-pub const CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN: usize = 2
-    + 1
-    + 1
-    + BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN
-    + CONDITIONAL_TRANSFER_MAX_COUNT as usize * CONDITIONAL_RESOLUTION_LEN;
+pub const CONDITIONAL_RESOLUTION_MAX_LEN: usize = 1 + BYTE32_LEN;
+pub const CONDITIONAL_BATCH_RESOLUTION_WITNESS_MAX_LEN: usize = 4
+    + CONDITIONAL_BATCH_DESCRIPTOR_MAX_LEN
+    + CONDITIONAL_TRANSFER_MAX_COUNT as usize * CONDITIONAL_RESOLUTION_MAX_LEN;
 
 pub const COMPRESSED_SECP256K1_PUBKEY_LEN: usize = 33;
 
@@ -116,9 +118,9 @@ pub const FACTORY_RIGHT_NODE_DOMAIN: &[u8] = b"CKB_MORPH_FACTORY_RIGHT_NODE";
 
 pub const SETTLEMENT_DESCRIPTOR_DOMAIN: &[u8] = b"CKB_MORPH_SETTLEMENT_DESCRIPTOR";
 
-pub const BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_VERSION: u16 = 3;
+pub const CONDITIONAL_BATCH_DESCRIPTOR_VERSION: u16 = 5;
 
-pub const CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION: u16 = 1;
+pub const CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION: u16 = 3;
 
 pub const CONDITIONAL_HASH_CKB_BLAKE2B: u8 = 0;
 
@@ -132,7 +134,7 @@ pub const CONDITIONAL_RESOLUTION_REFUND: u8 = 2;
 
 pub const STATE_MODE_BILATERAL_PLAINTEXT: u8 = 1;
 
-pub const BILATERAL_CKB_DESCRIPTOR_OUTPUT_COUNT: u8 = 2;
+pub const CONDITIONAL_PARTICIPANT_COUNT: u8 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScriptError {
@@ -195,6 +197,8 @@ pub enum ScriptError {
     MultiAssetSpliceEncoding = 67,
     MultiAssetSpliceMismatch = 68,
     FactoryMultiAssetPartitionMismatch = 69,
+    MultiAssetCloseEncoding = 70,
+    MultiAssetCloseMismatch = 71,
 }
 
 pub type Result<T> = core::result::Result<T, ScriptError>;
@@ -358,7 +362,8 @@ impl<'a> FactorySignatureWitness<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FactoryRight<'a> {
-    raw: &'a [u8],
+    identity: &'a [u8],
+    quantity: &'a [u8],
 }
 
 impl<'a> FactoryRight<'a> {
@@ -366,7 +371,10 @@ impl<'a> FactoryRight<'a> {
         if raw.len() != FACTORY_RIGHT_LEN {
             return Err(ScriptError::FactoryReducedProofEncoding);
         }
-        let right = Self { raw };
+        let right = Self {
+            identity: &raw[..FACTORY_RIGHT_LEN - 16],
+            quantity: &raw[FACTORY_RIGHT_LEN - 16..],
+        };
         if right.kind() > 4 {
             return Err(ScriptError::FactoryReducedProofEncoding);
         }
@@ -383,31 +391,37 @@ impl<'a> FactoryRight<'a> {
     }
 
     pub fn participant(&self) -> &'a [u8] {
-        field(self.raw, 0, BYTE32_LEN)
+        field(self.identity, 0, BYTE32_LEN)
     }
 
     pub fn subchannel(&self) -> &'a [u8] {
-        field(self.raw, BYTE32_LEN, BYTE32_LEN)
+        field(self.identity, BYTE32_LEN, BYTE32_LEN)
     }
 
     pub fn kind(&self) -> u8 {
-        self.raw[2 * BYTE32_LEN]
+        self.identity[2 * BYTE32_LEN]
     }
 
     pub fn asset_present(&self) -> u8 {
-        self.raw[2 * BYTE32_LEN + 1]
+        self.identity[2 * BYTE32_LEN + 1]
     }
 
     pub fn asset_type(&self) -> &'a [u8] {
-        field(self.raw, 2 * BYTE32_LEN + 2, BYTE32_LEN)
+        field(self.identity, 2 * BYTE32_LEN + 2, BYTE32_LEN)
     }
 
     pub fn quantity(&self) -> u128 {
-        read_u128(self.raw, 2 * BYTE32_LEN + 2 + BYTE32_LEN)
+        read_u128(self.quantity, 0)
     }
 
-    pub fn raw(&self) -> &'a [u8] {
-        self.raw
+    pub(crate) fn with_quantity(&self, quantity: &'a [u8]) -> Result<Self> {
+        if quantity.len() != 16 {
+            return Err(ScriptError::FactoryReducedProofEncoding);
+        }
+        Ok(Self {
+            identity: self.identity,
+            quantity,
+        })
     }
 
     fn id_key(&self) -> (&'a [u8], &'a [u8], u8, u8, &'a [u8]) {
@@ -477,12 +491,12 @@ impl<'a> ConditionalTransfer<'a> {
         field(self.raw, BYTE32_LEN + 4, BYTE32_LEN)
     }
 
-    pub fn amount(&self) -> u64 {
-        read_u64(self.raw, BYTE32_LEN + 4 + BYTE32_LEN)
+    pub fn amount(&self) -> u128 {
+        read_u128(self.raw, BYTE32_LEN + 4 + BYTE32_LEN)
     }
 
     pub fn refund_after_since(&self) -> u64 {
-        read_u64(self.raw, BYTE32_LEN + 4 + BYTE32_LEN + 8)
+        read_u64(self.raw, BYTE32_LEN + 4 + BYTE32_LEN + 16)
     }
 
     pub fn raw(&self) -> &'a [u8] {
@@ -491,19 +505,42 @@ impl<'a> ConditionalTransfer<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BilateralCkbConditionalDescriptor<'a> {
+pub struct ConditionalBatchDescriptor<'a> {
     raw: &'a [u8],
 }
 
-impl<'a> BilateralCkbConditionalDescriptor<'a> {
+impl<'a> ConditionalBatchDescriptor<'a> {
+    /// Determine one bounded term's length within a containing frame. Full
+    /// validation and exact slice consumption remain the responsibility of parse.
+    pub fn encoded_len(raw: &[u8]) -> Result<usize> {
+        if raw.len() < CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN
+            || read_u16(raw, 0) != CONDITIONAL_BATCH_DESCRIPTOR_VERSION
+            || !(1..=CONDITIONAL_TRANSFER_MAX_COUNT).contains(&raw[68])
+        {
+            return Err(ScriptError::ConditionalDescriptorEncoding);
+        }
+        let len =
+            CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN + raw[68] as usize * CONDITIONAL_TRANSFER_LEN;
+        if raw.len() < len {
+            return Err(ScriptError::ConditionalDescriptorEncoding);
+        }
+        Ok(len)
+    }
     pub fn parse(raw: &'a [u8]) -> Result<Self> {
-        if raw.len() != BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN {
+        if raw.len() != Self::encoded_len(raw)? {
             return Err(ScriptError::ConditionalDescriptorEncoding);
         }
         let descriptor = Self { raw };
-        if descriptor.version() != BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_VERSION
-            || descriptor.output_count() != BILATERAL_CKB_DESCRIPTOR_OUTPUT_COUNT
+        let asset = descriptor.asset()?;
+        if asset == multi_asset::MultiAssetId::CKB
+            && (descriptor.settled_amount(0) != 0 || descriptor.settled_amount(1) != 0)
+        {
+            return Err(ScriptError::ConditionalValueMismatch);
+        }
+        if descriptor.version() != CONDITIONAL_BATCH_DESCRIPTOR_VERSION
+            || descriptor.output_count() != CONDITIONAL_PARTICIPANT_COUNT
             || descriptor.transfer_capacity() != CONDITIONAL_TRANSFER_MAX_COUNT
+            || descriptor.transfer_count() == 0
             || descriptor.transfer_count() > CONDITIONAL_TRANSFER_MAX_COUNT
             || descriptor.reserved().iter().any(|byte| *byte != 0)
             || descriptor.batch_id().iter().all(|byte| *byte == 0)
@@ -511,6 +548,7 @@ impl<'a> BilateralCkbConditionalDescriptor<'a> {
                 .application_context_commitment()
                 .iter()
                 .all(|byte| *byte == 0)
+            || descriptor.lock_hash(0).iter().all(|byte| *byte == 0)
             || descriptor.lock_hash(0) >= descriptor.lock_hash(1)
             || descriptor.settled_capacity(0) == 0
             || descriptor.settled_capacity(1) == 0
@@ -519,7 +557,7 @@ impl<'a> BilateralCkbConditionalDescriptor<'a> {
         }
 
         let mut previous_id: Option<&[u8]> = None;
-        for index in 0..CONDITIONAL_TRANSFER_MAX_COUNT as usize {
+        for index in 0..descriptor.transfer_count() as usize {
             let raw_transfer = field(
                 descriptor.raw,
                 conditional_descriptor_transfer_offset(index),
@@ -536,11 +574,10 @@ impl<'a> BilateralCkbConditionalDescriptor<'a> {
                     }
                 }
                 previous_id = Some(transfer.transfer_id());
-            } else if raw_transfer.iter().any(|byte| *byte != 0) {
-                return Err(ScriptError::ConditionalDescriptorEncoding);
             }
         }
         descriptor.checked_total_capacity()?;
+        descriptor.checked_total_amount()?;
         Ok(descriptor)
     }
 
@@ -587,6 +624,27 @@ impl<'a> BilateralCkbConditionalDescriptor<'a> {
         )
     }
 
+    pub fn asset(&self) -> Result<multi_asset::MultiAssetId> {
+        multi_asset::MultiAssetId::parse(field(self.raw, 76, multi_asset::MULTI_ASSET_ID_LEN))
+    }
+
+    pub fn settled_amount(&self, index: usize) -> u128 {
+        read_u128(
+            self.raw,
+            conditional_descriptor_participant_offset(index) + BYTE32_LEN + 8,
+        )
+    }
+
+    pub fn checked_pending_amount(&self) -> Result<u128> {
+        let mut total = 0u128;
+        for index in 0..self.transfer_count() as usize {
+            total = total
+                .checked_add(self.transfer(index)?.amount())
+                .ok_or(ScriptError::ConditionalValueMismatch)?;
+        }
+        Ok(total)
+    }
+
     pub fn transfer(&self, index: usize) -> Result<ConditionalTransfer<'a>> {
         if index >= self.transfer_count() as usize {
             return Err(ScriptError::ConditionalDescriptorEncoding);
@@ -599,16 +657,34 @@ impl<'a> BilateralCkbConditionalDescriptor<'a> {
     }
 
     pub fn checked_total_capacity(&self) -> Result<u64> {
-        let mut total = self
+        let total = self
             .settled_capacity(0)
             .checked_add(self.settled_capacity(1))
             .ok_or(ScriptError::ConditionalValueMismatch)?;
-        for index in 0..self.transfer_count() as usize {
-            total = total
-                .checked_add(self.transfer(index)?.amount())
-                .ok_or(ScriptError::ConditionalValueMismatch)?;
+        if self.asset()? == multi_asset::MultiAssetId::CKB {
+            total
+                .checked_add(
+                    u64::try_from(self.checked_pending_amount()?)
+                        .map_err(|_| ScriptError::ConditionalValueMismatch)?,
+                )
+                .ok_or(ScriptError::ConditionalValueMismatch)
+        } else {
+            Ok(total)
         }
-        Ok(total)
+    }
+
+    pub fn checked_total_amount(&self) -> Result<u128> {
+        let total = self
+            .settled_amount(0)
+            .checked_add(self.settled_amount(1))
+            .ok_or(ScriptError::ConditionalValueMismatch)?;
+        if self.asset()?.kind == 1 {
+            total
+                .checked_add(self.checked_pending_amount()?)
+                .ok_or(ScriptError::ConditionalValueMismatch)
+        } else {
+            Ok(total)
+        }
     }
 
     pub fn commitment(&self) -> [u8; BYTE32_LEN] {
@@ -617,6 +693,33 @@ impl<'a> BilateralCkbConditionalDescriptor<'a> {
 
     pub fn raw(&self) -> &'a [u8] {
         self.raw
+    }
+}
+
+/// Separate CKB capacity and token quantity. A pending amount enters exactly
+/// one lane according to its committed asset; they are never interchangeable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConditionalValue {
+    pub capacity: u64,
+    pub amount: u128,
+}
+
+impl ConditionalValue {
+    pub fn add_pending(&mut self, is_ckb: bool, amount: u128) -> Result<()> {
+        if is_ckb {
+            self.capacity = self
+                .capacity
+                .checked_add(
+                    u64::try_from(amount).map_err(|_| ScriptError::ConditionalValueMismatch)?,
+                )
+                .ok_or(ScriptError::ConditionalValueMismatch)?;
+        } else {
+            self.amount = self
+                .amount
+                .checked_add(amount)
+                .ok_or(ScriptError::ConditionalValueMismatch)?;
+        }
+        Ok(())
     }
 }
 
@@ -631,88 +734,93 @@ impl<'a> ConditionalResolution<'a> {
     }
 
     pub fn preimage(&self) -> &'a [u8] {
-        field(self.raw, 1, BYTE32_LEN)
+        if self.kind() == CONDITIONAL_RESOLUTION_REFUND {
+            &[0; BYTE32_LEN]
+        } else {
+            field(self.raw, 1, BYTE32_LEN)
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConditionalBatchResolutionWitness<'a> {
     raw: &'a [u8],
+    descriptor: ConditionalBatchDescriptor<'a>,
+    resolutions: [Option<ConditionalResolution<'a>>; CONDITIONAL_TRANSFER_MAX_COUNT as usize],
 }
 
 impl<'a> ConditionalBatchResolutionWitness<'a> {
     pub fn parse(raw: &'a [u8]) -> Result<Self> {
-        if raw.len() != CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN {
-            return Err(ScriptError::ConditionalResolutionEncoding);
-        }
-        let witness = Self { raw };
-        if witness.version() != CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION
-            || witness.reserved() != 0
+        if raw.len() < 4 + CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN
+            || raw.len() > CONDITIONAL_BATCH_RESOLUTION_WITNESS_MAX_LEN
+            || read_u16(raw, 0) != CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION
+            || raw[3] != 0
         {
             return Err(ScriptError::ConditionalResolutionEncoding);
         }
-        let descriptor = witness.descriptor()?;
-        if witness.resolution_count() != descriptor.transfer_count() {
+        let descriptor_len = ConditionalBatchDescriptor::encoded_len(&raw[4..])?;
+        let descriptor = ConditionalBatchDescriptor::parse(&raw[4..4 + descriptor_len])?;
+        if raw[2] != descriptor.transfer_count() {
             return Err(ScriptError::ConditionalResolutionEncoding);
         }
-        for index in 0..CONDITIONAL_TRANSFER_MAX_COUNT as usize {
-            let resolution = witness.resolution_unchecked(index);
-            if index < witness.resolution_count() as usize {
-                match resolution.kind() {
-                    CONDITIONAL_RESOLUTION_FULFILL => {
-                        if resolution.preimage().iter().all(|byte| *byte == 0) {
-                            return Err(ScriptError::ConditionalResolutionEncoding);
-                        }
-                    }
-                    CONDITIONAL_RESOLUTION_REFUND => {
-                        if resolution.preimage().iter().any(|byte| *byte != 0) {
-                            return Err(ScriptError::ConditionalResolutionEncoding);
-                        }
-                    }
-                    _ => return Err(ScriptError::ConditionalResolutionEncoding),
-                }
-            } else if resolution.kind() != CONDITIONAL_RESOLUTION_UNUSED
-                || resolution.preimage().iter().any(|byte| *byte != 0)
+        let mut resolutions = [None; CONDITIONAL_TRANSFER_MAX_COUNT as usize];
+        let mut offset = 4 + descriptor_len;
+        for slot in resolutions.iter_mut().take(raw[2] as usize) {
+            let kind = *raw
+                .get(offset)
+                .ok_or(ScriptError::ConditionalResolutionEncoding)?;
+            let len = match kind {
+                CONDITIONAL_RESOLUTION_FULFILL => CONDITIONAL_RESOLUTION_MAX_LEN,
+                CONDITIONAL_RESOLUTION_REFUND => 1,
+                _ => return Err(ScriptError::ConditionalResolutionEncoding),
+            };
+            let bytes = raw
+                .get(offset..offset + len)
+                .ok_or(ScriptError::ConditionalResolutionEncoding)?;
+            let resolution = ConditionalResolution { raw: bytes };
+            if kind == CONDITIONAL_RESOLUTION_FULFILL
+                && resolution.preimage().iter().all(|byte| *byte == 0)
             {
                 return Err(ScriptError::ConditionalResolutionEncoding);
             }
+            *slot = Some(resolution);
+            offset += len;
         }
-        Ok(witness)
+        if offset != raw.len() {
+            return Err(ScriptError::ConditionalResolutionEncoding);
+        }
+        Ok(Self {
+            raw,
+            descriptor,
+            resolutions,
+        })
     }
-
     pub fn version(&self) -> u16 {
         read_u16(self.raw, 0)
     }
-
     pub fn resolution_count(&self) -> u8 {
         self.raw[2]
     }
-
     pub fn reserved(&self) -> u8 {
         self.raw[3]
     }
-
-    pub fn descriptor(&self) -> Result<BilateralCkbConditionalDescriptor<'a>> {
-        BilateralCkbConditionalDescriptor::parse(field(
-            self.raw,
-            4,
-            BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN,
-        ))
+    pub fn descriptor(&self) -> Result<ConditionalBatchDescriptor<'a>> {
+        Ok(self.descriptor)
     }
-
     pub fn resolution(&self, index: usize) -> Result<ConditionalResolution<'a>> {
         if index >= self.resolution_count() as usize {
             return Err(ScriptError::ConditionalResolutionEncoding);
         }
-        Ok(self.resolution_unchecked(index))
+        self.resolutions[index].ok_or(ScriptError::ConditionalResolutionEncoding)
     }
 
-    pub fn resolved_capacities(&self, input_since: u64) -> Result<[u64; 2]> {
+    pub fn resolved_values(&self, input_since: u64) -> Result<[ConditionalValue; 2]> {
         let descriptor = self.descriptor()?;
-        let mut capacities = [
-            descriptor.settled_capacity(0),
-            descriptor.settled_capacity(1),
-        ];
+        let mut values = core::array::from_fn(|index| ConditionalValue {
+            capacity: descriptor.settled_capacity(index),
+            amount: descriptor.settled_amount(index),
+        });
+        let is_ckb = descriptor.asset()? == multi_asset::MultiAssetId::CKB;
         for index in 0..descriptor.transfer_count() as usize {
             let transfer = descriptor.transfer(index)?;
             let resolution = self.resolution(index)?;
@@ -732,28 +840,19 @@ impl<'a> ConditionalBatchResolutionWitness<'a> {
                 }
                 _ => return Err(ScriptError::ConditionalResolutionEncoding),
             };
-            capacities[recipient] = capacities[recipient]
-                .checked_add(transfer.amount())
-                .ok_or(ScriptError::ConditionalValueMismatch)?;
+            values[recipient].add_pending(is_ckb, transfer.amount())?;
         }
-        if capacities[0]
-            .checked_add(capacities[1])
+        if values[0]
+            .capacity
+            .checked_add(values[1].capacity)
             .ok_or(ScriptError::ConditionalValueMismatch)?
             != descriptor.checked_total_capacity()?
+            || values[0].amount.checked_add(values[1].amount)
+                != Some(descriptor.checked_total_amount()?)
         {
             return Err(ScriptError::ConditionalValueMismatch);
         }
-        Ok(capacities)
-    }
-
-    fn resolution_unchecked(&self, index: usize) -> ConditionalResolution<'a> {
-        ConditionalResolution {
-            raw: field(
-                self.raw,
-                conditional_resolution_offset(index),
-                CONDITIONAL_RESOLUTION_LEN,
-            ),
-        }
+        Ok(values)
     }
 }
 
@@ -823,17 +922,8 @@ fn verify_factory_signatures_for_digest(
     Ok(())
 }
 
-fn factory_sparse_empty_hashes() -> [[u8; BYTE32_LEN]; FACTORY_SPARSE_MERKLE_DEPTH + 1] {
-    let mut hashes = [[0u8; BYTE32_LEN]; FACTORY_SPARSE_MERKLE_DEPTH + 1];
-    hashes[0] = blake2b256(&[FACTORY_RIGHT_EMPTY_DOMAIN]);
-    for height in 1..=FACTORY_SPARSE_MERKLE_DEPTH {
-        hashes[height] = factory_right_node_hash(
-            FACTORY_SPARSE_MERKLE_DEPTH - height,
-            &hashes[height - 1],
-            &hashes[height - 1],
-        );
-    }
-    hashes
+fn factory_sparse_empty_hashes() -> &'static [[u8; BYTE32_LEN]; FACTORY_SPARSE_MERKLE_DEPTH + 1] {
+    &factory_empty_hashes::HASHES
 }
 
 fn factory_compact_proof_pair_roots_cached(
@@ -1077,15 +1167,21 @@ fn factory_signature_participant_offset(index: usize) -> usize {
 }
 
 fn conditional_descriptor_participant_offset(index: usize) -> usize {
-    4 + 2 * BYTE32_LEN + 1 + 7 + index * (BYTE32_LEN + 8)
+    4 + 2 * BYTE32_LEN + 1 + 7 + multi_asset::MULTI_ASSET_ID_LEN + index * (BYTE32_LEN + 8 + 16)
 }
 
 fn conditional_descriptor_transfer_offset(index: usize) -> usize {
-    4 + 2 * BYTE32_LEN + 1 + 7 + 2 * (BYTE32_LEN + 8) + index * CONDITIONAL_TRANSFER_LEN
+    4 + 2 * BYTE32_LEN
+        + 1
+        + 7
+        + multi_asset::MULTI_ASSET_ID_LEN
+        + 2 * (BYTE32_LEN + 8 + 16)
+        + index * CONDITIONAL_TRANSFER_LEN
 }
 
-fn conditional_resolution_offset(index: usize) -> usize {
-    4 + BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN + index * CONDITIONAL_RESOLUTION_LEN
+#[cfg(test)]
+fn conditional_resolution_offset(descriptor_len: usize, index: usize) -> usize {
+    4 + descriptor_len + index * CONDITIONAL_RESOLUTION_MAX_LEN
 }
 
 fn factory_right_key(right: &FactoryRight) -> [u8; 32] {
@@ -1101,7 +1197,12 @@ fn factory_right_key(right: &FactoryRight) -> [u8; 32] {
 
 fn factory_right_leaf_hash(right: &FactoryRight) -> [u8; 32] {
     let key = factory_right_key(right);
-    blake2b256(&[FACTORY_RIGHT_LEAF_DOMAIN, &key, right.raw()])
+    blake2b256(&[
+        FACTORY_RIGHT_LEAF_DOMAIN,
+        &key,
+        right.identity,
+        right.quantity,
+    ])
 }
 
 fn factory_right_node_hash(depth: usize, left: &[u8], right: &[u8]) -> [u8; 32] {
@@ -1149,10 +1250,10 @@ mod tests {
     fn put_u64(raw: &mut [u8], offset: usize, value: u64) {
         raw[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
     }
-    fn conditional_descriptor_bytes() -> [u8; BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN] {
-        let mut raw = [0u8; BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN];
-        put_u16(&mut raw, 0, BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_VERSION);
-        raw[2] = BILATERAL_CKB_DESCRIPTOR_OUTPUT_COUNT;
+    fn conditional_descriptor_bytes() -> alloc::vec::Vec<u8> {
+        let mut raw = alloc::vec![0u8; CONDITIONAL_BATCH_DESCRIPTOR_PREFIX_LEN + 2 * CONDITIONAL_TRANSFER_LEN];
+        put_u16(&mut raw, 0, CONDITIONAL_BATCH_DESCRIPTOR_VERSION);
+        raw[2] = CONDITIONAL_PARTICIPANT_COUNT;
         raw[3] = CONDITIONAL_TRANSFER_MAX_COUNT;
         raw[4..36].fill(3);
         raw[36..68].fill(4);
@@ -1180,12 +1281,23 @@ mod tests {
             put_u64(&mut raw, offset + 2 * BYTE32_LEN + 4, amounts[index]);
             put_u64(
                 &mut raw,
-                offset + 2 * BYTE32_LEN + 12,
+                offset + 2 * BYTE32_LEN + 20,
                 absolute_block_since(refund_blocks[index]).unwrap(),
             );
         }
         raw
     }
+    #[test]
+    fn precomputed_factory_empty_subtrees_match_all_current_hash_levels() {
+        let mut current = blake2b256(&[FACTORY_RIGHT_EMPTY_DOMAIN]);
+        assert_eq!(factory_empty_hashes::HASHES[0], current);
+        for height in 1..=FACTORY_SPARSE_MERKLE_DEPTH {
+            current =
+                factory_right_node_hash(FACTORY_SPARSE_MERKLE_DEPTH - height, &current, &current);
+            assert_eq!(factory_empty_hashes::HASHES[height], current);
+        }
+    }
+
     #[test]
     fn sponsor_policy_fields_are_fixed_width() {
         let mut raw = [0u8; SPONSOR_POLICY_LEN];
@@ -1237,35 +1349,35 @@ mod tests {
     #[test]
     fn parses_and_resolves_conditional_batch() {
         let descriptor_raw = conditional_descriptor_bytes();
-        let descriptor = BilateralCkbConditionalDescriptor::parse(&descriptor_raw).unwrap();
+        let descriptor = ConditionalBatchDescriptor::parse(&descriptor_raw).unwrap();
         assert_eq!(descriptor.transfer_count(), 2);
         assert_eq!(descriptor.checked_total_capacity().unwrap(), 365);
 
-        let mut witness_raw = [0u8; CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN];
+        let mut witness_raw = alloc::vec![0u8; 4 + descriptor_raw.len() + 34];
         put_u16(
             &mut witness_raw,
             0,
             CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION,
         );
         witness_raw[2] = 2;
-        witness_raw[4..4 + BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN]
-            .copy_from_slice(&descriptor_raw);
-        let first = conditional_resolution_offset(0);
+        witness_raw[4..4 + descriptor_raw.len()].copy_from_slice(&descriptor_raw);
+        let first = conditional_resolution_offset(descriptor_raw.len(), 0);
         witness_raw[first] = CONDITIONAL_RESOLUTION_FULFILL;
         witness_raw[first + 1..first + 1 + BYTE32_LEN].fill(7);
-        let second = conditional_resolution_offset(1);
+        let second = conditional_resolution_offset(descriptor_raw.len(), 1);
         witness_raw[second] = CONDITIONAL_RESOLUTION_REFUND;
 
         let witness = ConditionalBatchResolutionWitness::parse(&witness_raw).unwrap();
         assert_eq!(
             witness
-                .resolved_capacities(absolute_block_since(600).unwrap())
-                .unwrap(),
+                .resolved_values(absolute_block_since(600).unwrap())
+                .unwrap()
+                .map(|value| value.capacity),
             [100, 265]
         );
         assert_eq!(
             witness
-                .resolved_capacities(absolute_block_since(599).unwrap())
+                .resolved_values(absolute_block_since(599).unwrap())
                 .unwrap_err(),
             ScriptError::ConditionalRefundNotMature
         );
@@ -1273,24 +1385,23 @@ mod tests {
     #[test]
     fn conditional_batch_rejects_wrong_preimage_and_duplicate_hash() {
         let descriptor_raw = conditional_descriptor_bytes();
-        let mut witness_raw = [0u8; CONDITIONAL_BATCH_RESOLUTION_WITNESS_LEN];
+        let mut witness_raw = alloc::vec![0u8; 4 + descriptor_raw.len() + 34];
         put_u16(
             &mut witness_raw,
             0,
             CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION,
         );
         witness_raw[2] = 2;
-        witness_raw[4..4 + BILATERAL_CKB_CONDITIONAL_DESCRIPTOR_LEN]
-            .copy_from_slice(&descriptor_raw);
-        let first = conditional_resolution_offset(0);
+        witness_raw[4..4 + descriptor_raw.len()].copy_from_slice(&descriptor_raw);
+        let first = conditional_resolution_offset(descriptor_raw.len(), 0);
         witness_raw[first] = CONDITIONAL_RESOLUTION_FULFILL;
         witness_raw[first + 1..first + 1 + BYTE32_LEN].fill(9);
-        let second = conditional_resolution_offset(1);
+        let second = conditional_resolution_offset(descriptor_raw.len(), 1);
         witness_raw[second] = CONDITIONAL_RESOLUTION_REFUND;
         let witness = ConditionalBatchResolutionWitness::parse(&witness_raw).unwrap();
         assert_eq!(
             witness
-                .resolved_capacities(absolute_block_since(600).unwrap())
+                .resolved_values(absolute_block_since(600).unwrap())
                 .unwrap_err(),
             ScriptError::ConditionalPreimageMismatch
         );
@@ -1301,8 +1412,96 @@ mod tests {
         let hash = duplicate[first_hash..first_hash + BYTE32_LEN].to_vec();
         duplicate[second_hash..second_hash + BYTE32_LEN].copy_from_slice(&hash);
         assert_eq!(
-            BilateralCkbConditionalDescriptor::parse(&duplicate).unwrap_err(),
+            ConditionalBatchDescriptor::parse(&duplicate).unwrap_err(),
             ScriptError::ConditionalDescriptorEncoding
         );
+    }
+
+    #[test]
+    fn typed_batch_preserves_capacity_and_resolves_full_width_tokens() {
+        let mut raw = conditional_descriptor_bytes();
+        raw[76] = 1;
+        raw[77..109].fill(42);
+        let large = u64::MAX as u128 + 123;
+        write_u128(
+            &mut raw,
+            conditional_descriptor_participant_offset(0) + 40,
+            large,
+        );
+        write_u128(
+            &mut raw,
+            conditional_descriptor_participant_offset(1) + 40,
+            9,
+        );
+        write_u128(
+            &mut raw,
+            conditional_descriptor_transfer_offset(0) + 68,
+            large,
+        );
+        let parsed = ConditionalBatchDescriptor::parse(&raw).unwrap();
+        assert_eq!(parsed.checked_total_capacity().unwrap(), 300);
+        assert_eq!(parsed.checked_total_amount().unwrap(), 2 * large + 49);
+        let mut witness = alloc::vec![0u8; 4 + raw.len() + 34];
+        write_u16(
+            &mut witness,
+            0,
+            CONDITIONAL_BATCH_RESOLUTION_WITNESS_VERSION,
+        );
+        witness[2] = 2;
+        witness[4..4 + raw.len()].copy_from_slice(&raw);
+        let first = conditional_resolution_offset(raw.len(), 0);
+        witness[first] = CONDITIONAL_RESOLUTION_FULFILL;
+        witness[first + 1..first + 33].fill(7);
+        witness[conditional_resolution_offset(raw.len(), 1)] = CONDITIONAL_RESOLUTION_REFUND;
+        let parsed = ConditionalBatchResolutionWitness::parse(&witness).unwrap();
+        assert_eq!(
+            parsed
+                .resolved_values(absolute_block_since(600).unwrap())
+                .unwrap(),
+            [
+                ConditionalValue {
+                    capacity: 100,
+                    amount: large
+                },
+                ConditionalValue {
+                    capacity: 200,
+                    amount: large + 49
+                },
+            ]
+        );
+        assert_eq!(
+            parsed.resolved_values(absolute_block_since(599).unwrap()),
+            Err(ScriptError::ConditionalRefundNotMature)
+        );
+    }
+
+    #[test]
+    fn typed_batch_rejects_wrong_asset_and_both_arithmetic_overflows() {
+        let raw = conditional_descriptor_bytes();
+        let mut changed = raw.clone();
+        changed[77] = 1; // Plain CKB cannot carry a token Type.
+        assert!(ConditionalBatchDescriptor::parse(&changed).is_err());
+        changed = raw.clone();
+        write_u128(
+            &mut changed,
+            conditional_descriptor_transfer_offset(0) + 68,
+            u64::MAX as u128,
+        );
+        assert!(ConditionalBatchDescriptor::parse(&changed).is_err());
+        changed = raw.clone();
+        changed[76] = 1;
+        changed[77..109].fill(42);
+        write_u128(
+            &mut changed,
+            conditional_descriptor_participant_offset(0) + 40,
+            u128::MAX,
+        );
+        assert!(ConditionalBatchDescriptor::parse(&changed).is_err());
+        changed = raw.clone();
+        changed[0..2].copy_from_slice(&3u16.to_le_bytes());
+        assert!(ConditionalBatchDescriptor::parse(&changed).is_err());
+        let mut retired = raw.clone();
+        retired.resize(828, 0);
+        assert!(ConditionalBatchDescriptor::parse(&retired).is_err());
     }
 }

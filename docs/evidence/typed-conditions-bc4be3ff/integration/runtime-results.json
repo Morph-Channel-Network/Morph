@@ -1,0 +1,920 @@
+{
+  "fuzz": [
+    {
+      "report_sha256": "383293fb8b65ad4f7d5de4db1a50aca9cae8947b6d372f70e6918a3038b37454",
+      "seed": 1,
+      "targets": [
+        {
+          "accepted": 2356,
+          "cases": 10000,
+          "rejected": 7644,
+          "target": "manifest"
+        },
+        {
+          "accepted": 2656,
+          "cases": 10000,
+          "rejected": 7344,
+          "target": "settlement"
+        },
+        {
+          "accepted": 1214,
+          "cases": 10000,
+          "rejected": 8786,
+          "target": "state-witness"
+        },
+        {
+          "accepted": 1457,
+          "cases": 10000,
+          "rejected": 8543,
+          "target": "close-frame"
+        },
+        {
+          "accepted": 1036,
+          "cases": 10000,
+          "rejected": 8964,
+          "target": "recovery-json"
+        },
+        {
+          "accepted": 1123,
+          "cases": 10000,
+          "rejected": 8877,
+          "target": "factory-frame"
+        },
+        {
+          "accepted": 3323,
+          "cases": 10000,
+          "rejected": 6677,
+          "target": "factory-state"
+        },
+        {
+          "accepted": 1003,
+          "cases": 10000,
+          "rejected": 8997,
+          "target": "factory-materialisation"
+        },
+        {
+          "accepted": 1173,
+          "cases": 10000,
+          "rejected": 8827,
+          "target": "event-json"
+        },
+        {
+          "accepted": 1207,
+          "cases": 10000,
+          "rejected": 8793,
+          "target": "hub-mutation"
+        },
+        {
+          "accepted": 1011,
+          "cases": 10000,
+          "rejected": 8989,
+          "target": "gateway-authorization"
+        },
+        {
+          "accepted": 1005,
+          "cases": 10000,
+          "rejected": 8995,
+          "target": "callback-auth"
+        },
+        {
+          "accepted": 1347,
+          "cases": 10000,
+          "rejected": 8653,
+          "target": "store-commit"
+        },
+        {
+          "accepted": 2128,
+          "cases": 10000,
+          "rejected": 7872,
+          "target": "store-replay"
+        },
+        {
+          "accepted": 1020,
+          "cases": 10000,
+          "rejected": 8980,
+          "target": "sdk-document"
+        },
+        {
+          "accepted": 1012,
+          "cases": 10000,
+          "rejected": 8988,
+          "target": "sdk-receipt"
+        },
+        {
+          "accepted": 1045,
+          "cases": 10000,
+          "rejected": 8955,
+          "target": "splice-frame"
+        },
+        {
+          "accepted": 3248,
+          "cases": 10000,
+          "rejected": 6752,
+          "target": "splice-flows"
+        },
+        {
+          "accepted": 2018,
+          "cases": 10000,
+          "rejected": 7982,
+          "target": "batch-resolution"
+        },
+        {
+          "accepted": 3629,
+          "cases": 10000,
+          "rejected": 6371,
+          "target": "script-args"
+        },
+        {
+          "accepted": 1000,
+          "cases": 10000,
+          "rejected": 9000,
+          "target": "signer-request"
+        },
+        {
+          "accepted": 1024,
+          "cases": 10000,
+          "rejected": 8976,
+          "target": "signer-review"
+        },
+        {
+          "accepted": 1008,
+          "cases": 10000,
+          "rejected": 8992,
+          "target": "signer-response"
+        },
+        {
+          "accepted": 2195,
+          "cases": 10000,
+          "rejected": 7805,
+          "target": "hub-api"
+        },
+        {
+          "accepted": 2008,
+          "cases": 10000,
+          "rejected": 7992,
+          "target": "gateway-api"
+        },
+        {
+          "accepted": 1112,
+          "cases": 10000,
+          "rejected": 8888,
+          "target": "gateway-receipt"
+        }
+      ]
+    },
+    {
+      "report_sha256": "288c5957fb9d96e871351354b982a27d8252271159b10880aab9998b7758ac3b",
+      "seed": 17,
+      "targets": [
+        {
+          "accepted": 2354,
+          "cases": 10000,
+          "rejected": 7646,
+          "target": "manifest"
+        },
+        {
+          "accepted": 2636,
+          "cases": 10000,
+          "rejected": 7364,
+          "target": "settlement"
+        },
+        {
+          "accepted": 1213,
+          "cases": 10000,
+          "rejected": 8787,
+          "target": "state-witness"
+        },
+        {
+          "accepted": 1474,
+          "cases": 10000,
+          "rejected": 8526,
+          "target": "close-frame"
+        },
+        {
+          "accepted": 1038,
+          "cases": 10000,
+          "rejected": 8962,
+          "target": "recovery-json"
+        },
+        {
+          "accepted": 1132,
+          "cases": 10000,
+          "rejected": 8868,
+          "target": "factory-frame"
+        },
+        {
+          "accepted": 3283,
+          "cases": 10000,
+          "rejected": 6717,
+          "target": "factory-state"
+        },
+        {
+          "accepted": 1004,
+          "cases": 10000,
+          "rejected": 8996,
+          "target": "factory-materialisation"
+        },
+        {
+          "accepted": 1192,
+          "cases": 10000,
+          "rejected": 8808,
+          "target": "event-json"
+        },
+        {
+          "accepted": 1232,
+          "cases": 10000,
+          "rejected": 8768,
+          "target": "hub-mutation"
+        },
+        {
+          "accepted": 1013,
+          "cases": 10000,
+          "rejected": 8987,
+          "target": "gateway-authorization"
+        },
+        {
+          "accepted": 1005,
+          "cases": 10000,
+          "rejected": 8995,
+          "target": "callback-auth"
+        },
+        {
+          "accepted": 1368,
+          "cases": 10000,
+          "rejected": 8632,
+          "target": "store-commit"
+        },
+        {
+          "accepted": 2144,
+          "cases": 10000,
+          "rejected": 7856,
+          "target": "store-replay"
+        },
+        {
+          "accepted": 1015,
+          "cases": 10000,
+          "rejected": 8985,
+          "target": "sdk-document"
+        },
+        {
+          "accepted": 1008,
+          "cases": 10000,
+          "rejected": 8992,
+          "target": "sdk-receipt"
+        },
+        {
+          "accepted": 1050,
+          "cases": 10000,
+          "rejected": 8950,
+          "target": "splice-frame"
+        },
+        {
+          "accepted": 3222,
+          "cases": 10000,
+          "rejected": 6778,
+          "target": "splice-flows"
+        },
+        {
+          "accepted": 2028,
+          "cases": 10000,
+          "rejected": 7972,
+          "target": "batch-resolution"
+        },
+        {
+          "accepted": 3667,
+          "cases": 10000,
+          "rejected": 6333,
+          "target": "script-args"
+        },
+        {
+          "accepted": 1001,
+          "cases": 10000,
+          "rejected": 8999,
+          "target": "signer-request"
+        },
+        {
+          "accepted": 1025,
+          "cases": 10000,
+          "rejected": 8975,
+          "target": "signer-review"
+        },
+        {
+          "accepted": 1003,
+          "cases": 10000,
+          "rejected": 8997,
+          "target": "signer-response"
+        },
+        {
+          "accepted": 2228,
+          "cases": 10000,
+          "rejected": 7772,
+          "target": "hub-api"
+        },
+        {
+          "accepted": 2001,
+          "cases": 10000,
+          "rejected": 7999,
+          "target": "gateway-api"
+        },
+        {
+          "accepted": 1107,
+          "cases": 10000,
+          "rejected": 8893,
+          "target": "gateway-receipt"
+        }
+      ]
+    },
+    {
+      "report_sha256": "8f3fce7a8a116af0369ea3703c4abfa122c68823f58b7dbd6c00411099b8e778",
+      "seed": 332043276360,
+      "targets": [
+        {
+          "accepted": 2388,
+          "cases": 10000,
+          "rejected": 7612,
+          "target": "manifest"
+        },
+        {
+          "accepted": 2681,
+          "cases": 10000,
+          "rejected": 7319,
+          "target": "settlement"
+        },
+        {
+          "accepted": 1211,
+          "cases": 10000,
+          "rejected": 8789,
+          "target": "state-witness"
+        },
+        {
+          "accepted": 1492,
+          "cases": 10000,
+          "rejected": 8508,
+          "target": "close-frame"
+        },
+        {
+          "accepted": 1037,
+          "cases": 10000,
+          "rejected": 8963,
+          "target": "recovery-json"
+        },
+        {
+          "accepted": 1134,
+          "cases": 10000,
+          "rejected": 8866,
+          "target": "factory-frame"
+        },
+        {
+          "accepted": 3355,
+          "cases": 10000,
+          "rejected": 6645,
+          "target": "factory-state"
+        },
+        {
+          "accepted": 1006,
+          "cases": 10000,
+          "rejected": 8994,
+          "target": "factory-materialisation"
+        },
+        {
+          "accepted": 1187,
+          "cases": 10000,
+          "rejected": 8813,
+          "target": "event-json"
+        },
+        {
+          "accepted": 1224,
+          "cases": 10000,
+          "rejected": 8776,
+          "target": "hub-mutation"
+        },
+        {
+          "accepted": 1009,
+          "cases": 10000,
+          "rejected": 8991,
+          "target": "gateway-authorization"
+        },
+        {
+          "accepted": 1006,
+          "cases": 10000,
+          "rejected": 8994,
+          "target": "callback-auth"
+        },
+        {
+          "accepted": 1370,
+          "cases": 10000,
+          "rejected": 8630,
+          "target": "store-commit"
+        },
+        {
+          "accepted": 2153,
+          "cases": 10000,
+          "rejected": 7847,
+          "target": "store-replay"
+        },
+        {
+          "accepted": 1019,
+          "cases": 10000,
+          "rejected": 8981,
+          "target": "sdk-document"
+        },
+        {
+          "accepted": 1011,
+          "cases": 10000,
+          "rejected": 8989,
+          "target": "sdk-receipt"
+        },
+        {
+          "accepted": 1064,
+          "cases": 10000,
+          "rejected": 8936,
+          "target": "splice-frame"
+        },
+        {
+          "accepted": 3224,
+          "cases": 10000,
+          "rejected": 6776,
+          "target": "splice-flows"
+        },
+        {
+          "accepted": 2081,
+          "cases": 10000,
+          "rejected": 7919,
+          "target": "batch-resolution"
+        },
+        {
+          "accepted": 3637,
+          "cases": 10000,
+          "rejected": 6363,
+          "target": "script-args"
+        },
+        {
+          "accepted": 1002,
+          "cases": 10000,
+          "rejected": 8998,
+          "target": "signer-request"
+        },
+        {
+          "accepted": 1030,
+          "cases": 10000,
+          "rejected": 8970,
+          "target": "signer-review"
+        },
+        {
+          "accepted": 1007,
+          "cases": 10000,
+          "rejected": 8993,
+          "target": "signer-response"
+        },
+        {
+          "accepted": 2290,
+          "cases": 10000,
+          "rejected": 7710,
+          "target": "hub-api"
+        },
+        {
+          "accepted": 2020,
+          "cases": 10000,
+          "rejected": 7980,
+          "target": "gateway-api"
+        },
+        {
+          "accepted": 1126,
+          "cases": 10000,
+          "rejected": 8874,
+          "target": "gateway-receipt"
+        }
+      ]
+    }
+  ],
+  "required_ci_tests": [
+    "multi_asset_backend_whole_consistent_snapshot_rollback_is_not_detectable_locally",
+    "cooperative_close_consistent_whole_store_rollback_still_needs_external_freshness",
+    "exact_shape_rejects_zero_token_rights_and_unwithdrawable_allocations",
+    "lifetime_reservations_survive_restart_alternatives_closure_and_reorg",
+    "bilateral_splice_peaks_and_factory_children_share_one_atomic_budget",
+    "factory_multi_asset_reduced_release_rejects_retained_reserve_one_below_occupied_floor",
+    "factory_multi_asset_reduced_release_rejects_replayed_frame_and_stale_before_header",
+    "atomic_cas_replay_and_bounded_queries_share_memory_and_disk_semantics",
+    "real_process_kill_before_commit_after_commit_and_after_acknowledgement",
+    "actual_fsync_eio_and_enospc_never_acknowledge_partial_commit",
+    "full_width_public_numbers_round_trip_without_json_number_coercion",
+    "liveness_does_not_wait_for_store_and_busy_scope_is_not_ready",
+    "unavailable_storage_recovers_only_after_the_real_file_is_accessible_again",
+    "each_resource_has_one_fixed_diagnosis_without_hiding_other_resources",
+    "publication_requires_full_fee_headroom_and_short_fresh_window",
+    "real_supervisor_stop_expires_redacted_observation_without_mutating_evidence",
+    "typed_conditions_maximum_eight_assets_sixty_four_conditions_and_script_bounds",
+    "typed_batch_vm_resolves_above_u64_without_capacity_or_type_substitution",
+    "current_bridge_excludes_pending_udt_from_its_type_without_reducing_other_assets",
+    "conditional_preimages_match_fiber_hash_algorithm_vectors",
+    "conditional_admission_preserves_identical_mature_batches_while_another_asset_resolves",
+    "typed_conditions_fund_activate_and_exit_from_the_original_initial_recovery",
+    "typed_conditions_splice_creation_recovery_activation_and_terminal_claims"
+  ],
+  "schema": "morph.local_w1_results.v1",
+  "scope": "controlled-devnet-no-real-assets",
+  "shadow": {
+    "binary_sha256": "0b085cd3ef8b302d3f1380d79f28ea6815cb752bd73b28445d0c18ccbb72586d",
+    "exact_activation_replay_reactivated": true,
+    "fiber_process_restart_acknowledged": true,
+    "fiber_revision": "a5faac7177a2a2ec086a2c6d0da1840ec9fe5703",
+    "forwarding": false,
+    "journal_busy_disabled": true,
+    "journal_released_reactivated": true,
+    "morph_process_restarted": true,
+    "orphaned_activation_disabled": true,
+    "patch_sha256": "39af376d9455449743a7a13da07639ff920df2ae969be063934065d0b82eeda1",
+    "registered": true,
+    "reorg_preserved_backend_authority": true,
+    "spent_custody_disabled": true,
+    "verification_sha256": "3d4417eb343cbc36d92d5dc6a9a6c703ae3de3b2a12b0a7418ef214357f292ab"
+  },
+  "signers": {
+    "cooperative-close": {
+      "attempts": 16,
+      "roles": {
+        "cooperative_close": 8,
+        "root_creation": 4,
+        "root_exit": 4
+      },
+      "verification_sha256": "b541e94f2962dc15f2aee2d0e75f769dc59fe013a2579ccbee3962399d69cf90"
+    },
+    "signer-lifecycle": {
+      "attempts": 22,
+      "roles": {
+        "root_creation": 4,
+        "root_exit": 4,
+        "splice_bridge": 4,
+        "splice_creation": 4,
+        "splice_recovery": 4,
+        "update": 2
+      },
+      "verification_sha256": "6f3197bb926bd173aeeb6a9aa9cc175057583d022e7dfcdb45262fbd81e4deeb"
+    },
+    "typed-conditions": {
+      "attempts": 6,
+      "roles": {
+        "root_creation": 2,
+        "root_exit": 2,
+        "update": 2
+      },
+      "verification_sha256": "b3e011c4bd8eaeed11068a805ca0a5e2e37d2580db7f66b956c806c6f5f6c131"
+    }
+  },
+  "source_commit": "bc4be3ff03cb4448f8e16dc95a832e4d6922ce71",
+  "typed_conditions": {
+    "asset_count": 8,
+    "branches": {
+      "fulfilled": [
+        {
+          "asset_type_hash": "0x2d6db4cf049cd8678150b5868df4cef6027cbfd5aa237355c68243ddbe66a62c",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 8,
+            "refund": 0
+          },
+          "estimated_cycles": 1835173,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x0103121bf4039e38f0c963810f24db2587902d1f573d02f0714479e4b56db19c",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0x3ca23ab8af9885b88f13ea19ef87248050aa8cc40acd4b61386879124e9baacc",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 8,
+            "refund": 0
+          },
+          "estimated_cycles": 1854165,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0xdeae105272ecd885656b1b13c2df05ccf7f3fc87e089cd671007286d7108fee7",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 8,
+            "refund": 0
+          },
+          "estimated_cycles": 1853961,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x71db2d9abadf8dcacc4676c84709e8cf2458719f1fceea8c4f660737c2f59337",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xacd18f4888fc78f180423eae67113257a769bb64d809f82099a6bd8b97197709",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 8,
+            "refund": 0
+          },
+          "estimated_cycles": 1845055,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x189ee93ab175f52e0ea4ef4773727aae0ad5edcab2939166f4c55fb86db98f47",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xba8a3a2c8bde04e69f3e7db97084dd6e3290641ee6231396207e497d1c627d18",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 8,
+            "refund": 0
+          },
+          "estimated_cycles": 1814004,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0xa09ce1040e3e9582f6b1f9ef4d630e9a4fe2c275c9226f46b8d3ac13881147ff",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xe402d45d75068d3d73274d95f12e0fdd59576ed3a2cdb3a45f77b73e547b8c01",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 8,
+            "refund": 0
+          },
+          "estimated_cycles": 1829407,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x92125104c1df358fdf7eb6a37882a5f1cd0d55e14034dbec36d1c10402d3a245",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xfc8d314185706107290c599f826ffd14af03efbcc5da676aed126434d9e9a8a9",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 8,
+            "refund": 0
+          },
+          "estimated_cycles": 1811936,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0xb030c11d3821d48a8d0f1864fe8ff5091155d369f80c7975e4ba91b1b9166c2d",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xfeb49496c3d788780dccf490385ee3911dbdc93b871a90aa9d0b26694645d47b",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 8,
+            "refund": 0
+          },
+          "estimated_cycles": 1854210,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0xb246cd1e0772ed198e606dd9fa753797b0b311213d54d494d2d272ddf361bcb6",
+          "tx_size_bytes": 2253
+        }
+      ],
+      "refunded_or_mixed": [
+        {
+          "asset_type_hash": "0x2d6db4cf049cd8678150b5868df4cef6027cbfd5aa237355c68243ddbe66a62c",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 0,
+            "refund": 8
+          },
+          "estimated_cycles": 1780489,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x5099bc161b2ee2e8ea03b631eae9e9e8f6b82e1a0a41192468f2db8e7955b591",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0x3ca23ab8af9885b88f13ea19ef87248050aa8cc40acd4b61386879124e9baacc",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 3,
+            "refund": 5
+          },
+          "estimated_cycles": 1827117,
+          "payouts": [
+            {
+              "amount": "390",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "610",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x404a03feebcdbe806f8ace6528d9f455d68caf18e90865bdd315560f4af4ef28",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0x96e71a3238753a2c02994e9aa242af2aae259ee468e5025eee1f3dbe5a6c219e",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 0,
+            "refund": 8
+          },
+          "estimated_cycles": 1799167,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x81c2fa26a5301a2fd10c75a7ce302be740f12cdb92f335854b5699e47896905b",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xacd18f4888fc78f180423eae67113257a769bb64d809f82099a6bd8b97197709",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 3,
+            "refund": 5
+          },
+          "estimated_cycles": 1796257,
+          "payouts": [
+            {
+              "amount": "390",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "610",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0xff7e8a48198e5f7bfecd59ca754b14d63be55033b5ae5511bf6e2e94e7f5a7b3",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xba8a3a2c8bde04e69f3e7db97084dd6e3290641ee6231396207e497d1c627d18",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 0,
+            "refund": 8
+          },
+          "estimated_cycles": 1758146,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0xa14dd8d1280def476577042fdd3307ce2c4f41e6803965b84c8cf01ea57a701d",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xe402d45d75068d3d73274d95f12e0fdd59576ed3a2cdb3a45f77b73e547b8c01",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 3,
+            "refund": 5
+          },
+          "estimated_cycles": 1794178,
+          "payouts": [
+            {
+              "amount": "390",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "610",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0xaca40b3819f2979ef8cad216da1188410e0b0ea8e818b91a13606dc145f81a34",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xfc8d314185706107290c599f826ffd14af03efbcc5da676aed126434d9e9a8a9",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 0,
+            "refund": 8
+          },
+          "estimated_cycles": 1808869,
+          "payouts": [
+            {
+              "amount": "400",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "600",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x36a5f476cd842dffd6b4b444b728d4ceeb5f45713523c06c7c128b79b7a77742",
+          "tx_size_bytes": 2253
+        },
+        {
+          "asset_type_hash": "0xfeb49496c3d788780dccf490385ee3911dbdc93b871a90aa9d0b26694645d47b",
+          "canonical_confirmations": 4,
+          "decisions": {
+            "fulfill": 3,
+            "refund": 5
+          },
+          "estimated_cycles": 1812617,
+          "payouts": [
+            {
+              "amount": "390",
+              "capacity": "20200000000"
+            },
+            {
+              "amount": "610",
+              "capacity": "18200000000"
+            }
+          ],
+          "transaction_hash": "0x7c9147f08ad63fa67d6ef9e174660ea28b01fc9f55739e1277e042346dbd9dbd",
+          "tx_size_bytes": 2253
+        }
+      ]
+    },
+    "conditions_per_asset": 8,
+    "orphaned_claims_without_canonical_credit": 8,
+    "participant_journals_unchanged": true,
+    "provider_rpc_used": false,
+    "terminal": {
+      "estimated_cycles": 25928800,
+      "transaction_hash": "0xa707e05c591baad0a2e15413d5c48834db073586ea7078b9018a4573553095a5",
+      "tx_size_bytes": 14455
+    }
+  }
+}

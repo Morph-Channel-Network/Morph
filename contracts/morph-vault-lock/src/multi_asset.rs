@@ -2,7 +2,8 @@ use ckb_std::ckb_constants::Source;
 use ckb_std::ckb_types::prelude::*;
 use ckb_std::error::SysError;
 use ckb_std::high_level::{
-    load_cell_data, load_cell_lock_hash, load_cell_type_hash, load_input, load_script_hash,
+    load_cell_data, load_cell_lock_hash, load_cell_type, load_cell_type_hash, load_input,
+    load_script_hash, load_transaction, load_tx_hash,
 };
 use morph_script_common::multi_asset::{
     MultiAssetStateHeader, MultiAssetVaultArgs, MultiAssetWitness,
@@ -52,6 +53,54 @@ pub fn validate(raw_args: &[u8]) -> Result<()> {
     if header.funding_anchor() != args.funding_anchor() {
         return Err(ScriptError::FundingAnchorMismatch);
     }
+    if let Some(raw) =
+        morph_script_common::multi_asset_close_runtime::close_evidence(state_index, Source::Input)?
+    {
+        let frame = morph_script_common::multi_asset_close::MultiAssetCloseWitness::parse(&raw)?;
+        if state_index != 0
+            || frame.evidence().manifest().entry(0)?.lock_hash
+                != load_script_hash().map_err(|_| ScriptError::Encoding)?
+        {
+            return Err(ScriptError::MultiAssetCloseMismatch);
+        }
+        let ty = load_cell_type(0, Source::Input)
+            .map_err(|_| ScriptError::Encoding)?
+            .ok_or(ScriptError::StateTypeMismatch)?;
+        morph_script_common::multi_asset::require_immutable_authority_script(ty.as_slice())?;
+        if ty.as_slice() != frame.evidence().scripts().script(4)?
+            || load_tx_hash().map_err(|_| ScriptError::Encoding)? != frame.transaction_hash()
+            || load_input(0, Source::Input)
+                .map_err(|_| ScriptError::Encoding)?
+                .since()
+                .unpack()
+                != 0u64
+        {
+            return Err(ScriptError::MultiAssetCloseMismatch);
+        }
+        morph_script_common::multi_asset_close::validate_multi_asset_close_source(
+            &header,
+            frame.target(),
+        )?;
+        let tx = load_transaction().map_err(|_| ScriptError::Encoding)?;
+        if tx.raw().inputs().len() >= MULTI_ASSET_MAX_TRANSACTION_CELLS
+            || tx.raw().outputs().len() >= MULTI_ASSET_MAX_TRANSACTION_CELLS
+            || tx.raw().cell_deps().len() > 64
+            || tx.raw().header_deps().len() > 64
+        {
+            return Err(ScriptError::MultiAssetCloseMismatch);
+        }
+        for index in 0..tx.raw().outputs().len() {
+            if load_cell_type_hash(index, Source::Output)
+                .map_err(|_| ScriptError::Encoding)?
+                .as_ref()
+                .map(|h| h.as_slice())
+                == Some(args.state_type_hash())
+            {
+                return Err(ScriptError::WrongGroupShape);
+            }
+        }
+        return Ok(());
+    }
     if let Some(raw) = morph_script_common::multi_asset_splice_runtime::splice_evidence(
         state_index,
         Source::Input,
@@ -59,7 +108,7 @@ pub fn validate(raw_args: &[u8]) -> Result<()> {
         if state_index != 0 {
             return Err(ScriptError::MultiAssetSpliceMismatch);
         }
-        return morph_script_common::multi_asset_splice_runtime::verify_splice(&raw);
+        return morph_script_common::multi_asset_splice_runtime::verify_splice_gate(&raw);
     }
     if header.phase() != PHASE_SETTLING || !header.vaults_are_bound() {
         return Err(ScriptError::NewStateNotSettling);
@@ -93,5 +142,5 @@ pub fn validate(raw_args: &[u8]) -> Result<()> {
         return Err(ScriptError::MultiAssetCommitmentMismatch);
     }
     verify_multi_asset_vault_set(&evidence, Source::Input, true)?;
-    verify_multi_asset_settlement_outputs(&evidence, state_index, Source::Input)
+    verify_multi_asset_settlement_outputs(&evidence, state_index, Source::Input, &header)
 }

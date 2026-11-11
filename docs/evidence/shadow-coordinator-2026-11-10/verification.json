@@ -1,0 +1,18 @@
+{
+  "schema": "morph.shadow_coordinator_checkpoint.v1",
+  "head": "07a3fa04ba7c556a8af7a4cfd61c21ba39d4e09b",
+  "dirty_worktree": true,
+  "passed": true,
+  "cli_tests": 333,
+  "shared_tests_including_initial_adapter": 80,
+  "final_adapter_tests_superseding_initial_35": 36,
+  "distinct_tests": 414,
+  "native_observations": 6,
+  "native_source_entries": 4143,
+  "final_targeted_source_entries": 70,
+  "native_and_final_adapter_are_separate_source_checkpoints": true,
+  "continuous_service_complete": false,
+  "real_fiber_ckb_joint_acceptance": false,
+  "forwarding": false,
+  "release_qualification": false
+}

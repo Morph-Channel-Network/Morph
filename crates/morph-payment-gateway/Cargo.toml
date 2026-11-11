@@ -11,7 +11,12 @@ readme.workspace = true
 publish = false
 
 [dependencies]
-morph-key-input = { version = "4.0.0-alpha.1", path = "../morph-key-input" }
+morph-observability = { path = "../morph-observability" }
+morph-events = { path = "../morph-events" }
+schemars.workspace = true
+morph-packages = { version = "4.1.0", path = "../morph-packages" }
+morph-key-input = { version = "4.1.0", path = "../morph-key-input" }
+morph-runtime-store = { path = "../morph-runtime-store" }
 zeroize.workspace = true
 anyhow.workspace = true
 aes-gcm.workspace = true
@@ -23,7 +28,7 @@ ckb-types.workspace = true
 clap.workspace = true
 hex.workspace = true
 k256.workspace = true
-morph-core = { version = "4.0.0-alpha.1", path = "../morph-core" }
+morph-core = { version = "4.1.0", path = "../morph-core" }
 rand.workspace = true
 reqwest.workspace = true
 serde.workspace = true

@@ -28,6 +28,7 @@ mod conditional_packages;
 mod devnet;
 #[cfg(feature = "devnet")]
 mod devnet_dispatch;
+mod event_delivery;
 mod factory_artifacts;
 mod factory_child_origin;
 mod factory_child_session;
@@ -48,6 +49,7 @@ mod fixture_exports;
 #[cfg(any(feature = "devnet", test))]
 mod funding_wallets;
 mod hub;
+mod hub_mutation;
 mod multi_asset_funding;
 mod multi_asset_funding_session;
 mod multi_asset_packages;
@@ -59,6 +61,9 @@ mod multi_asset_signatures;
 mod multi_asset_splice_transaction;
 #[cfg(feature = "devnet")]
 mod multi_asset_supervision;
+#[cfg_attr(not(feature = "devnet"), allow(dead_code))]
+mod operation_runtime;
+mod participant_signer;
 mod persistence;
 mod preproduction;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
@@ -76,6 +81,8 @@ mod watch_config;
 mod watch_cursor;
 #[cfg_attr(not(feature = "devnet"), allow(dead_code))]
 mod watch_policy;
+#[cfg_attr(not(feature = "devnet"), allow(dead_code))]
+mod watch_runtime;
 
 #[derive(Debug, Parser)]
 #[command(name = "morph")]
@@ -102,6 +109,15 @@ enum InvoiceAssetArg {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Durable authenticated webhook consumption of current Hub/Gateway outbox events.
+    EventDelivery(event_delivery::Options),
+    /// Read-only validation of a current runtime database; prints counts, never record payloads.
+    RuntimeStoreValidate {
+        path: PathBuf,
+        /// Protected 32-byte storage-key hex file for an encrypted Gateway database.
+        #[arg(long)]
+        storage_key_file: Option<PathBuf>,
+    },
     /// Inspect a current signed Factory transition; live source/code checks remain native obligations.
     InspectFactoryTransition {
         path: PathBuf,
@@ -155,6 +171,31 @@ enum Command {
         #[command(subcommand)]
         command: multi_asset_funding_session::FundingSessionCommand,
     },
+    /// Serve role-bound signatures for one existing durable participant journal.
+    ParticipantSignerServe {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long = "private-key-file", value_name = "PATH", value_parser = morph_key_input::secp256k1_file)]
+        private_key: morph_key_input::SecretString,
+        /// Handle one request then exit; useful for supervised activation/tests.
+        #[arg(long)]
+        once: bool,
+    },
+    /// Read bounded saved-operation counters without RPC, signing or broadcasting.
+    OperationObservability {
+        #[arg(long)]
+        store: PathBuf,
+        #[arg(long)]
+        metrics: bool,
+    },
+    /// Probe the private key process and its loaded policy without signing or journal mutation.
+    ParticipantSignerReadiness {
+        #[arg(long)]
+        config: PathBuf,
+        /// Emit two fixed gauges instead of JSON; unavailable policy remains zero.
+        #[arg(long)]
+        metrics: bool,
+    },
     /// Negotiate signed multi-asset updates using a durable local signing journal.
     MultiAssetSession {
         #[arg(long)]
@@ -173,6 +214,16 @@ enum Command {
         alert_file: PathBuf,
         #[arg(long)]
         cycles: Option<u64>,
+    },
+    /// Redacted signer-context supervision readiness or fixed metrics; never signing authority.
+    #[cfg(feature = "devnet")]
+    MultiAssetSupervisionReadiness {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        health_file: PathBuf,
+        #[arg(long)]
+        metrics: bool,
     },
     /// Read supervision health; stale or unverified contexts return a failing exit status.
     #[cfg(feature = "devnet")]
@@ -250,7 +301,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Run the Morph Hub API and static UI server.
+    /// Run the Morph Hub JSON API for the native desktop.
     Hub {
         #[command(subcommand)]
         command: HubCommand,
@@ -292,6 +343,15 @@ enum Command {
     PrintWatchPolicyFixture,
     /// Print a sample multi-channel watchtower config.
     PrintWatchConfigFixture,
+    /// Inspect expiring per-channel scan evidence; does not certify publication funding.
+    WatchConfigHealth {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        health: PathBuf,
+        #[arg(long)]
+        metrics: bool,
+    },
     /// Validate a watchtower operator policy.
     ValidateWatchPolicy {
         /// Path to the watchtower policy JSON.
@@ -494,13 +554,13 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum HubCommand {
-    /// Serve the Morph Hub API and production-built UI.
+    /// Serve the Morph Hub JSON API.
     Serve {
         /// Host and port for the hub server.
         #[arg(long, default_value = "127.0.0.1:4617")]
         listen: String,
-        /// Durable hub state file.
-        #[arg(long, default_value = "target/morph-hub/node-state.json")]
+        /// Current runtime database in a private directory; old JSON snapshots are rejected.
+        #[arg(long, default_value = "target/morph-hub/runtime/node.db")]
         state_path: PathBuf,
         /// Local Morph node identity as a 33-byte compressed secp256k1 pubkey, hex without 0x.
         #[arg(long)]
@@ -610,6 +670,54 @@ enum DevnetCommand {
         attempt_log: Option<PathBuf>,
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Run the durable canonical shadow registry and its readiness checks; never forward payments.
+    ShadowService {
+        #[arg(long)]
+        config: PathBuf,
+        #[command(subcommand)]
+        command: devnet::shadow_service::Command,
+    },
+    /// Verify one saved diagnostic candidate; does not run a provider service.
+    ShadowObserve {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        contracts_dir: PathBuf,
+        #[arg(long, default_value_t = 4)]
+        min_confirmations: u64,
+        #[arg(long, default_value_t = 5000)]
+        rpc_budget_ms: u64,
+    },
+    /// Resolve one signed CKB/UDT Batch with independent wallet fees.
+    ConditionalBatch {
+        #[command(subcommand)]
+        command: devnet::conditional_batch_operator::Command,
+    },
+    /// Construct, fee-sign, or submit an exact cooperative bilateral close.
+    MultiAssetClose {
+        #[command(subcommand)]
+        command: devnet::multi_asset_close_operator::Command,
+    },
+    /// Reconcile a saved exact operation; optionally wait for an independent depth without broadcasting.
+    OperationStatus {
+        #[arg(long)]
+        store: PathBuf,
+        #[arg(long)]
+        operation_id: String,
+        #[arg(long, default_value_t = 1)]
+        depth: u64,
+        #[arg(long, default_value_t = 0)]
+        wait_ms: u64,
+    },
+    /// Export a registered fully signed transaction offline; does not broadcast or claim confirmation.
+    OperationExport {
+        #[arg(long)]
+        store: PathBuf,
+        #[arg(long)]
+        operation_id: String,
+        #[arg(long)]
+        output: PathBuf,
     },
     /// Construct exact root funding with explicit per-wallet CKB/token/fee contributions.
     MultiAssetFundingPrepare {
@@ -727,6 +835,18 @@ enum DevnetCommand {
         /// Exercise real 2-to-1 removal and 1-to-2 admission, including a withheld bridge receipt.
         #[arg(long, conflicts_with_all = ["watch_publication", "sponsor_publication"])]
         splice_transitions: bool,
+        /// Exercise external signer loss/restart at each real participant target.
+        #[arg(long)]
+        signer_faults: bool,
+        /// Close the funded channel immediately using independent exact-body signatures.
+        #[arg(long, conflicts_with_all = ["splice_transitions", "watch_publication", "sponsor_publication", "funding_reorg"])]
+        cooperative_close: bool,
+        /// Exercise all eight per-asset UDT condition slots, actual claims and provider-free refunds.
+        #[arg(long, conflicts_with_all = ["splice_transitions", "cooperative_close", "watch_publication", "sponsor_publication", "funding_reorg", "shadow_provider_rpc"])]
+        conditional_settlement: bool,
+        /// Dedicated no-value shadow provider; acceptance harness acknowledges its restart marker.
+        #[arg(long, conflicts_with_all = ["splice_transitions", "cooperative_close"])]
+        shadow_provider_rpc: Option<String>,
         #[arg(long, default_value_t = 100_000_000)]
         fee: u64,
         #[arg(long, default_value_t = 4)]
@@ -980,6 +1100,26 @@ enum DevnetCommand {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::EventDelivery(options) => event_delivery::run(options),
+        Command::RuntimeStoreValidate {
+            path,
+            storage_key_file,
+        } => {
+            let protection = if let Some(key_file) = storage_key_file {
+                let text = morph_key_input::read_secret_file(&key_file)?;
+                let encoded = text.strip_prefix("0x").unwrap_or(&text);
+                let mut key = zeroize::Zeroizing::new([0u8; 32]);
+                hex::decode_to_slice(encoded, key.as_mut()).map_err(|_| {
+                    anyhow::anyhow!("storage key must contain exactly 32 hex-encoded bytes")
+                })?;
+                morph_runtime_store::Protection::encrypted(*key)
+            } else {
+                morph_runtime_store::Protection::private_plaintext()
+            };
+            let store = morph_runtime_store::Store::read_only(&path, protection)?;
+            println!("{}", serde_json::to_string_pretty(&store.validate()?)?);
+            Ok(())
+        }
         Command::InspectFactoryTransition { path, source } => {
             println!(
                 "{}",
@@ -1050,6 +1190,17 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&result)?);
             Ok(())
         }
+        Command::ParticipantSignerServe {
+            config,
+            private_key,
+            once,
+        } => participant_signer::serve(&config, &private_key, once),
+        Command::OperationObservability { store, metrics } => {
+            operation_runtime::observability::run(store, metrics)
+        }
+        Command::ParticipantSignerReadiness { config, metrics } => {
+            participant_signer::readiness::run(config, metrics)
+        }
         Command::MultiAssetSession { session, command } => {
             let result = multi_asset_session::run(&session, command)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
@@ -1066,6 +1217,12 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&result)?);
             Ok(())
         }
+        #[cfg(feature = "devnet")]
+        Command::MultiAssetSupervisionReadiness {
+            config,
+            health_file,
+            metrics,
+        } => multi_asset_supervision::readiness(config, health_file, metrics),
         #[cfg(feature = "devnet")]
         Command::MultiAssetSupervisionHealth {
             config,
@@ -1211,6 +1368,11 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&config)?);
             Ok(())
         }
+        Command::WatchConfigHealth {
+            config,
+            health,
+            metrics,
+        } => watch_config::inspect_health(&config, &health, metrics),
         Command::ValidateWatchPolicy { path, json } => {
             let policy = watch_policy::read_watchtower_policy(&path)?;
             if json {
@@ -1266,8 +1428,8 @@ fn main() -> Result<()> {
                 println!("descriptor_commitment={}", summary.descriptor_commitment);
                 println!("input_since={}", summary.input_since);
                 println!(
-                    "resolved_capacities={},{}",
-                    summary.resolved_capacities[0], summary.resolved_capacities[1]
+                    "resolved_values={}",
+                    serde_json::to_string(&summary.resolved_values)?
                 );
             }
             Ok(())
@@ -1951,6 +2113,38 @@ fn print_fixture() -> Result<()> {
 mod cli_secret_tests {
     use super::*;
     use clap::CommandFactory;
+
+    #[test]
+    fn operational_participant_sign_command_has_no_local_key_entry() {
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                for session in ["multi-asset-session", "multi-asset-funding-session"] {
+                    let args = [
+                        "morph-cli",
+                        session,
+                        "--session",
+                        "/private/session.json",
+                        "sign",
+                        "--target",
+                        if session == "multi-asset-session" {
+                            "update"
+                        } else {
+                            "exit"
+                        },
+                        "--signer-config",
+                        "/private/signer.json",
+                    ];
+                    assert!(Cli::command().try_get_matches_from(args).is_ok());
+                    let mut local = args.to_vec();
+                    local.extend(["--private-key-file", "/private/key"]);
+                    assert!(Cli::command().try_get_matches_from(local).is_err());
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
 
     #[test]
     fn every_private_key_argument_is_a_protected_file_without_raw_env_or_aliases() {

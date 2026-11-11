@@ -32,6 +32,7 @@ pub struct CkbRpcClient {
     retryable_status_max_attempts: usize,
     max_attempts: usize,
     deadline: Option<Instant>,
+    max_response_bytes: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,6 +138,16 @@ impl CkbRpcClient {
         Ok(client)
     }
 
+    /// Participant signing uses the same RPC machinery with a smaller payload
+    /// ceiling and one total budget; no transport retries or unbounded bodies.
+    pub fn new_signer(url: impl Into<String>, budget: Duration) -> Result<Self> {
+        let mut rpc = Self::new_supervision(url, budget)?;
+        // The standard secp data dependency alone is 1 MiB. RPC hex encoding
+        // doubles it and adds JSON metadata, exceeding a 2 MiB response cap.
+        rpc.max_response_bytes = 4 * 1024 * 1024;
+        Ok(rpc)
+    }
+
     pub fn ensure_deadline(&self) -> Result<()> {
         let _ = self.remaining_budget()?;
         Ok(())
@@ -173,6 +184,7 @@ impl CkbRpcClient {
             retryable_status_max_attempts,
             max_attempts: transport_max_attempts.max(retryable_status_max_attempts),
             deadline: None,
+            max_response_bytes: MAX_CKB_RPC_RESPONSE_BYTES,
         })
     }
 
@@ -215,6 +227,12 @@ impl CkbRpcClient {
 
     pub fn genesis_block_hash(&self) -> Result<Option<H256>> {
         self.call_nullable("get_block_hash", json!(["0x0"]))
+    }
+    pub fn header_by_hash(&self, hash: H256) -> Result<Option<ckb_jsonrpc_types::HeaderView>> {
+        self.call_nullable("get_header", json!([hash]))
+    }
+    pub fn block_hash_at(&self, number: u64) -> Result<Option<H256>> {
+        self.call_nullable("get_block_hash", json!([format_quantity(number)]))
     }
 
     pub fn block_by_number(&self, number: u64) -> Result<Option<BlockView>> {
@@ -341,13 +359,11 @@ impl CkbRpcClient {
             let status = response.status();
             if response
                 .content_length()
-                .is_some_and(|length| length > MAX_CKB_RPC_RESPONSE_BYTES as u64)
+                .is_some_and(|length| length > self.max_response_bytes as u64)
             {
-                bail!(
-                    "CKB RPC response for {method} exceeds the {MAX_CKB_RPC_RESPONSE_BYTES}-byte limit"
-                );
+                bail!("CKB RPC response for {method} exceeds the configured byte limit");
             }
-            let body = read_bounded_rpc_body(response, MAX_CKB_RPC_RESPONSE_BYTES)
+            let body = read_bounded_rpc_body(response, self.max_response_bytes)
                 .context("failed to read CKB RPC response body")?;
             if !status.is_success() {
                 if is_retryable_rpc_status(status) && attempt < self.retryable_status_max_attempts {
@@ -548,5 +564,22 @@ mod tests {
     fn bounded_rpc_body_rejects_body_over_limit() {
         let error = read_bounded_rpc_body(Cursor::new(b"12345"), 4).unwrap_err();
         assert!(error.to_string().contains("exceeds the 4-byte limit"));
+    }
+
+    #[test]
+    fn signer_rpc_budget_fits_standard_secp_data_but_remains_bounded() {
+        let rpc =
+            CkbRpcClient::new_signer("http://127.0.0.1:18114", Duration::from_secs(3)).unwrap();
+        let secp_response = vec![b'0'; 2 * 1024 * 1024 + 414];
+        assert!(read_bounded_rpc_body(Cursor::new(secp_response), rpc.max_response_bytes).is_ok());
+        assert!(
+            read_bounded_rpc_body(
+                Cursor::new(vec![b'0'; rpc.max_response_bytes + 1]),
+                rpc.max_response_bytes
+            )
+            .is_err()
+        );
+        assert_eq!(rpc.max_response_bytes, 4 * 1024 * 1024);
+        assert!(rpc.deadline.is_some());
     }
 }

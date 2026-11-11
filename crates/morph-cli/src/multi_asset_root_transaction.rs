@@ -170,11 +170,13 @@ pub(crate) mod tests {
         let mut settlement = before.settlement.clone();
         settlement.payouts[0].values[0].business_ckb -= 1_000_000_000;
         let pending = ConditionalBatch {
+            asset: morph_core::VaultAsset::Ckb,
             batch_id: [71; 32],
             application_context_commitment: [72; 32],
             participants: std::array::from_fn(|i| ConditionalParticipant {
                 settlement_lock_hash: settlement.participant_lock_hashes[i],
                 settled_capacity: settlement.payouts[0].values[i].capacity().unwrap(),
+                settled_amount: 0,
             }),
             transfers: vec![ConditionalTransferSpec {
                 transfer_id: [73; 32],
@@ -189,10 +191,10 @@ pub(crate) mod tests {
                 refund_after_block: 100,
             }],
         };
-        settlement.capability = MultiAssetSettlementCapability::CkbConditional {
+        settlement.capability = MultiAssetSettlementCapability::Conditional {
             batch_code_hash: [75; 32],
             batch_hash_type: 2,
-            batch: Box::new(pending),
+            batches: vec![pending],
         };
         terms.descriptor_hex = canonical_hex(&settlement.encode().unwrap());
         let prepared = terms.build(chain, authority, &cells, 100_000_000).unwrap();

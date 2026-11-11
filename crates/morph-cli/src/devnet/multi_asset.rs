@@ -28,6 +28,10 @@ pub struct MultiAssetSmokeOptions {
     pub shared_funding: bool,
     pub funding_reorg: bool,
     pub splice_transitions: bool,
+    pub signer_faults: bool,
+    pub cooperative_close: bool,
+    pub conditional_settlement: bool,
+    pub shadow_provider_rpc: Option<String>,
     pub fee: u64,
     pub finalise_since: u64,
     pub mine_blocks: u64,
@@ -162,6 +166,14 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         "smoke requires a positive fee and mining budget"
     );
     ensure!(
+        !options.cooperative_close
+            || (!options.splice_transitions
+                && !options.watch_publication
+                && !options.sponsor_publication
+                && !options.funding_reorg),
+        "close acceptance is a separate terminal path"
+    );
+    ensure!(
         !options.watch_publication || options.publication_profile.is_some(),
         "watch acceptance requires a publication profile"
     );
@@ -207,13 +219,28 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     let vault_code = contract_by_name(&contracts, "morph-vault-lock")?;
     let xudt_code = contract_by_name(&contracts, "morph-devnet-xudt")?;
     let secp = find_secp256k1_cell_dep(rpc)?;
-    let recovery_deps = vec![
+    let mut recovery_deps = vec![
         state_code.cell_dep.clone(),
         lock_code.cell_dep.clone(),
         vault_code.cell_dep.clone(),
         xudt_code.cell_dep.clone(),
         secp.clone(),
     ];
+    if options.conditional_settlement {
+        ensure!(
+            !options.watch_publication
+                && !options.splice_transitions
+                && !options.cooperative_close
+                && !options.funding_reorg
+                && options.shadow_provider_rpc.is_none(),
+            "conditional acceptance is a separate terminal campaign"
+        );
+        recovery_deps.push(
+            contract_by_name(&contracts, "morph-batch-lock")?
+                .cell_dep
+                .clone(),
+        );
+    }
     let seed = zeroize::Zeroizing::new(
         hex::decode(options.private_key.trim_start_matches("0x"))
             .context("invalid devnet funding key")?,
@@ -538,7 +565,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         ensure!(
             funding_run(
                 session,
-                FundingSessionCommand::Sign {
+                FundingSessionCommand::SignLocal {
                     target: FundingTarget::Creation,
                     private_key: secret.clone()
                 }
@@ -562,12 +589,18 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         .into_iter()
         .enumerate()
         {
-            let receipt = funding_run(
+            let receipt = crate::participant_signer::acceptance::sign(
+                rpc,
                 session,
-                FundingSessionCommand::Sign {
-                    target,
-                    private_key: secret.clone(),
+                match target {
+                    FundingTarget::Exit => morph_packages::signer_protocol::Target::RootExit,
+                    FundingTarget::Creation => {
+                        morph_packages::signer_protocol::Target::RootCreation
+                    }
                 },
+                secret,
+                &unsigned_exit,
+                options.signer_faults,
             )?;
             crate::persistence::write_private_atomic(
                 &session_dir.join(format!("root-{label}-{index}.json")),
@@ -806,6 +839,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
         .ok_or_else(|| anyhow!("missing activation hash"))?;
     state_point = OutPoint::new(parse_h256(activation_hash)?.pack(), 0);
     let mut publications = Vec::new();
+    let mut publication_budgets = Vec::new();
     let mut sponsor_funding = Vec::new();
     let mut watch_passes = Vec::new();
     let mut operator_checks = vec!["activation_reconstructed_from_funding_evidence"];
@@ -885,6 +919,35 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
     if options.shared_funding {
         operator_checks.push("three_distinct_funders_signed_only_their_own_groups");
     }
+    if options.cooperative_close {
+        let closure = super::multi_asset_close_acceptance::run(
+            rpc,
+            &options,
+            [&alice_session, &bob_session],
+            &owner_lock,
+            &initial_recovery,
+            state_point,
+            &recovery_deps,
+        )?;
+        return Ok(
+            json!({"schema":"morph.cooperative_close_devnet_acceptance.v1", "asset_count":options.asset_count,"fund":fund,"activation":activation,"operator_checks":operator_checks,"close":closure}),
+        );
+    }
+    let mut shadow_service = options
+        .shadow_provider_rpc
+        .as_deref()
+        .map(|endpoint| {
+            super::shadow_service::acceptance::start(
+                rpc,
+                &options,
+                &alice_session,
+                &bob_session,
+                &initial_recovery,
+                &state_point,
+                endpoint,
+            )
+        })
+        .transpose()?;
     if options.splice_transitions {
         let transitions = super::multi_asset_splice_acceptance::run(
             rpc,
@@ -917,7 +980,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
                 from_block: funding_block_number,
                 cursor_file: options
                     .store_dir
-                    .join(format!("watch-{}.json", hex::encode(channel_id))),
+                    .join(format!("watch-{}.db", hex::encode(channel_id))),
                 alert_file: options
                     .store_dir
                     .join(format!("watch-alerts-{}.jsonl", hex::encode(channel_id))),
@@ -932,7 +995,6 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
                 max_fee: publication_max_fee,
                 mine_blocks: options.mine_blocks,
                 watch_policy: None,
-                alert_webhook_url: None,
                 auto_fund_sponsor: None,
             },
         )?;
@@ -953,6 +1015,9 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             for payout in &mut settlement.payouts {
                 payout.values[0].amount = 400;
                 payout.values[1].amount = 600;
+            }
+            if options.conditional_settlement {
+                super::typed_conditional_acceptance::arm(rpc, &options, &package, &mut settlement)?;
             }
             let proposal = run(
                 &alice_session,
@@ -976,12 +1041,13 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             .into_iter()
             .enumerate()
             {
-                let signature = run(
+                let signature = crate::participant_signer::acceptance::sign(
+                    rpc,
                     session,
-                    SessionCommand::Sign {
-                        target: crate::multi_asset_session::SigningTarget::Update,
-                        private_key: secret.clone(),
-                    },
+                    morph_packages::signer_protocol::Target::Update,
+                    secret,
+                    &package,
+                    options.signer_faults,
                 )?;
                 let path = session_dir.join(format!("signature-{index}.json"));
                 fs::write(&path, serde_json::to_vec(&signature)?)?;
@@ -1192,6 +1258,75 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
                 "unexpected sponsor operation rejection: {error}"
             );
             let preview = super::multi_asset_operator::transact(rpc, operator_options())?;
+            if let Some(profile_path) = options.publication_profile.as_ref() {
+                let mut prepared = operator_options();
+                prepared.publication_profile = Some(profile_path.clone());
+                prepared.attempt_log =
+                    Some(options.store_dir.join("budget-preview-attempts.jsonl"));
+                let quote = super::multi_asset_operator::transact(rpc, prepared)?;
+                let budget: crate::publication::PublicationBudget =
+                    serde_json::from_value(quote["publication_budget"].clone())?;
+                ensure!(
+                    budget.ready(),
+                    "native exact-source Sponsor budget was not ready"
+                );
+                let crate::publication::PublicationBudget::Verified { initial_fee, .. } = budget
+                else {
+                    return Err(anyhow!("native budget lacks verified fee"));
+                };
+                let mut limited = operator_options();
+                limited.publication_profile = Some(profile_path.clone());
+                limited.attempt_log = Some(options.store_dir.join("budget-preview-attempts.jsonl"));
+                limited.fee = 1;
+                limited.max_fee = initial_fee;
+                let limited = super::multi_asset_operator::transact(rpc, limited)?;
+                let limited_budget: crate::publication::PublicationBudget =
+                    serde_json::from_value(limited["publication_budget"].clone())?;
+                ensure!(
+                    !limited_budget.ready(),
+                    "initial-fee-only allowance masquerades as full replacement headroom"
+                );
+                publication_budgets.push(json!({"verified":quote["publication_budget"],
+                    "limited":limited["publication_budget"]}));
+                if number == 1 {
+                    let watched = super::multi_asset_watch::watch(
+                        rpc,
+                        super::multi_asset_watch::Options {
+                            contracts_dir: options.contracts_dir.clone(),
+                            fee_authorization: fee_authorization.clone(),
+                            fee_out_point: publication_fee_point.clone(),
+                            store_dir: options.store_dir.clone(),
+                            channel_id: format!("0x{}", hex::encode(channel_id)),
+                            from_block: funding_block_number,
+                            cursor_file: options.store_dir.join("budget-watch-cursor.db"),
+                            alert_file: options.store_dir.join("budget-watch-alerts.jsonl"),
+                            publication_profile: profile_path.clone(),
+                            attempt_log: options.store_dir.join("budget-preview-attempts.jsonl"),
+                            detection_depth: 1,
+                            timeout_secs: 2,
+                            poll_ms: 10,
+                            max_fee: publication_max_fee,
+                            mine_blocks: 0,
+                            watch_policy: None,
+                            auto_fund_sponsor: None,
+                        },
+                    )?;
+                    crate::persistence::write_private_immutable(
+                        &options.store_dir.join("budget-passive-watch.json"),
+                        &serde_json::to_vec(&watched)?,
+                    )?;
+                    let watch_budget: crate::publication::PublicationBudget =
+                        serde_json::from_value(watched["publication_budget"].clone())?;
+                    ensure!(
+                        watched["caught_up"] == true
+                            && watched["publication"].is_null()
+                            && watch_budget.ready(),
+                        "passive watcher failed live Sponsor quote or submitted unexpectedly"
+                    );
+                    publication_budgets
+                        .push(json!({"passive_watch":watched["publication_budget"]}));
+                }
+            }
             let tx: ckb_jsonrpc_types::Transaction =
                 serde_json::from_value(preview["transaction"].clone())?;
             let fee_witness = tx
@@ -1220,7 +1355,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             let from_block = funding_block_number;
             let cursor_path = options
                 .store_dir
-                .join(format!("watch-{}.json", hex::encode(channel_id)));
+                .join(format!("watch-{}.db", hex::encode(channel_id)));
             let alert_path = options
                 .store_dir
                 .join(format!("watch-alerts-{}.jsonl", hex::encode(channel_id)));
@@ -1241,7 +1376,6 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
                 max_fee: publication_max_fee,
                 mine_blocks: options.mine_blocks,
                 watch_policy: None,
-                alert_webhook_url: None,
                 auto_fund_sponsor: None,
             };
             // A full signature conflict is retained outside the active store
@@ -1285,7 +1419,7 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             late_origin.from_block = from_block + 1;
             late_origin.cursor_file = options
                 .store_dir
-                .join(format!("late-origin-{}.json", hex::encode(channel_id)));
+                .join(format!("late-origin-{}.db", hex::encode(channel_id)));
             let error = super::multi_asset_watch::watch(rpc, late_origin)
                 .err()
                 .ok_or_else(|| anyhow!("watch accepted a late scan origin"))?;
@@ -1462,10 +1596,26 @@ pub fn smoke(rpc: &CkbRpcClient, options: MultiAssetSmokeOptions) -> Result<Valu
             "finalised Vault remains live"
         );
     }
+    let conditional_settlement = if options.conditional_settlement {
+        Some(super::typed_conditional_acceptance::resolve(
+            rpc,
+            &options,
+            &package,
+            &recovery_deps,
+            &finalise,
+            [&alice_session, &bob_session],
+        )?)
+    } else {
+        None
+    };
+    let shadow_report = shadow_service
+        .as_mut()
+        .map(|service| service.finish())
+        .transpose()?;
     Ok(
-        json!({"schema": "morph.multi_asset_devnet_acceptance.v1", "channel_id": format!("0x{}", hex::encode(channel_id)),
+        json!({"shadow_service":shadow_report,"conditional_settlement":conditional_settlement,"schema": "morph.multi_asset_devnet_acceptance.v1", "channel_id": format!("0x{}", hex::encode(channel_id)),
         "asset_count": assets.len(), "shared_funding":options.shared_funding, "operator_checks": operator_checks, "watch_passes":watch_passes, "issuance": issuance, "fund": fund, "funding_replay":funding_replay,"activation": activation,
-        "publications": publications, "sponsor_funding": sponsor_funding, "finalise": finalise, "recovery_packages": package_paths,
+        "publications": publications, "publication_budgets":publication_budgets, "sponsor_funding": sponsor_funding, "finalise": finalise, "recovery_packages": package_paths,
         "pre_funding_recovery_package": pre_funding_recovery.display().to_string(),"root_funding_terms":terms_path,"root_funding_draft":draft_path,
         "summary": StoredMultiAssetPackage::from_recovery(&package, &recovery_deps)?.validate()?}),
     )
@@ -1497,7 +1647,6 @@ fn service_watch_acceptance(
     config.defaults.publication_profile = Some(absolute(&options.publication_profile)?);
     config.defaults.publication_attempt_log = Some(absolute(&options.attempt_log)?);
     config.defaults.alert_file = Some(absolute(&options.alert_file)?);
-    config.defaults.alert_webhook_url = None;
     config.defaults.detection_depth = Some(options.detection_depth);
     config.defaults.timeout_secs = Some(options.timeout_secs);
     config.defaults.poll_ms = Some(options.poll_ms);
@@ -1525,6 +1674,21 @@ fn service_watch_acceptance(
     let policy_path = store.join("current-watch-service-policy.json");
     config.defaults.watch_policy = Some(policy_path.clone());
     crate::persistence::write_private_atomic(&policy_path, &serde_json::to_vec_pretty(&policy)?)?;
+    // Real coordinator isolation: an explicitly unavailable first resource must
+    // not prevent the genuine channel's sponsored canonical correction.
+    let mut unavailable = config.channels[0].clone();
+    unavailable.channel_id = format!("0x{}", hex::encode([0xfe; 32]));
+    unavailable.store_dir = Some(store.join("deliberately-unavailable-resource"));
+    unavailable.cursor_file = Some(store.join("unavailable-cursor.db"));
+    let mut unavailable_policy = policy.clone();
+    unavailable_policy.channel_id = Some(unavailable.channel_id.clone());
+    let unavailable_policy_path = store.join("unavailable-watch-policy.json");
+    crate::persistence::write_private_atomic(
+        &unavailable_policy_path,
+        &serde_json::to_vec_pretty(&unavailable_policy)?,
+    )?;
+    unavailable.watch_policy = Some(unavailable_policy_path);
+    config.channels.insert(0, unavailable);
     let config_path = store.join("current-watch-service-config.json");
     crate::persistence::write_private_atomic(&config_path, &serde_json::to_vec_pretty(&config)?)?;
     let health_path = store.join("current-watch-service-health.json");
@@ -1549,6 +1713,12 @@ fn service_watch_acceptance(
     ensure!(
         service.completed_passes == 1
             && service.published_count == 1
+            && service
+                .last_pass
+                .as_ref()
+                .is_some_and(|p| p.channel_count == 2
+                    && p.failed_count == 1
+                    && !p.channels[0].observation.completed)
             && service.stopped_reason == "publication",
         "current watch service failed canonical publication: {:?}",
         service.last_error
@@ -1556,7 +1726,7 @@ fn service_watch_acceptance(
     let mut pass = service
         .last_pass
         .as_ref()
-        .and_then(|report| report.channels.first())
+        .and_then(|report| report.channels.get(1))
         .context("watch service returned no current pass")?
         .report
         .clone();

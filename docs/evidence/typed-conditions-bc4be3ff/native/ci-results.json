@@ -1,0 +1,3958 @@
+{
+  "schema": "morph.public_local_ci_evidence.v1",
+  "original_log_sha256": "63608e4804a38591884fbc73dd23c6a1314d1bcb919e70d6f92b0c143f357242",
+  "original_log_size_bytes": 135512,
+  "publication": "allowlisted result lines only; original stdout omitted",
+  "local_reporting_only": true,
+  "contract_vm_tests": {
+    "passed": 110,
+    "failed": 0,
+    "ignored": 0
+  },
+  "result_lines": [
+    {
+      "line": 68,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 73,
+      "result": "test cli_secret_tests::resolves_hub_auth_token_from_file ... ok"
+    },
+    {
+      "line": 74,
+      "result": "test cli_secret_tests::rejects_ambiguous_hub_auth_token_sources ... ok"
+    },
+    {
+      "line": 75,
+      "result": "test cli_secret_tests::rejects_empty_hub_auth_token_file ... ok"
+    },
+    {
+      "line": 76,
+      "result": "test cli_secret_tests::rotates_hub_auth_token_on_restart ... ok"
+    },
+    {
+      "line": 77,
+      "result": "test cli_secret_tests::devnet_feature_requires_devnet_only_confirmation ... ok"
+    },
+    {
+      "line": 78,
+      "result": "test cli_secret_tests::every_private_key_argument_is_a_protected_file_without_raw_env_or_aliases ... ok"
+    },
+    {
+      "line": 79,
+      "result": "test cli_secret_tests::retired_raw_key_argument_forms_reject_without_echoing_the_value ... ok"
+    },
+    {
+      "line": 80,
+      "result": "test cli_secret_tests::operational_participant_sign_command_has_no_local_key_entry ... ok"
+    },
+    {
+      "line": 81,
+      "result": "test admission_channel::tests::public_conditional_update_policy_rejects_new_long_or_mature_deadlines ... ok"
+    },
+    {
+      "line": 82,
+      "result": "test admission_channel::tests::conditional_admission_preserves_identical_mature_batches_while_another_asset_resolves ... ok"
+    },
+    {
+      "line": 83,
+      "result": "test admission_channel::tests::admission_binds_exact_body_complete_artifacts_and_unchanged_configuration ... ok"
+    },
+    {
+      "line": 84,
+      "result": "test admission_channel::tests::admission_rejects_excess_custody_and_tokens_and_keeps_types_with_zero_participant_balances ... ok"
+    },
+    {
+      "line": 85,
+      "result": "test admission_channel::tests::allowlisted_type_still_requires_exact_reviewed_devnet_issuer_and_bounded_actual_fee ... ok"
+    },
+    {
+      "line": 86,
+      "result": "test devnet::multi_asset_operator::activation_tests::activation_recovers_original_descriptor_without_reusing_creation_signatures ... ok"
+    },
+    {
+      "line": 87,
+      "result": "test conditional_packages::tests::fixture_is_linked_to_complete_signed_current_custody ... ok"
+    },
+    {
+      "line": 88,
+      "result": "test devnet::multi_asset_operator::activation_tests::activation_recovers_creation_evidence_from_a_splice_funding_witness ... ok"
+    },
+    {
+      "line": 89,
+      "result": "test devnet::multi_asset_operator::sponsor_tests::sponsor_fee_authority_checks_identity_range_and_both_budget_bounds ... ok"
+    },
+    {
+      "line": 90,
+      "result": "test devnet::factory_child_close::tests::controlled_fork_waits_for_canonical_tip_and_keeps_one_total_deadline ... ok"
+    },
+    {
+      "line": 91,
+      "result": "test devnet::multi_asset_operator::sponsor_tests::sponsor_mode_needs_only_public_change_identity_and_redacts_wallet_debug ... ok"
+    },
+    {
+      "line": 92,
+      "result": "test devnet::multi_asset_operator::tests::dependency_resolution_distinguishes_code_data_hash_from_type_identity ... ok"
+    },
+    {
+      "line": 93,
+      "result": "test devnet::multi_asset_operator::activation_tests::activation_rejects_foreign_context_provenance_and_missing_creation_evidence ... ok"
+    },
+    {
+      "line": 94,
+      "result": "test devnet::multi_asset_operator::conditional_tests::future_batch_executor_requires_live_code_matching_approved_artifact ... ok"
+    },
+    {
+      "line": 95,
+      "result": "test admission::tests::stable_private_ledger_restarts_and_missing_history_cannot_reinitialize ... ok"
+    },
+    {
+      "line": 96,
+      "result": "test devnet::multi_asset_operator::conditional_tests::public_finalisation_builds_signed_batch_without_spending_token_or_carrier_lanes ... ok"
+    },
+    {
+      "line": 97,
+      "result": "test devnet::multi_asset_watch::tests::service_policy_checks_actual_sponsor_budget_and_webhook_before_rpc ... ok"
+    },
+    {
+      "line": 98,
+      "result": "test devnet::multi_asset_splice_operator::tests::splice_submission_enforces_independent_fee_and_per_type_conservation ... ok"
+    },
+    {
+      "line": 99,
+      "result": "test devnet::shadow_observer::tests::installed_artifact_pins_script_identity_and_hash_type ... ok"
+    },
+    {
+      "line": 100,
+      "result": "test devnet::multi_asset_splice_operator::tests::splice_wallet_refuses_foreign_inputs_stolen_change_and_unregistered_assets ... ok"
+    },
+    {
+      "line": 101,
+      "result": "test devnet::shadow_observer::tests::origin_is_strict_and_does_not_accept_legacy_aliases ... ok"
+    },
+    {
+      "line": 102,
+      "result": "test devnet::multi_asset_operator::conditional_tests::public_finalisation_rejects_mismatched_descriptor_or_nonsettling_source ... ok"
+    },
+    {
+      "line": 103,
+      "result": "test devnet::multi_asset_watch::tests::shared_scanner_recognises_current_profile_and_rejects_fake_authority ... ok"
+    },
+    {
+      "line": 104,
+      "result": "test devnet::shadow_service::tests::configuration_pins_paths_budgets_and_rejects_implicit_or_remote_credentials ... ok"
+    },
+    {
+      "line": 105,
+      "result": "test devnet::conditional_batch_operator::tests::batch_draft_reconstructs_every_payout_and_cannot_spend_the_batch_for_fees ... ok"
+    },
+    {
+      "line": 106,
+      "result": "test devnet::multi_asset_splice_operator::tests::native_builder_replaces_assets_and_returns_exact_typed_change ... ok"
+    },
+    {
+      "line": 107,
+      "result": "test devnet::shadow_service::tests::protected_provider_token_and_config_never_echo_contents ... ok"
+    },
+    {
+      "line": 108,
+      "result": "test devnet::multi_asset_operator::activation_tests::factory_child_activation_uses_public_parent_authority_and_original_child_terms ... ok"
+    },
+    {
+      "line": 109,
+      "result": "test devnet::tests::block_confirmations_follow_the_latest_tip ... ok"
+    },
+    {
+      "line": 110,
+      "result": "test devnet::tests::current_observer_uses_shared_40_and_72_byte_type_args ... ok"
+    },
+    {
+      "line": 111,
+      "result": "test devnet::tests::generic_rpc_errors_remain_indeterminate ... ok"
+    },
+    {
+      "line": 112,
+      "result": "test devnet::tests::parses_ckb_script_failure ... ok"
+    },
+    {
+      "line": 113,
+      "result": "test devnet::shadow_observer::tests::orphaned_inclusion_and_forged_body_are_rejected ... ok"
+    },
+    {
+      "line": 114,
+      "result": "test devnet::shadow_observer::tests::live_bytes_must_equal_canonical_bytes ... ok"
+    },
+    {
+      "line": 115,
+      "result": "test devnet::tests::publication_deadline_rejects_exhausted_challenge_window ... ok"
+    },
+    {
+      "line": 116,
+      "result": "test devnet::tests::publication_deadline_reserves_reorg_failover_and_safety_blocks ... ok"
+    },
+    {
+      "line": 117,
+      "result": "test devnet::tests::publication_statuses_have_explicit_terminal_dispositions ... ok"
+    },
+    {
+      "line": 118,
+      "result": "test devnet::tests::participant_pubkey_lock_matches_private_key_lock ... ok"
+    },
+    {
+      "line": 119,
+      "result": "test devnet::tests::sponsor_owner_validation_rejects_truncated_policy_without_panicking ... ok"
+    },
+    {
+      "line": 120,
+      "result": "test devnet::tests::sponsor_owner_validation_uses_canonical_policy_layout ... ok"
+    },
+    {
+      "line": 121,
+      "result": "test devnet::tests::strict_sponsor_range_accepts_default_window ... ok"
+    },
+    {
+      "line": 122,
+      "result": "test devnet::tests::uninitialized_cursor_without_hash_is_rescanned ... ok"
+    },
+    {
+      "line": 123,
+      "result": "test devnet::tests::strict_sponsor_range_rejects_unbounded_policy ... ok"
+    },
+    {
+      "line": 124,
+      "result": "test devnet::shadow_observer::tests::spent_parent_is_history_but_never_live_custody ... ok"
+    },
+    {
+      "line": 125,
+      "result": "test devnet::tests::watch_cursor_canonicality_accepts_matching_hash ... ok"
+    },
+    {
+      "line": 126,
+      "result": "test devnet::tests::watch_cursor_canonicality_resets_on_reorg ... ok"
+    },
+    {
+      "line": 127,
+      "result": "test devnet::tests::watch_cursor_for_state_records_observed_funding_anchor ... ok"
+    },
+    {
+      "line": 128,
+      "result": "test devnet::tests::watch_cursor_for_state_preserves_previous_observation_when_idle ... ok"
+    },
+    {
+      "line": 129,
+      "result": "test event_delivery::health::tests::probe_cannot_extend_a_lease_that_expires_during_validation_or_after_monotonic_budget ... ok"
+    },
+    {
+      "line": 130,
+      "result": "test event_delivery::health::tests::metrics_are_fixed_and_do_not_export_bindings_or_fake_zero_backlogs ... ok"
+    },
+    {
+      "line": 131,
+      "result": "test event_delivery::health::tests::unresolved_source_dead_letters_age_and_archive_each_fail_readiness ... ok"
+    },
+    {
+      "line": 132,
+      "result": "test event_delivery::health::tests::wall_clock_changes_boot_changes_and_wrong_generation_cannot_extend_heartbeat ... ok"
+    },
+    {
+      "line": 133,
+      "result": "test event_delivery::health::tests::heartbeat_writer_cannot_replace_another_generation_or_a_database ... ok"
+    },
+    {
+      "line": 134,
+      "result": "test devnet::conditional_batch_operator::tests::typed_batch_draft_preserves_full_u128_quantity_and_independent_capacities ... ok"
+    },
+    {
+      "line": 135,
+      "result": "test devnet::shadow_service::tests::missing_authority_revokes_saved_observation_and_keeps_readiness_false ... ok"
+    },
+    {
+      "line": 136,
+      "result": "test devnet::shadow_service::tests::real_worker_refuses_second_owner_and_reports_stopped_after_finite_run ... ok"
+    },
+    {
+      "line": 137,
+      "result": "test devnet::multi_asset_watch::tests::scan_identity_checks_saved_network_and_all_three_script_identities ... ok"
+    },
+    {
+      "line": 138,
+      "result": "test devnet::shadow_service::tests::readiness_requires_current_config_store_revision_worker_and_both_clocks ... ok"
+    },
+    {
+      "line": 139,
+      "result": "test factory_packets::tests::factory_public_right_quantity_preserves_full_u128_without_json_numbers ... ok"
+    },
+    {
+      "line": 140,
+      "result": "test devnet::tests::watchtower_state_detection_requires_authentic_state_scripts ... ok"
+    },
+    {
+      "line": 141,
+      "result": "test admission_channel::tests::fresh_admission_rechecks_delayed_and_reorganized_conditional_horizons ... ok"
+    },
+    {
+      "line": 142,
+      "result": "test conditional_packages::tests::standalone_resolution_checks_preimages_refund_clock_and_complete_witness ... ok"
+    },
+    {
+      "line": 143,
+      "result": "test devnet::multi_asset_watch::tests::saved_packages_are_selected_per_context_and_conflicting_votes_fail_closed ... ok"
+    },
+    {
+      "line": 144,
+      "result": "test conditional_packages::tests::standalone_package_rejects_unsigned_detached_or_noncanonical_shapes ... ok"
+    },
+    {
+      "line": 145,
+      "result": "test factory_packets::tests::factory_public_schema_rejects_missing_nulls_unknown_fields_and_noncanonical_values ... ok"
+    },
+    {
+      "line": 146,
+      "result": "test factory_root_transaction::tests::factory_root_public_terms_require_canonical_decimal_and_explicit_asset_fields ... ok"
+    },
+    {
+      "line": 147,
+      "result": "test factory_session::tests::factory_signer_process_crash_fixture ... ok"
+    },
+    {
+      "line": 148,
+      "result": "test admission::tests::exact_shape_rejects_zero_token_rights_and_unwithdrawable_allocations ... ok"
+    },
+    {
+      "line": 149,
+      "result": "test admission::tests::late_history_import_and_combined_pilot_capacity_fail_closed ... ok"
+    },
+    {
+      "line": 150,
+      "result": "test factory_packets::tests::factory_public_signature_receipt_is_bound_to_exact_request_role_and_member ... ok"
+    },
+    {
+      "line": 151,
+      "result": "test factory_root_transaction::tests::factory_root_rejects_unbacked_convertible_rights_and_wrong_membership ... ok"
+    },
+    {
+      "line": 152,
+      "result": "test factory_root_transaction::tests::factory_root_uses_current_header_and_shared_exact_wallet_budgets ... ok"
+    },
+    {
+      "line": 153,
+      "result": "test factory_packets::tests::factory_public_request_and_custody_roundtrip_exact_current_root ... ok"
+    },
+    {
+      "line": 154,
+      "result": "test factory_packets::tests::factory_request_policy_rejects_unlisted_future_type_even_with_zero_claims ... ok"
+    },
+    {
+      "line": 155,
+      "result": "test admission::tests::four_distinct_root_factories_exhaust_the_shared_active_slot_limit ... ok"
+    },
+    {
+      "line": 156,
+      "result": "test factory_child_origin::tests::child_origin_archive_rejects_tampering_and_cannot_replace_active_authority ... ok"
+    },
+    {
+      "line": 157,
+      "result": "test admission::tests::fresh_bilateral_signing_reconciles_orphaned_parent_closure_before_reusing_reservation ... ok"
+    },
+    {
+      "line": 158,
+      "result": "test factory_session::tests::failed_checkpoint_or_record_persistence_never_releases_a_factory_receipt ... ok"
+    },
+    {
+      "line": 159,
+      "result": "test admission::tests::bilateral_splice_peaks_and_factory_children_share_one_atomic_budget ... ok"
+    },
+    {
+      "line": 160,
+      "result": "test fixture_exports::factory_signer_fixture_matches_native_current_root_constructor ... ok"
+    },
+    {
+      "line": 161,
+      "result": "test factory_session::tests::factory_process_exit_preserves_reservation_and_lost_signature_receipt_is_recoverable ... ok"
+    },
+    {
+      "line": 162,
+      "result": "test hub::health::tests::actual_store_probe_checks_revision_and_current_schema ... ok"
+    },
+    {
+      "line": 163,
+      "result": "test factory_packets::tests::factory_public_review_requires_verified_delivery_before_strict_signing_decode ... ok"
+    },
+    {
+      "line": 164,
+      "result": "test factory_delivery::tests::failed_private_persistence_or_acknowledgement_keeps_parent_unsigned_and_retryable ... ok"
+    },
+    {
+      "line": 165,
+      "result": "test hub::health::tests::asynchronous_probe_recovers_without_holding_request_lock_or_exposing_paths ... ok"
+    },
+    {
+      "line": 166,
+      "result": "test factory_delivery::tests::native_child_delivery_persists_private_exit_then_attaches_exact_public_receipts ... ok"
+    },
+    {
+      "line": 167,
+      "result": "test hub::tests::api_auth_is_required_without_explicit_loopback_escape ... ok"
+    },
+    {
+      "line": 168,
+      "result": "test hub::tests::auth_tokens_are_hashed_before_fixed_size_comparison ... ok"
+    },
+    {
+      "line": 169,
+      "result": "test factory_transaction::tests::withheld_terminal_materialisation_keeps_explicit_reduced_escape_available ... ok"
+    },
+    {
+      "line": 170,
+      "result": "test hub::tests::auth_token_protects_api_routes ... ok"
+    },
+    {
+      "line": 171,
+      "result": "test factory_child_origin::tests::child_origin_binds_private_exit_to_exact_authorized_parent_and_context ... ok"
+    },
+    {
+      "line": 172,
+      "result": "test hub::tests::ckb_channel_amounts_must_fit_u64_quantities ... ok"
+    },
+    {
+      "line": 173,
+      "result": "test factory_transaction::tests::typed_native_release_and_deposit_keep_token_domains_and_external_ckb_separate ... ok"
+    },
+    {
+      "line": 174,
+      "result": "test hub::tests::decode_invoice_marks_status_received ... ok"
+    },
+    {
+      "line": 175,
+      "result": "test factory_transaction::tests::preparation_rejects_wrong_wallet_ownership_contributions_rights_and_source_data ... ok"
+    },
+    {
+      "line": 176,
+      "result": "test hub::health::tests::expired_or_revision_mismatched_observation_never_grants_readiness ... ok"
+    },
+    {
+      "line": 177,
+      "result": "test hub::tests::existing_state_file_must_match_requested_network ... ok"
+    },
+    {
+      "line": 178,
+      "result": "test hub::tests::channel_api_flow_opens_splices_publishes_and_finalises ... ok"
+    },
+    {
+      "line": 179,
+      "result": "test hub::tests::event_stream_uses_api_auth_and_cursor_ordering ... ok"
+    },
+    {
+      "line": 180,
+      "result": "test hub::tests::conditional_source_registry_rejects_alternate_evidence_and_stale_admission ... ok"
+    },
+    {
+      "line": 181,
+      "result": "test factory_transaction::tests::native_factory_prepares_all_current_nonchild_roles_without_another_wire_or_wallet_engine ... ok"
+    },
+    {
+      "line": 182,
+      "result": "test factory_transaction::tests::external_child_parties_receive_private_exits_without_gaining_factory_authority ... ok"
+    },
+    {
+      "line": 183,
+      "result": "test hub::tests::hub_never_serves_files_or_a_browser_application ... ok"
+    },
+    {
+      "line": 184,
+      "result": "test factory_transaction::tests::child_preparation_is_public_only_and_parent_authority_waits_for_both_private_exits ... ok"
+    },
+    {
+      "line": 185,
+      "result": "test hub::tests::invoice_creation_rejects_excessive_expiry ... ok"
+    },
+    {
+      "line": 186,
+      "result": "test hub::tests::malformed_watchtower_alert_file_does_not_break_state_response ... ok"
+    },
+    {
+      "line": 187,
+      "result": "test hub::health::tests::liveness_does_not_wait_for_store_and_busy_scope_is_not_ready ... ok"
+    },
+    {
+      "line": 188,
+      "result": "test hub::tests::hub_state_file_is_owner_only_and_redacts_invoice_preimage ... ok"
+    },
+    {
+      "line": 189,
+      "result": "test hub::tests::factory_api_flow_opens_advances_and_materialises_child ... ok"
+    },
+    {
+      "line": 190,
+      "result": "test hub::tests::mutating_api_requests_are_rate_limited ... ok"
+    },
+    {
+      "line": 191,
+      "result": "test hub::tests::mutation_concurrency_limit_rejects_excess_requests ... ok"
+    },
+    {
+      "line": 192,
+      "result": "test hub::tests::multi_asset_recovery_alone_is_operational_restore_state ... ok"
+    },
+    {
+      "line": 193,
+      "result": "test hub::tests::public_identifiers_and_amounts_reject_ambiguous_encodings ... ok"
+    },
+    {
+      "line": 194,
+      "result": "test hub::health::tests::unavailable_storage_recovers_only_after_the_real_file_is_accessible_again ... ok"
+    },
+    {
+      "line": 195,
+      "result": "test hub::tests::request_head_can_be_authenticated_before_body_is_read ... ok"
+    },
+    {
+      "line": 196,
+      "result": "test hub::tests::request_parser_rejects_duplicate_authorization ... ok"
+    },
+    {
+      "line": 197,
+      "result": "test hub::tests::request_parser_rejects_duplicate_content_length ... ok"
+    },
+    {
+      "line": 198,
+      "result": "test hub::tests::request_parser_rejects_oversized_request_lines ... ok"
+    },
+    {
+      "line": 199,
+      "result": "test hub::tests::request_parser_rejects_unsupported_transfer_encoding_and_version ... ok"
+    },
+    {
+      "line": 200,
+      "result": "test hub::health::tests::metrics_and_liveness_keep_existing_read_scope_and_fixed_label_space ... ok"
+    },
+    {
+      "line": 201,
+      "result": "test hub::tests::request_reader_rejects_an_expired_total_deadline ... ok"
+    },
+    {
+      "line": 202,
+      "result": "test hub::tests::registered_routes_enforce_scope_before_body_and_unknown_actions_do_not_mutate ... ok"
+    },
+    {
+      "line": 203,
+      "result": "test hub::tests::mutations_require_current_explicit_context_before_any_state_change ... ok"
+    },
+    {
+      "line": 204,
+      "result": "test hub::tests::request_reader_enforces_total_deadline_across_partial_reads ... ok"
+    },
+    {
+      "line": 205,
+      "result": "test hub::tests::invoice_api_flow_creates_receives_and_settles ... ok"
+    },
+    {
+      "line": 206,
+      "result": "test hub::tests::persisted_state_requires_current_collections_and_rejects_unknown_fields ... ok"
+    },
+    {
+      "line": 207,
+      "result": "test fixture_exports::protocol_fixture_corpus_matches_current_protocol ... ok"
+    },
+    {
+      "line": 208,
+      "result": "test hub::tests::public_archive_is_separate_exact_and_validated_before_restore ... ok"
+    },
+    {
+      "line": 209,
+      "result": "test hub::tests::scoped_auth_token_limits_write_and_restore_routes ... ok"
+    },
+    {
+      "line": 210,
+      "result": "test hub::tests::state_exposes_watchtower_alert_file_evidence ... ok"
+    },
+    {
+      "line": 211,
+      "result": "test hub::tests::conditional_force_package_is_validated_linked_and_persisted ... ok"
+    },
+    {
+      "line": 212,
+      "result": "test hub::tests::state_restore_is_disabled_by_default ... ok"
+    },
+    {
+      "line": 213,
+      "result": "test hub::tests::multi_asset_recovery_rejects_foreign_participants_and_malformed_restore ... ok"
+    },
+    {
+      "line": 214,
+      "result": "test hub::tests::state_restore_cannot_inject_completed_flows ... ok"
+    },
+    {
+      "line": 215,
+      "result": "test hub::tests::state_restore_rejects_network_mismatch_without_commit ... ok"
+    },
+    {
+      "line": 216,
+      "result": "test hub::tests::state_restore_creates_private_backup_before_commit ... ok"
+    },
+    {
+      "line": 217,
+      "result": "test hub::tests::rejected_mutation_does_not_commit_partial_peer_state ... ok"
+    },
+    {
+      "line": 218,
+      "result": "test hub::tests::state_restore_rejects_pubkey_mismatch_without_commit ... ok"
+    },
+    {
+      "line": 219,
+      "result": "test hub::tests::state_restore_requires_current_confirmation_hash ... ok"
+    },
+    {
+      "line": 220,
+      "result": "test hub::tests::mutation_receipts_survive_restart_and_do_not_reexecute_or_bypass_auth ... ok"
+    },
+    {
+      "line": 221,
+      "result": "test hub::tests::runtime_commit_keeps_projection_and_outbox_atomic_and_rejects_stale_owner ... ok"
+    },
+    {
+      "line": 222,
+      "result": "test hub::tests::state_restore_rejects_replacing_operational_state ... ok"
+    },
+    {
+      "line": 223,
+      "result": "test multi_asset_funding::tests::root_authorization_rejects_replaced_raw_body_even_with_fresh_exit_signatures ... ok"
+    },
+    {
+      "line": 224,
+      "result": "test multi_asset_funding_session::tests::fault_tests::host_child ... ok"
+    },
+    {
+      "line": 225,
+      "result": "test multi_asset_funding::tests::root_proof_preserves_later_payouts_and_actual_state_and_vault_indices ... ok"
+    },
+    {
+      "line": 226,
+      "result": "test multi_asset_funding::tests::root_proof_rejects_validly_authorized_references_to_wrong_physical_custody ... ok"
+    },
+    {
+      "line": 227,
+      "result": "test hub::tests::hub_api_can_complete_all_required_business_flows ... ok"
+    },
+    {
+      "line": 228,
+      "result": "test factory_transaction::tests::native_reduced_rights_rejects_noop_foreign_nonvalue_noncanonical_and_overbound_changes ... ok"
+    },
+    {
+      "line": 229,
+      "result": "test multi_asset_funding::root_collection_tests::imported_root_bundle_keeps_recovery_and_rejects_invalid_authorisation ... ok"
+    },
+    {
+      "line": 230,
+      "result": "test hub::tests::multi_asset_recovery_is_bound_to_participants_and_survives_restart ... ok"
+    },
+    {
+      "line": 231,
+      "result": "test multi_asset_funding_session::tests::recovery_package_cannot_bypass_initial_funding_ceremony ... ok"
+    },
+    {
+      "line": 232,
+      "result": "test multi_asset_funding_session::tests::root_draft_rejects_authority_membership_and_physical_replacement ... ok"
+    },
+    {
+      "line": 233,
+      "result": "test multi_asset_funding::root_collection_tests::sdk_root_fixture_matches_rust_encodings_and_both_signing_domains ... ok"
+    },
+    {
+      "line": 234,
+      "result": "test multi_asset_packages::tests::multi_asset_package_keeps_u128_values_lossless ... ok"
+    },
+    {
+      "line": 235,
+      "result": "test multi_asset_packages::tests::multi_asset_package_rejects_noncanonical_and_unsupported_evidence ... ok"
+    },
+    {
+      "line": 236,
+      "result": "test multi_asset_packages::tests::signed_json_cannot_admit_settling_zero_or_plain_vote_root_creation ... ok"
+    },
+    {
+      "line": 237,
+      "result": "test multi_asset_funding::root_collection_tests::public_collection_requires_complete_exit_and_rejects_cross_role_and_duplicate_receipts ... ok"
+    },
+    {
+      "line": 238,
+      "result": "test multi_asset_root_transaction::tests::root_builder_keeps_tiny_change_with_the_owner_without_changing_fee ... ok"
+    },
+    {
+      "line": 239,
+      "result": "test multi_asset_packages::tests::multi_asset_recovery_store_is_durable_idempotent_and_private ... ok"
+    },
+    {
+      "line": 240,
+      "result": "test multi_asset_root_transaction::tests::root_builder_rejects_cross_wallet_subsidies_ownership_and_cross_type_quantity_changes ... ok"
+    },
+    {
+      "line": 241,
+      "result": "test multi_asset_funding_session::tests::incomplete_initial_exit_cannot_export_or_authorize_after_peer_loss ... ok"
+    },
+    {
+      "line": 242,
+      "result": "test multi_asset_funding_session::tests::initial_reservations_survive_restart_and_reject_forged_local_receipts_and_artifact_drift ... ok"
+    },
+    {
+      "line": 243,
+      "result": "test admission::tests::executable_experiment_rejects_an_undeclared_two_right_shape ... ok"
+    },
+    {
+      "line": 244,
+      "result": "test multi_asset_session::public_proposal_tests::accepts_public_proposal_and_peer_signature_with_full_u128_values ... ok"
+    },
+    {
+      "line": 245,
+      "result": "test multi_asset_root_transaction::tests::root_funds_pending_conditions_as_business_value_without_borrowing_reserve ... ok"
+    },
+    {
+      "line": 246,
+      "result": "test multi_asset_funding_session::tests::changed_admission_stops_new_signatures_without_disabling_saved_exit_exports ... ok"
+    },
+    {
+      "line": 247,
+      "result": "test multi_asset_session::tests::cancelled_signature_survives_restart_and_wrong_key_does_not_reserve ... ok"
+    },
+    {
+      "line": 248,
+      "result": "test multi_asset_root_transaction::tests::root_builder_supports_multiple_wallets_plain_ckb_and_eight_assets_without_rounding ... ok"
+    },
+    {
+      "line": 249,
+      "result": "test multi_asset_funding_session::tests::delayed_conditional_funding_sign_rejects_before_reserving_and_keeps_saved_exit_exportable ... ok"
+    },
+    {
+      "line": 250,
+      "result": "test multi_asset_session::tests::close_tests::host_child ... ok"
+    },
+    {
+      "line": 251,
+      "result": "test hub::tests::root_funding_coordination_retains_exit_before_creation_and_survives_restart ... ok"
+    },
+    {
+      "line": 252,
+      "result": "test factory_transaction::tests::native_reduced_rights_prepares_exact_one_four_and_ten_change_requests ... ok"
+    },
+    {
+      "line": 253,
+      "result": "test multi_asset_funding_session::tests::retained_exit_survives_withheld_creation_receipt_and_requires_local_handoff_vote ... ok"
+    },
+    {
+      "line": 254,
+      "result": "test admission::tests::lifetime_reservations_survive_restart_alternatives_closure_and_reorg ... ok"
+    },
+    {
+      "line": 255,
+      "result": "test multi_asset_session::tests::fault_tests::host_child ... ok"
+    },
+    {
+      "line": 256,
+      "result": "test multi_asset_session::tests::canonical_fixture::confirmed_rpc_fixture_passes_real_lineage_and_external_authority_checks ... ok"
+    },
+    {
+      "line": 257,
+      "result": "test multi_asset_funding_session::tests::initial_ceremony_requires_full_exit_before_creation_and_exports_exact_custody ... ok"
+    },
+    {
+      "line": 258,
+      "result": "test multi_asset_session::tests::delayed_splice_signing_checks_fresh_horizon_for_every_participant_role ... ok"
+    },
+    {
+      "line": 259,
+      "result": "test multi_asset_session::tests::operational_commands_reject_unconfirmed_recovery_bootstrap ... ok"
+    },
+    {
+      "line": 260,
+      "result": "test multi_asset_funding_session::tests::external_root_signer_requires_reserved_authority_and_recovers_a_lost_real_signature ... ok"
+    },
+    {
+      "line": 261,
+      "result": "test multi_asset_session::tests::session_lock_covers_read_reserve_and_atomic_snapshot_replacement ... ok"
+    },
+    {
+      "line": 262,
+      "result": "test multi_asset_session::tests::durable_session_negotiates_both_signers_and_exports_lossless_recovery ... ok"
+    },
+    {
+      "line": 263,
+      "result": "test multi_asset_splice_transaction::tests::conditional_splice_terms_fund_pending_business_without_touching_reserve ... ok"
+    },
+    {
+      "line": 264,
+      "result": "test multi_asset_splice_transaction::tests::exact_draft_rejects_authority_value_input_and_witness_tampering ... ok"
+    },
+    {
+      "line": 265,
+      "result": "test multi_asset_supervision::readiness::tests::redacted_reports_never_expose_paths_keys_errors_or_claim_signing ... ok"
+    },
+    {
+      "line": 266,
+      "result": "test multi_asset_supervision::tests::boot_expiry_restart_and_partial_wall_rollback_cannot_revalidate_a_snapshot ... ok"
+    },
+    {
+      "line": 267,
+      "result": "test multi_asset_supervision::tests::busy_and_unmanaged_root_journals_never_report_verified ... ok"
+    },
+    {
+      "line": 268,
+      "result": "test multi_asset_supervision::tests::busy_checks_preserve_failure_deduplication_and_later_recovery ... ok"
+    },
+    {
+      "line": 269,
+      "result": "test multi_asset_supervision::tests::duplicate_signers_are_rejected_even_across_different_contexts ... ok"
+    },
+    {
+      "line": 270,
+      "result": "test multi_asset_supervision::tests::freshness_is_bound_to_exact_configuration_and_cycle_start_and_both_clocks ... ok"
+    },
+    {
+      "line": 271,
+      "result": "test multi_asset_supervision::tests::repeated_failures_survive_restart_without_duplicate_alerts ... ok"
+    },
+    {
+      "line": 272,
+      "result": "test operation_runtime::observability::tests::failed_compare_and_swap_does_not_commit_phantom_transition_counts ... ok"
+    },
+    {
+      "line": 273,
+      "result": "test multi_asset_session::tests::close_tests::close_signer_rejects_wrong_role_and_changed_canonical_source_before_key_use ... ok"
+    },
+    {
+      "line": 274,
+      "result": "test operation_runtime::observability::tests::independent_read_only_process_exports_history_without_rpc_or_operation_lock ... ok"
+    },
+    {
+      "line": 275,
+      "result": "test operation_runtime::observability::tests::read_only_command_child ... ok"
+    },
+    {
+      "line": 276,
+      "result": "test operation_runtime::observability::tests::missing_old_schema_missing_counters_invalid_counters_and_clock_future_fail_closed ... ok"
+    },
+    {
+      "line": 277,
+      "result": "test operation_runtime::observability::tests::replacement_registration_counts_approvals_not_winners_and_metrics_are_fixed ... ok"
+    },
+    {
+      "line": 278,
+      "result": "test operation_runtime::tests::broadcast_child ... ok"
+    },
+    {
+      "line": 279,
+      "result": "test operation_runtime::tests::canonical_depth_orphan_and_spent_input_never_trust_old_success ... ok"
+    },
+    {
+      "line": 280,
+      "result": "test operation_runtime::tests::duplicate_registration_conflict_and_nonblocking_owner ... ok"
+    },
+    {
+      "line": 281,
+      "result": "test operation_runtime::observability::tests::real_transitions_count_once_survive_restart_and_distinguish_historical_finality ... ok"
+    },
+    {
+      "line": 282,
+      "result": "test operation_runtime::tests::forged_inclusion_and_changed_network_invalidate_cached_success ... ok"
+    },
+    {
+      "line": 283,
+      "result": "test operation_runtime::tests::independent_depth_waiters_do_not_change_policy_or_duplicate_observation_history ... ok"
+    },
+    {
+      "line": 284,
+      "result": "test operation_runtime::tests::lost_send_response_can_reconcile_canonical_success_without_second_send ... ok"
+    },
+    {
+      "line": 285,
+      "result": "test operation_runtime::tests::killed_broadcaster_retains_exact_intent_and_restart_reconciles_instead_of_resending ... ok"
+    },
+    {
+      "line": 286,
+      "result": "test multi_asset_session::tests::close_tests::close_preparation_and_export_are_real_and_keep_unilateral_recovery ... ok"
+    },
+    {
+      "line": 287,
+      "result": "test multi_asset_splice_transaction::tests::splice_fixture_matches_all_three_domains_and_exact_transaction ... ok"
+    },
+    {
+      "line": 288,
+      "result": "test operation_runtime::tests::offline_export_keeps_bytes_and_revision_without_reporting_cached_success ... ok"
+    },
+    {
+      "line": 289,
+      "result": "test operation_runtime::tests::predecessor_can_win_and_descendants_do_not_claim_its_confirmations ... ok"
+    },
+    {
+      "line": 290,
+      "result": "test operation_runtime::tests::pending_proposed_and_rejected_restart_without_becoming_success_or_broadcast_permission ... ok"
+    },
+    {
+      "line": 291,
+      "result": "test multi_asset_funding_session::tests::fault_tests::authority_advance_after_review_rejects_before_key_use_and_preserves_reservation ... ok"
+    },
+    {
+      "line": 292,
+      "result": "test multi_asset_session::tests::close_tests::close_receipt_space_is_reserved_and_oversized_replacement_never_changes_disk ... ok"
+    },
+    {
+      "line": 293,
+      "result": "test operation_runtime::tests::replacement_registration_preserves_authority_policy_and_old_approval ... ok"
+    },
+    {
+      "line": 294,
+      "result": "test operation_runtime::tests::typed_outbox_is_atomic_redacted_and_deduplicates_same_observation ... ok"
+    },
+    {
+      "line": 295,
+      "result": "test operation_runtime::tests::unlinked_same_context_transaction_does_not_become_declared_replacement ... ok"
+    },
+    {
+      "line": 296,
+      "result": "test participant_signer::readiness::tests::short_lived_observation_rejects_suspend_reboot_clock_rollback_and_late_results ... ok"
+    },
+    {
+      "line": 297,
+      "result": "test participant_signer::tests::rejection_diagnostics_never_format_inner_payloads ... ok"
+    },
+    {
+      "line": 298,
+      "result": "test participant_signer::tests::service_child ... ok"
+    },
+    {
+      "line": 299,
+      "result": "test persistence::tests::append_rejects_partial_history_and_schema_switch_without_mutating_evidence ... ok"
+    },
+    {
+      "line": 300,
+      "result": "test persistence::tests::private_replay_append_and_locks_reject_broad_existing_files_without_repair ... ok"
+    },
+    {
+      "line": 301,
+      "result": "test persistence::tests::private_writers_create_restricted_trees_without_chmodding_existing_parents ... ok"
+    },
+    {
+      "line": 302,
+      "result": "test persistence::tests::sidecar_lock_survives_atomic_snapshot_replacement ... ok"
+    },
+    {
+      "line": 303,
+      "result": "test preproduction::tests::accepts_local_devnet_rules_without_release_or_production_admission ... ok"
+    },
+    {
+      "line": 304,
+      "result": "test operation_runtime::tests::unknown_reply_is_durable_and_restart_needs_fresh_observation ... ok"
+    },
+    {
+      "line": 305,
+      "result": "test preproduction::tests::rejects_an_expired_or_not_yet_effective_envelope ... ok"
+    },
+    {
+      "line": 306,
+      "result": "test preproduction::tests::rejects_mainnet_or_real_assets ... ok"
+    },
+    {
+      "line": 307,
+      "result": "test preproduction::tests::rejects_missing_reorg_recovery ... ok"
+    },
+    {
+      "line": 308,
+      "result": "test preproduction::tests::rejects_missing_declarations_unknown_fields_and_previous_policy_shape ... ok"
+    },
+    {
+      "line": 309,
+      "result": "test preproduction::tests::rejects_token_admission_by_name_zero_quantity_or_foreign_identity ... ok"
+    },
+    {
+      "line": 310,
+      "result": "test preproduction::tests::rejects_premature_release_approval_and_weaker_operator_obligations ... ok"
+    },
+    {
+      "line": 311,
+      "result": "test preproduction::tests::rejects_unsupported_factory_shape_and_caps ... ok"
+    },
+    {
+      "line": 312,
+      "result": "test preproduction::tests::rejects_vm_maxima_as_factory_experiment_admission_and_undeclared_right_counts ... ok"
+    },
+    {
+      "line": 313,
+      "result": "test participant_signer::readiness::tests::real_key_process_policy_probe_detects_config_change_stop_and_recovery_without_journal ... ok"
+    },
+    {
+      "line": 314,
+      "result": "test publication::tests::dataset_rejects_sample_that_ends_after_generation ... ok"
+    },
+    {
+      "line": 315,
+      "result": "test publication::tests::dataset_sha256_binds_exact_file_bytes ... ok"
+    },
+    {
+      "line": 316,
+      "result": "test publication::tests::devnet_window_uses_nearest_rank_p999 ... ok"
+    },
+    {
+      "line": 317,
+      "result": "test publication::tests::fee_calculation_rounds_up ... ok"
+    },
+    {
+      "line": 318,
+      "result": "test publication::tests::fixture_profile_is_valid ... ok"
+    },
+    {
+      "line": 319,
+      "result": "test publication::tests::initial_fee_convergence_checks_the_rebuilt_transaction_size ... ok"
+    },
+    {
+      "line": 320,
+      "result": "test publication::tests::initial_rate_applies_estimator_headroom ... ok"
+    },
+    {
+      "line": 321,
+      "result": "test publication::tests::initial_rate_fails_closed_on_overflow_and_operator_cap ... ok"
+    },
+    {
+      "line": 322,
+      "result": "test publication::tests::node_replacement_requirement_wins ... ok"
+    },
+    {
+      "line": 323,
+      "result": "test publication::tests::parses_ckb_rbf_replacement_floor ... ok"
+    },
+    {
+      "line": 324,
+      "result": "test publication::tests::production_window_needs_one_thousand_fresh_samples ... ok"
+    },
+    {
+      "line": 325,
+      "result": "test publication::tests::production_window_rejects_a_profile_without_rbf ... ok"
+    },
+    {
+      "line": 326,
+      "result": "test operation_runtime::tests::replacement_winner_requires_canonical_proof_and_reorg_removes_attribution ... ok"
+    },
+    {
+      "line": 327,
+      "result": "test publication::tests::production_window_rejects_synthetic_duplicate_devnet_samples ... ok"
+    },
+    {
+      "line": 328,
+      "result": "test operation_runtime::tests::records::corrupt_operation_records_reject_reopen_without_rebroadcast_or_record_replacement ... ok"
+    },
+    {
+      "line": 329,
+      "result": "test publication::tests::profile_rejects_rbf_without_a_replacement_attempt ... ok"
+    },
+    {
+      "line": 330,
+      "result": "test publication::tests::profile_rejects_retry_ladder_beyond_window_budget ... ok"
+    },
+    {
+      "line": 331,
+      "result": "test publication::tests::profile_rejects_retry_ladder_equal_to_window_budget ... ok"
+    },
+    {
+      "line": 332,
+      "result": "test publication::tests::profile_rejects_window_below_static_budgets ... ok"
+    },
+    {
+      "line": 333,
+      "result": "test publication::tests::rbf_required_profile_rejects_an_rbf_disabled_node_observation ... ok"
+    },
+    {
+      "line": 334,
+      "result": "test publication::tests::recent_dataset_timestamp_cannot_hide_stale_samples ... ok"
+    },
+    {
+      "line": 335,
+      "result": "test publication::tests::recovers_only_a_torn_attempt_log_tail_and_preserves_evidence ... ok"
+    },
+    {
+      "line": 336,
+      "result": "test publication::tests::replacement_fails_closed_at_fee_rate_cap ... ok"
+    },
+    {
+      "line": 337,
+      "result": "test publication::tests::replacement_fails_closed_at_operator_cap ... ok"
+    },
+    {
+      "line": 338,
+      "result": "test publication::tests::window_rejects_a_different_profile_digest ... ok"
+    },
+    {
+      "line": 339,
+      "result": "test release::tests::canonical_hash_requires_lowercase_prefixed_hex32 ... ok"
+    },
+    {
+      "line": 340,
+      "result": "test release::tests::metadata_rejects_an_unlocked_build ... ok"
+    },
+    {
+      "line": 341,
+      "result": "test rpc::tests::bounded_rpc_body_accepts_body_at_limit ... ok"
+    },
+    {
+      "line": 342,
+      "result": "test rpc::tests::bounded_rpc_body_rejects_body_over_limit ... ok"
+    },
+    {
+      "line": 343,
+      "result": "test publication::tests::production_window_stays_closed_without_trusted_provenance ... ok"
+    },
+    {
+      "line": 344,
+      "result": "test publication::tests::production_window_uses_the_worst_fault_family_p999 ... ok"
+    },
+    {
+      "line": 345,
+      "result": "test smoke_report::tests::child_close_costs_require_matching_actual_operation_receipts ... ok"
+    },
+    {
+      "line": 346,
+      "result": "test rpc::tests::supervision_deadline_covers_the_whole_client_without_transport_retry ... ok"
+    },
+    {
+      "line": 347,
+      "result": "test rpc::tests::signer_rpc_budget_fits_standard_secp_data_but_remains_bounded ... ok"
+    },
+    {
+      "line": 348,
+      "result": "test smoke_report::tests::current_budget_profile_rejects_old_fields_and_requires_basis ... ok"
+    },
+    {
+      "line": 349,
+      "result": "test smoke_report::tests::current_budget_keeps_native_transaction_caps_below_deployment_allowance ... ok"
+    },
+    {
+      "line": 350,
+      "result": "test smoke_report::tests::current_comparison_preserves_status_set_and_checked_numeric_limits ... ok"
+    },
+    {
+      "line": 351,
+      "result": "test publication::tests::attempt_log_append_waits_for_the_shared_file_lock ... ok"
+    },
+    {
+      "line": 352,
+      "result": "test publication::tests::attempt_log_recovery_waits_for_the_shared_file_lock ... ok"
+    },
+    {
+      "line": 353,
+      "result": "test smoke_report::tests::current_matrix_counts_unique_transactions_and_preserves_observations ... ok"
+    },
+    {
+      "line": 354,
+      "result": "test smoke_report::tests::current_health_rejects_retired_duplicate_and_contradictory_resource_evidence ... ok"
+    },
+    {
+      "line": 355,
+      "result": "test smoke_report::tests::current_matrix_excludes_only_reserved_derived_outputs_on_repeat_ingestion ... ok"
+    },
+    {
+      "line": 356,
+      "result": "test smoke_report::tests::current_matrix_rejects_missing_lifecycle_checks_unknown_and_retired_schema ... ok"
+    },
+    {
+      "line": 357,
+      "result": "test stateful_report::tests::audit_family_summary_rejects_unknown_coverage_tag ... ok"
+    },
+    {
+      "line": 358,
+      "result": "test stateful_report::tests::audit_family_summary_reports_missing_required_evidence ... ok"
+    },
+    {
+      "line": 359,
+      "result": "test stateful_report::tests::comparison_detects_audit_family_status_regression ... ok"
+    },
+    {
+      "line": 360,
+      "result": "test smoke_report::tests::current_matrix_rejects_path_escape_and_changed_frozen_deployment ... ok"
+    },
+    {
+      "line": 361,
+      "result": "test stateful_report::tests::complete_audit_family_passes ... ok"
+    },
+    {
+      "line": 362,
+      "result": "test stateful_report::tests::current_evidence_rejects_escaping_paths_and_old_placeholder_schema ... ok"
+    },
+    {
+      "line": 363,
+      "result": "test stateful_report::tests::current_example_audit_and_budget_only_name_current_scenarios_and_operations ... ok"
+    },
+    {
+      "line": 364,
+      "result": "test stateful_report::tests::current_evidence_rejects_wrong_missing_duplicate_and_boolean_asset_facts ... ok"
+    },
+    {
+      "line": 365,
+      "result": "test stateful_report::tests::expected_failures_keep_exact_check_name_and_script_error_matching ... ok"
+    },
+    {
+      "line": 366,
+      "result": "test stateful_report::tests::rejects_bad_audit_profile_schema ... ok"
+    },
+    {
+      "line": 367,
+      "result": "test stateful_report::tests::rejects_dirty_current_worktree_by_default ... ok"
+    },
+    {
+      "line": 368,
+      "result": "test stateful_report::tests::current_scenarios_require_actual_values_and_every_safety_dimension ... ok"
+    },
+    {
+      "line": 369,
+      "result": "test stateful_report::tests::rejects_post_run_or_changed_source_even_when_head_and_worktree_are_clean ... ok"
+    },
+    {
+      "line": 370,
+      "result": "test stateful_report::tests::rejects_dirty_stateful_artifact_by_default ... ok"
+    },
+    {
+      "line": 371,
+      "result": "test stateful_report::tests::sponsor_policy_window_metric_flags_above_default_span ... ok"
+    },
+    {
+      "line": 372,
+      "result": "test stateful_report::tests::rejects_stale_stateful_artifact_by_default ... ok"
+    },
+    {
+      "line": 373,
+      "result": "test value_limit::tests::all_retired_and_unknown_package_schemas_fail_closed ... ok"
+    },
+    {
+      "line": 374,
+      "result": "test value_limit::tests::conditional_limits_use_whole_signed_custody_including_pending_ckb ... ok"
+    },
+    {
+      "line": 375,
+      "result": "test value_limit::tests::current_recovery_limits_include_reserve_business_carrier_and_each_type ... ok"
+    },
+    {
+      "line": 376,
+      "result": "test factory_child_session::tests::independent_child_parties_reserve_before_sign_and_retain_complete_exit_before_parent_delivery ... ok"
+    },
+    {
+      "line": 377,
+      "result": "test value_limit::tests::current_factory_policy_preserves_all_five_verified_transition_classes ... ok"
+    },
+    {
+      "line": 378,
+      "result": "test smoke_report::tests::current_matrix_joins_exact_signed_request_and_recorded_transaction ... ok"
+    },
+    {
+      "line": 379,
+      "result": "test smoke_report::tests::current_budget_enforces_each_scope_and_fails_missing_evidence ... ok"
+    },
+    {
+      "line": 380,
+      "result": "test watch_alert::tests::appends_jsonl_alerts ... ok"
+    },
+    {
+      "line": 381,
+      "result": "test watch_alert::tests::serializes_critical_reorg_alert_for_operator_clients ... ok"
+    },
+    {
+      "line": 382,
+      "result": "test watch_alert::tests::appends_alert_without_parent_directory ... ok"
+    },
+    {
+      "line": 383,
+      "result": "test watch_config::readiness::tests::failed_resource_does_not_skip_next_resource_or_leak_error_body ... ok"
+    },
+    {
+      "line": 384,
+      "result": "test watch_config::readiness::tests::fresh_scan_is_not_a_future_publication_guarantee ... ok"
+    },
+    {
+      "line": 385,
+      "result": "test watch_config::readiness::tests::each_resource_has_one_fixed_diagnosis_without_hiding_other_resources ... ok"
+    },
+    {
+      "line": 386,
+      "result": "test watch_config::readiness::tests::margins_preserve_partial_coverage_shortfalls_and_fixed_metric_labels ... ok"
+    },
+    {
+      "line": 387,
+      "result": "test watch_config::readiness::tests::policy_content_changes_invalidate_same_config_path ... ok"
+    },
+    {
+      "line": 388,
+      "result": "test watch_config::readiness::tests::publication_requires_full_fee_headroom_and_short_fresh_window ... ok"
+    },
+    {
+      "line": 389,
+      "result": "test watch_config::readiness::tests::remaining_time_uses_initial_quote_age_and_boot_elapsed_not_only_wall_time ... ok"
+    },
+    {
+      "line": 390,
+      "result": "test watch_config::tests::config_preflight_requires_attempt_log_for_effective_profile ... ok"
+    },
+    {
+      "line": 391,
+      "result": "test watch_config::tests::config_requires_explicit_operator_defaults_and_scan_origin ... ok"
+    },
+    {
+      "line": 392,
+      "result": "test watch_config::readiness::tests::stale_boot_clock_schema_order_config_and_stop_all_revoke_scan_readiness ... ok"
+    },
+    {
+      "line": 393,
+      "result": "test watch_config::tests::rejects_channel_without_sponsor_path ... ok"
+    },
+    {
+      "line": 394,
+      "result": "test value_limit::tests::root_policy_checks_exact_transaction_creation_authorization ... ok"
+    },
+    {
+      "line": 395,
+      "result": "test watch_config::tests::rejects_duplicate_channels ... ok"
+    },
+    {
+      "line": 396,
+      "result": "test watch_config::tests::rejects_publication_profile_operator_before_rpc_work ... ok"
+    },
+    {
+      "line": 397,
+      "result": "test watch_config::tests::rejects_invalid_service_options ... ok"
+    },
+    {
+      "line": 398,
+      "result": "test watch_config::tests::rejects_unbounded_loop_report_size ... ok"
+    },
+    {
+      "line": 399,
+      "result": "test watch_config::tests::service_reload_revalidates_current_policy_paths_and_freezes_operator_identity ... ok"
+    },
+    {
+      "line": 400,
+      "result": "test watch_config::tests::rejects_zero_loop_options ... ok"
+    },
+    {
+      "line": 401,
+      "result": "test watch_config::tests::service_stops_after_bounded_errors_and_writes_health ... ok"
+    },
+    {
+      "line": 402,
+      "result": "test watch_config::tests::resolves_channel_options_relative_to_config_file ... ok"
+    },
+    {
+      "line": 403,
+      "result": "test watch_config::tests::validates_fixture_config ... ok"
+    },
+    {
+      "line": 404,
+      "result": "test watch_config::tests::service_stops_before_rpc_when_stop_file_exists ... ok"
+    },
+    {
+      "line": 405,
+      "result": "test watch_config::tests::watch_profiles_reject_participant_keys_and_signer_handles_at_every_level ... ok"
+    },
+    {
+      "line": 406,
+      "result": "test watch_policy::tests::accepts_fixture_policy_run ... ok"
+    },
+    {
+      "line": 407,
+      "result": "test watch_policy::tests::rejects_explicit_sponsor_when_policy_forbids_it ... ok"
+    },
+    {
+      "line": 408,
+      "result": "test watch_policy::tests::rejects_fee_above_operator_limit ... ok"
+    },
+    {
+      "line": 409,
+      "result": "test watch_policy::tests::rejects_shallow_detection_depth ... ok"
+    },
+    {
+      "line": 410,
+      "result": "test watch_policy::tests::rejects_wrong_channel_policy ... ok"
+    },
+    {
+      "line": 411,
+      "result": "test watch_config::tests::stop_count_requires_a_canonically_confirmed_publication ... ok"
+    },
+    {
+      "line": 412,
+      "result": "test value_limit::tests::observed_current_splices_require_old_authority_and_preserve_removed_and_admitted_assets ... ok"
+    },
+    {
+      "line": 413,
+      "result": "test watch_runtime::tests::crash_child ... ok"
+    },
+    {
+      "line": 414,
+      "result": "test watch_cursor::tests::writes_and_reads_watch_cursor ... ok"
+    },
+    {
+      "line": 415,
+      "result": "test watch_runtime::tests::exact_attempt_digest_never_rewrites_or_accepts_partial_evidence ... ok"
+    },
+    {
+      "line": 416,
+      "result": "test watch_runtime::tests::rejects_json_cursor_and_foreign_runtime_without_rewriting_either ... ok"
+    },
+    {
+      "line": 417,
+      "result": "test watch_runtime::tests::shared_projection_repairs_torn_tail_without_erasing_other_channels_or_duplicates ... ok"
+    },
+    {
+      "line": 418,
+      "result": "test watch_runtime::tests::atomic_alert_checkpoint_redaction_and_rejected_transition ... ok"
+    },
+    {
+      "line": 419,
+      "result": "test watch_runtime::tests::actual_process_kill_preserves_atomic_cursor_event_and_repairs_display ... ok"
+    },
+    {
+      "line": 420,
+      "result": "test smoke_report::tests::current_proof_metrics_delegate_to_real_request_and_frame_validation ... ok"
+    },
+    {
+      "line": 421,
+      "result": "test value_limit::tests::factory_request_policy_counts_simultaneous_children_and_external_carriers ... ok"
+    },
+    {
+      "line": 422,
+      "result": "test multi_asset_session::tests::canonical_fixture::external_review_rechecks_canonical_status_live_vaults_and_dependency_data ... ok"
+    },
+    {
+      "line": 423,
+      "result": "test multi_asset_session::tests::withheld_bridge_receipt_does_not_block_offline_exit_or_public_receipt_reconciliation ... ok"
+    },
+    {
+      "line": 424,
+      "result": "test multi_asset_funding_session::tests::fault_tests::real_host_kill_after_reserve_receipt_and_record_keeps_both_root_roles_monotonic ... ok"
+    },
+    {
+      "line": 425,
+      "result": "test multi_asset_funding_session::tests::fault_tests::malformed_oversized_and_cross_role_replies_leave_real_host_reservations_recoverable ... ok"
+    },
+    {
+      "line": 426,
+      "result": "test multi_asset_session::tests::splice_session_collects_three_signature_roles_and_exports_exact_body_and_exit ... ok"
+    },
+    {
+      "line": 427,
+      "result": "test multi_asset_session::tests::close_tests::close_real_host_kill_at_reservation_receipt_and_record_retains_authority ... ok"
+    },
+    {
+      "line": 428,
+      "result": "test operation_runtime::tests::model::seeded_operation_model_reobserves_finality_and_retains_exact_broadcast_history ... ok"
+    },
+    {
+      "line": 429,
+      "result": "test multi_asset_funding_session::tests::fault_tests::actual_write_sync_rename_and_directory_failures_keep_root_roles_recoverable ... ok"
+    },
+    {
+      "line": 430,
+      "result": "test factory_session::tests::independent_factory_journals_require_all_members_for_two_three_and_sixteen ... ok"
+    },
+    {
+      "line": 431,
+      "result": "test multi_asset_session::tests::fault_tests::authority_advance_after_review_rejects_before_key_use_for_all_session_roles ... ok"
+    },
+    {
+      "line": 432,
+      "result": "test multi_asset_session::tests::close_tests::close_actual_write_sync_rename_and_directory_failures_recover_exact_authority ... ok"
+    },
+    {
+      "line": 433,
+      "result": "test multi_asset_session::tests::fault_tests::real_host_kill_after_reserve_receipt_and_record_keeps_all_session_roles_monotonic ... ok"
+    },
+    {
+      "line": 434,
+      "result": "test multi_asset_session::tests::fault_tests::malformed_oversized_and_cross_role_replies_preserve_all_session_reservations ... ok"
+    },
+    {
+      "line": 436,
+      "result": "test multi_asset_session::tests::fault_tests::actual_write_sync_rename_and_directory_failures_keep_session_roles_recoverable ... ok"
+    },
+    {
+      "line": 438,
+      "result": "test result: ok. 363 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 64.14s"
+    },
+    {
+      "line": 443,
+      "result": "test encrypted_gateway_events_reach_real_consumer_without_private_projection_or_keys ... ok"
+    },
+    {
+      "line": 445,
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.55s"
+    },
+    {
+      "line": 450,
+      "result": "test native_sdk_preserves_hub_mutations_permissions_and_restore_barriers_over_http ... ok"
+    },
+    {
+      "line": 452,
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s"
+    },
+    {
+      "line": 457,
+      "result": "test live_cli_rejects_busy_changed_policy_and_killed_process_then_recovers ... ok"
+    },
+    {
+      "line": 459,
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.19s"
+    },
+    {
+      "line": 464,
+      "result": "test real_supervisor_stop_expires_redacted_observation_without_mutating_evidence ... ok"
+    },
+    {
+      "line": 466,
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.61s"
+    },
+    {
+      "line": 473,
+      "result": "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 478,
+      "result": "test conditional::tests::asset_is_part_of_terms_and_derived_batch_identity ... ok"
+    },
+    {
+      "line": 479,
+      "result": "test conditional::tests::descriptor_round_trip_is_canonical ... ok"
+    },
+    {
+      "line": 480,
+      "result": "test conditional::tests::duplicate_payment_hash_is_rejected ... ok"
+    },
+    {
+      "line": 481,
+      "result": "test conditional::tests::noncanonical_participant_or_transfer_order_is_rejected ... ok"
+    },
+    {
+      "line": 482,
+      "result": "test conditional::tests::mixed_fulfill_and_refund_resolves_exact_value ... ok"
+    },
+    {
+      "line": 483,
+      "result": "test conditional::tests::wrong_preimage_fails_closed ... ok"
+    },
+    {
+      "line": 484,
+      "result": "test conditional::tests::zero_unconditional_capacity_is_rejected ... ok"
+    },
+    {
+      "line": 485,
+      "result": "test payment_gateway::tests::intent_id_binds_asset_resource_and_channel_result ... ok"
+    },
+    {
+      "line": 486,
+      "result": "test conditional::tests::udt_resolves_u128_without_spending_or_moving_capacity ... ok"
+    },
+    {
+      "line": 487,
+      "result": "test policy::tests::policy_accepts_subjects_within_caps ... ok"
+    },
+    {
+      "line": 488,
+      "result": "test policy::tests::policy_rejects_ckb_over_limit ... ok"
+    },
+    {
+      "line": 489,
+      "result": "test policy::tests::policy_digest_is_deterministic_and_cap_sensitive ... ok"
+    },
+    {
+      "line": 490,
+      "result": "test policy::tests::policy_rejects_malformed_keys_and_zero_caps ... ok"
+    },
+    {
+      "line": 491,
+      "result": "test policy::tests::policy_rejects_unlisted_assets ... ok"
+    },
+    {
+      "line": 492,
+      "result": "test policy::tests::policy_rejects_xudt_over_limit ... ok"
+    },
+    {
+      "line": 493,
+      "result": "test policy::tests::subject_addition_fails_closed_on_overflow ... ok"
+    },
+    {
+      "line": 494,
+      "result": "test policy::tests::subject_keys_are_canonicalised ... ok"
+    },
+    {
+      "line": 495,
+      "result": "test policy::tests::subject_peak_is_component_wise ... ok"
+    },
+    {
+      "line": 496,
+      "result": "test rgbpp::tests::display_metadata_cannot_alias_asset_identity ... ok"
+    },
+    {
+      "line": 497,
+      "result": "test rgbpp::tests::proof_policy_binds_network_program_confirmations_and_tip ... ok"
+    },
+    {
+      "line": 498,
+      "result": "test payment_gateway::tests::failed_receipt_requires_a_failure_code ... ok"
+    },
+    {
+      "line": 499,
+      "result": "test payment_gateway::tests::signed_terminal_receipt_detects_evidence_tampering ... ok"
+    },
+    {
+      "line": 500,
+      "result": "test node::tests::invoice_encodes_and_decodes_as_bech32m ... ok"
+    },
+    {
+      "line": 501,
+      "result": "test payment_gateway::tests::terminal_status_time_cannot_cross_the_intent_expiry ... ok"
+    },
+    {
+      "line": 502,
+      "result": "test node::tests::ckb_invoice_amount_is_bounded_to_u64_quantity ... ok"
+    },
+    {
+      "line": 503,
+      "result": "test payment_gateway::tests::terminal_receipt_requires_the_pinned_signer_and_exact_morph_binding ... ok"
+    },
+    {
+      "line": 505,
+      "result": "test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 510,
+      "result": "test canonical_relative_block_since_survives_packed_input_serialization ... ok"
+    },
+    {
+      "line": 511,
+      "result": "test canonical_molecule_script_and_ckb_personalized_hash_match_fixed_vectors ... ok"
+    },
+    {
+      "line": 512,
+      "result": "test memory_map_range_operations_reject_overflow_and_out_of_bounds_ranges ... ok"
+    },
+    {
+      "line": 513,
+      "result": "test ckb_occupied_capacity_matches_the_script_boundary_for_all_hash_types ... ok"
+    },
+    {
+      "line": 514,
+      "result": "test ckb_rpc_hex_boundary_preserves_valid_bytes_and_rejects_malformed_input ... ok"
+    },
+    {
+      "line": 515,
+      "result": "test unchecked_hex_decoder_bounds_short_sources_and_preserves_the_unused_destination ... ok"
+    },
+    {
+      "line": 516,
+      "result": "test verification_lru_dependency_survives_a_panicking_removed_key_destructor ... ok"
+    },
+    {
+      "line": 518,
+      "result": "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+    },
+    {
+      "line": 616,
+      "result": "test multi_asset::multi_asset_splice_independently_rejects_mint_under_a_permissive_asset_type ... ignored"
+    },
+    {
+      "line": 617,
+      "result": "test multi_asset::multi_asset_splice_reanchors_full_set_with_asset_admission_withdrawal_and_recovery ... ignored"
+    },
+    {
+      "line": 618,
+      "result": "test multi_asset::multi_asset_splice_rejects_body_changes_clone_partial_sets_withdrawal_and_carrier_substitution ... ignored"
+    },
+    {
+      "line": 619,
+      "result": "test multi_asset::multi_asset_splice_rejects_reserve_business_reclassification_even_with_valid_bridge_signatures ... ignored"
+    },
+    {
+      "line": 620,
+      "result": "test multi_asset::multi_asset_splice_requires_both_bridge_and_new_creation_authorizations ... ignored"
+    },
+    {
+      "line": 634,
+      "result": "test result: ok. 0 passed; 0 failed; 110 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 639,
+      "result": "test current_root_rights_budget_counts_convertible_kinds_but_excludes_carrier ... ok"
+    },
+    {
+      "line": 640,
+      "result": "test factory_child_public_fixture_matches_current_rust_vm_terms ... ok"
+    },
+    {
+      "line": 641,
+      "result": "test current_factory_view_checks_all_five_vm_exported_classes ... ok"
+    },
+    {
+      "line": 642,
+      "result": "test root_journal_reserves_before_key_and_never_resets_root_authority ... ok"
+    },
+    {
+      "line": 643,
+      "result": "test child_possession_receipts_cannot_replace_parent_votes_or_cross_child_identity ... ok"
+    },
+    {
+      "line": 644,
+      "result": "test delivery_signer_rejects_missing_wrong_or_invalid_private_recovery_before_attesting ... ok"
+    },
+    {
+      "line": 645,
+      "result": "test factory_snapshot_validates_members_current_custody_votes_and_exact_receipts ... ok"
+    },
+    {
+      "line": 646,
+      "result": "test child_parent_vote_requires_both_private_delivery_attestations_without_exposing_exits ... ok"
+    },
+    {
+      "line": 647,
+      "result": "test source_reorg_changes_context_but_reappearance_keeps_all_old_votes ... ok"
+    },
+    {
+      "line": 648,
+      "result": "test withheld_full_n_approval_does_not_prevent_explicit_unilateral_escape ... ok"
+    },
+    {
+      "line": 650,
+      "result": "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s"
+    },
+    {
+      "line": 655,
+      "result": "test current_factory_release_rejects_unlisted_right_mutation_even_with_recomputed_roots ... ok"
+    },
+    {
+      "line": 656,
+      "result": "test current_factory_release_rejects_peer_claim_and_noncanonical_membership ... ok"
+    },
+    {
+      "line": 657,
+      "result": "test current_factory_release_rejects_reserve_borrow_and_capacity_claim_omission ... ok"
+    },
+    {
+      "line": 658,
+      "result": "test current_factory_release_rejects_other_signer_and_old_witness_magic ... ok"
+    },
+    {
+      "line": 659,
+      "result": "test factory_proof_refresh_rejects_incomplete_snapshot_and_requires_delivered_full_root_data ... ok"
+    },
+    {
+      "line": 660,
+      "result": "test current_factory_release_rejects_output_alias_and_type_confusion ... ok"
+    },
+    {
+      "line": 661,
+      "result": "test current_factory_release_accepts_one_member_and_separate_asset_lanes ... ok"
+    },
+    {
+      "line": 662,
+      "result": "test uninvolved_factory_member_refreshes_current_proof_from_public_frame_without_peer_data ... ok"
+    },
+    {
+      "line": 663,
+      "result": "test current_factory_release_exact_tx_signature_survives_no_hash_fixed_point ... ok"
+    },
+    {
+      "line": 664,
+      "result": "test reduced_metadata_preserves_value_kind_rebalancing_but_rejects_cross_asset_mint ... ok"
+    },
+    {
+      "line": 665,
+      "result": "test current_factory_release_handles_eight_types_sixteen_members_with_one_signature ... ok"
+    },
+    {
+      "line": 667,
+      "result": "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s"
+    },
+    {
+      "line": 672,
+      "result": "test duplicated_current_host_and_script_domains_match ... ok"
+    },
+    {
+      "line": 673,
+      "result": "test participants_commitment_matches_script_common ... ok"
+    },
+    {
+      "line": 674,
+      "result": "test asset_registry_commitment_matches_script_common ... ok"
+    },
+    {
+      "line": 675,
+      "result": "test compact_right_proofs_match_the_current_script_locality_primitive ... ok"
+    },
+    {
+      "line": 677,
+      "result": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+    },
+    {
+      "line": 682,
+      "result": "test rejects_channel_paid_fee_leakage ... ok"
+    },
+    {
+      "line": 683,
+      "result": "test asset_registry_commitment_is_canonical_and_complete ... ok"
+    },
+    {
+      "line": 684,
+      "result": "test rejects_reserve_refund_overflow_in_partition_totals ... ok"
+    },
+    {
+      "line": 685,
+      "result": "test partition_conservation_accepts_valid_partition ... ok"
+    },
+    {
+      "line": 686,
+      "result": "test rejects_business_ckb_confusion ... ok"
+    },
+    {
+      "line": 687,
+      "result": "test rejects_ckb_leakage_from_xudt_cells ... ok"
+    },
+    {
+      "line": 688,
+      "result": "test rejects_state_carrier_capacity_leakage ... ok"
+    },
+    {
+      "line": 689,
+      "result": "test rejects_sponsor_change_contamination ... ok"
+    },
+    {
+      "line": 690,
+      "result": "test rejects_unrelated_cell_used_for_channel_semantics ... ok"
+    },
+    {
+      "line": 691,
+      "result": "test rejects_hidden_business_value_in_sponsor_classification ... ok"
+    },
+    {
+      "line": 692,
+      "result": "test rejects_sponsor_output_exceeding_input_without_fee_underflow ... ok"
+    },
+    {
+      "line": 693,
+      "result": "test rejects_xudt_amount_mismatch ... ok"
+    },
+    {
+      "line": 694,
+      "result": "test rejects_xudt_type_mismatch ... ok"
+    },
+    {
+      "line": 695,
+      "result": "test sponsor_policy_accepts_bounded_publication_fee ... ok"
+    },
+    {
+      "line": 696,
+      "result": "test sponsor_policy_rejects_drain_attempt ... ok"
+    },
+    {
+      "line": 697,
+      "result": "test rejects_xudt_amount_overflow_in_partition_totals ... ok"
+    },
+    {
+      "line": 698,
+      "result": "test sponsor_policy_rejects_fund_operation ... ok"
+    },
+    {
+      "line": 699,
+      "result": "test sponsor_policy_rejects_wrong_publication_state_type ... ok"
+    },
+    {
+      "line": 701,
+      "result": "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 706,
+      "result": "test bridge::current_edge_liquidity_aligns_with_participants_and_selected_type ... ok"
+    },
+    {
+      "line": 707,
+      "result": "test bridge::native_and_rgbpp_aliases_cannot_double_advertise_the_same_type_balance ... ok"
+    },
+    {
+      "line": 708,
+      "result": "test bridge::current_bridge_excludes_pending_udt_from_its_type_without_reducing_other_assets ... ok"
+    },
+    {
+      "line": 709,
+      "result": "test bridge::current_bridge_refresh_preserves_identity_and_disables_before_reanchor ... ok"
+    },
+    {
+      "line": 710,
+      "result": "test conditional_backend::conditional_service_rejects_wrong_context_and_reserve_spending_before_any_vote ... ok"
+    },
+    {
+      "line": 711,
+      "result": "test bridge::arbitrary_factory_member_ids_map_through_committed_keys_to_channel_nodes ... ok"
+    },
+    {
+      "line": 712,
+      "result": "test bridge::current_bridge_requires_all_asset_edges_to_drain_before_new_context_activation ... ok"
+    },
+    {
+      "line": 713,
+      "result": "test bridge::current_bridge_keeps_assets_distinct_but_shares_channel_state_freshness ... ok"
+    },
+    {
+      "line": 714,
+      "result": "test cooperative_close::cooperative_close_parser_rejects_truncation_trailing_and_noncanonical_fields ... ok"
+    },
+    {
+      "line": 715,
+      "result": "test cooperative_close::cooperative_close_encoding_digest_and_role_are_single_sourced ... ok"
+    },
+    {
+      "line": 716,
+      "result": "test cooperative_close::cooperative_close_consistent_whole_store_rollback_still_needs_external_freshness ... ok"
+    },
+    {
+      "line": 717,
+      "result": "test bridge::current_factory_child_materialises_without_old_factory_state_mode ... ok"
+    },
+    {
+      "line": 718,
+      "result": "test current_state_type_args_have_one_shared_direct_and_factory_origin_layout ... ok"
+    },
+    {
+      "line": 719,
+      "result": "test bridge::current_bridge_checks_real_state_and_full_script_identity ... ok"
+    },
+    {
+      "line": 720,
+      "result": "test bridge::current_bridge_reservation_proof_idempotence_and_durable_map_shape_are_strict ... ok"
+    },
+    {
+      "line": 721,
+      "result": "test bridge::current_factory_origin_must_bind_actual_factory_and_child_type_args ... ok"
+    },
+    {
+      "line": 722,
+      "result": "test bridge::current_bridge_rejects_incomplete_cloned_reordered_or_aliased_custody ... ok"
+    },
+    {
+      "line": 723,
+      "result": "test bridge::current_bridge_excludes_conditional_pending_ckb_from_every_advertised_edge ... ok"
+    },
+    {
+      "line": 724,
+      "result": "test conditional_backend::conditional_service_arms_via_shared_signer_and_preserves_unrelated_assets ... ok"
+    },
+    {
+      "line": 725,
+      "result": "test conditional_backend::conditional_service_resolves_preimages_and_mature_refunds_without_peer_signature ... ok"
+    },
+    {
+      "line": 726,
+      "result": "test bridge::current_bridge_reservation_binds_physical_target_separately_from_source_right_label ... ok"
+    },
+    {
+      "line": 727,
+      "result": "test factory_materialisation::factory_partition_handles_plain_ckb_and_rejects_underfunded_retained_reserve ... ok"
+    },
+    {
+      "line": 728,
+      "result": "test multi_asset_activation_changes_only_exact_provenance ... ok"
+    },
+    {
+      "line": 729,
+      "result": "test factory_materialisation::shared_factory_partition_rejects_u128_aggregation_overflow ... ok"
+    },
+    {
+      "line": 730,
+      "result": "test cooperative_close::cooperative_close_transaction_review_rejects_changed_payouts_provenance_and_bounds ... ok"
+    },
+    {
+      "line": 731,
+      "result": "test conditional_backend::conditional_service_cooperative_consolidation_returns_to_ordinary_same_custody ... ok"
+    },
+    {
+      "line": 732,
+      "result": "test multi_asset_backend_rejects_mint_context_changes_and_foreign_signatures_without_mutation ... ok"
+    },
+    {
+      "line": 733,
+      "result": "test multi_asset_backend_cancel_and_restart_cannot_reuse_signed_state_number ... ok"
+    },
+    {
+      "line": 734,
+      "result": "test cooperative_close::cooperative_close_preparation_cancellation_and_outstanding_votes_are_explicit ... ok"
+    },
+    {
+      "line": 735,
+      "result": "test multi_asset_backend_reserved_but_unrecorded_vote_survives_restart ... ok"
+    },
+    {
+      "line": 736,
+      "result": "test multi_asset_domains_and_state_digests_match_host ... ok"
+    },
+    {
+      "line": 737,
+      "result": "test multi_asset_backend_restoration_rejects_tampered_pending_and_vote_snapshots ... ok"
+    },
+    {
+      "line": 738,
+      "result": "test multi_asset_header_has_no_single_vault_fields_or_alternate_lengths ... ok"
+    },
+    {
+      "line": 739,
+      "result": "test cooperative_close::cooperative_close_snapshots_reject_missing_fields_inconsistent_votes_and_duplicate_history ... ok"
+    },
+    {
+      "line": 740,
+      "result": "test multi_asset_backend_recovers_delayed_complete_update_without_resetting_newer_vote ... ok"
+    },
+    {
+      "line": 741,
+      "result": "test multi_asset_rejects_cross_asset_mint_even_when_aggregate_quantity_is_preserved ... ok"
+    },
+    {
+      "line": 742,
+      "result": "test multi_asset_maximum_candidate_shape_has_bounded_evidence ... ok"
+    },
+    {
+      "line": 743,
+      "result": "test multi_asset_one_sided_payout_omits_only_empty_allocations ... ok"
+    },
+    {
+      "line": 744,
+      "result": "test multi_asset_rejects_incomplete_duplicate_reordered_or_substituted_outpoints ... ok"
+    },
+    {
+      "line": 745,
+      "result": "test multi_asset_rejects_missing_scripts_wrong_identity_and_insufficient_reserve ... ok"
+    },
+    {
+      "line": 746,
+      "result": "test factory_materialisation::factory_partition_accepts_outside_child_parties_but_preserves_parent_and_exit_authority ... ok"
+    },
+    {
+      "line": 747,
+      "result": "test multi_asset_rejects_noncanonical_asset_shape_and_overflow ... ok"
+    },
+    {
+      "line": 748,
+      "result": "test multi_asset_rejects_reserve_business_capacity_reclassification ... ok"
+    },
+    {
+      "line": 749,
+      "result": "test conditional_backend::simultaneous_udt_batch_survives_ckb_consolidation_and_full_width_pending_restart ... ok"
+    },
+    {
+      "line": 750,
+      "result": "test factory_materialisation::factory_partition_rejects_cross_asset_minting_reserve_subsidies_and_custody_overlap ... ok"
+    },
+    {
+      "line": 751,
+      "result": "test multi_asset_rejects_foreign_funding_context_and_signature_replay ... ok"
+    },
+    {
+      "line": 752,
+      "result": "test cooperative_close::cooperative_close_reservation_survives_restart_and_never_reopens_payments ... ok"
+    },
+    {
+      "line": 753,
+      "result": "test multi_asset_backend_whole_consistent_snapshot_rollback_is_not_detectable_locally ... ok"
+    },
+    {
+      "line": 754,
+      "result": "test multi_asset_two_types_recovery_round_trips_json_and_wire ... ok"
+    },
+    {
+      "line": 755,
+      "result": "test cooperative_close::cooperative_close_replacements_preserve_all_old_approvals_and_exact_sources ... ok"
+    },
+    {
+      "line": 756,
+      "result": "test multi_asset_backend_two_signers_commit_direct_recovery_and_restart ... ok"
+    },
+    {
+      "line": 757,
+      "result": "test payments::an_unrelated_preexisting_vote_cannot_be_relabelled_as_a_new_payment ... ok"
+    },
+    {
+      "line": 758,
+      "result": "test factory_materialisation::factory_public_witness_excludes_private_child_exit_signatures_and_is_strictly_framed ... ok"
+    },
+    {
+      "line": 759,
+      "result": "test multi_asset_splice_rejects_cross_asset_lane_minting_missing_flows_and_context_changes ... ok"
+    },
+    {
+      "line": 760,
+      "result": "test payments::changed_proposal_and_peer_signature_cannot_be_cancelled_or_misreported ... ok"
+    },
+    {
+      "line": 761,
+      "result": "test multi_asset_splice_full_asset_replacement_uses_bounded_complete_union ... ok"
+    },
+    {
+      "line": 762,
+      "result": "test payments::cancellation_is_idempotent_only_before_authorization_and_never_resets_a_vote ... ok"
+    },
+    {
+      "line": 763,
+      "result": "test payments::idempotency_binds_the_complete_intent_and_wrong_binding_has_no_side_effects ... ok"
+    },
+    {
+      "line": 764,
+      "result": "test multi_asset_parsers_fail_closed_on_arbitrary_bytes ... ok"
+    },
+    {
+      "line": 765,
+      "result": "test zero_number_settling_is_not_a_unilateral_recovery_exit ... ok"
+    },
+    {
+      "line": 766,
+      "result": "test multi_asset_splice_admits_removes_assets_and_matches_wire_signing_domains ... ok"
+    },
+    {
+      "line": 767,
+      "result": "test payments::payment_book_rejects_malformed_snapshot_and_wrong_funding_authority ... ok"
+    },
+    {
+      "line": 768,
+      "result": "test payments::expiry_stops_new_authorization_but_cannot_revoke_an_issued_state_signature ... ok"
+    },
+    {
+      "line": 769,
+      "result": "test payments::ckb_payment_uses_business_value_across_typed_vaults_without_touching_reserve ... ok"
+    },
+    {
+      "line": 770,
+      "result": "test payments::payment_moves_only_selected_type_and_commits_exact_recovery ... ok"
+    },
+    {
+      "line": 771,
+      "result": "test payments::ordinary_payment_refuses_to_modify_an_armed_conditional_allocation ... ok"
+    },
+    {
+      "line": 772,
+      "result": "test payments::lost_metadata_commit_recovers_exact_engine_result_without_resigning ... ok"
+    },
+    {
+      "line": 773,
+      "result": "test payments::payment_network_identity_and_overflow_fail_before_signing ... ok"
+    },
+    {
+      "line": 774,
+      "result": "test multi_asset_splice_funding_votes_survive_restart_and_gate_bridge_signing ... ok"
+    },
+    {
+      "line": 775,
+      "result": "test multi_asset_splice_transaction_replacement_requires_new_exit_and_bridge_signatures ... ok"
+    },
+    {
+      "line": 776,
+      "result": "test multi_asset_splice_freezes_old_votes_across_restart_and_cannot_be_cancelled_after_reserving ... ok"
+    },
+    {
+      "line": 777,
+      "result": "test factory_materialisation::factory_public_fuzz_corpus_matches_current_encoders ... ok"
+    },
+    {
+      "line": 778,
+      "result": "test cooperative_close::cooperative_close_history_limit_never_discards_reserved_authority ... ok"
+    },
+    {
+      "line": 779,
+      "result": "test cooperative_close::cooperative_close_bounded_parser_never_panics ... ok"
+    },
+    {
+      "line": 780,
+      "result": "test factory_materialisation::factory_partition_has_complete_child_exits_separate_carriers_and_n_of_n_authority ... ok"
+    },
+    {
+      "line": 781,
+      "result": "test current_state_digest_binds_every_encoded_byte ... ok"
+    },
+    {
+      "line": 782,
+      "result": "test current_state_context_freezes_all_non_progress_fields ... ok"
+    },
+    {
+      "line": 783,
+      "result": "test multi_asset_rebalances_each_type_independently ... ok"
+    },
+    {
+      "line": 785,
+      "result": "test result: ok. 78 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s"
+    },
+    {
+      "line": 790,
+      "result": "test conditional_preimages_match_fiber_hash_algorithm_vectors ... ok"
+    },
+    {
+      "line": 791,
+      "result": "test conditional_terms_must_match_current_recipient_and_settled_allocation ... ok"
+    },
+    {
+      "line": 792,
+      "result": "test current_conditional_descriptor_conserves_pending_ckb_and_untouched_tokens ... ok"
+    },
+    {
+      "line": 793,
+      "result": "test current_descriptor_rejects_old_version_unknown_capability_and_trailing_bytes ... ok"
+    },
+    {
+      "line": 794,
+      "result": "test conditional_asset_set_rejects_substitution_duplicates_order_and_old_profile ... ok"
+    },
+    {
+      "line": 795,
+      "result": "test current_conditional_descriptor_rejects_other_asset_or_reserve_funding_pending ... ok"
+    },
+    {
+      "line": 796,
+      "result": "test current_state_commitment_covers_batch_identity_and_conditions ... ok"
+    },
+    {
+      "line": 797,
+      "result": "test batch_script_matches_ckb_molecule_and_binds_channel_state_and_terms ... ok"
+    },
+    {
+      "line": 798,
+      "result": "test conditional_private_json_rejects_duplicate_unknown_and_incomplete_capabilities ... ok"
+    },
+    {
+      "line": 799,
+      "result": "test host_conditional_encoding_is_lossless_and_requires_explicit_capability ... ok"
+    },
+    {
+      "line": 800,
+      "result": "test simultaneous_ckb_and_full_width_udt_conditions_conserve_independently ... ok"
+    },
+    {
+      "line": 802,
+      "result": "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 807,
+      "result": "test compact_proof_rejects_wrong_root ... ok"
+    },
+    {
+      "line": 808,
+      "result": "test compact_proof_rejects_duplicated_depth ... ok"
+    },
+    {
+      "line": 809,
+      "result": "test compact_proof_rejects_extra_or_ascending_pairs ... ok"
+    },
+    {
+      "line": 810,
+      "result": "test multi_right_update_rejects_unchanged_rights ... ok"
+    },
+    {
+      "line": 811,
+      "result": "test multi_right_update_rejects_unlisted_foreign_change ... ok"
+    },
+    {
+      "line": 812,
+      "result": "test multi_right_update_rejects_cross_asset_rebalance ... ok"
+    },
+    {
+      "line": 813,
+      "result": "test current_rights_update_rejects_more_than_ten_rights ... ok"
+    },
+    {
+      "line": 814,
+      "result": "test multi_right_update_rejects_total_increase ... ok"
+    },
+    {
+      "line": 815,
+      "result": "test compact_proofs_verify_against_sparse_root ... ok"
+    },
+    {
+      "line": 816,
+      "result": "test multi_right_update_rejects_non_value_kind ... ok"
+    },
+    {
+      "line": 817,
+      "result": "test multi_right_update_rejects_tampered_proof ... ok"
+    },
+    {
+      "line": 818,
+      "result": "test multi_right_update_validates_decrease_and_rebalance ... ok"
+    },
+    {
+      "line": 819,
+      "result": "test multi_right_update_rejects_foreign_right ... ok"
+    },
+    {
+      "line": 820,
+      "result": "test current_rights_update_rejects_unsorted_ids_and_proof_pairs ... ok"
+    },
+    {
+      "line": 821,
+      "result": "test current_rights_update_rejects_identity_swap_and_per_asset_sum_overflow ... ok"
+    },
+    {
+      "line": 822,
+      "result": "test compact_proofs_omit_exactly_the_empty_siblings ... ok"
+    },
+    {
+      "line": 823,
+      "result": "test compact_proofs_verify_on_random_trees ... ok"
+    },
+    {
+      "line": 825,
+      "result": "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.90s"
+    },
+    {
+      "line": 830,
+      "result": "test factory_projection_accepts_dynamic_participant_bounds ... ok"
+    },
+    {
+      "line": 831,
+      "result": "test factory_requires_local_participant_and_child_counterparty_membership ... ok"
+    },
+    {
+      "line": 832,
+      "result": "test factory_materialises_child_channel_once ... ok"
+    },
+    {
+      "line": 833,
+      "result": "test peer_alias_is_trimmed_required_and_bounded ... ok"
+    },
+    {
+      "line": 834,
+      "result": "test splice_advances_funding_context_without_allowing_stale_publication ... ok"
+    },
+    {
+      "line": 835,
+      "result": "test node_rejects_self_peer_and_self_channel ... ok"
+    },
+    {
+      "line": 836,
+      "result": "test node_channel_lifecycle_publishes_and_finalises_current_context ... ok"
+    },
+    {
+      "line": 837,
+      "result": "test invoice_rejects_zero_payment_preimage ... ok"
+    },
+    {
+      "line": 838,
+      "result": "test node_records_all_business_flows_when_sequence_completes ... ok"
+    },
+    {
+      "line": 839,
+      "result": "test invoice_round_trips_and_rejects_tampering ... ok"
+    },
+    {
+      "line": 840,
+      "result": "test invoice_settlement_requires_matching_preimage_and_live_invoice ... ok"
+    },
+    {
+      "line": 841,
+      "result": "test receiving_decoded_invoice_rejects_self_and_wrong_network ... ok"
+    },
+    {
+      "line": 843,
+      "result": "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    },
+    {
+      "line": 848,
+      "result": "test forms::tests::sole_operation_catalog_preserves_all_public_hub_workflows ... ok"
+    },
+    {
+      "line": 849,
+      "result": "test presentation::projection_tests::distribution_handles_zero_invalid_and_overflow_without_fictitious_shares ... ok"
+    },
+    {
+      "line": 850,
+      "result": "test motion::rail_tests::rail_retargets_from_current_position_and_snaps_layout_changes ... ok"
+    },
+    {
+      "line": 851,
+      "result": "test wallet::tests::connection_presets_preserve_network_separation_and_custom_indexers ... ok"
+    },
+    {
+      "line": 852,
+      "result": "test model::tests::all_search_tokens_match_full_precision_hidden_record_fields ... ok"
+    },
+    {
+      "line": 853,
+      "result": "test presentation::projection_tests::projection_never_sums_tokens_duplicates_or_overflows ... ok"
+    },
+    {
+      "line": 854,
+      "result": "test interaction_tests::translated_diagnostics_keep_user_values_and_exact_evidence_intact ... ok"
+    },
+    {
+      "line": 855,
+      "result": "test interaction_tests::every_application_message_is_in_the_live_language_catalog ... ok"
+    },
+    {
+      "line": 856,
+      "result": "test model::permissions::explicit_unauthenticated_loopback_keeps_existing_service_semantics_but_stale_never_writes ... ok"
+    },
+    {
+      "line": 857,
+      "result": "test forms::tests::amount_stays_decimal_string_and_epoch_is_checked_u64 ... ok"
+    },
+    {
+      "line": 858,
+      "result": "test presentation::tests::ckb_conversion_is_exact_and_bounded ... ok"
+    },
+    {
+      "line": 859,
+      "result": "test preferences::tests::current_preferences_round_trip_and_reject_old_or_invalid_shapes ... ok"
+    },
+    {
+      "line": 860,
+      "result": "test motion::selection_tests::selection_finishes_and_snaps_when_another_window_takes_focus ... ok"
+    },
+    {
+      "line": 861,
+      "result": "test motion::tests::task_signal_only_requests_frames_while_real_work_is_running ... ok"
+    },
+    {
+      "line": 862,
+      "result": "test wallet::tests::wallet_language_preserves_payment_and_submitted_password_drops_undo_entity ... ok"
+    },
+    {
+      "line": 863,
+      "result": "test motion::rail_tests::rail_uses_real_wrapped_control_bounds_in_both_axes ... ok"
+    },
+    {
+      "line": 864,
+      "result": "test wallet::tests::background_observation_does_not_release_a_pending_command ... ok"
+    },
+    {
+      "line": 865,
+      "result": "test ui_tests::task_tiles_render_and_success_notice_does_not_move_content ... ok"
+    },
+    {
+      "line": 866,
+      "result": "test interaction_tests::review_scrolls_to_the_invalid_field_at_large_type_without_submitting ... ok"
+    },
+    {
+      "line": 867,
+      "result": "test ui_tests::maximum_text_scale_keeps_settings_controls_reachable_in_minimum_window ... ok"
+    },
+    {
+      "line": 868,
+      "result": "test interaction_tests::settings_segments_support_keyboard_and_task_search_opens_only_a_draft ... ok"
+    },
+    {
+      "line": 869,
+      "result": "test ui_tests::native_input_and_drafts_are_isolated_by_task_context ... ok"
+    },
+    {
+      "line": 870,
+      "result": "test wallet::tests::wallet_tabs_keep_hitboxes_and_support_keyboard_at_large_type ... ok"
+    },
+    {
+      "line": 871,
+      "result": "test interaction_tests::navigation_keeps_its_own_bounds_across_pages_languages_and_scales ... ok"
+    },
+    {
+      "line": 873,
+      "result": "test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.62s"
+    },
+    {
+      "line": 879,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 884,
+      "result": "test tests::delivery_crash_child ... ok"
+    },
+    {
+      "line": 885,
+      "result": "test tests::archive_crash_child ... ok"
+    },
+    {
+      "line": 886,
+      "result": "test tests::event_shape_is_bounded_current_and_contains_no_free_text_or_private_body ... ok"
+    },
+    {
+      "line": 887,
+      "result": "test tests::durable_pages_bind_source_and_cover_same_revision_without_gaps ... ok"
+    },
+    {
+      "line": 888,
+      "result": "test tests::expired_work_is_visible_and_wrong_or_future_cursor_is_rejected ... ok"
+    },
+    {
+      "line": 889,
+      "result": "test tests::readonly_observation_counts_critical_backlog_and_preserves_both_store_revisions ... ok"
+    },
+    {
+      "line": 890,
+      "result": "test tests::watch_permission_is_required_and_revocation_stops_new_claims_but_allows_ack ... ok"
+    },
+    {
+      "line": 891,
+      "result": "test tests::blocked_http_never_holds_source_business_or_consumer_transaction ... ok"
+    },
+    {
+      "line": 892,
+      "result": "test tests::global_inflight_bound_and_clock_regression ... ok"
+    },
+    {
+      "line": 893,
+      "result": "test tests::durable_claim_excludes_competitors_and_stale_completion ... ok"
+    },
+    {
+      "line": 894,
+      "result": "test tests::authenticated_http_retry_keeps_exact_bytes_and_receiver_deduplicates ... ok"
+    },
+    {
+      "line": 895,
+      "result": "test tests::archive_cas_rejects_a_snapshot_changed_before_seal_and_never_activates_it ... ok"
+    },
+    {
+      "line": 896,
+      "result": "test tests::archive_fences_old_handles_and_preserves_dead_letters_leases_and_exact_bodies ... ok"
+    },
+    {
+      "line": 897,
+      "result": "test tests::atomic_ingest_reopen_exact_identity_and_separate_business_revision ... ok"
+    },
+    {
+      "line": 898,
+      "result": "test tests::bounded_retries_dead_letter_replay_and_immutable_attempts ... ok"
+    },
+    {
+      "line": 899,
+      "result": "test tests::tls_redirect_ack_auth_and_response_bounds_are_not_bypassed ... ok"
+    },
+    {
+      "line": 900,
+      "result": "test tests::real_process_kills_enrollment_send_acceptance_and_local_ack_boundaries ... ok"
+    },
+    {
+      "line": 901,
+      "result": "test tests::records::damaged_consumer_metadata_and_jobs_never_reopen_or_reset_source_cursor ... ok"
+    },
+    {
+      "line": 902,
+      "result": "test tests::capacity_and_invalid_page_never_advance_cursor_or_discard_jobs ... ok"
+    },
+    {
+      "line": 903,
+      "result": "test tests::archive_releases_retained_job_capacity_without_resetting_source_cursor ... ok"
+    },
+    {
+      "line": 904,
+      "result": "test tests::model::seeded_delivery_model_preserves_body_leases_generations_and_acknowledgements ... ok"
+    },
+    {
+      "line": 905,
+      "result": "test tests::real_process_kills_each_archive_handoff_boundary_are_resumable ... ok"
+    },
+    {
+      "line": 906,
+      "result": "test tests::history_watermark_leaves_room_to_seal_and_restart_unresolved_work ... ok"
+    },
+    {
+      "line": 908,
+      "result": "test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.74s"
+    },
+    {
+      "line": 914,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 920,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 925,
+      "result": "test client_tests::credentials_queries_and_fragments_are_not_transport_configuration ... ok"
+    },
+    {
+      "line": 926,
+      "result": "test coordinator::tests::crash_child ... ok"
+    },
+    {
+      "line": 927,
+      "result": "test client_tests::retire_unknown_context_precedes_successor_even_when_hash_sorts_after_it ... ok"
+    },
+    {
+      "line": 928,
+      "result": "test shadow::tests::descriptor_round_trip_preserves_factory_identity_and_public_scalars_are_strict ... ok"
+    },
+    {
+      "line": 929,
+      "result": "test client_tests::missing_hook_is_explicit_and_remote_error_body_never_escapes ... ok"
+    },
+    {
+      "line": 930,
+      "result": "test client_tests::capability_is_not_cached_across_operations_and_drain_is_distinct ... ok"
+    },
+    {
+      "line": 931,
+      "result": "test client_tests::list_rejects_forwarding_duplicates_zero_revisions_and_over_capacity ... ok"
+    },
+    {
+      "line": 932,
+      "result": "test shadow::tests::dispatch_exposes_only_six_shadow_methods_with_strict_parameters ... ok"
+    },
+    {
+      "line": 933,
+      "result": "test client_tests::incompatible_handshake_never_sends_a_mutation ... ok"
+    },
+    {
+      "line": 934,
+      "result": "test shadow::tests::malformed_identity_wrong_network_and_asset_alias_are_rejected ... ok"
+    },
+    {
+      "line": 935,
+      "result": "test coordinator::tests::unknown_provider_mirror_cannot_create_local_rights_or_liquidity ... ok"
+    },
+    {
+      "line": 936,
+      "result": "test coordinator::tests::cas_configuration_ttl_and_clock_rollback_fail_closed ... ok"
+    },
+    {
+      "line": 937,
+      "result": "test coordinator::tests::restart_without_new_observation_quarantines_even_unexpired_activation ... ok"
+    },
+    {
+      "line": 938,
+      "result": "test tests::hook_and_callback_require_tls_off_loopback ... ok"
+    },
+    {
+      "line": 939,
+      "result": "test tests::edge_projection_never_invents_a_fiber_funding_outpoint ... ok"
+    },
+    {
+      "line": 940,
+      "result": "test tests::liquidity_updates_keep_the_registered_edge_id ... ok"
+    },
+    {
+      "line": 941,
+      "result": "test tests::client_calls_only_the_explicit_external_edge_hook ... ok"
+    },
+    {
+      "line": 942,
+      "result": "test shadow::tests::same_revision_conflicts_and_state_regression_cannot_change_mirror ... ok"
+    },
+    {
+      "line": 943,
+      "result": "test tests::reconciliation_accepts_distinct_assets_only_at_one_current_channel_snapshot ... ok"
+    },
+    {
+      "line": 944,
+      "result": "test tests::reconciliation_rejects_a_wrong_provider_channel_binding ... ok"
+    },
+    {
+      "line": 945,
+      "result": "test tests::reconciliation_rejects_double_counting_one_type_under_native_and_rgbpp_aliases ... ok"
+    },
+    {
+      "line": 946,
+      "result": "test shadow::tests::store_reopen_requires_same_installed_fiber_patch_and_genesis ... ok"
+    },
+    {
+      "line": 947,
+      "result": "test tests::restart_reconciliation_treats_morph_as_source_of_truth ... ok"
+    },
+    {
+      "line": 948,
+      "result": "test shadow::tests::two_connections_lost_reply_retry_has_one_durable_transition ... ok"
+    },
+    {
+      "line": 949,
+      "result": "test shadow::tests::register_update_drain_disable_replies_survive_restart_without_reapplying ... ok"
+    },
+    {
+      "line": 950,
+      "result": "test coordinator::tests::expired_unknown_send_outcome_cannot_replay_activation ... ok"
+    },
+    {
+      "line": 951,
+      "result": "test shadow::tests::splice_requires_all_old_assets_disabled_and_cannot_resurrect_old_context ... ok"
+    },
+    {
+      "line": 952,
+      "result": "test coordinator::tests::owner_binding_and_invalidation_survive_reopen_without_new_authority ... ok"
+    },
+    {
+      "line": 953,
+      "result": "test coordinator::tests::same_context_refresh_strict_ack_and_typed_outbox ... ok"
+    },
+    {
+      "line": 954,
+      "result": "test coordinator::tests::stale_provider_revision_replans_without_resetting_local_evidence ... ok"
+    },
+    {
+      "line": 955,
+      "result": "test coordinator::tests::independent_connections_cas_one_winner_and_operator_drain_persists ... ok"
+    },
+    {
+      "line": 956,
+      "result": "test coordinator::tests::response_loss_both_store_restarts_and_historical_retry_do_not_reapply ... ok"
+    },
+    {
+      "line": 957,
+      "result": "test coordinator::tests::real_http_lost_success_response_and_reopened_stores_reconcile_exactly ... ok"
+    },
+    {
+      "line": 958,
+      "result": "test coordinator::tests::splice_retires_old_context_before_registering_successor ... ok"
+    },
+    {
+      "line": 959,
+      "result": "test coordinator::tests::actual_process_kill_preserves_observation_intent_and_exact_replay ... ok"
+    },
+    {
+      "line": 960,
+      "result": "test coordinator::tests::slow_capability_handshake_cannot_send_an_expired_activation ... ok"
+    },
+    {
+      "line": 961,
+      "result": "test shadow::tests::model::seeded_edge_revision_model_preserves_replies_projection_and_restart ... ok"
+    },
+    {
+      "line": 962,
+      "result": "test shadow::tests::bounded_registry_never_evicts_retired_identity_to_make_room ... ok"
+    },
+    {
+      "line": 964,
+      "result": "test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.11s"
+    },
+    {
+      "line": 969,
+      "result": "test mutation::tests::mutation_context_has_one_explicit_bounded_encoding ... ok"
+    },
+    {
+      "line": 970,
+      "result": "test endpoints::tests::checked_endpoint_inventory_matches_registry ... ok"
+    },
+    {
+      "line": 971,
+      "result": "test endpoints::tests::routes_are_unique_closed_and_round_trip ... ok"
+    },
+    {
+      "line": 972,
+      "result": "test openapi::tests::checked_openapi_matches_routes_and_types ... ok"
+    },
+    {
+      "line": 973,
+      "result": "test schema::tests::checked_schemas_match_authoritative_types_without_stale_files ... ok"
+    },
+    {
+      "line": 975,
+      "result": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s"
+    },
+    {
+      "line": 980,
+      "result": "test empty_asset_variant_does_not_ignore_extra_fields ... ok"
+    },
+    {
+      "line": 981,
+      "result": "test full_width_public_numbers_round_trip_without_json_number_coercion ... ok"
+    },
+    {
+      "line": 982,
+      "result": "test capability_review_has_closed_variants_and_preserves_conditional_value ... ok"
+    },
+    {
+      "line": 983,
+      "result": "test generated_decimal_schema_matches_runtime_range_at_precision_boundaries ... ok"
+    },
+    {
+      "line": 985,
+      "result": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 990,
+      "result": "test tests::rejects_exposed_symlink_directory_and_fifo_inputs ... ok"
+    },
+    {
+      "line": 991,
+      "result": "test tests::validates_biscuit_encoding_separately ... ok"
+    },
+    {
+      "line": 992,
+      "result": "test tests::rejects_oversize_multiple_tokens_and_invalid_scalars_without_echo ... ok"
+    },
+    {
+      "line": 993,
+      "result": "test tests::protected_file_accepts_valid_key_and_redacts_debug ... ok"
+    },
+    {
+      "line": 995,
+      "result": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1000,
+      "result": "test metrics::tests::counters_saturate_without_wraparound_or_extra_series ... ok"
+    },
+    {
+      "line": 1001,
+      "result": "test tests::one_affected_scope_does_not_reclassify_healthy_unrelated_work ... ok"
+    },
+    {
+      "line": 1002,
+      "result": "test tests::verified_means_exact_complete_fresh_observation_only ... ok"
+    },
+    {
+      "line": 1003,
+      "result": "test metrics::tests::label_cardinality_is_fixed_and_raii_records_aborted_work ... ok"
+    },
+    {
+      "line": 1005,
+      "result": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1010,
+      "result": "test persistence::lock_tests::owner_drop_releases_lock_even_while_an_inherited_description_stays_open ... ok"
+    },
+    {
+      "line": 1011,
+      "result": "test signer_protocol::tests::creation_and_bridge_require_complete_future_exits_and_role_shapes_are_closed ... ok"
+    },
+    {
+      "line": 1012,
+      "result": "test signer_protocol::tests::changing_any_frozen_physical_body_invalidates_the_existing_review_and_receipts ... ok"
+    },
+    {
+      "line": 1013,
+      "result": "test signer_protocol::tests::all_six_targets_rederive_the_existing_exact_digest_and_verify_original_receipts ... ok"
+    },
+    {
+      "line": 1014,
+      "result": "test signer_protocol::tests::summaries_policy_context_and_deadlines_cannot_substitute_for_payload_validation ... ok"
+    },
+    {
+      "line": 1016,
+      "result": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.04s"
+    },
+    {
+      "line": 1021,
+      "result": "test protocol::tests::amounts_are_canonical_u128_strings ... ok"
+    },
+    {
+      "line": 1022,
+      "result": "test fiber_rpc::tests::strict_status_parsing_does_not_accept_inflight ... ok"
+    },
+    {
+      "line": 1023,
+      "result": "test crypto::tests::payment_hash_uses_sha256_preimage ... ok"
+    },
+    {
+      "line": 1024,
+      "result": "test service::health::tests::cancelled_scrape_does_not_release_a_still_running_store_probe ... ok"
+    },
+    {
+      "line": 1025,
+      "result": "test service::tests::bearer_comparison_covers_unequal_lengths_without_accepting_prefixes ... ok"
+    },
+    {
+      "line": 1026,
+      "result": "test http_safety::tests::plaintext_http_is_loopback_only ... ok"
+    },
+    {
+      "line": 1027,
+      "result": "test client::tests::client_rejects_short_api_tokens ... ok"
+    },
+    {
+      "line": 1028,
+      "result": "test service::tests::durable_creation_limiter_is_bounded_and_recovers ... ok"
+    },
+    {
+      "line": 1029,
+      "result": "test client::tests::client_requires_tls_for_non_loopback_gateways ... ok"
+    },
+    {
+      "line": 1030,
+      "result": "test fiber_rpc::tests::client_requires_tls_for_non_loopback_fiber_rpc ... ok"
+    },
+    {
+      "line": 1031,
+      "result": "test protocol::tests::asset_identity_uses_type_script_not_ticker ... ok"
+    },
+    {
+      "line": 1032,
+      "result": "test service::tests::gateway_requires_tls_off_loopback ... ok"
+    },
+    {
+      "line": 1033,
+      "result": "test crypto::tests::encrypted_payload_is_bound_to_aad_and_hash ... ok"
+    },
+    {
+      "line": 1034,
+      "result": "test service::health::tests::elapsed_probe_capacity_and_disabled_scopes_never_overstate_readiness ... ok"
+    },
+    {
+      "line": 1035,
+      "result": "test credential::tests::private_key_round_trip_preserves_authority ... ok"
+    },
+    {
+      "line": 1036,
+      "result": "test http_safety::tests::chunked_response_is_rejected_as_soon_as_the_limit_is_crossed ... ok"
+    },
+    {
+      "line": 1037,
+      "result": "test protocol::tests::requirement_id_binds_every_authoritative_field ... ok"
+    },
+    {
+      "line": 1038,
+      "result": "test service::health::tests::provider_identity_requires_exact_current_fiber_encoding_and_both_pins ... ok"
+    },
+    {
+      "line": 1039,
+      "result": "test protocol::tests::public_terms_round_trip_without_changing_authority_and_reject_ambiguous_inputs ... ok"
+    },
+    {
+      "line": 1040,
+      "result": "test protocol::tests::payer_authorization_binds_identity_requirement_and_preimage ... ok"
+    },
+    {
+      "line": 1041,
+      "result": "test service::tests::process_faults::gateway_process_child ... ok"
+    },
+    {
+      "line": 1042,
+      "result": "test api_schema::tests::checked_gateway_contracts_match_types_routes_and_no_stale_files ... ok"
+    },
+    {
+      "line": 1043,
+      "result": "test service::tests::remote_listener_requires_a_strong_api_token ... ok"
+    },
+    {
+      "line": 1044,
+      "result": "test credential::tests::token_is_bound_to_payment_asset_amount_and_resource ... ok"
+    },
+    {
+      "line": 1045,
+      "result": "test service::tests::payment_index_requires_auth_and_redacts_raw_fiber_metadata ... ok"
+    },
+    {
+      "line": 1046,
+      "result": "test service::tests::durable_event_http_pages_require_operator_and_redact_private_state ... ok"
+    },
+    {
+      "line": 1047,
+      "result": "test store::event_boundary_tests::retired_gateway_projection_is_rejected_without_migration_or_new_event ... ok"
+    },
+    {
+      "line": 1050,
+      "result": "test service::tests::outgoing_wallet_requires_payer_and_enforces_policy_caps ... ok"
+    },
+    {
+      "line": 1051,
+      "result": "test service::tests::public_http_errors_are_typed_bounded_and_do_not_reflect_input ... ok"
+    },
+    {
+      "line": 1052,
+      "result": "test service::tests::outgoing_wallet_persists_intent_before_fiber_submission ... ok"
+    },
+    {
+      "line": 1053,
+      "result": "test store::event_boundary_tests::unsafe_public_reference_fails_before_projection_or_event_commit ... ok"
+    },
+    {
+      "line": 1054,
+      "result": "test service::tests::outgoing_pre_send_reservation_never_guesses_non_submission_from_missing_provider_record ... ok"
+    },
+    {
+      "line": 1055,
+      "result": "test service::tests::outgoing_expired_cached_result_is_delivered_but_new_expired_spend_is_rejected ... ok"
+    },
+    {
+      "line": 1056,
+      "result": "test service::tests::outgoing_wrong_poll_identity_cannot_finish_original_attempt ... ok"
+    },
+    {
+      "line": 1057,
+      "result": "test service::health::tests::actual_gateway_http_probes_are_authenticated_readonly_and_detect_replacement ... ok"
+    },
+    {
+      "line": 1058,
+      "result": "test store::tests::expired_transient_records_are_pruned_before_capacity_checks ... ok"
+    },
+    {
+      "line": 1059,
+      "result": "test service::tests::fair_exchange_releases_a_verifiable_key_only_after_paid ... ok"
+    },
+    {
+      "line": 1060,
+      "result": "test store::tests::settled_offer_retention_ends_with_its_credential ... ok"
+    },
+    {
+      "line": 1061,
+      "result": "test store::outgoing::tests::reused_requirement_with_different_payment_hash_is_conflict_not_retryable_busy ... ok"
+    },
+    {
+      "line": 1064,
+      "result": "test store::outgoing::tests::terminal_evidence_and_payment_projection_commit_once_without_regression ... ok"
+    },
+    {
+      "line": 1065,
+      "result": "test store::tests::oversized_raw_payment_metadata_is_not_persisted ... ok"
+    },
+    {
+      "line": 1066,
+      "result": "test wire::tests::script_schema_and_pinned_rpc_decoder_accept_the_same_hash_types ... ok"
+    },
+    {
+      "line": 1067,
+      "result": "test store::outgoing::tests::competing_store_instances_grant_exactly_one_submission_and_reopen_retains_it ... ok"
+    },
+    {
+      "line": 1068,
+      "result": "test service::tests::gateway_requires_a_resource_and_method_bound_paid_credential ... ok"
+    },
+    {
+      "line": 1069,
+      "result": "test store::tests::store_is_encrypted_and_survives_restart ... ok"
+    },
+    {
+      "line": 1070,
+      "result": "test store::tests::gateway_recovery_intent_and_safe_event_are_atomic_and_immutable ... ok"
+    },
+    {
+      "line": 1071,
+      "result": "test wire::tests::public_receipts_preserve_core_commitments_and_cover_every_asset_and_anchor ... ok"
+    },
+    {
+      "line": 1072,
+      "result": "test credential::tests::both_biscuit_root_algorithms_enforce_credential_authority_and_claims ... ok"
+    },
+    {
+      "line": 1075,
+      "result": "test service::tests::native_client_challenge_paid_get_and_post_preserve_auth_and_receipt_boundaries ... ok"
+    },
+    {
+      "line": 1076,
+      "result": "test store::event_boundary_tests::malformed_missing_unknown_and_future_projection_records_fail_without_reinitialization ... ok"
+    },
+    {
+      "line": 1077,
+      "result": "test store::outgoing::tests::business_counts_survive_retries_display_eviction_and_restart ... ok"
+    },
+    {
+      "line": 1080,
+      "result": "test service::tests::outgoing_wallet_waits_for_fiber_terminal_success ... ok"
+    },
+    {
+      "line": 1081,
+      "result": "test service::tests::outgoing_unknown_submission_reopens_and_reconciles_without_resubmitting ... ok"
+    },
+    {
+      "line": 1082,
+      "result": "test service::tests::outgoing_http_concurrent_retries_send_once_and_conflicts_have_stable_code ... ok"
+    },
+    {
+      "line": 1099,
+      "result": "test service::tests::process_faults::real_service_kills_reservation_provider_acceptance_and_terminal_reply_never_resend ... ok"
+    },
+    {
+      "line": 1100,
+      "result": "test store::tests::outstanding_challenge_quota_rejects_without_corrupting_existing_state ... ok"
+    },
+    {
+      "line": 1101,
+      "result": "test service::health::tests::real_provider_probe_uses_empty_params_and_times_out_without_blocking_health ... ok"
+    },
+    {
+      "line": 1102,
+      "result": "test store::health::tests::capacity_observation_tracks_real_quota_without_pruning_or_writing ... ok"
+    },
+    {
+      "line": 1103,
+      "result": "test store::outgoing::tests::submission_identity_survives_display_eviction_and_full_ledger_fails_closed ... ok"
+    },
+    {
+      "line": 1104,
+      "result": "test store::outgoing::tests::model::seeded_payment_attempt_model_never_regrants_submission_or_replaces_terminal_evidence ... ok"
+    },
+    {
+      "line": 1106,
+      "result": "test result: ok. 60 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.35s"
+    },
+    {
+      "line": 1111,
+      "result": "test tests::account_id_matches_the_typescript_sdk_vector ... ok"
+    },
+    {
+      "line": 1112,
+      "result": "test tests::account_id_rejects_uncompressed_keys ... ok"
+    },
+    {
+      "line": 1113,
+      "result": "test tests::payment_gateway_private_keys_only_accept_protected_file_paths ... ok"
+    },
+    {
+      "line": 1115,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1120,
+      "result": "test real_gateway_key_file_errors_never_echo_private_material ... ok"
+    },
+    {
+      "line": 1121,
+      "result": "test protected_keys_start_real_gateway_without_process_or_output_leakage ... ok"
+    },
+    {
+      "line": 1123,
+      "result": "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+    },
+    {
+      "line": 1128,
+      "result": "test tests::crash_child ... ok"
+    },
+    {
+      "line": 1129,
+      "result": "test tests::sync_failure_child ... ok"
+    },
+    {
+      "line": 1130,
+      "result": "test tests::native_permissions_links_and_shared_directories_are_rejected ... ok"
+    },
+    {
+      "line": 1131,
+      "result": "test tests::schema_has_one_current_layout_and_configured_durability ... ok"
+    },
+    {
+      "line": 1132,
+      "result": "test tests::new_commit_permission_cannot_be_obtained_from_an_idempotent_receipt ... ok"
+    },
+    {
+      "line": 1133,
+      "result": "test tests::validator_is_read_only_and_schema_drift_and_truncation_fail_closed ... ok"
+    },
+    {
+      "line": 1134,
+      "result": "test tests::encrypted_bodies_never_enter_sqlite_plaintext_and_are_bound_to_identity ... ok"
+    },
+    {
+      "line": 1135,
+      "result": "test tests::atomic_cas_replay_and_bounded_queries_share_memory_and_disk_semantics ... ok"
+    },
+    {
+      "line": 1136,
+      "result": "test tests::real_process_kill_before_commit_after_commit_and_after_acknowledgement ... ok"
+    },
+    {
+      "line": 1137,
+      "result": "test tests::actual_fsync_eio_and_enospc_never_acknowledge_partial_commit ... ok"
+    },
+    {
+      "line": 1138,
+      "result": "test tests::actual_sqlite_page_limit_causes_full_without_partial_cross_record_commit ... ok"
+    },
+    {
+      "line": 1139,
+      "result": "test tests::independent_connections_reject_stale_cas_and_preserve_exact_retry ... ok"
+    },
+    {
+      "line": 1141,
+      "result": "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s"
+    },
+    {
+      "line": 1146,
+      "result": "test tests::conditional_batch_rejects_wrong_preimage_and_duplicate_hash ... ok"
+    },
+    {
+      "line": 1147,
+      "result": "test crypto_vectors::bilateral_and_factory_reject_malformed_keys_scalars_and_widths ... ok"
+    },
+    {
+      "line": 1148,
+      "result": "test tests::parses_and_resolves_conditional_batch ... ok"
+    },
+    {
+      "line": 1149,
+      "result": "test tests::sponsor_policy_fields_are_fixed_width ... ok"
+    },
+    {
+      "line": 1150,
+      "result": "test crypto_vectors::bilateral_and_factory_reject_valid_high_s_twins ... ok"
+    },
+    {
+      "line": 1151,
+      "result": "test tests::typed_batch_preserves_capacity_and_resolves_full_width_tokens ... ok"
+    },
+    {
+      "line": 1152,
+      "result": "test tests::typed_batch_rejects_wrong_asset_and_both_arithmetic_overflows ... ok"
+    },
+    {
+      "line": 1153,
+      "result": "test tests::sibling_subtree_membership_matches_naive_prefix_check ... ok"
+    },
+    {
+      "line": 1154,
+      "result": "test crypto_vectors::bilateral_and_factory_reject_changed_digest_and_wrong_signer ... ok"
+    },
+    {
+      "line": 1155,
+      "result": "test crypto_vectors::canonical_prehashed_signatures_match_fixed_vectors ... ok"
+    },
+    {
+      "line": 1157,
+      "result": "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    },
+    {
+      "line": 1163,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1168,
+      "result": "test shared_x402_codec_preserves_exact_values_and_enforces_header_bounds ... ok"
+    },
+    {
+      "line": 1169,
+      "result": "test changed_identifier_never_bypasses_current_requirement_binding ... ok"
+    },
+    {
+      "line": 1170,
+      "result": "test canonical_authorization_matches_independent_signature_vector ... ok"
+    },
+    {
+      "line": 1172,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1177,
+      "result": "test endpoints_and_ids_fail_closed ... ok"
+    },
+    {
+      "line": 1178,
+      "result": "test intermediary_error_does_not_erase_mutation_identity ... ok"
+    },
+    {
+      "line": 1179,
+      "result": "test authorization_header_error_diagnostics_and_no_redirect_following ... ok"
+    },
+    {
+      "line": 1180,
+      "result": "test ambiguous_write_and_oversized_read_are_distinct ... ok"
+    },
+    {
+      "line": 1181,
+      "result": "test administrative_export_is_typed_and_preserves_full_width_decimal_amounts ... ok"
+    },
+    {
+      "line": 1182,
+      "result": "test readiness_preserves_typed_503_reports_and_rejects_status_contradictions ... ok"
+    },
+    {
+      "line": 1184,
+      "result": "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    },
+    {
+      "line": 1189,
+      "result": "test public_review_rejects_missing_context_corrupt_evidence_and_wrong_signature ... ok"
+    },
+    {
+      "line": 1190,
+      "result": "test current_public_documents_and_detached_receipts_are_reviewed ... ok"
+    },
+    {
+      "line": 1192,
+      "result": "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s"
+    },
+    {
+      "line": 1197,
+      "result": "test ipc::tests::child_peer ... ok"
+    },
+    {
+      "line": 1198,
+      "result": "test files::tests::protected_reader_rejects_aliases_broad_modes_special_files_and_size ... ok"
+    },
+    {
+      "line": 1199,
+      "result": "test ipc::tests::endpoint_permissions_aliases_existing_files_and_replacement_are_rejected ... ok"
+    },
+    {
+      "line": 1200,
+      "result": "test ipc::tests::private_ancestor_protects_descendants_but_an_exposed_writable_ancestor_is_rejected ... ok"
+    },
+    {
+      "line": 1201,
+      "result": "test ipc::tests::malformed_control_frames_are_rejected_without_signing ... ok"
+    },
+    {
+      "line": 1202,
+      "result": "test ipc::tests::control_probes_are_separate_from_signatures_and_pin_current_policy ... ok"
+    },
+    {
+      "line": 1203,
+      "result": "test ipc::tests::inbound_oversize_zero_truncated_trailing_and_malformed_frames_do_not_escape ... ok"
+    },
+    {
+      "line": 1204,
+      "result": "test ipc::tests::response_cannot_change_a_request ... ok"
+    },
+    {
+      "line": 1205,
+      "result": "test ipc::tests::separate_process_disconnect_after_receiving_is_an_unknown_outcome ... ok"
+    },
+    {
+      "line": 1206,
+      "result": "test ipc::tests::separate_process_roundtrip_verifies_the_original_fixture_receipt ... ok"
+    },
+    {
+      "line": 1207,
+      "result": "test ipc::tests::deadline_is_total_not_refreshed_by_each_partial_read ... ok"
+    },
+    {
+      "line": 1208,
+      "result": "test ipc::tests::malformed_oversized_wrong_target_replies_and_silence_never_return_receipts ... ok"
+    },
+    {
+      "line": 1209,
+      "result": "test ipc::tests::control_reply_replay_wrong_policy_signature_and_hang_never_report_ready ... ok"
+    },
+    {
+      "line": 1211,
+      "result": "test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s"
+    },
+    {
+      "line": 1217,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1223,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1229,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1235,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1240,
+      "result": "test rpc::tests::public_networks_cannot_be_mislabeled_as_development ... ok"
+    },
+    {
+      "line": 1241,
+      "result": "test rpc::tests::maturity_compares_epoch_fractions_without_rounding ... ok"
+    },
+    {
+      "line": 1242,
+      "result": "test rpc::tests::history_uses_net_owned_changes_and_never_merges_asset_types ... ok"
+    },
+    {
+      "line": 1243,
+      "result": "test address::tests::full_address_keeps_script_and_rejects_other_network_and_wrong_checksum ... ok"
+    },
+    {
+      "line": 1244,
+      "result": "test service::tests::human_amounts_preserve_precision_and_reject_overflow ... ok"
+    },
+    {
+      "line": 1245,
+      "result": "test storage::tests::private_storage_is_single_owner_immutable_and_rejects_symlinks ... ok"
+    },
+    {
+      "line": 1246,
+      "result": "test transaction::tests::tokens_are_conserved_per_type_and_foreign_inputs_and_dust_are_rejected ... ok"
+    },
+    {
+      "line": 1247,
+      "result": "test transaction::tests::ckb_selection_preserves_data_cells_and_exact_fee_and_signs_only_owner ... ok"
+    },
+    {
+      "line": 1248,
+      "result": "test keystore::tests::keystore_authenticates_metadata_and_key_and_rejects_wrong_password ... ok"
+    },
+    {
+      "line": 1249,
+      "result": "test service::tests::backup_restores_encrypted_payment_authority_and_password_rotation_preserves_it ... ok"
+    },
+    {
+      "line": 1251,
+      "result": "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.99s"
+    },
+    {
+      "line": 1259,
+      "result": "test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1264,
+      "result": "test fuzz::targets::settlement::tests::current_batch_fulfill_refund_and_argument_corpus_rejects_semantic_tampering ... ok"
+    },
+    {
+      "line": 1265,
+      "result": "test fuzz::targets::gateway_api::tests::gateway_registry_dtos_and_signed_receipt_corpus_preserve_current_boundaries ... ok"
+    },
+    {
+      "line": 1266,
+      "result": "test fuzz::targets::factory::tests::public_corpus_covers_all_fs_roles_and_retained_terminal_fm ... ok"
+    },
+    {
+      "line": 1267,
+      "result": "test fuzz::tests::mutation_is_bounded_and_reproducible ... ok"
+    },
+    {
+      "line": 1268,
+      "result": "test fuzz::targets::replay::tests::bounded_multistep_model_covers_all_commands_and_rejects_unknown_programs ... ok"
+    },
+    {
+      "line": 1269,
+      "result": "test fuzz::targets::splice::tests::canonical_splice_frames_flows_and_tampered_bridge_authority ... ok"
+    },
+    {
+      "line": 1270,
+      "result": "test fuzz::targets::hub_api::tests::hub_endpoint_dtos_have_corpus_and_strict_archives_do_not_accept_retired_or_duplicate_fields ... ok"
+    },
+    {
+      "line": 1271,
+      "result": "test fuzz::targets::documents::tests::all_current_review_schemas_have_valid_corpus_and_wrong_authority_is_rejected ... ok"
+    },
+    {
+      "line": 1272,
+      "result": "test fuzz::targets::signer::tests::seven_signer_roles_reject_rehashed_review_substitution_and_cross_context_receipts ... ok"
+    },
+    {
+      "line": 1273,
+      "result": "test fuzz::tests::canonical_corpus_passes_all_invariants ... ok"
+    },
+    {
+      "line": 1275,
+      "result": "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.55s"
+    },
+    {
+      "line": 1280,
+      "result": "test fiber_scenarios::tests::retained_failed_tlc_is_not_confused_with_live_value_or_a_missing_channel ... ok"
+    },
+    {
+      "line": 1281,
+      "result": "test fiber_scenarios::tests::economic_checks_keep_integer_precision_and_reject_the_wrong_refund ... ok"
+    },
+    {
+      "line": 1282,
+      "result": "test fiber_scenarios::tests::core_economic_assertions_reject_missing_and_wrong_precision_values ... ok"
+    },
+    {
+      "line": 1283,
+      "result": "test fiber_scenarios::tests::writes_cannot_be_polled_and_unknown_actions_are_rejected ... ok"
+    },
+    {
+      "line": 1284,
+      "result": "test fiber_scenarios::tests::native_scenario_corpus_is_typed_complete_and_strictly_ordered ... ok"
+    },
+    {
+      "line": 1286,
+      "result": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    },
+    {
+      "line": 1393,
+      "result": "test real_campaign_records_corpus_counts_and_replays_retained_input ... ok"
+    },
+    {
+      "line": 1456,
+      "result": "test real_worker_deadlines_fail_campaign_and_retain_last_attempt ... ok"
+    },
+    {
+      "line": 1458,
+      "result": "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.18s"
+    },
+    {
+      "line": 1464,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1470,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1476,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1482,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1488,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1494,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1500,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1506,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1512,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1518,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1524,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1530,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1536,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "line": 1541,
+      "result": "Ran 45 tests in 3.351s"
+    },
+    {
+      "line": 1543,
+      "result": "OK"
+    },
+    {
+      "line": 1681,
+      "result": "test batch_lock_rejects_descriptor_commitment_mismatch ... ok"
+    },
+    {
+      "line": 1682,
+      "result": "test batch_lock_rejects_output_capacity_mismatch ... ok"
+    },
+    {
+      "line": 1683,
+      "result": "test batch_lock_rejects_premature_refund ... ok"
+    },
+    {
+      "line": 1684,
+      "result": "test batch_lock_rejects_retired_args_and_zero_funding_context ... ok"
+    },
+    {
+      "line": 1685,
+      "result": "test batch_lock_rejects_wrong_preimage ... ok"
+    },
+    {
+      "line": 1686,
+      "result": "test batch_lock_resolves_mixed_fulfill_and_refund ... ok"
+    },
+    {
+      "line": 1687,
+      "result": "test devnet_xudt_allows_owner_mint_and_conserves_transfer ... ok"
+    },
+    {
+      "line": 1688,
+      "result": "test devnet_xudt_rejects_transfer_sum_overflow ... ok"
+    },
+    {
+      "line": 1689,
+      "result": "test multi_asset::boundaries::current_contracts_reject_retired_state_vault_and_factory_shapes ... ok"
+    },
+    {
+      "line": 1690,
+      "result": "test multi_asset::boundaries::current_finalise_rejects_absolute_since_dirty_typed_split_and_standalone_retirement ... ok"
+    },
+    {
+      "line": 1691,
+      "result": "test multi_asset::boundaries::current_inline_factory_and_batch_args_reject_malformed_shapes_before_witness_access ... ok"
+    },
+    {
+      "line": 1692,
+      "result": "test multi_asset::boundaries::current_sponsor_bounds_fee_budget_change_attribution_and_authentic_publication ... ok"
+    },
+    {
+      "line": 1693,
+      "result": "test multi_asset::boundaries::current_state_supersede_preserves_carrier_context_lock_and_signature_authority ... ok"
+    },
+    {
+      "line": 1694,
+      "result": "test multi_asset::boundaries::current_vault_authority_checks_state_lock_identity_and_unique_authentic_state ... ok"
+    },
+    {
+      "line": 1695,
+      "result": "test multi_asset::close::cooperative_close_current_complete_custody_without_delay ... ok"
+    },
+    {
+      "line": 1696,
+      "result": "test multi_asset::close::cooperative_close_fresh_signatures_cannot_waive_custody_or_payouts ... ok"
+    },
+    {
+      "line": 1697,
+      "result": "test multi_asset::close::cooperative_close_host_snapshot_exports_vm_valid_complete_retirement ... ok"
+    },
+    {
+      "line": 1698,
+      "result": "test multi_asset::close::cooperative_close_rejects_roles_body_and_frame_malleation ... ok"
+    },
+    {
+      "line": 1699,
+      "result": "test multi_asset::close::cooperative_close_source_progress_and_external_fee_boundaries ... ok"
+    },
+    {
+      "line": 1700,
+      "result": "test multi_asset::close_costs::current_close_geometry_and_fresh_votes_do_not_bypass_delay ... ok"
+    },
+    {
+      "line": 1701,
+      "result": "test multi_asset::conditional::cooperative_close_host_output_builder_and_journal_preserve_independent_batch ... ok"
+    },
+    {
+      "line": 1702,
+      "result": "test multi_asset::conditional::cooperative_close_preserves_target_batch_after_older_active_source ... ok"
+    },
+    {
+      "line": 1703,
+      "result": "test multi_asset::conditional::current_close_geometry_with_pending_batch ... ok"
+    },
+    {
+      "line": 1704,
+      "result": "test multi_asset::conditional::current_conditional_batch_rejects_cross_group_payout_reuse ... ok"
+    },
+    {
+      "line": 1705,
+      "result": "test multi_asset::conditional::current_conditional_batch_requires_leading_input_and_allows_trailing_fee_input ... ok"
+    },
+    {
+      "line": 1706,
+      "result": "test multi_asset::conditional::current_conditional_batch_spend_requires_exact_canonical_payouts_and_plain_fee_change ... ok"
+    },
+    {
+      "line": 1707,
+      "result": "test multi_asset::conditional::current_conditional_finalisation_binds_batch_to_exact_state_and_funding_context ... ok"
+    },
+    {
+      "line": 1708,
+      "result": "test multi_asset::conditional::current_conditional_lane_cannot_pay_pending_from_carrier_or_omit_token ... ok"
+    },
+    {
+      "line": 1709,
+      "result": "test multi_asset::conditional::current_conditional_lane_finalises_and_fulfills_with_independent_token_and_carrier ... ok"
+    },
+    {
+      "line": 1710,
+      "result": "test multi_asset::conditional::current_conditional_lane_refunds_only_after_absolute_deadline ... ok"
+    },
+    {
+      "line": 1711,
+      "result": "test multi_asset::conditional::current_conditional_lane_rejects_wrong_preimage_and_batch_destination ... ok"
+    },
+    {
+      "line": 1712,
+      "result": "test multi_asset::factory::factory_multi_asset_child_uses_private_exit_after_parent_retirement ... ok"
+    },
+    {
+      "line": 1713,
+      "result": "test multi_asset::factory::factory_multi_asset_materialises_outside_parties_with_independent_private_exits ... ok"
+    },
+    {
+      "line": 1714,
+      "result": "test multi_asset::factory::factory_multi_asset_maximum_script_profile_has_a_measured_cycle_bound ... ok"
+    },
+    {
+      "line": 1715,
+      "result": "test multi_asset::factory::factory_multi_asset_metadata_update_preserves_custody_and_requires_all_members ... ok"
+    },
+    {
+      "line": 1716,
+      "result": "test multi_asset::factory::factory_multi_asset_rejects_physical_changes_even_with_fresh_all_member_approval ... ok"
+    },
+    {
+      "line": 1717,
+      "result": "test multi_asset::factory::factory_multi_asset_retained_custody_reactivates_and_rejects_noncanonical_deps ... ok"
+    },
+    {
+      "line": 1718,
+      "result": "test multi_asset::factory::factory_multi_asset_root_activation_and_materialisation_execute_in_vm ... ok"
+    },
+    {
+      "line": 1719,
+      "result": "test multi_asset::factory::factory_multi_asset_root_approval_cannot_reprice_the_transaction ... ok"
+    },
+    {
+      "line": 1720,
+      "result": "test multi_asset::factory::reduced::delegation::factory_vault_delegation_applies_type_transaction_bounds ... ok"
+    },
+    {
+      "line": 1721,
+      "result": "test multi_asset::factory::reduced::delegation::factory_vault_delegation_binds_actual_transaction_before_delegating_signatures ... ok"
+    },
+    {
+      "line": 1722,
+      "result": "test multi_asset::factory::reduced::delegation::factory_vault_delegation_rejects_foreign_missing_and_aliased_source_types ... ok"
+    },
+    {
+      "line": 1723,
+      "result": "test multi_asset::factory::reduced::delegation::factory_vault_delegation_rejects_group_frame_mixed_roles_and_source_relocation ... ok"
+    },
+    {
+      "line": 1724,
+      "result": "test multi_asset::factory::reduced::delegation::factory_vault_delegation_uses_global_frame_and_requires_type_authorization ... ok"
+    },
+    {
+      "line": 1725,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_child_can_pay_outsiders_but_not_authorize_them_as_factory_members ... ok"
+    },
+    {
+      "line": 1726,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_authenticates_factory_type_and_state_lock ... ok"
+    },
+    {
+      "line": 1727,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_executes_with_one_member_after_all_member_funding ... ok"
+    },
+    {
+      "line": 1728,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_maximum_eight_types_sixteen_members_executes ... ok"
+    },
+    {
+      "line": 1729,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_rejects_cloned_state_outpoint_and_state_lock_alias ... ok"
+    },
+    {
+      "line": 1730,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_rejects_duplicate_state_and_reserve_fee_diversion ... ok"
+    },
+    {
+      "line": 1731,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_rejects_freshly_signed_physical_payout_change ... ok"
+    },
+    {
+      "line": 1732,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_rejects_freshly_signed_token_change ... ok"
+    },
+    {
+      "line": 1733,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_rejects_missing_source_vault_even_with_fresh_signature ... ok"
+    },
+    {
+      "line": 1734,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_rejects_replayed_frame_and_stale_before_header ... ok"
+    },
+    {
+      "line": 1735,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_rejects_retained_reserve_one_below_occupied_floor ... ok"
+    },
+    {
+      "line": 1736,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_rejects_token_claim_burn_for_extra_ckb_payout ... ok"
+    },
+    {
+      "line": 1737,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_release_retained_successor_reactivates_without_member_signatures ... ok"
+    },
+    {
+      "line": 1738,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_reduced_rights_rejects_u128_group_overflow_with_valid_locality_proofs ... ok"
+    },
+    {
+      "line": 1739,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_all_member_type_replacement_needs_independent_new_type_funding ... ok"
+    },
+    {
+      "line": 1740,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_entire_type_exit_cannot_charge_retained_peer_ckb ... ok"
+    },
+    {
+      "line": 1741,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_entire_type_exit_preserves_peer_ckb_in_plain_retained_vault ... ok"
+    },
+    {
+      "line": 1742,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_external_payout_topup_cannot_use_peer_reserve_or_unfunded_capacity ... ok"
+    },
+    {
+      "line": 1743,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_full_consent_funded_splice_in_and_signature_roles ... ok"
+    },
+    {
+      "line": 1744,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_full_custody_executes ... ok"
+    },
+    {
+      "line": 1745,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_interop_fixture_matrix ... ok"
+    },
+    {
+      "line": 1746,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_reduced_child_maximum_bounded_shape_executes ... ok"
+    },
+    {
+      "line": 1747,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_reduced_child_private_exit_and_host_signing_prerequisite ... ok"
+    },
+    {
+      "line": 1748,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_reduced_child_rejects_freshly_authorized_physical_redistribution ... ok"
+    },
+    {
+      "line": 1749,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_reduced_child_rejects_modified_child_keys_after_parent_resigning ... ok"
+    },
+    {
+      "line": 1750,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_reduced_child_uses_same_partition_and_child_creation_verifier ... ok"
+    },
+    {
+      "line": 1751,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_reduced_rights_and_funded_deposit_execute ... ok"
+    },
+    {
+      "line": 1752,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_rejects_external_token_underfunding_with_permissive_asset ... ok"
+    },
+    {
+      "line": 1753,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_rejects_vault_spending_through_metadata_authority ... ok"
+    },
+    {
+      "line": 1754,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_suboccupied_ckb_claim_merges_with_external_wallet_change ... ok"
+    },
+    {
+      "line": 1755,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_ten_right_metadata_preserves_flat_profile_atomic_capacity ... ok"
+    },
+    {
+      "line": 1756,
+      "result": "test multi_asset::factory::reduced::factory_multi_asset_transition_token_only_claim_uses_external_recipient_reserve_without_peer_ckb ... ok"
+    },
+    {
+      "line": 1757,
+      "result": "test multi_asset::multi_asset_initial_exit_cannot_publish_settling_state_zero ... ok"
+    },
+    {
+      "line": 1758,
+      "result": "test multi_asset::multi_asset_maximum_candidate_set_full_lifecycle ... ok"
+    },
+    {
+      "line": 1759,
+      "result": "test multi_asset::multi_asset_one_sided_full_set_finalise ... ok"
+    },
+    {
+      "line": 1760,
+      "result": "test multi_asset::multi_asset_plain_ckb_and_two_xudt_full_lifecycle ... ok"
+    },
+    {
+      "line": 1761,
+      "result": "test multi_asset::multi_asset_plain_fee_change_can_share_the_carrier_refund_address ... ok"
+    },
+    {
+      "line": 1762,
+      "result": "test multi_asset::multi_asset_publication_uses_sponsor_without_spending_carrier_or_vaults ... ok"
+    },
+    {
+      "line": 1763,
+      "result": "test multi_asset::multi_asset_rejects_activation_carrier_fee_leakage ... ok"
+    },
+    {
+      "line": 1764,
+      "result": "test multi_asset::multi_asset_rejects_activation_with_reordered_direct_dependencies ... ok"
+    },
+    {
+      "line": 1765,
+      "result": "test multi_asset::multi_asset_rejects_byte_identical_vault_substitution ... ok"
+    },
+    {
+      "line": 1766,
+      "result": "test multi_asset::multi_asset_rejects_extra_vault_input ... ok"
+    },
+    {
+      "line": 1767,
+      "result": "test multi_asset::multi_asset_rejects_fake_state_authority ... ok"
+    },
+    {
+      "line": 1768,
+      "result": "test multi_asset::multi_asset_rejects_missing_carrier_refund ... ok"
+    },
+    {
+      "line": 1769,
+      "result": "test multi_asset::multi_asset_rejects_partial_set_retirement ... ok"
+    },
+    {
+      "line": 1770,
+      "result": "test multi_asset::multi_asset_rejects_payout_reallocation_not_in_signed_descriptor ... ok"
+    },
+    {
+      "line": 1771,
+      "result": "test multi_asset::multi_asset_rejects_premature_finalise ... ok"
+    },
+    {
+      "line": 1772,
+      "result": "test multi_asset::multi_asset_rejects_signed_publication_in_changed_chain_context ... ok"
+    },
+    {
+      "line": 1773,
+      "result": "test multi_asset::multi_asset_root_creation_rejects_transaction_replacement ... ok"
+    },
+    {
+      "line": 1774,
+      "result": "test multi_asset::multi_asset_splice_independently_rejects_mint_under_a_permissive_asset_type ... ok"
+    },
+    {
+      "line": 1775,
+      "result": "test multi_asset::multi_asset_splice_reanchors_full_set_with_asset_admission_withdrawal_and_recovery ... ok"
+    },
+    {
+      "line": 1776,
+      "result": "test multi_asset::multi_asset_splice_rejects_body_changes_clone_partial_sets_withdrawal_and_carrier_substitution ... ok"
+    },
+    {
+      "line": 1777,
+      "result": "test multi_asset::multi_asset_splice_rejects_reserve_business_reclassification_even_with_valid_bridge_signatures ... ok"
+    },
+    {
+      "line": 1778,
+      "result": "test multi_asset::multi_asset_splice_requires_both_bridge_and_new_creation_authorizations ... ok"
+    },
+    {
+      "line": 1779,
+      "result": "test multi_asset::multi_asset_two_xudt_full_lifecycle ... ok"
+    },
+    {
+      "line": 1780,
+      "result": "test multi_asset::typed_conditional::typed_batch_rejects_early_refund_wrong_preimage_and_cross_batch_witness ... ok"
+    },
+    {
+      "line": 1781,
+      "result": "test multi_asset::typed_conditional::typed_batch_vm_resolves_above_u64_without_capacity_or_type_substitution ... ok"
+    },
+    {
+      "line": 1782,
+      "result": "test multi_asset::typed_conditional::typed_condition_requires_future_token_payout_capacity_even_at_zero_settled_balance ... ok"
+    },
+    {
+      "line": 1783,
+      "result": "test multi_asset::typed_conditional::typed_conditional_complete_custody_and_independent_mixed_resolutions ... ok"
+    },
+    {
+      "line": 1784,
+      "result": "test multi_asset::typed_conditional::typed_conditional_cooperative_close_preserves_every_independent_batch ... ok"
+    },
+    {
+      "line": 1785,
+      "result": "test multi_asset::typed_conditional::typed_conditional_rejects_asset_substitution_and_token_diversion ... ok"
+    },
+    {
+      "line": 1786,
+      "result": "test multi_asset::typed_conditional::typed_conditions_fund_activate_and_exit_from_the_original_initial_recovery ... ok"
+    },
+    {
+      "line": 1787,
+      "result": "test multi_asset::typed_conditional::typed_conditions_maximum_eight_assets_sixty_four_conditions_and_script_bounds ... ok"
+    },
+    {
+      "line": 1788,
+      "result": "test multi_asset::typed_conditional::typed_conditions_splice_creation_recovery_activation_and_terminal_claims ... ok"
+    },
+    {
+      "line": 1789,
+      "result": "test state_lock_accepts_input_with_expected_state_type ... ok"
+    },
+    {
+      "line": 1790,
+      "result": "test state_lock_rejects_untyped_input ... ok"
+    },
+    {
+      "line": 1792,
+      "result": "test result: ok. 110 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 29.93s"
+    },
+    {
+      "line": 1811,
+      "result": "Morph current custody release-readiness documents verified"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "morph.watch_budget_checkpoint.v1",
+  "passed": true,
+  "native_source_unchanged": true,
+  "native_binary_sha256": "9040b536777b77f32275008c4aa079840812c6324b2e58d3cb64064152114187",
+  "native_runner_sha256": "a624d88dc122cd4a6ff0da683ad1004dfdf80fdaaa57f38ae3037d716b3d8502",
+  "cli_unit_tests": 344,
+  "cli_integration_tests": 3,
+  "final_watch_tests": 20,
+  "full_fee_quotes": 2,
+  "limited_fee_quotes": 2,
+  "passive_watch_quotes": 1,
+  "post_native_code_change": "Gate BudgetReason import on devnet/test for default build; no behavior change",
+  "release_qualified": false,
+  "issues_closed": false
+}

@@ -101,6 +101,34 @@ fn build_profile(
     plain: bool,
     maximum_scripts: bool,
 ) -> Fixture {
+    build_initial_profile(typed_count, one_sided, plain, maximum_scripts, false)
+}
+
+fn build_initial_profile(
+    typed_count: usize,
+    one_sided: bool,
+    plain: bool,
+    maximum_scripts: bool,
+    conditional: bool,
+) -> Fixture {
+    build_initial_profile_with_types(
+        typed_count,
+        one_sided,
+        plain,
+        maximum_scripts,
+        conditional,
+        false,
+    )
+}
+
+fn build_initial_profile_with_types(
+    typed_count: usize,
+    one_sided: bool,
+    plain: bool,
+    maximum_scripts: bool,
+    conditional: bool,
+    permissive_types: bool,
+) -> Fixture {
     let reserve = if maximum_scripts {
         240_000_000_000u64
     } else {
@@ -148,7 +176,13 @@ fn build_profile(
     .unwrap();
     let vault_lock = deploy_contract(&mut context, "morph-vault-lock", vault_args.to_vec());
     let mut types: Vec<_> = (0..typed_count)
-        .map(|i| deploy_contract(&mut context, "morph-devnet-xudt", vec![(i + 1) as u8; 32]))
+        .map(|i| {
+            if permissive_types {
+                deploy_always_success_with_args(&mut context, Bytes::from(vec![(i + 1) as u8; 32]))
+            } else {
+                deploy_contract(&mut context, "morph-devnet-xudt", vec![(i + 1) as u8; 32])
+            }
+        })
         .collect();
     types.sort_by_key(|script| script.calc_script_hash());
     let mut vault_types = if plain { vec![None] } else { vec![] };
@@ -171,7 +205,7 @@ fn build_profile(
             })
             .collect(),
     };
-    let settlement = MultiAssetSettlement {
+    let mut settlement = MultiAssetSettlement {
         capability: morph_core::MultiAssetSettlementCapability::Ordinary,
         participant_lock_hashes: locks
             .each_ref()
@@ -201,6 +235,15 @@ fn build_profile(
             })
             .collect(),
     };
+    if conditional {
+        let executor = deploy_contract(&mut context, "morph-batch-lock", vec![]);
+        let batches = typed_conditional::arm_all_assets(&mut settlement, 2);
+        settlement.capability = morph_core::MultiAssetSettlementCapability::Conditional {
+            batch_code_hash: executor.code_hash().unpack(),
+            batch_hash_type: executor.hash_type().as_slice()[0],
+            batches,
+        };
+    }
     let content = manifest.commitment().unwrap();
     let mut package = MultiAssetRecoveryPackage {
         state: MultiAssetState {
@@ -369,7 +412,7 @@ fn build_profile(
     eprintln!("multi-asset publication vaults={count} cycles={cycles}");
     materialise(&mut context, &publication);
     package.state.header.state_number = 2;
-    if !one_sided {
+    if !one_sided && !conditional {
         for payout in &mut package.settlement.payouts {
             if matches!(payout.asset, VaultAsset::Xudt(_)) {
                 payout.values[0].amount = 400;
@@ -874,6 +917,26 @@ fn splice_transaction(
     change_kind: SpliceChange,
     maximum_scripts: bool,
 ) -> SpliceFixture {
+    splice_transaction_with_conditions(
+        typed_count,
+        plain,
+        weak_admission,
+        active,
+        change_kind,
+        maximum_scripts,
+        false,
+    )
+}
+
+fn splice_transaction_with_conditions(
+    typed_count: usize,
+    plain: bool,
+    weak_admission: bool,
+    active: bool,
+    change_kind: SpliceChange,
+    maximum_scripts: bool,
+    conditional: bool,
+) -> SpliceFixture {
     use morph_core::{
         MultiAssetSpliceFlow, MultiAssetSpliceProposal, multi_asset_splice_funding_anchor,
     };
@@ -1032,6 +1095,15 @@ fn splice_transaction(
             ],
         })
         .collect();
+    if conditional {
+        let executor = deploy_contract(&mut base.context, "morph-batch-lock", vec![]);
+        let batches = typed_conditional::arm_all_assets(&mut next.settlement, 2);
+        next.settlement.capability = morph_core::MultiAssetSettlementCapability::Conditional {
+            batch_code_hash: executor.code_hash().unpack(),
+            batch_hash_type: executor.hash_type().as_slice()[0],
+            batches,
+        };
+    }
     next.state.header.funding_epoch += 1;
     next.state.header.funding_anchor = anchor;
     next.state.header.phase = Phase::Active;
@@ -1293,6 +1365,8 @@ fn multi_asset_splice_reanchors_full_set_with_asset_admission_withdrawal_and_rec
             .context
             .verify_tx(&fixture.transaction, MAX_CYCLES)
             .expect("complete multi-asset splice");
+        assert!(cycles < 16_500_000);
+        assert!(fixture.transaction.data().as_slice().len() <= 24_600);
         eprintln!(
             "multi-asset splice count={count} plain={plain} change={change:?} maximum_scripts={maximum} cycles={cycles} bytes={}",
             fixture.transaction.data().as_slice().len()
@@ -1572,6 +1646,54 @@ fn multi_asset_splice_requires_both_bridge_and_new_creation_authorizations() {
 }
 
 #[test]
+#[ignore = "requires built current ELFs"]
+fn splice_delegation_requires_the_old_type_to_verify_the_global_bridge() {
+    use morph_script_common::multi_asset_splice as splice;
+    let f = splice_transaction(2, true, false, false, SpliceChange::ReplaceOne, false);
+    let valid = f.transaction.witnesses().get(0).unwrap();
+    let args = WitnessArgs::from_slice(&valid.raw_data()).unwrap();
+    let mut frame = args.output_type().to_opt().unwrap().raw_data().to_vec();
+    let offset = splice::MULTI_ASSET_SPLICE_PREFIX_LEN
+        + splice::MULTI_ASSET_SPLICE_HEADER_LEN
+        + wire::MULTI_ASSET_STATE_HEADER_LEN
+        + 4
+        + 33;
+    frame[offset..offset + 64].copy_from_slice(&signature(&signing_key(1), &[202; 32]));
+    let invalid = args
+        .as_builder()
+        .output_type(Some(Bytes::from(frame)).pack())
+        .build()
+        .as_bytes()
+        .pack();
+    f.base
+        .context
+        .verify_tx(
+            &f.transaction
+                .clone()
+                .as_advanced_builder()
+                .set_witnesses(vec![valid.clone(), invalid.clone()])
+                .build(),
+            MAX_CYCLES,
+        )
+        .unwrap();
+    let bad = f
+        .transaction
+        .as_advanced_builder()
+        .set_witnesses(vec![invalid, valid])
+        .build();
+    let err = f.base.context.verify_tx(&bad, MAX_CYCLES).unwrap_err();
+    let detail = err
+        .root_cause()
+        .downcast_ref::<ckb_testtool::ckb_script::TransactionScriptError>()
+        .unwrap();
+    assert_eq!(detail.originating_script().to_string(), "Inputs[0].Type");
+    assert!(matches!(
+        detail.script_error(),
+        ckb_testtool::ckb_script::ScriptError::ValidationFailure(_, 24)
+    ));
+}
+
+#[test]
 #[ignore]
 fn multi_asset_splice_rejects_reserve_business_reclassification_even_with_valid_bridge_signatures()
 {
@@ -1631,3 +1753,12 @@ mod conditional;
 
 #[path = "current_boundaries.rs"]
 mod boundaries;
+
+#[path = "multi_asset_close_costs.rs"]
+mod close_costs;
+
+#[path = "multi_asset_close.rs"]
+mod close;
+
+#[path = "typed_conditional.rs"]
+mod typed_conditional;

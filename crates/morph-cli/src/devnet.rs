@@ -2,7 +2,7 @@
 use crate::canonical_fields::canonical_hex32;
 use crate::watch_cursor::WatchCursor;
 #[cfg(feature = "devnet")]
-use crate::watch_cursor::{read_watch_cursor, write_watch_cursor};
+use crate::watch_cursor::read_watch_cursor;
 #[cfg(feature = "devnet")]
 use std::collections::BTreeSet;
 use std::fs;
@@ -53,15 +53,23 @@ use crate::watch_alert::{WatchAlertEvent, WatchAlertSeverity, WatchtowerAlert};
 
 use crate::multi_asset_funding::SECP_TYPE_HASH as DEFAULT_SECP_TYPE_HASH;
 #[cfg(feature = "devnet")]
+pub(crate) mod conditional_batch_operator;
+#[cfg(feature = "devnet")]
 pub mod factory_acceptance;
 #[cfg(feature = "devnet")]
 pub mod factory_child_acceptance;
+#[cfg(feature = "devnet")]
+mod factory_child_close;
 #[cfg(feature = "devnet")]
 pub mod factory_operator;
 #[cfg(feature = "devnet")]
 pub mod factory_transitions_acceptance;
 #[cfg(feature = "devnet")]
 pub mod multi_asset;
+#[cfg(feature = "devnet")]
+mod multi_asset_close_acceptance;
+#[cfg(feature = "devnet")]
+pub(crate) mod multi_asset_close_operator;
 #[cfg(feature = "devnet")]
 pub mod multi_asset_funding_operator;
 #[cfg(feature = "devnet")]
@@ -74,6 +82,12 @@ pub mod multi_asset_splice_acceptance;
 pub mod multi_asset_splice_operator;
 #[cfg(feature = "devnet")]
 pub mod multi_asset_watch;
+#[cfg(feature = "devnet")]
+pub(crate) mod shadow_observer;
+#[cfg(feature = "devnet")]
+pub(crate) mod shadow_service;
+#[cfg(feature = "devnet")]
+mod typed_conditional_acceptance;
 pub const DEFAULT_SPONSOR_MIN_STATE_NUMBER: u64 = 1;
 pub const DEFAULT_SPONSOR_MAX_STATE_NUMBER: u64 = 1 << 20;
 const CONTRACTS: [(&str, &str); 8] = [

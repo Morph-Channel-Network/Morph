@@ -1,0 +1,16 @@
+{
+  "ci_receipt_sha256": "24757a8e7031fc998a1f64b8a6280ef25cd30fb650407dcf47868efd9ae2778f",
+  "contract_bundle_sha256": "43ff1f79979486107ce15d344a600d58b43461708abfd84ab1ea9500a028efa4",
+  "counts": {
+    "audit_families": 11,
+    "evidence_assertions": 145,
+    "native_cases": 5,
+    "stateful_scenarios": 10
+  },
+  "public_evidence_index_sha256": "aaf49b8270ce7de62949335633c4b5e3a0b4b4e5708f4bf0a7a6745f035181a8",
+  "real_assets_allowed": false,
+  "release_admitted": false,
+  "schema": "morph.public_artifact_qualification.v1",
+  "scope": "controlled-devnet-no-real-assets",
+  "source_commit": "bc4be3ff03cb4448f8e16dc95a832e4d6922ce71"
+}
